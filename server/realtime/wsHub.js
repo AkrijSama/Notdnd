@@ -105,7 +105,13 @@ function parseCampaignIdFromUrl(req) {
   return url.searchParams.get("campaignId") || "global";
 }
 
-export function createWsHub({ onClientMessage } = {}) {
+function parseTokenFromUrl(req) {
+  const baseUrl = `http://${req.headers.host || "localhost"}`;
+  const url = new URL(req.url || "/", baseUrl);
+  return url.searchParams.get("token") || "";
+}
+
+export function createWsHub({ onClientMessage, canJoinCampaign } = {}) {
   const clients = new Map();
 
   function send(client, message) {
@@ -149,6 +155,7 @@ export function createWsHub({ onClientMessage } = {}) {
       id: clientId,
       socket,
       campaignId: parseCampaignIdFromUrl(req),
+      token: parseTokenFromUrl(req),
       buffer: head && head.length > 0 ? Buffer.from(head) : Buffer.alloc(0)
     };
     clients.set(clientId, client);
@@ -185,6 +192,16 @@ export function createWsHub({ onClientMessage } = {}) {
         }
 
         if (parsed?.type === "join_campaign" && parsed?.campaignId) {
+          const allowed = canJoinCampaign ? canJoinCampaign(client, parsed.campaignId) : true;
+          if (!allowed) {
+            send(client, {
+              type: "join_denied",
+              campaignId: parsed.campaignId,
+              reason: "forbidden",
+              timestamp: Date.now()
+            });
+            continue;
+          }
           client.campaignId = parsed.campaignId;
           send(client, {
             type: "joined_campaign",

@@ -1,6 +1,16 @@
 export function createSeedState() {
   return {
+    stateVersion: 1,
+    campaignVersions: {
+      cmp_001: 1
+    },
     selectedCampaignId: "cmp_001",
+    userPrefsByUser: {},
+    campaignMembersByCampaign: {
+      cmp_001: []
+    },
+    users: [],
+    sessions: [],
     campaigns: [
       {
         id: "cmp_001",

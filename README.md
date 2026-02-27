@@ -1,28 +1,31 @@
 # Notdnd
 
-Notdnd is a scaffold for a unified tabletop platform combining:
+Notdnd is a unified tabletop platform scaffold combining:
 
 - Roll20-style VTT controls (grid map, tokens, initiative)
 - D&D Beyond-style content flows (campaign, books, character vault, compendium)
 - AI GM orchestration with provider adapters (GM/image/voice)
-- Homebrew ingest so a campaign can be prepared quickly
+- Homebrew ingest and one-click campaign bootstrapping
 
-## Implemented in this pass
+## Completed platform scope in this repo
 
 - Backend API server (`Node.js` built-ins, no framework dependency)
-- SQLite schema blueprint + file-backed runtime datastore (`server/db/notdnd.db.json`) for zero-dependency execution
-- Realtime collaboration via WebSockets (campaign rooms + state change broadcast)
+- Runtime datastore (`server/db/notdnd.db.json`) with SQL blueprint references
+- Authentication and sessions (register/login/me/logout)
+- Campaign role permissions (`owner`, `gm`, `editor`, `player`, `viewer`)
+- Campaign member management (invite/add by role)
+- Versioned state writes with conflict detection (`VERSION_CONFLICT`)
+- Realtime collaboration via WebSockets (campaign room change events)
 - AI adapter layer with providers:
   - `placeholder`
   - `local-mock`
   - `openai-compatible` (env-driven endpoint)
-- Frontend store sync to backend operations and realtime refresh
 - End-to-end **5-minute campaign quickstart**:
   - Upload homebrew files (`.md`, `.txt`, `.json`)
-  - Parse classes/monsters/spells/NPCs/locations
-  - Confidence scoring + review gate before launch
-  - Auto-generate campaign package (books, characters, map, encounter, tokens, initiative, starter chat)
-  - One-click launch to VTT tab
+  - Parse entities + confidence diagnostics + review gate
+  - Generate campaign package (books, characters, map, encounter, tokens, initiative, chat)
+  - Launch directly to VTT tab
+- CI workflow, Docker image/runtime, backup and restore scripts
 
 ## Run
 
@@ -32,39 +35,61 @@ npm run dev
 
 Open `http://localhost:4173`.
 
+Default bootstrap account:
+
+- `demo@notdnd.local`
+- `demo1234`
+
+Configure different bootstrap credentials with:
+
+- `NOTDND_BOOTSTRAP_EMAIL`
+- `NOTDND_BOOTSTRAP_PASSWORD`
+- `NOTDND_BOOTSTRAP_DISPLAY_NAME`
+
 ## Key folders
 
 - `server/index.js`: HTTP + API + static hosting + websocket upgrade
-- `server/db/schema.sql`: normalized SQL schema blueprint for campaigns/books/sheets/maps/tokens/chat/AI jobs
+- `server/db/repository.js`: runtime persistence, auth/session logic, permissions, operations
+- `server/db/schema.sql`: normalized SQL schema blueprint
 - `server/db/seed.sql`: SQL seed blueprint
-- `server/db/repository.js`: runtime operation processor + state projection + persistence
-- `server/db/seedState.js`: runtime seed data
 - `server/realtime/wsHub.js`: websocket room and broadcast hub
-- `server/ai/providers.js`: pluggable provider adapters
-- `server/ai/processor.js`: async AI job worker
-- `server/homebrew/parser.js`: homebrew ingest parser
-- `server/homebrew/homebrew.schema.json`: canonical JSON schema contract
-- `server/homebrew/schema.js`: schema validator helpers
+- `server/homebrew/parser.js`: homebrew parser + confidence diagnostics
+- `server/homebrew/homebrew.schema.json`: canonical homebrew schema contract
 - `server/campaign/quickstart.js`: campaign package generator blueprint
-- `server/api/quickstartRoutes.js`: route-level quickstart parse/build handlers
-- `src/state/store.js`: optimistic local state + backend sync
-- `src/api/client.js`: frontend API client
-- `src/realtime/client.js`: frontend websocket client
+- `src/state/store.js`: optimistic state + version-aware backend sync
+- `src/api/client.js`: auth/token-aware API client
+- `src/realtime/client.js`: auth-token websocket client
+- `tests/fixtures/homebrew/*`: parser/build fixture corpus
 
 ## API surface
 
+Public:
+
 - `GET /api/health`
+- `POST /api/auth/register`
+- `POST /api/auth/login`
+
+Authenticated:
+
+- `POST /api/auth/logout`
+- `GET /api/auth/me`
 - `GET /api/state`
+- `POST /api/ops` with `{ op, payload, expectedVersion }`
+- `GET /api/campaign/members?campaignId=...`
+- `POST /api/campaign/members` with `{ campaignId, email, role }`
 - `GET /api/ai/providers`
-- `POST /api/ops` with `{ op, payload }`
-- `POST /api/ai/generate` for direct provider calls
+- `POST /api/ai/generate`
 - `POST /api/quickstart/parse` with `{ files[] }`
 - `POST /api/quickstart/build` with `{ campaignName, setting, players[], files[] }` or `{ ... , parsed }`
-- `WS /ws?campaignId=<id>` for realtime state change signals
+- `GET /api/metrics` (admin only)
+
+Realtime:
+
+- `WS /ws?campaignId=<id>&token=<sessionToken>`
 
 ## Canonical homebrew JSON contract
 
-Use the schema at `server/homebrew/homebrew.schema.json`:
+Use `server/homebrew/homebrew.schema.json`:
 
 ```json
 {
@@ -91,25 +116,32 @@ npm run verify
 ```
 
 This runs:
+
 - Syntax checks across `src/`, `server/`, and `tests/`
 - Fixture-driven parser tests
+- Schema contract tests
 - Route contract tests for quickstart parse/build handlers
-- Quickstart build integration tests against fixture corpus
+- Fixture-driven quickstart build integration tests
+- Auth/permissions/version conflict tests
 
-## Placeholder config fields
+## Ops and deployment
 
-Values still intentionally placeholder-based for integration wiring:
+Backup and restore datastore:
 
-- `AI_GM_PROVIDER_NAME`
-- `AI_GM_MODEL_VALUE`
-- `IMAGE_PROVIDER_NAME`
-- `IMAGE_MODEL_VALUE`
-- `VOICE_PROVIDER_NAME`
-- `VOICE_MODEL_VALUE`
-- `CAMPAIGN_COVER_PLACEHOLDER_URL`
-- `TOKEN_PLACEHOLDER_URL`
+```bash
+npm run backup
+npm run restore -- backups/notdnd_db_YYYYMMDD_HHMMSS.json
+```
 
-See `config/placeholders.json`.
+Container runtime:
+
+```bash
+docker compose up --build
+```
+
+CI:
+
+- `.github/workflows/ci.yml` runs `npm run verify` on push/PR.
 
 ## Optional AI env vars
 

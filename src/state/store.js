@@ -35,6 +35,11 @@ function seedState() {
       gmStyle: "Cinematic Tactical",
       safetyProfile: "Table-Friendly",
       primaryRulebook: "Core Rules SRD"
+    },
+    stateVersion: 0,
+    campaignVersions: {},
+    auth: {
+      user: null
     }
   };
 }
@@ -75,7 +80,7 @@ export function createStore({ apiClient = null } = {}) {
     }
 
     try {
-      const response = await apiClient.applyOperation(op, payload);
+      const response = await apiClient.applyOperation(op, payload, state.stateVersion);
       if (response?.state) {
         state = {
           ...state,
@@ -87,6 +92,11 @@ export function createStore({ apiClient = null } = {}) {
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error(`Failed to sync op ${op}:`, error);
+      if (error?.code === "VERSION_CONFLICT") {
+        await hydrateFromServer();
+      } else if (error?.code === "UNAUTHORIZED" || error?.status === 401) {
+        await hydrateFromServer();
+      }
       return null;
     }
   }
@@ -107,6 +117,15 @@ export function createStore({ apiClient = null } = {}) {
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error("Failed to hydrate from server:", error);
+      if (error?.code === "UNAUTHORIZED" || error?.status === 401) {
+        state = {
+          ...state,
+          auth: {
+            user: null
+          }
+        };
+        notify();
+      }
     }
   }
 
@@ -134,7 +153,8 @@ export function createStore({ apiClient = null } = {}) {
         setting,
         players,
         files,
-        parsed
+        parsed,
+        expectedVersion: state.stateVersion
       });
 
       if (response?.state) {
@@ -152,6 +172,15 @@ export function createStore({ apiClient = null } = {}) {
         throw new Error("API client is required for quickstart parse");
       }
       return apiClient.parseQuickstartFiles({ files });
+    },
+    clearAuth() {
+      state = {
+        ...state,
+        auth: {
+          user: null
+        }
+      };
+      notify();
     },
     resetAll() {
       state = seedState();

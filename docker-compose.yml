@@ -1,0 +1,16 @@
+version: "3.9"
+services:
+  notdnd:
+    build: .
+    ports:
+      - "4173:4173"
+    environment:
+      - PORT=4173
+      - NOTDND_BOOTSTRAP_EMAIL=demo@notdnd.local
+      - NOTDND_BOOTSTRAP_PASSWORD=demo1234
+      - NOTDND_DB_PATH=/data/notdnd.db.json
+    volumes:
+      - notdnd_data:/data
+
+volumes:
+  notdnd_data:

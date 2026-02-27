@@ -1,30 +1,104 @@
+const TOKEN_STORAGE_KEY = "notdnd_auth_token_v1";
+
+function loadToken() {
+  return localStorage.getItem(TOKEN_STORAGE_KEY);
+}
+
+function saveToken(token) {
+  if (token) {
+    localStorage.setItem(TOKEN_STORAGE_KEY, token);
+  } else {
+    localStorage.removeItem(TOKEN_STORAGE_KEY);
+  }
+}
+
 export function createApiClient(baseUrl = "") {
+  let authToken = loadToken();
+
   async function request(path, options = {}) {
+    const headers = {
+      "Content-Type": "application/json",
+      ...(options.headers || {})
+    };
+
+    if (authToken) {
+      headers.Authorization = `Bearer ${authToken}`;
+    }
+
     const response = await fetch(`${baseUrl}${path}`, {
-      headers: {
-        "Content-Type": "application/json"
-      },
-      ...options
+      ...options,
+      headers
     });
 
     const payload = await response.json();
     if (!response.ok || payload.ok === false) {
-      throw new Error(payload.error || `Request failed: ${response.status}`);
+      const error = new Error(payload.error || `Request failed: ${response.status}`);
+      error.code = payload.code;
+      error.status = response.status;
+      error.payload = payload;
+      throw error;
     }
     return payload;
   }
 
   return {
+    getAuthToken() {
+      return authToken;
+    },
+    setAuthToken(token) {
+      authToken = token || null;
+      saveToken(authToken);
+    },
     async health() {
       return request("/api/health");
+    },
+    async register({ email, password, displayName }) {
+      const response = await request("/api/auth/register", {
+        method: "POST",
+        body: JSON.stringify({ email, password, displayName })
+      });
+      if (response?.token) {
+        this.setAuthToken(response.token);
+      }
+      return response;
+    },
+    async login({ email, password }) {
+      const response = await request("/api/auth/login", {
+        method: "POST",
+        body: JSON.stringify({ email, password })
+      });
+      if (response?.token) {
+        this.setAuthToken(response.token);
+      }
+      return response;
+    },
+    async logout() {
+      const response = await request("/api/auth/logout", {
+        method: "POST",
+        body: JSON.stringify({})
+      });
+      this.setAuthToken(null);
+      return response;
+    },
+    async me() {
+      return request("/api/auth/me");
     },
     async getState() {
       return request("/api/state");
     },
-    async applyOperation(op, payload = {}) {
+    async applyOperation(op, payload = {}, expectedVersion = null) {
       return request("/api/ops", {
         method: "POST",
-        body: JSON.stringify({ op, payload })
+        body: JSON.stringify({ op, payload, expectedVersion })
+      });
+    },
+    async listCampaignMembers(campaignId) {
+      return request(`/api/campaign/members?campaignId=${encodeURIComponent(campaignId)}`);
+    },
+    async addCampaignMember(payload) {
+      return request("/api/campaign/members", {
+        method: "POST",
+        body: JSON.stringify(payload)
       });
     },
     async listAiProviders() {

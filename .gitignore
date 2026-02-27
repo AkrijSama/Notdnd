@@ -5,3 +5,4 @@ server/db/notdnd.sqlite
 server/db/notdnd.sqlite-shm
 server/db/notdnd.sqlite-wal
 server/db/notdnd.db.json
+backups/

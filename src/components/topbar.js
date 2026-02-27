@@ -1,4 +1,4 @@
-export function renderTopbar(activeTab) {
+export function renderTopbar(activeTab, user) {
   const tabs = [
     ["command", "Command Center"],
     ["forge", "Campaign Forge"],
@@ -23,6 +23,10 @@ export function renderTopbar(activeTab) {
           )
           .join("")}
       </nav>
+      <div class="inline">
+        <span class="small">${user ? `Signed in: ${user.displayName}` : "Not signed in"}</span>
+        <button class="ghost" data-action="toggle-auth">${user ? "Account" : "Sign In"}</button>
+      </div>
     </header>
   `;
 }

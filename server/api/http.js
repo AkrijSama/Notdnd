@@ -32,7 +32,7 @@ export function writeJson(res, statusCode, payload) {
     "Content-Length": Buffer.byteLength(body),
     "Cache-Control": "no-store",
     "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "content-type",
+    "Access-Control-Allow-Headers": "content-type,authorization",
     "Access-Control-Allow-Methods": "GET,POST,OPTIONS"
   });
   res.end(body);

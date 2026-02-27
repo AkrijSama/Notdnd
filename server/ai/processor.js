@@ -39,7 +39,7 @@ export function createAiJobProcessor({ onJobUpdated }) {
         campaignId: job.campaignId,
         speaker: "AI GM",
         text: result.text || "AI job complete"
-      });
+      }, { internal: true });
 
       onJobUpdated?.({ jobId, campaignId: job.campaignId, status: "Complete", result });
     } catch (error) {
@@ -52,7 +52,7 @@ export function createAiJobProcessor({ onJobUpdated }) {
         campaignId: job.campaignId,
         speaker: "System",
         text: `AI job failed for ${job.type}: ${String(error.message || error)}`
-      });
+      }, { internal: true });
       onJobUpdated?.({
         jobId,
         campaignId: job.campaignId,
