@@ -1,0 +1,6 @@
+Class: Dusk Duelist
+Monster: Grave Hound
+Monster: Hollow Knight
+Spell: Umbral Step
+NPC: Keeper Soryn
+Location: Hollow Crossing

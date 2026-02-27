@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "1.0",
+  "book": {
+    "title": "Iron Reef Almanac",
+    "tags": ["nautical", "homebrew"],
+    "chapters": ["Ports", "Factions", "Sea Monsters"]
+  },
+  "entities": {
+    "classes": ["Tidecaller", "Chain Diver"],
+    "monsters": ["Coral Ghoul", "Brine Golem"],
+    "spells": ["Brine Bolt", "Keel Shield"],
+    "npcs": ["Harbor Master Ivo", "Deck Mage Sal"],
+    "locations": ["Iron Reef", "Salt Lantern Docks"]
+  }
+}

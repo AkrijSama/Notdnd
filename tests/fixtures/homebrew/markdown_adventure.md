@@ -1,0 +1,10 @@
+# Cinderfall Expedition
+## Act One
+Class: Ember Vanguard
+Monster: Cinder Basilisk
+Spell: Blaze Sigil
+NPC: Marshal Krenn
+Location: Cinderfall Gate
+## Act Two
+Monster: Forge Wraith
+Spell: Magma Step

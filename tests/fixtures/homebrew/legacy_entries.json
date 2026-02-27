@@ -1,0 +1,10 @@
+{
+  "entries": [
+    { "type": "class", "name": "Runesmith" },
+    { "type": "monster", "name": "Ash Sentinel" },
+    { "type": "spell", "name": "Cinder Halo" },
+    { "type": "npc", "name": "Archivist Yune" },
+    { "type": "location", "name": "Glass Bastion" }
+  ],
+  "sections": ["People", "Places", "Threats"]
+}

@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://notdnd.local/schemas/homebrew.schema.json",
+  "title": "Notdnd Homebrew Document",
+  "type": "object",
+  "required": ["schemaVersion", "book", "entities"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "const": "1.0"
+    },
+    "book": {
+      "type": "object",
+      "required": ["title"],
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "default": []
+        },
+        "chapters": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "default": []
+        }
+      }
+    },
+    "entities": {
+      "type": "object",
+      "required": ["classes", "monsters", "spells", "npcs", "locations"],
+      "additionalProperties": false,
+      "properties": {
+        "classes": { "$ref": "#/$defs/stringList" },
+        "monsters": { "$ref": "#/$defs/stringList" },
+        "spells": { "$ref": "#/$defs/stringList" },
+        "npcs": { "$ref": "#/$defs/stringList" },
+        "locations": { "$ref": "#/$defs/stringList" }
+      }
+    }
+  },
+  "$defs": {
+    "stringList": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "default": []
+    }
+  }
+}

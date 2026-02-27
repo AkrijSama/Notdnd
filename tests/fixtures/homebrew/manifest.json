@@ -1,0 +1,74 @@
+[
+  {
+    "file": "canonical_valid_01.json",
+    "shouldParse": true,
+    "min": { "books": 1, "classes": 1, "monsters": 2, "spells": 2 },
+    "minConfidence": 80
+  },
+  {
+    "file": "canonical_valid_02.json",
+    "shouldParse": true,
+    "min": { "books": 1, "classes": 2, "monsters": 2, "spells": 2 },
+    "minConfidence": 80
+  },
+  {
+    "file": "canonical_sparse.json",
+    "shouldParse": true,
+    "min": { "books": 1, "classes": 0, "monsters": 0, "spells": 0 },
+    "minConfidence": 40
+  },
+  {
+    "file": "legacy_entries.json",
+    "shouldParse": true,
+    "min": { "books": 1, "classes": 1, "monsters": 1, "spells": 1 },
+    "minConfidence": 60
+  },
+  {
+    "file": "legacy_arrays.json",
+    "shouldParse": true,
+    "min": { "books": 1, "classes": 1, "monsters": 2, "spells": 2 },
+    "minConfidence": 60
+  },
+  {
+    "file": "markdown_adventure.md",
+    "shouldParse": true,
+    "min": { "books": 1, "classes": 1, "monsters": 2, "spells": 2 },
+    "minConfidence": 65
+  },
+  {
+    "file": "markdown_dense.md",
+    "shouldParse": true,
+    "min": { "books": 1, "classes": 2, "monsters": 2, "spells": 2 },
+    "minConfidence": 65
+  },
+  {
+    "file": "text_tagged.txt",
+    "shouldParse": true,
+    "min": { "books": 1, "classes": 1, "monsters": 2, "spells": 1 },
+    "minConfidence": 60
+  },
+  {
+    "file": "text_chapter_only.txt",
+    "shouldParse": true,
+    "min": { "books": 1, "classes": 0, "monsters": 0, "spells": 0 },
+    "minConfidence": 40
+  },
+  {
+    "file": "mixed_case_markers.txt",
+    "shouldParse": true,
+    "min": { "books": 1, "classes": 1, "monsters": 1, "spells": 1 },
+    "minConfidence": 60
+  },
+  {
+    "file": "malformed_json.json",
+    "shouldParse": false,
+    "min": { "books": 0, "classes": 0, "monsters": 0, "spells": 0 },
+    "minConfidence": 0
+  },
+  {
+    "file": "markdown_no_tags.md",
+    "shouldParse": true,
+    "min": { "books": 1, "classes": 0, "monsters": 0, "spells": 0 },
+    "minConfidence": 30
+  }
+]

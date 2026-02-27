@@ -1,0 +1,14 @@
+{
+  "name": "notdnd",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Notdnd scaffold: Roll20 + D&D Beyond mechanics with AI GM placeholders",
+  "scripts": {
+    "dev": "node server/index.js",
+    "start": "node server/index.js",
+    "check": "for f in $(rg --files -g '*.js' src server tests); do node --check \"$f\" || exit 1; done",
+    "test": "node --test tests/*.test.js",
+    "verify": "npm run check && npm run test"
+  }
+}

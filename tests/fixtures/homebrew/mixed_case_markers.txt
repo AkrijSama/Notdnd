@@ -1,0 +1,5 @@
+cLaSs: Sky Tinker
+MONSTER: Arc Mantis
+Spell: Capacitor Spark
+nPc: Engineer Ralo
+location: Coil District

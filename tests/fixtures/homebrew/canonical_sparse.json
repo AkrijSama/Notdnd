@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "1.0",
+  "book": {
+    "title": "Sparse Ledger",
+    "tags": [],
+    "chapters": []
+  },
+  "entities": {
+    "classes": [],
+    "monsters": [],
+    "spells": [],
+    "npcs": [],
+    "locations": []
+  }
+}

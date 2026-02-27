@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "1.0",
+  "book": {
+    "title": "Storm Wastes Codex",
+    "tags": ["storm", "frontier"],
+    "chapters": ["Overview", "Hazards", "Encounters"]
+  },
+  "entities": {
+    "classes": ["Tempest Knight"],
+    "monsters": ["Gale Wyrm", "Volt Harpy"],
+    "spells": ["Thunder Lash", "Wind Ward"],
+    "npcs": ["Captain Nera"],
+    "locations": ["Shatterport"]
+  }
+}

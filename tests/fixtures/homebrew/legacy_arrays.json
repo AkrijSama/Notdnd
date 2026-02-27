@@ -1,0 +1,8 @@
+{
+  "classes": ["Hex Archer"],
+  "creatures": ["Needle Drake", "Dust Bear"],
+  "spells": ["Arcwire", "Sandskin"],
+  "npcs": ["Scout Myra"],
+  "locations": ["Red Dune Trench"],
+  "chapters": ["Glossary", "Bestiary"]
+}
