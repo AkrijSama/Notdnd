@@ -78,7 +78,9 @@ function resolveSpec(provider) {
 function resolveProviderConfig(provider, overrides = {}) {
   const spec = resolveSpec(provider);
   const apiKey = overrides.apiKey ?? (spec.apiKeyEnv ? process.env[spec.apiKeyEnv] : "");
-  const endpoint = overrides.endpoint ?? (spec.endpointEnv ? process.env[spec.endpointEnv] : spec.defaultEndpoint || "");
+  const endpoint =
+    overrides.endpoint ??
+    (spec.endpointEnv ? process.env[spec.endpointEnv] || spec.defaultEndpoint || "" : spec.defaultEndpoint || "");
 
   let status = spec.status || "ready";
   if (spec.type !== "mock") {

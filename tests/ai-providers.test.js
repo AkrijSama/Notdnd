@@ -9,6 +9,9 @@ test("provider catalog exposes requested agent providers", () => {
   assert.ok(keys.includes("grok"));
   assert.ok(keys.includes("gemini"));
   assert.ok(keys.includes("local"));
+  const chatgpt = providers.find((entry) => entry.key === "chatgpt");
+  assert.ok(chatgpt.endpoint);
+  assert.notEqual(chatgpt.status, "missing-endpoint");
 });
 
 test("remote provider surfaces bad api key errors explicitly", async () => {

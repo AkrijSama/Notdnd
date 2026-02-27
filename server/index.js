@@ -664,13 +664,14 @@ server.on("upgrade", (req, socket, head) => {
 });
 
 const port = Number(process.env.PORT || 4173);
+const host = process.env.NOTDND_HOST || process.env.HOST || "127.0.0.1";
 server.on("error", (error) => {
   // eslint-disable-next-line no-console
-  console.error(`Failed to start Notdnd server on port ${port}:`, error.message || error);
+  console.error(`Failed to start Notdnd server on ${host}:${port}:`, error.message || error);
   process.exit(1);
 });
 
-server.listen(port, () => {
+server.listen(port, host, () => {
   // eslint-disable-next-line no-console
-  console.log(`Notdnd server listening on http://localhost:${port}`);
+  console.log(`Notdnd server listening on http://${host}:${port}`);
 });
