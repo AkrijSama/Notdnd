@@ -7,6 +7,35 @@ Notdnd is a unified tabletop platform scaffold combining:
 - AI GM orchestration with provider adapters (GM/image/voice)
 - Homebrew ingest and one-click campaign bootstrapping
 
+## Roadmap
+
+### Completed
+
+- Auth, sessions, campaign roles, and versioned state sync
+- Server-authoritative realtime with presence, cursors, and resource locks
+- Homebrew ingest from files and URLs with parse diagnostics
+- Quickstart generation for campaigns, scenes, encounters, journals, maps, and starter options
+- Human GM and Agent GM runtime modes
+- Filesystem-backed GM memory docs with smart keyword retrieval
+- Provider/model selection for `local`, `ChatGPT`, `Grok`, `Gemini`, and placeholders
+- Live verification stack:
+  - unit/integration tests
+  - localhost smoke automation
+  - browser E2E automation
+
+### In Progress
+
+- Deepening the homebrew-to-ready-campaign pipeline so books produce richer scene and encounter packages
+- Hardening browser E2E and CI around the new quickstart/GM runtime surfaces
+
+### Next
+
+1. CI artifact reporting for smoke/E2E failures
+2. Real asset upload and scene background management beyond placeholder URLs
+3. Full character-sheet progression and inventory/spell/action systems
+4. Richer GM assist outputs using provider-specific structured prompting
+5. Deployment packaging for a persistent hosted environment
+
 ## Completed platform scope in this repo
 
 - Backend API server (`Node.js` built-ins, no framework dependency)
@@ -18,20 +47,27 @@ Notdnd is a unified tabletop platform scaffold combining:
 - Realtime collaboration via WebSockets (campaign room change events)
 - AI adapter layer with providers:
   - `placeholder`
-  - `local-mock`
-  - `openai-compatible` (env-driven endpoint)
+  - `local`
+  - `chatgpt`
+  - `grok`
+  - `gemini`
 - End-to-end **5-minute campaign quickstart**:
   - Upload homebrew files (`.md`, `.txt`, `.json`)
-  - Parse entities + confidence diagnostics + review gate
-  - Generate campaign package (books, characters, map, encounter, tokens, initiative, chat)
+  - Parse entities + indexes + confidence diagnostics + review gate
+  - Generate campaign package (books, characters, scenes, maps, encounters, journals, tokens, initiative, chat)
   - Launch directly to VTT tab
 - Gameplay mechanics:
   - Dice expression engine (`2d20kh1+5`, checks, attack+damage resolution)
   - Campaign journal/handouts with visibility controls
   - Fog-of-war reveal toggles on map cells
+- GM runtime:
+  - Human GM assist mode
+  - Agent GM mode
+  - Markdown campaign memory docs
+  - Keyword-based memory retrieval
 - Homebrew URL import:
   - Fetch and parse remote markdown/txt/json source URLs directly
-- CI workflow, Docker image/runtime, backup and restore scripts
+- CI workflow, smoke automation, browser E2E, backup and restore scripts
 
 ## Run
 
@@ -39,7 +75,7 @@ Notdnd is a unified tabletop platform scaffold combining:
 npm run dev
 ```
 
-Open `http://localhost:4173`.
+Open `http://127.0.0.1:4173`.
 
 Default bootstrap account:
 
@@ -64,9 +100,13 @@ Configure different bootstrap credentials with:
 - `server/campaign/quickstart.js`: campaign package generator blueprint
 - `server/rules/engine.js`: dice/check/attack rules engine
 - `server/homebrew/urlImport.js`: remote URL fetch/import guardrails
+- `server/gm/memoryStore.js`: markdown campaign memory docs + keyword retrieval
+- `server/gm/prompting.js`: GM assist and agent prompt composition
 - `src/state/store.js`: optimistic state + version-aware backend sync
 - `src/api/client.js`: auth/token-aware API client
 - `src/realtime/client.js`: auth-token websocket client
+- `scripts/smoke.mjs`: live localhost API/realtime smoke suite
+- `scripts/e2e.mjs`: browser-level end-to-end suite
 - `tests/fixtures/homebrew/*`: parser/build fixture corpus
 
 ## API surface
@@ -90,6 +130,10 @@ Authenticated:
 - `POST /api/quickstart/parse` with `{ files[] }`
 - `POST /api/quickstart/build` with `{ campaignName, setting, players[], files[] }` or `{ ... , parsed }`
 - `POST /api/homebrew/import-url` with `{ url }`
+- `GET /api/gm/memory?campaignId=...`
+- `POST /api/gm/memory` with `{ campaignId, docKey, content }`
+- `POST /api/gm/memory/search` with `{ campaignId, query, docKey?, limit? }`
+- `POST /api/gm/respond`
 - `GET /api/metrics` (admin only)
 
 Realtime:
@@ -122,6 +166,8 @@ Use `server/homebrew/homebrew.schema.json`:
 
 ```bash
 npm run verify
+npm run smoke
+npm run e2e
 ```
 
 This runs:
@@ -135,6 +181,8 @@ This runs:
 - Rules engine tests
 - Gameplay operation tests (rolls/journal/fog permissions)
 - URL import validation/fetch tests
+- Localhost smoke verification for auth, GM runtime, quickstart, and realtime
+- Browser E2E verification for GM runtime, quickstart launch, and cross-user presence
 
 ## Ops and deployment
 
@@ -153,13 +201,20 @@ docker compose up --build
 
 CI:
 
-- `.github/workflows/ci.yml` runs `npm run verify` on push/PR.
+- `.github/workflows/ci.yml` runs:
+  - `npm run verify`
+  - `npm run smoke`
+  - `npm run e2e`
 
 ## Optional AI env vars
 
-- `NOTDND_AI_PROVIDER` (default: `placeholder`)
-- `NOTDND_AI_ENDPOINT` (for `openai-compatible` provider)
-- `NOTDND_AI_API_KEY`
-- `NOTDND_AI_GM_MODEL`
-- `NOTDND_AI_IMAGE_MODEL`
-- `NOTDND_AI_VOICE_MODEL`
+- `NOTDND_AI_PROVIDER`
+- `OPENAI_API_KEY`
+- `XAI_API_KEY`
+- `GEMINI_API_KEY`
+- `NOTDND_CHATGPT_ENDPOINT`
+- `NOTDND_GROK_ENDPOINT`
+- `NOTDND_GEMINI_ENDPOINT`
+- `NOTDND_CHATGPT_GM_MODEL`
+- `NOTDND_GROK_GM_MODEL`
+- `NOTDND_GEMINI_GM_MODEL`

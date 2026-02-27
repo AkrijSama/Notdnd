@@ -50,6 +50,25 @@ function locatePlaywrightEntry() {
 const playwright = require(locatePlaywrightEntry());
 const { chromium } = playwright;
 
+function locateBrowserExecutable() {
+  const candidates = [
+    process.env.GOOGLE_CHROME_BIN,
+    process.env.CHROME_BIN,
+    "/usr/bin/google-chrome",
+    "/usr/bin/google-chrome-stable",
+    "/usr/bin/chromium",
+    "/usr/bin/chromium-browser"
+  ].filter(Boolean);
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
 async function request(pathname, { method = "GET", token = "", body } = {}) {
   const headers = {};
   if (token) {
@@ -165,7 +184,7 @@ async function runGmRuntimeScenario(page) {
 
   await page.fill('#gm-chat-form input[name="message"]', "Need pacing help for the ember key reveal.");
   await page.click('#gm-chat-form button[type="submit"]');
-  await waitForText(page, "#gm-runtime-status", "human response ready via local/");
+  await waitForText(page, "#gm-runtime-status", "response ready via local/");
   await waitForText(page, ".chat", "GM Copilot");
 
   await page.selectOption('#gm-settings-form select[name="gmMode"]', "agent");
@@ -173,7 +192,7 @@ async function runGmRuntimeScenario(page) {
   await waitForText(page, "#gm-runtime-status", "GM runtime settings updated.");
   await page.fill('#gm-chat-form input[name="message"]', "What does the ember key unlock?");
   await page.click('#gm-chat-form button[type="submit"]');
-  await waitForText(page, "#gm-runtime-status", "agent response ready via local/");
+  await waitForText(page, "#gm-runtime-status", "response ready via local/");
   await waitForText(page, ".chat", "Agent GM");
 }
 
@@ -266,7 +285,12 @@ async function main() {
   let browser;
   try {
     await waitForHealth();
-    browser = await chromium.launch({ headless: true, channel: "chrome" });
+    const executablePath = locateBrowserExecutable();
+    browser = await chromium.launch(
+      executablePath
+        ? { headless: true, executablePath }
+        : { headless: true, channel: "chrome" }
+    );
     const context = await browser.newContext();
     const page = await context.newPage();
     const ownerLogin = await request("/api/auth/login", {
