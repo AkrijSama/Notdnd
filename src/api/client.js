@@ -121,6 +121,12 @@ export function createApiClient(baseUrl = "") {
         method: "POST",
         body: JSON.stringify(payload)
       });
+    },
+    async importHomebrewFromUrl(url) {
+      return request("/api/homebrew/import-url", {
+        method: "POST",
+        body: JSON.stringify({ url })
+      });
     }
   };
 }

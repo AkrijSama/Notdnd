@@ -92,6 +92,26 @@ INSERT OR IGNORE INTO initiative_turns (id, campaign_id, name, value, created_at
 INSERT OR IGNORE INTO chat_log (id, campaign_id, speaker, text, created_at) VALUES
 ('chat_001', 'cmp_001', 'GM', 'The ash gate cracks open as drums echo from below.', strftime('%s','now'));
 
+INSERT OR IGNORE INTO journals (
+  id, campaign_id, title, body, tags_json, visibility, author_user_id, created_at, updated_at
+) VALUES (
+  'jrnl_001',
+  'cmp_001',
+  'Session 6 Prep',
+  'Party enters the ash gate. Ambush trigger near the northern wall.',
+  '[\"prep\",\"session-6\"]',
+  'gm',
+  NULL,
+  strftime('%s','now'),
+  strftime('%s','now')
+);
+
+INSERT OR IGNORE INTO revealed_cells(map_id, x, y, revealed) VALUES
+('map_001', 1, 1, 1),
+('map_001', 2, 1, 1),
+('map_001', 3, 1, 1),
+('map_001', 1, 2, 1);
+
 INSERT OR IGNORE INTO gm_settings (
   campaign_id, gm_name, gm_style, safety_profile, primary_rulebook, updated_at
 ) VALUES (

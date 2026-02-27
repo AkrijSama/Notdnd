@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { buildQuickstartBlueprint } from "../campaign/quickstart.js";
+import { formatRollSummary, resolveAttack, resolveSkillCheck, rollDiceExpression } from "../rules/engine.js";
 import { uid } from "../utils/ids.js";
 import { createSeedState } from "./seedState.js";
 
@@ -11,6 +12,7 @@ const PBKDF2_ITERATIONS = Number(process.env.NOTDND_PBKDF2_ITERATIONS || 210000)
 
 const READ_ROLES = new Set(["owner", "gm", "editor", "player", "viewer"]);
 const WRITE_ROLES = new Set(["owner", "gm", "editor"]);
+const PLAY_ROLES = new Set(["owner", "gm", "editor", "player"]);
 const MANAGE_MEMBER_ROLES = new Set(["owner", "gm"]);
 
 function storePath() {
@@ -105,6 +107,12 @@ function ensureDefaults(target) {
     target.campaignMembersByCampaign && typeof target.campaignMembersByCampaign === "object"
       ? target.campaignMembersByCampaign
       : {};
+  target.journalsByCampaign =
+    target.journalsByCampaign && typeof target.journalsByCampaign === "object" ? target.journalsByCampaign : {};
+  target.revealedCellsByMap =
+    target.revealedCellsByMap && typeof target.revealedCellsByMap === "object" ? target.revealedCellsByMap : {};
+  target.recentRollsByCampaign =
+    target.recentRollsByCampaign && typeof target.recentRollsByCampaign === "object" ? target.recentRollsByCampaign : {};
 
   target.selectedCampaignId = target.selectedCampaignId || target.campaigns?.[0]?.id || null;
 
@@ -179,6 +187,13 @@ function assertCanWriteCampaign(userId, campaignId) {
   const role = userRoleForCampaign(userId, campaignId);
   if (!role || !WRITE_ROLES.has(role)) {
     throw makeError("FORBIDDEN", "User does not have write access to this campaign.", 403);
+  }
+}
+
+function assertCanPlayCampaign(userId, campaignId) {
+  const role = userRoleForCampaign(userId, campaignId);
+  if (!role || !PLAY_ROLES.has(role)) {
+    throw makeError("FORBIDDEN", "User does not have play access to this campaign.", 403);
   }
 }
 
@@ -285,6 +300,12 @@ function bootstrapAdminAndMemberships() {
       });
     }
     ensureCampaignVersionSlot(campaign.id);
+    db.journalsByCampaign[campaign.id] = db.journalsByCampaign[campaign.id] || [];
+    db.recentRollsByCampaign[campaign.id] = db.recentRollsByCampaign[campaign.id] || [];
+  }
+
+  for (const map of db.maps) {
+    db.revealedCellsByMap[map.id] = db.revealedCellsByMap[map.id] || {};
   }
 
   if (adminUser && !db.userPrefsByUser[adminUser.id]) {
@@ -348,6 +369,14 @@ function appendChatLine(campaignId, speaker, text) {
   });
 }
 
+function appendRecentRoll(campaignId, rollRecord) {
+  if (!db.recentRollsByCampaign[campaignId]) {
+    db.recentRollsByCampaign[campaignId] = [];
+  }
+  db.recentRollsByCampaign[campaignId].unshift(rollRecord);
+  db.recentRollsByCampaign[campaignId] = db.recentRollsByCampaign[campaignId].slice(0, 40);
+}
+
 function upsertHomebrewBook(book) {
   const normalizedTitle = String(book.title || "").toLowerCase();
   const existing = db.books.find((entry) => String(entry.title || "").toLowerCase() === normalizedTitle);
@@ -396,10 +425,33 @@ function stateForUser(userId = null) {
   const maps = db.maps.filter((map) => visibleSet.has(map.campaignId));
   const mapIdSet = new Set(maps.map((map) => map.id));
   const tokensByMap = {};
+  const revealedCellsByMap = {};
   for (const [mapId, tokens] of Object.entries(db.tokensByMap)) {
     if (mapIdSet.has(mapId)) {
       tokensByMap[mapId] = tokens;
     }
+  }
+  for (const [mapId, revealed] of Object.entries(db.revealedCellsByMap || {})) {
+    if (mapIdSet.has(mapId)) {
+      revealedCellsByMap[mapId] = revealed;
+    }
+  }
+
+  const journalsByCampaign = {};
+  for (const campaignId of visibleCampaignIds) {
+    const role = hasUser ? userRoleForCampaign(userId, campaignId) : "owner";
+    const entries = db.journalsByCampaign?.[campaignId] || [];
+    journalsByCampaign[campaignId] = entries.filter((entry) => {
+      if (entry.visibility !== "gm") {
+        return true;
+      }
+      return role === "owner" || role === "gm" || role === "editor";
+    });
+  }
+
+  const recentRollsByCampaign = {};
+  for (const campaignId of visibleCampaignIds) {
+    recentRollsByCampaign[campaignId] = db.recentRollsByCampaign?.[campaignId] || [];
   }
 
   const gmSettings =
@@ -423,9 +475,12 @@ function stateForUser(userId = null) {
     encounters: deepClone(db.encounters.filter((entry) => visibleSet.has(entry.campaignId))),
     maps: deepClone(maps),
     tokensByMap: deepClone(tokensByMap),
+    revealedCellsByMap: deepClone(revealedCellsByMap),
     initiative: deepClone(db.initiative.filter((entry) => visibleSet.has(entry.campaignId))),
     chatLog: deepClone(db.chatLog.filter((entry) => visibleSet.has(entry.campaignId))),
     aiJobs: deepClone(db.aiJobs.filter((entry) => visibleSet.has(entry.campaignId))),
+    journalsByCampaign: deepClone(journalsByCampaign),
+    recentRollsByCampaign: deepClone(recentRollsByCampaign),
     gmSettings: deepClone(gmSettings),
     stateVersion: Number(db.stateVersion || 0),
     campaignVersions,
@@ -694,7 +749,10 @@ export function createQuickstartCampaignFromParsed({
   db.encounters.unshift({ ...blueprint.encounter, createdAt: nowEpochSec() });
   db.maps.unshift({ ...blueprint.map, createdAt: nowEpochSec() });
   db.tokensByMap[blueprint.map.id] = blueprint.tokens;
+  db.revealedCellsByMap[blueprint.map.id] = db.revealedCellsByMap[blueprint.map.id] || {};
   db.initiative.push(...blueprint.initiative.map((turn) => ({ ...turn, createdAt: nowEpochSec() })));
+  db.journalsByCampaign[campaign.id] = db.journalsByCampaign[campaign.id] || [];
+  db.recentRollsByCampaign[campaign.id] = db.recentRollsByCampaign[campaign.id] || [];
 
   db.gmSettingsByCampaign[campaign.id] = {
     ...blueprint.gmSettings,
@@ -727,6 +785,8 @@ export function getMetrics() {
     books: db.books.length,
     characters: db.characters.length,
     aiJobs: db.aiJobs.length,
+    journals: Object.values(db.journalsByCampaign || {}).reduce((sum, items) => sum + (items?.length || 0), 0),
+    recentRolls: Object.values(db.recentRollsByCampaign || {}).reduce((sum, items) => sum + (items?.length || 0), 0),
     activeConnectionsEstimate: 0
   };
 }
@@ -793,6 +853,8 @@ export function applyOperation(op, payload = {}, context = {}) {
         primaryRulebook: "Core Rules SRD",
         updatedAt: nowEpochSec()
       };
+      db.journalsByCampaign[id] = db.journalsByCampaign[id] || [];
+      db.recentRollsByCampaign[id] = db.recentRollsByCampaign[id] || [];
 
       bumpStateVersion(id);
       writeToDisk();
@@ -896,7 +958,7 @@ export function applyOperation(op, payload = {}, context = {}) {
       if (!campaignId) {
         throw makeError("NOT_FOUND", "Map not found", 404);
       }
-      assertCanWriteCampaign(actorUserId, campaignId);
+      assertCanPlayCampaign(actorUserId, campaignId);
 
       const tokens = db.tokensByMap[mapId] || [];
       db.tokensByMap[mapId] = tokens.map((token) =>
@@ -914,7 +976,7 @@ export function applyOperation(op, payload = {}, context = {}) {
       if (!campaignId) {
         throw makeError("BAD_REQUEST", "No campaign selected.", 400);
       }
-      assertCanWriteCampaign(actorUserId, campaignId);
+      assertCanPlayCampaign(actorUserId, campaignId);
 
       db.initiative.push({
         id,
@@ -935,7 +997,7 @@ export function applyOperation(op, payload = {}, context = {}) {
         throw makeError("BAD_REQUEST", "No campaign selected.", 400);
       }
       if (!context.internal) {
-        assertCanWriteCampaign(actorUserId, campaignId);
+        assertCanPlayCampaign(actorUserId, campaignId);
       }
 
       const id = payload.id || uid("chat");
@@ -950,6 +1012,116 @@ export function applyOperation(op, payload = {}, context = {}) {
       bumpStateVersion(campaignId);
       writeToDisk();
       return { id };
+    }
+
+    case "roll_dice": {
+      const campaignId = selectedCampaignId(payload, actorUserId, context);
+      if (!campaignId) {
+        throw makeError("BAD_REQUEST", "No campaign selected.", 400);
+      }
+      assertCanPlayCampaign(actorUserId, campaignId);
+
+      const expression = String(payload.expression || "1d20").trim();
+      const label = String(payload.label || "Roll").trim();
+      const roll = rollDiceExpression(expression);
+
+      const record = {
+        id: uid("roll"),
+        campaignId,
+        type: "dice",
+        label,
+        actor: payload.actor || getUserById(actorUserId)?.displayName || "Player",
+        expression,
+        total: roll.total,
+        detail: roll.terms,
+        createdAt: nowEpochSec()
+      };
+
+      appendRecentRoll(campaignId, record);
+      appendChatLine(campaignId, record.actor, `${label}: ${formatRollSummary(roll)}`);
+
+      bumpStateVersion(campaignId);
+      writeToDisk();
+      return { roll: record };
+    }
+
+    case "resolve_attack": {
+      const campaignId = selectedCampaignId(payload, actorUserId, context);
+      if (!campaignId) {
+        throw makeError("BAD_REQUEST", "No campaign selected.", 400);
+      }
+      assertCanPlayCampaign(actorUserId, campaignId);
+
+      const attack = resolveAttack({
+        attacker: payload.attacker || getUserById(actorUserId)?.displayName || "Attacker",
+        target: payload.target || "Target",
+        attackExpression: payload.attackExpression || "1d20+5",
+        targetAc: payload.targetAc || 12,
+        damageExpression: payload.damageExpression || "1d8+3",
+        damageType: payload.damageType || "slashing"
+      });
+
+      const record = {
+        id: uid("roll"),
+        campaignId,
+        type: "attack",
+        label: `${attack.attacker} -> ${attack.target}`,
+        actor: attack.attacker,
+        expression: attack.toHit.expression,
+        total: attack.toHit.total,
+        detail: attack,
+        createdAt: nowEpochSec()
+      };
+
+      appendRecentRoll(campaignId, record);
+
+      const damageText = attack.hit && attack.damage ? ` for ${attack.damage.total} ${attack.damageType}` : "";
+      appendChatLine(
+        campaignId,
+        attack.attacker,
+        `${attack.attacker} attacks ${attack.target}: ${attack.toHit.total} vs AC ${attack.targetAc} (${attack.hit ? "HIT" : "MISS"})${damageText}`
+      );
+
+      bumpStateVersion(campaignId);
+      writeToDisk();
+      return { attack: record };
+    }
+
+    case "resolve_skill_check": {
+      const campaignId = selectedCampaignId(payload, actorUserId, context);
+      if (!campaignId) {
+        throw makeError("BAD_REQUEST", "No campaign selected.", 400);
+      }
+      assertCanPlayCampaign(actorUserId, campaignId);
+
+      const check = resolveSkillCheck({
+        expression: payload.expression || "1d20",
+        dc: payload.dc || 10,
+        label: payload.label || "Skill Check"
+      });
+
+      const record = {
+        id: uid("roll"),
+        campaignId,
+        type: "skill_check",
+        label: check.label,
+        actor: payload.actor || getUserById(actorUserId)?.displayName || "Player",
+        expression: check.roll.expression,
+        total: check.roll.total,
+        detail: check,
+        createdAt: nowEpochSec()
+      };
+
+      appendRecentRoll(campaignId, record);
+      appendChatLine(
+        campaignId,
+        record.actor,
+        `${record.label}: ${check.roll.total} vs DC ${check.dc} (${check.success ? "SUCCESS" : "FAIL"})`
+      );
+
+      bumpStateVersion(campaignId);
+      writeToDisk();
+      return { check: record };
     }
 
     case "queue_ai_job": {
@@ -1058,9 +1230,109 @@ export function applyOperation(op, payload = {}, context = {}) {
         });
       }
 
+      db.revealedCellsByMap[id] = db.revealedCellsByMap[id] || {};
+
       bumpStateVersion(campaignId);
       writeToDisk();
       return { id };
+    }
+
+    case "toggle_fog_cell": {
+      const mapId = payload.mapId;
+      if (!mapId) {
+        throw makeError("BAD_REQUEST", "mapId is required", 400);
+      }
+
+      const campaignId = campaignIdFromMapId(mapId);
+      if (!campaignId) {
+        throw makeError("NOT_FOUND", "Map not found", 404);
+      }
+      assertCanWriteCampaign(actorUserId, campaignId);
+
+      const x = Number(payload.x);
+      const y = Number(payload.y);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) {
+        throw makeError("BAD_REQUEST", "x and y are required", 400);
+      }
+
+      if (!db.revealedCellsByMap[mapId]) {
+        db.revealedCellsByMap[mapId] = {};
+      }
+
+      const key = `${x},${y}`;
+      const nextValue = payload.revealed !== undefined ? Boolean(payload.revealed) : !Boolean(db.revealedCellsByMap[mapId][key]);
+      db.revealedCellsByMap[mapId][key] = nextValue;
+
+      bumpStateVersion(campaignId);
+      writeToDisk();
+      return { mapId, x, y, revealed: nextValue };
+    }
+
+    case "add_journal_entry": {
+      const campaignId = selectedCampaignId(payload, actorUserId, context);
+      if (!campaignId) {
+        throw makeError("BAD_REQUEST", "No campaign selected.", 400);
+      }
+      assertCanPlayCampaign(actorUserId, campaignId);
+
+      if (!db.journalsByCampaign[campaignId]) {
+        db.journalsByCampaign[campaignId] = [];
+      }
+
+      const entry = {
+        id: payload.id || uid("jrnl"),
+        campaignId,
+        title: String(payload.title || "Untitled Note").trim(),
+        body: String(payload.body || "").trim(),
+        tags: Array.isArray(payload.tags) ? payload.tags.map((tag) => String(tag).trim()).filter(Boolean) : [],
+        visibility: payload.visibility === "gm" ? "gm" : "party",
+        authorUserId: actorUserId,
+        createdAt: nowEpochSec(),
+        updatedAt: nowEpochSec()
+      };
+
+      db.journalsByCampaign[campaignId].unshift(entry);
+      bumpStateVersion(campaignId);
+      writeToDisk();
+      return { entry };
+    }
+
+    case "update_journal_entry": {
+      const campaignId = selectedCampaignId(payload, actorUserId, context);
+      if (!campaignId) {
+        throw makeError("BAD_REQUEST", "No campaign selected.", 400);
+      }
+      assertCanPlayCampaign(actorUserId, campaignId);
+
+      const entryId = String(payload.entryId || "");
+      if (!entryId) {
+        throw makeError("BAD_REQUEST", "entryId is required", 400);
+      }
+
+      const entries = db.journalsByCampaign[campaignId] || [];
+      let updated = null;
+      db.journalsByCampaign[campaignId] = entries.map((entry) => {
+        if (entry.id !== entryId) {
+          return entry;
+        }
+        updated = {
+          ...entry,
+          title: payload.title !== undefined ? String(payload.title).trim() : entry.title,
+          body: payload.body !== undefined ? String(payload.body).trim() : entry.body,
+          tags: payload.tags !== undefined ? (Array.isArray(payload.tags) ? payload.tags : entry.tags) : entry.tags,
+          visibility: payload.visibility === "gm" || payload.visibility === "party" ? payload.visibility : entry.visibility,
+          updatedAt: nowEpochSec()
+        };
+        return updated;
+      });
+
+      if (!updated) {
+        throw makeError("NOT_FOUND", "Journal entry not found", 404);
+      }
+
+      bumpStateVersion(campaignId);
+      writeToDisk();
+      return { entry: updated };
     }
 
     default:

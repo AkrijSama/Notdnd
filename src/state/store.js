@@ -101,6 +101,22 @@ export function createStore({ apiClient = null } = {}) {
     }
   }
 
+  async function syncOperationWithResult(op, payload = {}) {
+    if (!apiClient) {
+      return null;
+    }
+
+    const response = await apiClient.applyOperation(op, payload, state.stateVersion);
+    if (response?.state) {
+      state = {
+        ...state,
+        ...response.state
+      };
+      notify();
+    }
+    return response?.result || null;
+  }
+
   async function hydrateFromServer() {
     if (!apiClient) {
       return;
@@ -172,6 +188,12 @@ export function createStore({ apiClient = null } = {}) {
         throw new Error("API client is required for quickstart parse");
       }
       return apiClient.parseQuickstartFiles({ files });
+    },
+    async importHomebrewFromUrl(url) {
+      if (!apiClient) {
+        throw new Error("API client is required for url import");
+      }
+      return apiClient.importHomebrewFromUrl(url);
     },
     clearAuth() {
       state = {
@@ -373,6 +395,62 @@ export function createStore({ apiClient = null } = {}) {
         campaignId: state.selectedCampaignId,
         ...state.gmSettings,
         ...settings
+      });
+    },
+    async rollDice({ expression, label, actor }) {
+      return syncOperationWithResult("roll_dice", {
+        campaignId: state.selectedCampaignId,
+        expression,
+        label,
+        actor
+      });
+    },
+    async resolveAttack({ attacker, target, attackExpression, targetAc, damageExpression, damageType }) {
+      return syncOperationWithResult("resolve_attack", {
+        campaignId: state.selectedCampaignId,
+        attacker,
+        target,
+        attackExpression,
+        targetAc,
+        damageExpression,
+        damageType
+      });
+    },
+    async resolveSkillCheck({ expression, dc, label, actor }) {
+      return syncOperationWithResult("resolve_skill_check", {
+        campaignId: state.selectedCampaignId,
+        expression,
+        dc,
+        label,
+        actor
+      });
+    },
+    async addJournalEntry({ title, body, tags, visibility }) {
+      return syncOperationWithResult("add_journal_entry", {
+        campaignId: state.selectedCampaignId,
+        title,
+        body,
+        tags,
+        visibility
+      });
+    },
+    async updateJournalEntry({ entryId, title, body, tags, visibility }) {
+      return syncOperationWithResult("update_journal_entry", {
+        campaignId: state.selectedCampaignId,
+        entryId,
+        title,
+        body,
+        tags,
+        visibility
+      });
+    },
+    async toggleFogCell({ mapId, x, y, revealed }) {
+      return syncOperationWithResult("toggle_fog_cell", {
+        campaignId: state.selectedCampaignId,
+        mapId,
+        x,
+        y,
+        revealed
       });
     }
   };

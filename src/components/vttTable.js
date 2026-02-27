@@ -1,14 +1,16 @@
 import { clamp } from "../utils/helpers.js";
 
-function renderMapCells(map, tokens) {
+function renderMapCells(map, tokens, revealedCells = {}) {
   const tokenIndex = new Map(tokens.map((token) => [`${token.x},${token.y}`, token]));
   const cells = [];
 
   for (let y = 0; y < map.height; y += 1) {
     for (let x = 0; x < map.width; x += 1) {
       const token = tokenIndex.get(`${x},${y}`);
+      const key = `${x},${y}`;
+      const isFogged = Boolean(map.fogEnabled) && !Boolean(revealedCells[key]);
       cells.push(`
-        <button class="map-cell" data-cell="${x},${y}">
+        <button class="map-cell ${isFogged ? "fogged" : ""}" data-cell="${x},${y}">
           ${
             token
               ? `<span class="token" style="background:${token.color}" title="${token.id}">${token.label}</span>`
@@ -37,14 +39,16 @@ export function renderVttTable(state) {
       </section>
     `;
   }
+
   const tokens = state.tokensByMap[map.id] || [];
   const selectedToken = tokens[0];
+  const revealed = state.revealedCellsByMap?.[map.id] || {};
 
   return `
     <section class="module-card">
       <div class="module-header">
         <h2>VTT Table</h2>
-        <span class="tag">Grid + tokens + initiative + chat</span>
+        <span class="tag">Grid + tokens + initiative + chat + fog</span>
       </div>
 
       <div class="grid-two">
@@ -60,10 +64,17 @@ export function renderVttTable(state) {
                 ${tokens.map((token) => `<option value="${token.id}">${token.label} (${token.faction})</option>`).join("")}
               </select>
             </label>
-            <span class="small">Click any grid cell to reposition selected token.</span>
+            <label class="field">
+              <span>Map Interaction</span>
+              <select id="map-action-mode">
+                <option value="move">Move token</option>
+                <option value="fog">Toggle fog</option>
+              </select>
+            </label>
+            <span class="small">Fog enabled: ${map.fogEnabled ? "yes" : "no"}</span>
           </div>
-          <div class="map-board" id="map-board" data-active-token-id="${selectedToken?.id || ""}">
-            ${renderMapCells(map, tokens)}
+          <div class="map-board" id="map-board" data-map-id="${map.id}" data-active-token-id="${selectedToken?.id || ""}">
+            ${renderMapCells(map, tokens, revealed)}
           </div>
         </article>
 
@@ -71,6 +82,7 @@ export function renderVttTable(state) {
           <h3>Initiative Tracker</h3>
           <ul class="list">
             ${state.initiative
+              .filter((turn) => turn.campaignId === selectedCampaign?.id)
               .slice()
               .sort((a, b) => b.value - a.value)
               .map(
@@ -92,19 +104,38 @@ export function renderVttTable(state) {
 export function bindVttTable(root, store) {
   const board = root.querySelector("#map-board");
   const tokenSelect = root.querySelector("#token-select");
+  const modeSelect = root.querySelector("#map-action-mode");
 
-  if (board && tokenSelect) {
+  if (board && tokenSelect && modeSelect) {
     tokenSelect.addEventListener("change", () => {
       board.setAttribute("data-active-token-id", tokenSelect.value);
     });
 
     board.querySelectorAll("[data-cell]").forEach((cell) => {
-      cell.addEventListener("click", () => {
+      cell.addEventListener("click", async () => {
+        const [rawX, rawY] = String(cell.getAttribute("data-cell") || "0,0").split(",");
+        const x = Number(rawX);
+        const y = Number(rawY);
+
+        const mapId = String(board.getAttribute("data-map-id") || "");
+        if (!mapId) {
+          return;
+        }
+
+        if (modeSelect.value === "fog") {
+          try {
+            await store.toggleFogCell({ mapId, x, y });
+          } catch (error) {
+            store.pushChatLine({ speaker: "System", text: `Fog toggle failed: ${String(error.message || error)}` });
+          }
+          return;
+        }
+
         const activeTokenId = board.getAttribute("data-active-token-id");
         if (!activeTokenId) {
           return;
         }
-        const [rawX, rawY] = String(cell.getAttribute("data-cell") || "0,0").split(",");
+
         const currentState = store.getState();
         const selectedCampaign =
           currentState.campaigns.find((campaign) => campaign.id === currentState.selectedCampaignId) || currentState.campaigns[0];
@@ -113,11 +144,12 @@ export function bindVttTable(root, store) {
         if (!map) {
           return;
         }
-        const x = clamp(Number(rawX), 0, map.width - 1);
-        const y = clamp(Number(rawY), 0, map.height - 1);
 
-        store.setTokenPosition(map.id, activeTokenId, x, y);
-        store.pushChatLine({ speaker: "System", text: `Token ${activeTokenId} moved to ${x},${y}.` });
+        const safeX = clamp(x, 0, map.width - 1);
+        const safeY = clamp(y, 0, map.height - 1);
+
+        store.setTokenPosition(map.id, activeTokenId, safeX, safeY);
+        store.pushChatLine({ speaker: "System", text: `Token ${activeTokenId} moved to ${safeX},${safeY}.` });
       });
     });
   }

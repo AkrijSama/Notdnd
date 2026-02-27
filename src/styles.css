@@ -289,6 +289,15 @@ button.alt {
   color: var(--muted);
 }
 
+.map-cell.fogged {
+  background: rgba(15, 20, 27, 0.82);
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.map-cell.fogged .token {
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.55);
+}
+
 .map-cell:nth-child(10n) {
   border-right: none;
 }

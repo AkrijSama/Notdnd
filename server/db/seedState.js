@@ -11,6 +11,32 @@ export function createSeedState() {
     },
     users: [],
     sessions: [],
+    journalsByCampaign: {
+      cmp_001: [
+        {
+          id: "jrnl_001",
+          campaignId: "cmp_001",
+          title: "Session 6 Prep",
+          body: "Party enters the ash gate. Ambush trigger near the northern wall.",
+          tags: ["prep", "session-6"],
+          visibility: "gm",
+          authorUserId: null,
+          createdAt: Math.floor(Date.now() / 1000),
+          updatedAt: Math.floor(Date.now() / 1000)
+        }
+      ]
+    },
+    revealedCellsByMap: {
+      map_001: {
+        "1,1": true,
+        "2,1": true,
+        "3,1": true,
+        "1,2": true
+      }
+    },
+    recentRollsByCampaign: {
+      cmp_001: []
+    },
     campaigns: [
       {
         id: "cmp_001",

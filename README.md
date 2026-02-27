@@ -25,6 +25,12 @@ Notdnd is a unified tabletop platform scaffold combining:
   - Parse entities + confidence diagnostics + review gate
   - Generate campaign package (books, characters, map, encounter, tokens, initiative, chat)
   - Launch directly to VTT tab
+- Gameplay mechanics:
+  - Dice expression engine (`2d20kh1+5`, checks, attack+damage resolution)
+  - Campaign journal/handouts with visibility controls
+  - Fog-of-war reveal toggles on map cells
+- Homebrew URL import:
+  - Fetch and parse remote markdown/txt/json source URLs directly
 - CI workflow, Docker image/runtime, backup and restore scripts
 
 ## Run
@@ -56,6 +62,8 @@ Configure different bootstrap credentials with:
 - `server/homebrew/parser.js`: homebrew parser + confidence diagnostics
 - `server/homebrew/homebrew.schema.json`: canonical homebrew schema contract
 - `server/campaign/quickstart.js`: campaign package generator blueprint
+- `server/rules/engine.js`: dice/check/attack rules engine
+- `server/homebrew/urlImport.js`: remote URL fetch/import guardrails
 - `src/state/store.js`: optimistic state + version-aware backend sync
 - `src/api/client.js`: auth/token-aware API client
 - `src/realtime/client.js`: auth-token websocket client
@@ -81,6 +89,7 @@ Authenticated:
 - `POST /api/ai/generate`
 - `POST /api/quickstart/parse` with `{ files[] }`
 - `POST /api/quickstart/build` with `{ campaignName, setting, players[], files[] }` or `{ ... , parsed }`
+- `POST /api/homebrew/import-url` with `{ url }`
 - `GET /api/metrics` (admin only)
 
 Realtime:
@@ -123,6 +132,9 @@ This runs:
 - Route contract tests for quickstart parse/build handlers
 - Fixture-driven quickstart build integration tests
 - Auth/permissions/version conflict tests
+- Rules engine tests
+- Gameplay operation tests (rolls/journal/fog permissions)
+- URL import validation/fetch tests
 
 ## Ops and deployment
 

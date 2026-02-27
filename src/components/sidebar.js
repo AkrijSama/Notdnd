@@ -26,6 +26,14 @@ export function renderSidebar(state) {
           <div class="small">AI Jobs</div>
           <div class="metric-value">${state.aiJobs.length}</div>
         </article>
+        <article class="metric">
+          <div class="small">Journals</div>
+          <div class="metric-value">${Object.values(state.journalsByCampaign || {}).reduce((sum, items) => sum + (items?.length || 0), 0)}</div>
+        </article>
+        <article class="metric">
+          <div class="small">Recent Rolls</div>
+          <div class="metric-value">${Object.values(state.recentRollsByCampaign || {}).reduce((sum, items) => sum + (items?.length || 0), 0)}</div>
+        </article>
       </section>
 
       <section class="module-card">

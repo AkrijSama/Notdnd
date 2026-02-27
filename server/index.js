@@ -21,6 +21,8 @@ import {
   registerUser,
   resolveStorePath
 } from "./db/repository.js";
+import { parseHomebrewDocuments } from "./homebrew/parser.js";
+import { fetchHomebrewUrl } from "./homebrew/urlImport.js";
 import { createWsHub } from "./realtime/wsHub.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -403,6 +405,27 @@ async function handleApi(req, res) {
       requireAuth(req);
       const payload = await readJsonBody(req);
       writeJson(res, 200, { ok: true, ...handleQuickstartParsePayload(payload) });
+    } catch (error) {
+      routeError(res, error);
+    }
+    return true;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/homebrew/import-url") {
+    try {
+      requireAuth(req);
+      const payload = await readJsonBody(req);
+      const fetched = await fetchHomebrewUrl(payload.url);
+      const parsed = parseHomebrewDocuments([fetched.file]);
+      writeJson(res, 200, {
+        ok: true,
+        fetched: {
+          sourceUrl: fetched.sourceUrl,
+          fileName: fetched.file.name,
+          contentType: fetched.contentType
+        },
+        parsed
+      });
     } catch (error) {
       routeError(res, error);
     }

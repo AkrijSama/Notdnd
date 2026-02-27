@@ -113,6 +113,41 @@ CREATE TABLE IF NOT EXISTS ai_jobs (
   FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE SET NULL
 );
 
+CREATE TABLE IF NOT EXISTS journals (
+  id TEXT PRIMARY KEY,
+  campaign_id TEXT NOT NULL,
+  title TEXT NOT NULL,
+  body TEXT NOT NULL,
+  tags_json TEXT NOT NULL,
+  visibility TEXT NOT NULL,
+  author_user_id TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS roll_history (
+  id TEXT PRIMARY KEY,
+  campaign_id TEXT NOT NULL,
+  actor TEXT NOT NULL,
+  type TEXT NOT NULL,
+  label TEXT NOT NULL,
+  expression TEXT NOT NULL,
+  total INTEGER NOT NULL,
+  detail_json TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS revealed_cells (
+  map_id TEXT NOT NULL,
+  x INTEGER NOT NULL,
+  y INTEGER NOT NULL,
+  revealed INTEGER NOT NULL,
+  PRIMARY KEY (map_id, x, y),
+  FOREIGN KEY (map_id) REFERENCES maps(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS gm_settings (
   campaign_id TEXT PRIMARY KEY,
   gm_name TEXT NOT NULL,
