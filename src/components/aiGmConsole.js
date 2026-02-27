@@ -140,7 +140,7 @@ export function renderAiGmConsole(state) {
 
         <article class="module-card">
           <h3>${settings.gmMode === "agent" ? "Agent GM" : "Human GM Assist"}</h3>
-          <div class="small" id="gm-runtime-status">Mode ${settings.gmMode === "agent" ? "Agent GM" : "Human GM"} ready.</div>
+          <div class="small" id="gm-runtime-status">${state.gmRuntimeStatus || `Mode ${settings.gmMode === "agent" ? "Agent GM" : "Human GM"} ready.`}</div>
           <div class="chat">
             ${state.chatLog
               .slice(-20)
@@ -200,23 +200,11 @@ export function renderAiGmConsole(state) {
 export function bindAiGmConsole(root, store) {
   const state = store.getState();
   const settingsForm = root.querySelector("#gm-settings-form");
-  const statusEl = root.querySelector("#gm-runtime-status");
   const providerSelect = root.querySelector("#agent-provider-select");
   const modelInput = root.querySelector("#agent-model-input");
 
   function setStatus(message) {
-    if (statusEl) {
-      statusEl.textContent = message;
-    }
-  }
-
-  store.loadAiProviders().catch((error) => {
-    setStatus(`Provider load failed: ${String(error.message || error)}`);
-  });
-  if (state.selectedCampaignId) {
-    store.loadGmMemoryDocs(state.selectedCampaignId).catch((error) => {
-      setStatus(`Memory doc load failed: ${String(error.message || error)}`);
-    });
+    store.setGmRuntimeStatus(message);
   }
 
   if (providerSelect && modelInput) {

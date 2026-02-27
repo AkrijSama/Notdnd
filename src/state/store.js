@@ -44,6 +44,7 @@ function seedState() {
     gmMemoryDocsByCampaign: {},
     gmMemorySearchResults: [],
     gmLastResponseMeta: null,
+    gmRuntimeStatus: "",
     stateVersion: 0,
     campaignVersions: {},
     auth: {
@@ -306,6 +307,13 @@ export function createStore({ apiClient = null } = {}) {
       state = seedState();
       notify();
       syncOperation("reset_all");
+    },
+    setGmRuntimeStatus(message) {
+      state = {
+        ...state,
+        gmRuntimeStatus: String(message || "")
+      };
+      notify();
     },
     setSelectedCampaign(campaignId) {
       state = { ...state, selectedCampaignId: campaignId };

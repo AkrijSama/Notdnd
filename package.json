@@ -7,9 +7,12 @@
   "scripts": {
     "dev": "node server/index.js",
     "start": "node server/index.js",
-    "check": "for f in $(rg --files -g '*.js' src server tests); do node --check \"$f\" || exit 1; done",
+    "check": "for f in $(rg --files -g '*.js' -g '*.mjs' src server tests scripts); do node --check \"$f\" || exit 1; done",
     "test": "node --test tests/*.test.js",
     "verify": "npm run check && npm run test",
+    "smoke": "node scripts/smoke.mjs",
+    "e2e": "node scripts/e2e.mjs",
+    "verify:full": "npm run verify && npm run smoke && npm run e2e",
     "backup": "bash scripts/backup-db.sh",
     "restore": "bash scripts/restore-db.sh"
   }
