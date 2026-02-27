@@ -92,11 +92,7 @@ export function createStore({ apiClient = null } = {}) {
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error(`Failed to sync op ${op}:`, error);
-      if (error?.code === "VERSION_CONFLICT") {
-        await hydrateFromServer();
-      } else if (error?.code === "UNAUTHORIZED" || error?.status === 401) {
-        await hydrateFromServer();
-      }
+      await hydrateFromServer();
       return null;
     }
   }
@@ -158,6 +154,16 @@ export function createStore({ apiClient = null } = {}) {
     },
     async refreshFromServer() {
       await hydrateFromServer();
+    },
+    applyAuthoritativeState(nextState) {
+      if (!nextState || typeof nextState !== "object") {
+        return;
+      }
+      state = {
+        ...state,
+        ...nextState
+      };
+      notify();
     },
     async buildQuickstartCampaign({ campaignName, setting, players, files, parsed }) {
       if (!apiClient) {

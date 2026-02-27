@@ -74,79 +74,131 @@ function userCanAccessCampaign(userId, campaignId) {
   return state.campaigns.some((campaign) => campaign.id === campaignId);
 }
 
+function inferCampaignIdForPayload(userId, payload = {}) {
+  if (payload.campaignId) {
+    return String(payload.campaignId);
+  }
+
+  if (payload.mapId) {
+    const state = getState({ userId });
+    const map = state.maps.find((entry) => entry.id === payload.mapId);
+    return map?.campaignId || null;
+  }
+
+  const state = getState({ userId });
+  return state.selectedCampaignId || null;
+}
+
+function lockResourceForOperation(op) {
+  if (op === "set_token_position") {
+    return "token_move";
+  }
+  if (op === "toggle_fog_cell") {
+    return "fog_edit";
+  }
+  if (op === "add_initiative_turn") {
+    return "initiative_edit";
+  }
+  return null;
+}
+
+function assertOperationLock(user, op, payload = {}) {
+  const resource = lockResourceForOperation(op);
+  if (!resource) {
+    return;
+  }
+
+  const campaignId = inferCampaignIdForPayload(user.id, payload);
+  if (!campaignId) {
+    return;
+  }
+
+  const lock = wsHub.getLock(campaignId, resource);
+  if (lock && lock.ownerUserId !== user.id) {
+    throw Object.assign(new Error(`Resource lock active on ${resource} by ${lock.ownerName || lock.ownerUserId}`), {
+      code: "LOCKED",
+      statusCode: 423,
+      lock
+    });
+  }
+}
+
+function broadcastAuthoritativeState(campaignId, reason, op) {
+  if (!campaignId || campaignId === "global") {
+    return;
+  }
+
+  const clients = wsHub.getClientsInCampaign(campaignId);
+  for (const client of clients) {
+    const state = getState({ userId: client.user.id });
+    wsHub.sendToClient(client.id, {
+      type: "sync_state",
+      campaignId,
+      reason,
+      op,
+      state,
+      stateVersion: state.stateVersion,
+      timestamp: Date.now()
+    });
+  }
+}
+
 const wsHub = createWsHub({
-  canJoinCampaign(client, campaignId) {
-    const user = getUserBySessionToken(client.token);
+  authenticateToken(token) {
+    return getUserBySessionToken(token);
+  },
+  canJoinCampaign(user, campaignId) {
     return Boolean(user && userCanAccessCampaign(user.id, campaignId));
   },
-  onClientMessage(message, client, { broadcast }) {
+  onClientMessage(message, client, { sendToClient }) {
     if (message?.type !== "op" || !message?.op) {
       return;
     }
 
-    const user = getUserBySessionToken(client.token);
-    if (!user) {
-      broadcast(
-        {
-          type: "op_error",
-          op: message.op,
-          error: "Authentication required.",
-          code: "UNAUTHORIZED",
-          timestamp: Date.now()
-        },
-        (entry) => entry.id === client.id
-      );
-      return;
-    }
+    const user = client.user;
 
     try {
+      assertOperationLock(user, message.op, message.payload || {});
+
       const opResult = applyOperation(message.op, message.payload || {}, {
         actorUserId: user.id,
         expectedVersion: message.expectedVersion
       });
+      const campaignId = inferCampaignIdForPayload(user.id, message.payload || {});
       const snapshot = getState({ userId: user.id });
 
-      broadcast(
-        {
-          type: "op_applied",
-          op: message.op,
-          result: opResult,
-          stateVersion: snapshot.stateVersion,
-          selectedCampaignId: snapshot.selectedCampaignId,
-          timestamp: Date.now()
-        },
-        (entry) => entry.id === client.id
-      );
-
-      wsHub.broadcastStateChanged({
-        campaignId: message.payload?.campaignId || snapshot.selectedCampaignId || "global",
-        reason: "websocket-op",
-        op: message.op
+      sendToClient(client.id, {
+        type: "op_applied",
+        op: message.op,
+        result: opResult,
+        stateVersion: snapshot.stateVersion,
+        selectedCampaignId: snapshot.selectedCampaignId,
+        timestamp: Date.now()
       });
+
+      if (campaignId) {
+        broadcastAuthoritativeState(campaignId, "websocket-op", message.op);
+      }
     } catch (error) {
-      broadcast(
-        {
-          type: "op_error",
-          op: message.op,
-          error: String(error.message || error),
-          code: error?.code || "REQUEST_FAILED",
-          currentVersion: error?.currentVersion,
-          expectedVersion: error?.expectedVersion,
-          timestamp: Date.now()
-        },
-        (entry) => entry.id === client.id
-      );
+      sendToClient(client.id, {
+        type: "op_error",
+        op: message.op,
+        error: String(error.message || error),
+        code: error?.code || "REQUEST_FAILED",
+        currentVersion: error?.currentVersion,
+        expectedVersion: error?.expectedVersion,
+        lock: error?.lock,
+        timestamp: Date.now()
+      });
     }
   }
 });
 
 const aiProcessor = createAiJobProcessor({
   onJobUpdated(evt) {
-    wsHub.broadcastStateChanged({
-      campaignId: evt.campaignId || "global",
-      reason: "ai-job",
-      op: "set_ai_job_status"
-    });
+    if (evt.campaignId) {
+      broadcastAuthoritativeState(evt.campaignId, "ai-job", "set_ai_job_status");
+    }
   }
 });
 
@@ -272,11 +324,9 @@ async function handleApi(req, res) {
       const payload = await readJsonBody(req);
       const result = addCampaignMember(payload, { actorUserId: user.id });
       const state = getState({ userId: user.id });
-      wsHub.broadcastStateChanged({
-        campaignId: payload.campaignId,
-        reason: "member-update",
-        op: "campaign_member_add"
-      });
+      if (payload.campaignId) {
+        broadcastAuthoritativeState(String(payload.campaignId), "member-update", "campaign_member_add");
+      }
       writeJson(res, 200, { ok: true, result, state });
     } catch (error) {
       routeError(res, error);
@@ -327,6 +377,7 @@ async function handleApi(req, res) {
       }
 
       const opPayload = payload.payload || {};
+      assertOperationLock(user, op, opPayload);
       const result = applyOperation(op, opPayload, {
         actorUserId: user.id,
         expectedVersion: payload.expectedVersion
@@ -340,11 +391,10 @@ async function handleApi(req, res) {
       }
 
       const snapshot = getState({ userId: user.id });
-      wsHub.broadcastStateChanged({
-        campaignId: opPayload.campaignId || snapshot.selectedCampaignId || "global",
-        reason: "api-op",
-        op
-      });
+      const campaignId = inferCampaignIdForPayload(user.id, opPayload) || snapshot.selectedCampaignId || null;
+      if (campaignId) {
+        broadcastAuthoritativeState(campaignId, "api-op", op);
+      }
 
       writeJson(res, 200, {
         ok: true,
@@ -384,11 +434,7 @@ async function handleApi(req, res) {
           return getState({ userId: user.id });
         }
       });
-      wsHub.broadcastStateChanged({
-        campaignId: response.launch.campaignId,
-        reason: "quickstart-build",
-        op: "quickstart_build"
-      });
+      broadcastAuthoritativeState(response.launch.campaignId, "quickstart-build", "quickstart_build");
 
       writeJson(res, 200, {
         ok: true,

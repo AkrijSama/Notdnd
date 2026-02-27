@@ -1,12 +1,19 @@
 import { clamp } from "../utils/helpers.js";
 
-function renderMapCells(map, tokens, revealedCells = {}) {
+function lockOwner(lockState, resource) {
+  const lock = (lockState || []).find((entry) => entry.resource === resource);
+  return lock ? lock.ownerName || lock.ownerUserId : null;
+}
+
+function renderMapCells(map, tokens, revealedCells = {}, cursorState = []) {
   const tokenIndex = new Map(tokens.map((token) => [`${token.x},${token.y}`, token]));
+  const cursorIndex = new Map(cursorState.map((cursor) => [`${cursor.x},${cursor.y}`, cursor]));
   const cells = [];
 
   for (let y = 0; y < map.height; y += 1) {
     for (let x = 0; x < map.width; x += 1) {
       const token = tokenIndex.get(`${x},${y}`);
+      const cursor = cursorIndex.get(`${x},${y}`);
       const key = `${x},${y}`;
       const isFogged = Boolean(map.fogEnabled) && !Boolean(revealedCells[key]);
       cells.push(`
@@ -16,6 +23,7 @@ function renderMapCells(map, tokens, revealedCells = {}) {
               ? `<span class="token" style="background:${token.color}" title="${token.id}">${token.label}</span>`
               : `${x},${y}`
           }
+          ${cursor ? `<span class="tag" style="position:absolute; top:2px; left:2px; font-size:10px;">${cursor.displayName}</span>` : ""}
         </button>
       `);
     }
@@ -24,7 +32,7 @@ function renderMapCells(map, tokens, revealedCells = {}) {
   return cells.join("");
 }
 
-export function renderVttTable(state) {
+export function renderVttTable(state, realtime = {}) {
   const selectedCampaign = state.campaigns.find((campaign) => campaign.id === state.selectedCampaignId) || state.campaigns[0];
   const preferredMapId = selectedCampaign?.activeMapId;
   const map = state.maps.find((entry) => entry.id === preferredMapId) || state.maps[0];
@@ -43,12 +51,24 @@ export function renderVttTable(state) {
   const tokens = state.tokensByMap[map.id] || [];
   const selectedToken = tokens[0];
   const revealed = state.revealedCellsByMap?.[map.id] || {};
+  const presenceUsers = realtime.presenceUsers || [];
+  const cursorState = realtime.cursorState || [];
+  const lockState = realtime.lockState || [];
+
+  const tokenLockOwner = lockOwner(lockState, "token_move");
+  const fogLockOwner = lockOwner(lockState, "fog_edit");
+  const initiativeLockOwner = lockOwner(lockState, "initiative_edit");
 
   return `
     <section class="module-card">
       <div class="module-header">
         <h2>VTT Table</h2>
-        <span class="tag">Grid + tokens + initiative + chat + fog</span>
+        <span class="tag">Grid + tokens + initiative + chat + fog + live presence</span>
+      </div>
+
+      <div class="inline">
+        <span class="tag">Presence: ${presenceUsers.length}</span>
+        ${presenceUsers.map((user) => `<span class="tag">${user.displayName}</span>`).join("")}
       </div>
 
       <div class="grid-two">
@@ -73,13 +93,30 @@ export function renderVttTable(state) {
             </label>
             <span class="small">Fog enabled: ${map.fogEnabled ? "yes" : "no"}</span>
           </div>
-          <div class="map-board" id="map-board" data-map-id="${map.id}" data-active-token-id="${selectedToken?.id || ""}">
-            ${renderMapCells(map, tokens, revealed)}
+
+          <div class="inline">
+            <button class="ghost" data-lock-action="acquire" data-resource="token_move">Lock Token Move</button>
+            <button class="ghost" data-lock-action="release" data-resource="token_move">Unlock Token Move</button>
+            <span class="small">Owner: ${tokenLockOwner || "none"}</span>
+          </div>
+          <div class="inline">
+            <button class="ghost" data-lock-action="acquire" data-resource="fog_edit">Lock Fog</button>
+            <button class="ghost" data-lock-action="release" data-resource="fog_edit">Unlock Fog</button>
+            <span class="small">Owner: ${fogLockOwner || "none"}</span>
+          </div>
+
+          <div class="map-board" id="map-board" data-map-id="${map.id}" data-map-width="${map.width}" data-map-height="${map.height}" data-active-token-id="${selectedToken?.id || ""}">
+            ${renderMapCells(map, tokens, revealed, cursorState)}
           </div>
         </article>
 
         <article class="module-card">
           <h3>Initiative Tracker</h3>
+          <div class="inline">
+            <button class="ghost" data-lock-action="acquire" data-resource="initiative_edit">Lock Initiative</button>
+            <button class="ghost" data-lock-action="release" data-resource="initiative_edit">Unlock Initiative</button>
+            <span class="small">Owner: ${initiativeLockOwner || "none"}</span>
+          </div>
           <ul class="list">
             ${state.initiative
               .filter((turn) => turn.campaignId === selectedCampaign?.id)
@@ -101,14 +138,43 @@ export function renderVttTable(state) {
   `;
 }
 
-export function bindVttTable(root, store) {
+export function bindVttTable(root, store, { realtimeClient } = {}) {
   const board = root.querySelector("#map-board");
   const tokenSelect = root.querySelector("#token-select");
   const modeSelect = root.querySelector("#map-action-mode");
 
+  root.querySelectorAll("[data-lock-action]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const resource = String(button.getAttribute("data-resource") || "");
+      const action = String(button.getAttribute("data-lock-action") || "acquire");
+      if (!resource || !realtimeClient) {
+        return;
+      }
+      if (action === "acquire") {
+        realtimeClient.acquireLock(resource);
+      } else {
+        realtimeClient.releaseLock(resource);
+      }
+    });
+  });
+
   if (board && tokenSelect && modeSelect) {
     tokenSelect.addEventListener("change", () => {
       board.setAttribute("data-active-token-id", tokenSelect.value);
+    });
+
+    board.addEventListener("mousemove", (event) => {
+      if (!realtimeClient) {
+        return;
+      }
+      const rect = board.getBoundingClientRect();
+      const relX = event.clientX - rect.left;
+      const relY = event.clientY - rect.top;
+      const width = Number(board.getAttribute("data-map-width") || 10);
+      const height = Number(board.getAttribute("data-map-height") || 10);
+      const cellX = clamp(Math.floor((relX / rect.width) * width), 0, width - 1);
+      const cellY = clamp(Math.floor((relY / rect.height) * height), 0, height - 1);
+      realtimeClient.sendCursor(cellX, cellY, modeSelect.value === "fog" ? "fog" : "move");
     });
 
     board.querySelectorAll("[data-cell]").forEach((cell) => {

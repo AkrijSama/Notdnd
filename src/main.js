@@ -23,7 +23,10 @@ const uiState = {
   showAuthPanel: false,
   authMode: "login",
   authMessage: "",
-  campaignMembers: []
+  campaignMembers: [],
+  presenceUsers: [],
+  cursorState: [],
+  lockState: []
 };
 
 const appRoot = document.querySelector("#app");
@@ -42,6 +45,21 @@ const realtimeClient = createRealtimeClient({
   onStateChanged() {
     store.refreshFromServer();
   },
+  onStateSync(message) {
+    store.applyAuthoritativeState(message.state);
+  },
+  onPresence(message) {
+    uiState.presenceUsers = message.users || [];
+    renderApp();
+  },
+  onCursors(message) {
+    uiState.cursorState = message.cursors || [];
+    renderApp();
+  },
+  onLocks(message) {
+    uiState.lockState = message.locks || [];
+    renderApp();
+  },
   onError(message) {
     uiState.authMessage = message?.error || "Realtime error";
     renderApp();
@@ -55,7 +73,11 @@ function renderActiveTab(state) {
     case "forge":
       return renderCampaignForge(state);
     case "vtt":
-      return renderVttTable(state);
+      return renderVttTable(state, {
+        presenceUsers: uiState.presenceUsers,
+        cursorState: uiState.cursorState,
+        lockState: uiState.lockState
+      });
     case "characters":
       return renderCharacterVault(state);
     case "compendium":
@@ -276,7 +298,10 @@ function bindAppEvents() {
       });
       break;
     case "vtt":
-      bindVttTable(activeModule, store);
+      bindVttTable(activeModule, store, {
+        realtimeClient,
+        lockState: uiState.lockState
+      });
       break;
     case "characters":
       bindCharacterVault(activeModule, store);
@@ -329,7 +354,7 @@ function renderApp() {
               <button class="ghost" data-action="reset-state">Reset Demo Data</button>
             </div>
             <div class="small">Secure auth + permissions + versioned sync + realtime collaboration + AI adapters are active.</div>
-            <div class="footer-note">API: ${uiState.apiHealthy ? "Connected" : "Offline"} | Realtime: ${uiState.realtimeConnected ? "Connected" : "Disconnected"} | State v${state.stateVersion ?? 0}</div>
+            <div class="footer-note">API: ${uiState.apiHealthy ? "Connected" : "Offline"} | Realtime: ${uiState.realtimeConnected ? "Connected" : "Disconnected"} | Presence: ${uiState.presenceUsers.length} | State v${state.stateVersion ?? 0}</div>
           </section>
         </main>
       </div>

@@ -2,9 +2,13 @@ export function createRealtimeClient({
   campaignId = "global",
   token = "",
   onStateChanged,
+  onStateSync,
   onOpen,
   onClose,
-  onError
+  onError,
+  onPresence,
+  onCursors,
+  onLocks
 } = {}) {
   let socket = null;
   let reconnectTimer = null;
@@ -42,6 +46,18 @@ export function createRealtimeClient({
         const message = JSON.parse(event.data);
         if (message.type === "state_changed") {
           onStateChanged?.(message);
+        }
+        if (message.type === "sync_state") {
+          onStateSync?.(message);
+        }
+        if (message.type === "presence") {
+          onPresence?.(message);
+        }
+        if (message.type === "cursor_state") {
+          onCursors?.(message);
+        }
+        if (message.type === "lock_state") {
+          onLocks?.(message);
         }
         if (message.type === "op_error") {
           onError?.(message);
@@ -90,11 +106,28 @@ export function createRealtimeClient({
     connect(campaignId);
   }
 
-  function sendOp(op, payload, expectedVersion) {
+  function sendMessage(message) {
     if (!socket || socket.readyState !== WebSocket.OPEN) {
-      return;
+      return false;
     }
-    socket.send(JSON.stringify({ type: "op", op, payload, expectedVersion }));
+    socket.send(JSON.stringify(message));
+    return true;
+  }
+
+  function sendOp(op, payload, expectedVersion) {
+    return sendMessage({ type: "op", op, payload, expectedVersion });
+  }
+
+  function sendCursor(x, y, label = "cursor") {
+    return sendMessage({ type: "cursor_update", x, y, label });
+  }
+
+  function acquireLock(resource) {
+    return sendMessage({ type: "lock_acquire", resource });
+  }
+
+  function releaseLock(resource) {
+    return sendMessage({ type: "lock_release", resource });
   }
 
   connect(campaignId);
@@ -103,6 +136,9 @@ export function createRealtimeClient({
     joinCampaign,
     close,
     sendOp,
-    setToken
+    setToken,
+    sendCursor,
+    acquireLock,
+    releaseLock
   };
 }

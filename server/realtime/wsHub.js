@@ -1,5 +1,7 @@
 import crypto from "node:crypto";
 
+const LOCK_TTL_MS = Number(process.env.NOTDND_LOCK_TTL_MS || 30_000);
+
 function encodeTextFrame(text) {
   const payload = Buffer.from(text, "utf8");
   const length = payload.length;
@@ -99,24 +101,40 @@ function decodeFrames(buffer) {
   };
 }
 
-function parseCampaignIdFromUrl(req) {
+function parseUrl(req) {
   const baseUrl = `http://${req.headers.host || "localhost"}`;
-  const url = new URL(req.url || "/", baseUrl);
+  return new URL(req.url || "/", baseUrl);
+}
+
+function parseCampaignIdFromUrl(req) {
+  const url = parseUrl(req);
   return url.searchParams.get("campaignId") || "global";
 }
 
 function parseTokenFromUrl(req) {
-  const baseUrl = `http://${req.headers.host || "localhost"}`;
-  const url = new URL(req.url || "/", baseUrl);
+  const url = parseUrl(req);
   return url.searchParams.get("token") || "";
 }
 
-export function createWsHub({ onClientMessage, canJoinCampaign } = {}) {
+function nowMs() {
+  return Date.now();
+}
+
+export function createWsHub({ authenticateToken, canJoinCampaign, onClientMessage } = {}) {
   const clients = new Map();
+  const cursorsByCampaign = new Map();
+  const locksByCampaign = new Map();
 
   function send(client, message) {
     if (!client.socket.destroyed) {
       client.socket.write(encodeTextFrame(JSON.stringify(message)));
+    }
+  }
+
+  function sendToClient(clientId, message) {
+    const client = clients.get(clientId);
+    if (client) {
+      send(client, message);
     }
   }
 
@@ -128,7 +146,167 @@ export function createWsHub({ onClientMessage, canJoinCampaign } = {}) {
     }
   }
 
+  function campaignClients(campaignId) {
+    return [...clients.values()].filter((client) => client.campaignId === campaignId);
+  }
+
+  function broadcastCampaign(campaignId, message, predicate = () => true) {
+    broadcast(message, (client) => client.campaignId === campaignId && predicate(client));
+  }
+
+  function presenceForCampaign(campaignId) {
+    const users = [];
+    const seen = new Set();
+    for (const client of campaignClients(campaignId)) {
+      if (!client.user) {
+        continue;
+      }
+      if (seen.has(client.user.id)) {
+        continue;
+      }
+      seen.add(client.user.id);
+      users.push({
+        id: client.user.id,
+        displayName: client.user.displayName,
+        email: client.user.email
+      });
+    }
+    return users;
+  }
+
+  function getCampaignCursorMap(campaignId) {
+    if (!cursorsByCampaign.has(campaignId)) {
+      cursorsByCampaign.set(campaignId, new Map());
+    }
+    return cursorsByCampaign.get(campaignId);
+  }
+
+  function getCampaignLockMap(campaignId) {
+    if (!locksByCampaign.has(campaignId)) {
+      locksByCampaign.set(campaignId, new Map());
+    }
+    return locksByCampaign.get(campaignId);
+  }
+
+  function cleanupExpiredLocks(campaignId) {
+    const lockMap = getCampaignLockMap(campaignId);
+    const now = nowMs();
+    for (const [resource, lock] of lockMap.entries()) {
+      if (lock.expiresAt <= now) {
+        lockMap.delete(resource);
+      }
+    }
+  }
+
+  function publishPresence(campaignId) {
+    broadcastCampaign(campaignId, {
+      type: "presence",
+      campaignId,
+      users: presenceForCampaign(campaignId),
+      timestamp: nowMs()
+    });
+  }
+
+  function publishCursors(campaignId) {
+    const cursorMap = getCampaignCursorMap(campaignId);
+    broadcastCampaign(campaignId, {
+      type: "cursor_state",
+      campaignId,
+      cursors: [...cursorMap.values()],
+      timestamp: nowMs()
+    });
+  }
+
+  function publishLocks(campaignId) {
+    cleanupExpiredLocks(campaignId);
+    const lockMap = getCampaignLockMap(campaignId);
+    broadcastCampaign(campaignId, {
+      type: "lock_state",
+      campaignId,
+      locks: [...lockMap.values()].map((lock) => ({
+        resource: lock.resource,
+        ownerUserId: lock.ownerUserId,
+        ownerName: lock.ownerName,
+        expiresAt: lock.expiresAt
+      })),
+      timestamp: nowMs()
+    });
+  }
+
+  function lockResource(campaignId, resource, user) {
+    cleanupExpiredLocks(campaignId);
+    const lockMap = getCampaignLockMap(campaignId);
+    const existing = lockMap.get(resource);
+
+    if (existing && existing.ownerUserId !== user.id) {
+      return {
+        ok: false,
+        lock: existing
+      };
+    }
+
+    const lock = {
+      resource,
+      ownerUserId: user.id,
+      ownerName: user.displayName,
+      expiresAt: nowMs() + LOCK_TTL_MS
+    };
+    lockMap.set(resource, lock);
+    return {
+      ok: true,
+      lock
+    };
+  }
+
+  function releaseResource(campaignId, resource, userId) {
+    cleanupExpiredLocks(campaignId);
+    const lockMap = getCampaignLockMap(campaignId);
+    const existing = lockMap.get(resource);
+    if (!existing) {
+      return false;
+    }
+    if (existing.ownerUserId !== userId) {
+      return false;
+    }
+    lockMap.delete(resource);
+    return true;
+  }
+
+  function releaseAllResourcesOwnedBy(campaignId, userId) {
+    const lockMap = getCampaignLockMap(campaignId);
+    let changed = false;
+    for (const [resource, lock] of lockMap.entries()) {
+      if (lock.ownerUserId === userId) {
+        lockMap.delete(resource);
+        changed = true;
+      }
+    }
+    return changed;
+  }
+
+  function getLock(campaignId, resource) {
+    cleanupExpiredLocks(campaignId);
+    return getCampaignLockMap(campaignId).get(resource) || null;
+  }
+
   function handleUpgrade(req, socket, head) {
+    const token = parseTokenFromUrl(req);
+    const user = authenticateToken ? authenticateToken(token) : null;
+
+    if (!user) {
+      socket.write("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n");
+      socket.destroy();
+      return;
+    }
+
+    const requestedCampaignId = parseCampaignIdFromUrl(req);
+    const allowed = canJoinCampaign ? canJoinCampaign(user, requestedCampaignId) : true;
+    if (!allowed) {
+      socket.write("HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n");
+      socket.destroy();
+      return;
+    }
+
     const key = req.headers["sec-websocket-key"];
     if (!key) {
       socket.destroy();
@@ -154,18 +332,25 @@ export function createWsHub({ onClientMessage, canJoinCampaign } = {}) {
     const client = {
       id: clientId,
       socket,
-      campaignId: parseCampaignIdFromUrl(req),
-      token: parseTokenFromUrl(req),
+      token,
+      user,
+      campaignId: requestedCampaignId,
       buffer: head && head.length > 0 ? Buffer.from(head) : Buffer.alloc(0)
     };
+
     clients.set(clientId, client);
 
     send(client, {
       type: "connected",
       clientId,
       campaignId: client.campaignId,
-      timestamp: Date.now()
+      user,
+      timestamp: nowMs()
     });
+
+    publishPresence(client.campaignId);
+    publishCursors(client.campaignId);
+    publishLocks(client.campaignId);
 
     socket.on("data", (chunk) => {
       client.buffer = Buffer.concat([client.buffer, chunk]);
@@ -192,27 +377,100 @@ export function createWsHub({ onClientMessage, canJoinCampaign } = {}) {
         }
 
         if (parsed?.type === "join_campaign" && parsed?.campaignId) {
-          const allowed = canJoinCampaign ? canJoinCampaign(client, parsed.campaignId) : true;
-          if (!allowed) {
+          const nextCampaignId = String(parsed.campaignId);
+          const nextAllowed = canJoinCampaign ? canJoinCampaign(client.user, nextCampaignId) : true;
+          if (!nextAllowed) {
             send(client, {
               type: "join_denied",
-              campaignId: parsed.campaignId,
+              campaignId: nextCampaignId,
               reason: "forbidden",
-              timestamp: Date.now()
+              timestamp: nowMs()
             });
             continue;
           }
-          client.campaignId = parsed.campaignId;
+
+          const prevCampaign = client.campaignId;
+          client.campaignId = nextCampaignId;
+
           send(client, {
             type: "joined_campaign",
-            campaignId: client.campaignId,
-            timestamp: Date.now()
+            campaignId: nextCampaignId,
+            timestamp: nowMs()
           });
+
+          if (prevCampaign !== nextCampaignId) {
+            releaseAllResourcesOwnedBy(prevCampaign, client.user.id);
+            const prevCursorMap = getCampaignCursorMap(prevCampaign);
+            prevCursorMap.delete(client.user.id);
+            publishPresence(prevCampaign);
+            publishCursors(prevCampaign);
+            publishLocks(prevCampaign);
+
+            publishPresence(nextCampaignId);
+            publishCursors(nextCampaignId);
+            publishLocks(nextCampaignId);
+          }
+          continue;
+        }
+
+        if (parsed?.type === "cursor_update") {
+          const cursorMap = getCampaignCursorMap(client.campaignId);
+          cursorMap.set(client.user.id, {
+            userId: client.user.id,
+            displayName: client.user.displayName,
+            x: Number(parsed.x || 0),
+            y: Number(parsed.y || 0),
+            label: String(parsed.label || "cursor"),
+            updatedAt: nowMs()
+          });
+          publishCursors(client.campaignId);
+          continue;
+        }
+
+        if (parsed?.type === "lock_acquire") {
+          const resource = String(parsed.resource || "").trim();
+          if (!resource) {
+            continue;
+          }
+          const result = lockResource(client.campaignId, resource, client.user);
+          send(client, {
+            type: "lock_acquire_result",
+            campaignId: client.campaignId,
+            resource,
+            ok: result.ok,
+            lock: result.lock,
+            timestamp: nowMs()
+          });
+          publishLocks(client.campaignId);
+          continue;
+        }
+
+        if (parsed?.type === "lock_release") {
+          const resource = String(parsed.resource || "").trim();
+          if (!resource) {
+            continue;
+          }
+          const ok = releaseResource(client.campaignId, resource, client.user.id);
+          send(client, {
+            type: "lock_release_result",
+            campaignId: client.campaignId,
+            resource,
+            ok,
+            timestamp: nowMs()
+          });
+          publishLocks(client.campaignId);
           continue;
         }
 
         onClientMessage?.(parsed, client, {
-          broadcast
+          send,
+          sendToClient,
+          broadcast,
+          broadcastCampaign,
+          getLock,
+          publishLocks,
+          publishPresence,
+          publishCursors
         });
       }
 
@@ -221,39 +479,67 @@ export function createWsHub({ onClientMessage, canJoinCampaign } = {}) {
       }
     });
 
-    socket.on("close", () => {
+    function cleanup() {
+      const campaignId = client.campaignId;
+      const userId = client.user.id;
       clients.delete(clientId);
-    });
 
-    socket.on("end", () => {
-      clients.delete(clientId);
-    });
+      const cursorMap = getCampaignCursorMap(campaignId);
+      cursorMap.delete(userId);
+      const lockChanged = releaseAllResourcesOwnedBy(campaignId, userId);
 
-    socket.on("error", () => {
-      clients.delete(clientId);
-    });
+      publishPresence(campaignId);
+      publishCursors(campaignId);
+      if (lockChanged) {
+        publishLocks(campaignId);
+      }
+    }
+
+    socket.on("close", cleanup);
+    socket.on("end", cleanup);
+    socket.on("error", cleanup);
   }
 
   function broadcastStateChanged({ campaignId = "global", reason = "operation", op = null } = {}) {
-    broadcast(
-      {
+    if (campaignId === "global") {
+      broadcast({
         type: "state_changed",
         campaignId,
         reason,
         op,
-        timestamp: Date.now()
-      },
-      (client) => client.campaignId === campaignId || campaignId === "global"
-    );
+        timestamp: nowMs()
+      });
+      return;
+    }
+
+    broadcastCampaign(campaignId, {
+      type: "state_changed",
+      campaignId,
+      reason,
+      op,
+      timestamp: nowMs()
+    });
   }
 
   function connectionCount() {
     return clients.size;
   }
 
+  function getClientsInCampaign(campaignId) {
+    return campaignClients(campaignId);
+  }
+
   return {
     handleUpgrade,
+    sendToClient,
+    broadcast,
+    broadcastCampaign,
     broadcastStateChanged,
-    connectionCount
+    connectionCount,
+    getClientsInCampaign,
+    getLock,
+    publishLocks,
+    publishPresence,
+    publishCursors
   };
 }
