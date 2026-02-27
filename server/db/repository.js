@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { buildQuickstartBlueprint } from "../campaign/quickstart.js";
+import { ensureCampaignMemoryDocs } from "../gm/memoryStore.js";
 import { formatRollSummary, resolveAttack, resolveSkillCheck, rollDiceExpression } from "../rules/engine.js";
 import { uid } from "../utils/ids.js";
 import { createSeedState } from "./seedState.js";
@@ -113,6 +114,10 @@ function ensureDefaults(target) {
     target.revealedCellsByMap && typeof target.revealedCellsByMap === "object" ? target.revealedCellsByMap : {};
   target.recentRollsByCampaign =
     target.recentRollsByCampaign && typeof target.recentRollsByCampaign === "object" ? target.recentRollsByCampaign : {};
+  target.campaignPackagesByCampaign =
+    target.campaignPackagesByCampaign && typeof target.campaignPackagesByCampaign === "object"
+      ? target.campaignPackagesByCampaign
+      : {};
 
   target.selectedCampaignId = target.selectedCampaignId || target.campaigns?.[0]?.id || null;
 
@@ -302,6 +307,17 @@ function bootstrapAdminAndMemberships() {
     ensureCampaignVersionSlot(campaign.id);
     db.journalsByCampaign[campaign.id] = db.journalsByCampaign[campaign.id] || [];
     db.recentRollsByCampaign[campaign.id] = db.recentRollsByCampaign[campaign.id] || [];
+    db.campaignPackagesByCampaign[campaign.id] = db.campaignPackagesByCampaign[campaign.id] || {
+      campaignId: campaign.id,
+      chapters: [],
+      scenes: [],
+      npcs: [],
+      items: [],
+      spells: [],
+      rules: [],
+      starterOptions: []
+    };
+    ensureCampaignMemoryDocs(campaign.id);
   }
 
   for (const map of db.maps) {
@@ -459,12 +475,26 @@ function stateForUser(userId = null) {
       gmName: "Narrator Prime",
       gmStyle: "Cinematic Tactical",
       safetyProfile: "Table-Friendly",
-      primaryRulebook: "Core Rules SRD"
+      primaryRulebook: "Core Rules SRD",
+      gmMode: "human",
+      agentProvider: "local",
+      agentModel: "local-gm-v1"
     };
 
   const campaignVersions = {};
+  const campaignPackagesByCampaign = {};
   for (const campaignId of visibleCampaignIds) {
     campaignVersions[campaignId] = Number(db.campaignVersions[campaignId] || 0);
+    campaignPackagesByCampaign[campaignId] = db.campaignPackagesByCampaign?.[campaignId] || {
+      campaignId,
+      chapters: [],
+      scenes: [],
+      npcs: [],
+      items: [],
+      spells: [],
+      rules: [],
+      starterOptions: []
+    };
   }
 
   return {
@@ -481,6 +511,7 @@ function stateForUser(userId = null) {
     aiJobs: deepClone(db.aiJobs.filter((entry) => visibleSet.has(entry.campaignId))),
     journalsByCampaign: deepClone(journalsByCampaign),
     recentRollsByCampaign: deepClone(recentRollsByCampaign),
+    campaignPackagesByCampaign: deepClone(campaignPackagesByCampaign),
     gmSettings: deepClone(gmSettings),
     stateVersion: Number(db.stateVersion || 0),
     campaignVersions,
@@ -737,6 +768,7 @@ export function createQuickstartCampaignFromParsed({
   db.campaigns.unshift(campaign);
   db.selectedCampaignId = campaign.id;
   ensureCampaignVersionSlot(campaign.id);
+  ensureCampaignMemoryDocs(campaign.id, blueprint.memoryDocs || {});
 
   if (actorUserId) {
     applyCampaignMembership(campaign.id, actorUserId, "owner");
@@ -746,13 +778,33 @@ export function createQuickstartCampaignFromParsed({
   }
 
   db.characters = [...blueprint.characters.map((entry) => ({ ...entry, createdAt: nowEpochSec() })), ...db.characters];
-  db.encounters.unshift({ ...blueprint.encounter, createdAt: nowEpochSec() });
-  db.maps.unshift({ ...blueprint.map, createdAt: nowEpochSec() });
-  db.tokensByMap[blueprint.map.id] = blueprint.tokens;
-  db.revealedCellsByMap[blueprint.map.id] = db.revealedCellsByMap[blueprint.map.id] || {};
+  db.encounters = [...blueprint.encounters.map((entry) => ({ ...entry, createdAt: nowEpochSec() })), ...db.encounters];
+  db.maps = [...blueprint.maps.map((entry) => ({ ...entry, createdAt: nowEpochSec() })), ...db.maps];
+  for (const map of blueprint.maps) {
+    db.tokensByMap[map.id] = blueprint.tokensByMap[map.id] || [];
+    db.revealedCellsByMap[map.id] = db.revealedCellsByMap[map.id] || {};
+  }
   db.initiative.push(...blueprint.initiative.map((turn) => ({ ...turn, createdAt: nowEpochSec() })));
-  db.journalsByCampaign[campaign.id] = db.journalsByCampaign[campaign.id] || [];
+  db.journalsByCampaign[campaign.id] = [
+    ...(blueprint.journals || []).map((entry) => ({
+      ...entry,
+      authorUserId: actorUserId,
+      createdAt: nowEpochSec(),
+      updatedAt: nowEpochSec()
+    })),
+    ...(db.journalsByCampaign[campaign.id] || [])
+  ];
   db.recentRollsByCampaign[campaign.id] = db.recentRollsByCampaign[campaign.id] || [];
+  db.campaignPackagesByCampaign[campaign.id] = blueprint.campaignPackage || {
+    campaignId: campaign.id,
+    chapters: [],
+    scenes: [],
+    npcs: [],
+    items: [],
+    spells: [],
+    rules: [],
+    starterOptions: []
+  };
 
   db.gmSettingsByCampaign[campaign.id] = {
     ...blueprint.gmSettings,
@@ -769,8 +821,8 @@ export function createQuickstartCampaignFromParsed({
 
   return {
     campaignId: campaign.id,
-    mapId: blueprint.map.id,
-    encounterId: blueprint.encounter.id,
+    mapId: blueprint.maps[0]?.id || null,
+    encounterId: blueprint.encounters[0]?.id || null,
     parsedSummary: blueprint.parsedSummary
   };
 }
@@ -787,6 +839,7 @@ export function getMetrics() {
     aiJobs: db.aiJobs.length,
     journals: Object.values(db.journalsByCampaign || {}).reduce((sum, items) => sum + (items?.length || 0), 0),
     recentRolls: Object.values(db.recentRollsByCampaign || {}).reduce((sum, items) => sum + (items?.length || 0), 0),
+    packages: Object.keys(db.campaignPackagesByCampaign || {}).length,
     activeConnectionsEstimate: 0
   };
 }
@@ -851,10 +904,24 @@ export function applyOperation(op, payload = {}, context = {}) {
         gmStyle: "Cinematic Tactical",
         safetyProfile: "Table-Friendly",
         primaryRulebook: "Core Rules SRD",
+        gmMode: "human",
+        agentProvider: "local",
+        agentModel: "local-gm-v1",
         updatedAt: nowEpochSec()
       };
       db.journalsByCampaign[id] = db.journalsByCampaign[id] || [];
       db.recentRollsByCampaign[id] = db.recentRollsByCampaign[id] || [];
+      db.campaignPackagesByCampaign[id] = db.campaignPackagesByCampaign[id] || {
+        campaignId: id,
+        chapters: [],
+        scenes: [],
+        npcs: [],
+        items: [],
+        spells: [],
+        rules: [],
+        starterOptions: []
+      };
+      ensureCampaignMemoryDocs(id);
 
       bumpStateVersion(id);
       writeToDisk();
@@ -878,6 +945,32 @@ export function applyOperation(op, payload = {}, context = {}) {
       bumpStateVersion(campaignId);
       writeToDisk();
       return { campaignId };
+    }
+
+    case "set_active_map": {
+      const campaignId = selectedCampaignId(payload, actorUserId, context);
+      const mapId = String(payload.mapId || "");
+      if (!campaignId || !mapId) {
+        throw makeError("BAD_REQUEST", "campaignId and mapId are required.", 400);
+      }
+      assertCanReadCampaign(actorUserId, campaignId);
+      const map = db.maps.find((entry) => entry.id === mapId && entry.campaignId === campaignId);
+      if (!map) {
+        throw makeError("NOT_FOUND", "Map not found for campaign.", 404);
+      }
+
+      db.campaigns = db.campaigns.map((campaign) =>
+        campaign.id === campaignId
+          ? {
+              ...campaign,
+              activeMapId: mapId
+            }
+          : campaign
+      );
+
+      bumpStateVersion(campaignId);
+      writeToDisk();
+      return { campaignId, mapId };
     }
 
     case "add_book": {
@@ -1186,6 +1279,9 @@ export function applyOperation(op, payload = {}, context = {}) {
         gmStyle: payload.gmStyle || "Cinematic Tactical",
         safetyProfile: payload.safetyProfile || "Table-Friendly",
         primaryRulebook: payload.primaryRulebook || "Core Rules SRD",
+        gmMode: payload.gmMode === "agent" ? "agent" : "human",
+        agentProvider: payload.agentProvider || "local",
+        agentModel: payload.agentModel || "local-gm-v1",
         updatedAt: nowEpochSec()
       };
 
@@ -1213,7 +1309,8 @@ export function applyOperation(op, payload = {}, context = {}) {
                 height: Number(payload.height) || map.height,
                 fogEnabled: payload.fogEnabled !== undefined ? Boolean(payload.fogEnabled) : map.fogEnabled,
                 dynamicLighting:
-                  payload.dynamicLighting !== undefined ? Boolean(payload.dynamicLighting) : map.dynamicLighting
+                  payload.dynamicLighting !== undefined ? Boolean(payload.dynamicLighting) : map.dynamicLighting,
+                imageUrl: payload.imageUrl !== undefined ? String(payload.imageUrl || "").trim() : map.imageUrl || ""
               }
             : map
         );
@@ -1226,6 +1323,7 @@ export function applyOperation(op, payload = {}, context = {}) {
           height: Number(payload.height) || 10,
           fogEnabled: Boolean(payload.fogEnabled),
           dynamicLighting: Boolean(payload.dynamicLighting),
+          imageUrl: String(payload.imageUrl || "").trim(),
           createdAt: nowEpochSec()
         });
       }

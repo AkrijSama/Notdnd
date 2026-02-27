@@ -28,6 +28,7 @@ export function renderHomebrewStudio(state) {
           <div class="field">
             <span>Upload Files</span>
             <input id="book-files" type="file" multiple accept=".txt,.md,.json" />
+            <div class="small" id="homebrew-file-status">Parse local homebrew files into books and quickstart-ready indexes.</div>
           </div>
 
           <form id="homebrew-url-form" class="field">
@@ -71,6 +72,7 @@ export function renderHomebrewStudio(state) {
 export function bindHomebrewStudio(root, store) {
   const form = root.querySelector("#homebrew-form");
   const filesInput = root.querySelector("#book-files");
+  const filesStatus = root.querySelector("#homebrew-file-status");
   const urlForm = root.querySelector("#homebrew-url-form");
   const urlStatus = root.querySelector("#homebrew-url-status");
 
@@ -95,18 +97,39 @@ export function bindHomebrewStudio(root, store) {
   if (filesInput) {
     filesInput.addEventListener("change", async () => {
       const files = Array.from(filesInput.files || []);
-      for (const file of files) {
-        const text = await file.text();
-        const chapters = parseChaptersFromText(text);
-        const fallbackChapters = chapters.length > 0 ? chapters : ["Overview", "Rules", "Creatures", "Adventure Hooks"];
-        const baseTitle = file.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ");
-        const created = store.addBook({
-          title: titleCase(baseTitle),
-          type: "Homebrew",
-          tags: ["imported", "homebrew"],
-          chapters: fallbackChapters
-        });
-        store.pushChatLine({ speaker: "System", text: `Imported ${file.name} as ${created.title}.` });
+      if (files.length === 0) {
+        return;
+      }
+      if (filesStatus) {
+        filesStatus.textContent = "Parsing local homebrew files...";
+      }
+      try {
+        const serialized = await Promise.all(
+          files.map(async (file) => ({
+            name: file.name,
+            content: await file.text()
+          }))
+        );
+        const response = await store.parseQuickstartFiles({ files: serialized });
+        const parsed = response.parsed || {};
+        const books = parsed.books || [];
+        for (const book of books) {
+          const created = store.addBook({
+            title: titleCase(book.title),
+            type: "Homebrew",
+            tags: book.tags || ["imported", "homebrew"],
+            chapters: book.chapters || parseChaptersFromText(book.title)
+          });
+          store.pushChatLine({ speaker: "System", text: `Imported ${created.title} from local file parse.` });
+        }
+        if (filesStatus) {
+          const summary = parsed.summary || {};
+          filesStatus.textContent = `Imported ${books.length} book(s). Extracted ${summary.scenes || 0} scenes, ${summary.encounters || 0} encounters, and ${summary.items || 0} items.`;
+        }
+      } catch (error) {
+        if (filesStatus) {
+          filesStatus.textContent = `File import failed: ${String(error.message || error)}`;
+        }
       }
       filesInput.value = "";
     });
@@ -141,7 +164,7 @@ export function bindHomebrewStudio(root, store) {
 
         const summary = parsed.summary || {};
         if (urlStatus) {
-          urlStatus.textContent = `Imported ${books.length} book(s) from URL. Extracted ${summary.monsters || 0} monsters and ${summary.spells || 0} spells.`;
+          urlStatus.textContent = `Imported ${books.length} book(s) from URL. Extracted ${summary.scenes || 0} scenes, ${summary.encounters || 0} encounters, ${summary.monsters || 0} monsters, and ${summary.spells || 0} spells.`;
         }
       } catch (error) {
         if (urlStatus) {

@@ -30,12 +30,20 @@ function seedState() {
       { id: uid("chat"), speaker: "GM", text: "The ash gate cracks open as drums echo from below." }
     ],
     aiJobs: [],
+    campaignPackagesByCampaign: {},
     gmSettings: {
       gmName: "Narrator Prime",
       gmStyle: "Cinematic Tactical",
       safetyProfile: "Table-Friendly",
-      primaryRulebook: "Core Rules SRD"
+      primaryRulebook: "Core Rules SRD",
+      gmMode: "human",
+      agentProvider: "local",
+      agentModel: "local-gm-v1"
     },
+    aiProviders: [],
+    gmMemoryDocsByCampaign: {},
+    gmMemorySearchResults: [],
+    gmLastResponseMeta: null,
     stateVersion: 0,
     campaignVersions: {},
     auth: {
@@ -141,6 +149,86 @@ export function createStore({ apiClient = null } = {}) {
     }
   }
 
+  async function loadAiProviders() {
+    if (!apiClient) {
+      return [];
+    }
+    const response = await apiClient.listAiProviders();
+    state = {
+      ...state,
+      aiProviders: response.providers || []
+    };
+    notify();
+    return state.aiProviders;
+  }
+
+  async function loadGmMemoryDocs(campaignId = state.selectedCampaignId) {
+    if (!apiClient || !campaignId) {
+      return [];
+    }
+    const response = await apiClient.getGmMemory(campaignId);
+    state = {
+      ...state,
+      gmMemoryDocsByCampaign: {
+        ...state.gmMemoryDocsByCampaign,
+        [campaignId]: response.docs || []
+      }
+    };
+    notify();
+    return response.docs || [];
+  }
+
+  async function saveGmMemoryDoc({ campaignId = state.selectedCampaignId, docKey, content }) {
+    if (!apiClient || !campaignId) {
+      throw new Error("API client is required for GM memory");
+    }
+    const response = await apiClient.saveGmMemory({ campaignId, docKey, content });
+    const docs = (state.gmMemoryDocsByCampaign[campaignId] || []).filter((entry) => entry.key !== docKey);
+    state = {
+      ...state,
+      gmMemoryDocsByCampaign: {
+        ...state.gmMemoryDocsByCampaign,
+        [campaignId]: [response.doc, ...docs].sort((left, right) => left.title.localeCompare(right.title))
+      }
+    };
+    notify();
+    return response.doc;
+  }
+
+  async function searchGmMemory({ campaignId = state.selectedCampaignId, query, docKey = null, limit = 5 }) {
+    if (!apiClient || !campaignId) {
+      throw new Error("API client is required for GM memory search");
+    }
+    const response = await apiClient.searchGmMemory({ campaignId, query, docKey, limit });
+    state = {
+      ...state,
+      gmMemorySearchResults: response.results || []
+    };
+    notify();
+    return response.results || [];
+  }
+
+  async function requestGmResponse({ campaignId = state.selectedCampaignId, message, mode, provider, model }) {
+    if (!apiClient || !campaignId) {
+      throw new Error("API client is required for GM responses");
+    }
+    const response = await apiClient.respondAsGm({ campaignId, message, mode, provider, model });
+    if (response.memorySnippets) {
+      state = {
+        ...state,
+        gmMemorySearchResults: response.memorySnippets,
+        gmLastResponseMeta: {
+          mode: response.mode,
+          provider: response.result?.provider,
+          model: response.result?.model
+        }
+      };
+      notify();
+    }
+    await hydrateFromServer();
+    return response;
+  }
+
   return {
     getState() {
       return state;
@@ -151,6 +239,10 @@ export function createStore({ apiClient = null } = {}) {
     },
     async bootstrapRemote() {
       await hydrateFromServer();
+      await loadAiProviders();
+      if (state.selectedCampaignId) {
+        await loadGmMemoryDocs(state.selectedCampaignId);
+      }
     },
     async refreshFromServer() {
       await hydrateFromServer();
@@ -219,6 +311,7 @@ export function createStore({ apiClient = null } = {}) {
       state = { ...state, selectedCampaignId: campaignId };
       notify();
       syncOperation("select_campaign", { campaignId });
+      loadGmMemoryDocs(campaignId);
     },
     createCampaign({ name, setting, bookIds, players }) {
       const id = uid("cmp");
@@ -403,6 +496,21 @@ export function createStore({ apiClient = null } = {}) {
         ...settings
       });
     },
+    async loadAiProviders() {
+      return loadAiProviders();
+    },
+    async loadGmMemoryDocs(campaignId = state.selectedCampaignId) {
+      return loadGmMemoryDocs(campaignId);
+    },
+    async saveGmMemoryDoc({ campaignId = state.selectedCampaignId, docKey, content }) {
+      return saveGmMemoryDoc({ campaignId, docKey, content });
+    },
+    async searchGmMemory({ campaignId = state.selectedCampaignId, query, docKey = null, limit = 5 }) {
+      return searchGmMemory({ campaignId, query, docKey, limit });
+    },
+    async requestGmResponse({ campaignId = state.selectedCampaignId, message, mode, provider, model }) {
+      return requestGmResponse({ campaignId, message, mode, provider, model });
+    },
     async rollDice({ expression, label, actor }) {
       return syncOperationWithResult("roll_dice", {
         campaignId: state.selectedCampaignId,
@@ -457,6 +565,24 @@ export function createStore({ apiClient = null } = {}) {
         x,
         y,
         revealed
+      });
+    },
+    async upsertMap({ id, name, width, height, fogEnabled, dynamicLighting, imageUrl }) {
+      return syncOperationWithResult("upsert_map", {
+        campaignId: state.selectedCampaignId,
+        id,
+        name,
+        width,
+        height,
+        fogEnabled,
+        dynamicLighting,
+        imageUrl
+      });
+    },
+    async setActiveMap(mapId) {
+      return syncOperationWithResult("set_active_map", {
+        campaignId: state.selectedCampaignId,
+        mapId
       });
     }
   };

@@ -21,7 +21,7 @@ export function createAiJobProcessor({ onJobUpdated }) {
       onJobUpdated?.({ jobId, campaignId: job.campaignId, status: "Processing" });
 
       const result = await generateWithProvider({
-        provider: config.provider || process.env.NOTDND_AI_PROVIDER || "placeholder",
+        provider: config.provider || process.env.NOTDND_AI_PROVIDER || "local",
         type: job.type,
         prompt: job.prompt,
         model: config.model || ""

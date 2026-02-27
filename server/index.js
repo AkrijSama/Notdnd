@@ -21,6 +21,8 @@ import {
   registerUser,
   resolveStorePath
 } from "./db/repository.js";
+import { listCampaignMemoryDocs, searchCampaignMemory, writeCampaignMemoryDoc } from "./gm/memoryStore.js";
+import { buildAgentGmPrompt, buildFallbackHumanAdvice, buildHumanGmAssistPrompt } from "./gm/prompting.js";
 import { parseHomebrewDocuments } from "./homebrew/parser.js";
 import { fetchHomebrewUrl } from "./homebrew/urlImport.js";
 import { createWsHub } from "./realtime/wsHub.js";
@@ -358,6 +360,165 @@ async function handleApi(req, res) {
         model: payload.model
       });
       writeJson(res, 200, { ok: true, result });
+    } catch (error) {
+      routeError(res, error);
+    }
+    return true;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/gm/memory") {
+    try {
+      const user = requireAuth(req);
+      const campaignId = String(url.searchParams.get("campaignId") || "");
+      if (!campaignId) {
+        throw Object.assign(new Error("campaignId query param is required."), {
+          code: "BAD_REQUEST",
+          statusCode: 400
+        });
+      }
+      if (!userCanAccessCampaign(user.id, campaignId)) {
+        throw Object.assign(new Error("Campaign access denied."), {
+          code: "FORBIDDEN",
+          statusCode: 403
+        });
+      }
+      writeJson(res, 200, {
+        ok: true,
+        docs: listCampaignMemoryDocs(campaignId)
+      });
+    } catch (error) {
+      routeError(res, error);
+    }
+    return true;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/gm/memory") {
+    try {
+      const user = requireAuth(req);
+      const payload = await readJsonBody(req);
+      const campaignId = String(payload.campaignId || "");
+      const docKey = String(payload.docKey || "");
+      if (!campaignId || !docKey) {
+        throw Object.assign(new Error("campaignId and docKey are required."), {
+          code: "BAD_REQUEST",
+          statusCode: 400
+        });
+      }
+      if (!userCanAccessCampaign(user.id, campaignId)) {
+        throw Object.assign(new Error("Campaign access denied."), {
+          code: "FORBIDDEN",
+          statusCode: 403
+        });
+      }
+      writeJson(res, 200, {
+        ok: true,
+        doc: writeCampaignMemoryDoc(campaignId, docKey, payload.content || "")
+      });
+    } catch (error) {
+      routeError(res, error);
+    }
+    return true;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/gm/memory/search") {
+    try {
+      const user = requireAuth(req);
+      const payload = await readJsonBody(req);
+      const campaignId = String(payload.campaignId || "");
+      const query = String(payload.query || "").trim();
+      if (!campaignId || !query) {
+        throw Object.assign(new Error("campaignId and query are required."), {
+          code: "BAD_REQUEST",
+          statusCode: 400
+        });
+      }
+      if (!userCanAccessCampaign(user.id, campaignId)) {
+        throw Object.assign(new Error("Campaign access denied."), {
+          code: "FORBIDDEN",
+          statusCode: 403
+        });
+      }
+      writeJson(res, 200, {
+        ok: true,
+        results: searchCampaignMemory(campaignId, query, {
+          docKey: payload.docKey || null,
+          limit: payload.limit || 5
+        })
+      });
+    } catch (error) {
+      routeError(res, error);
+    }
+    return true;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/gm/respond") {
+    try {
+      const user = requireAuth(req);
+      const payload = await readJsonBody(req);
+      const campaignId = String(payload.campaignId || "");
+      const message = String(payload.message || "").trim();
+      if (!campaignId || !message) {
+        throw Object.assign(new Error("campaignId and message are required."), {
+          code: "BAD_REQUEST",
+          statusCode: 400
+        });
+      }
+      if (!userCanAccessCampaign(user.id, campaignId)) {
+        throw Object.assign(new Error("Campaign access denied."), {
+          code: "FORBIDDEN",
+          statusCode: 403
+        });
+      }
+
+      const state = getState({ userId: user.id });
+      const gmSettings = state.gmSettings || {};
+      const mode = payload.mode === "agent" ? "agent" : payload.mode === "human" ? "human" : (gmSettings.gmMode === "agent" ? "agent" : "human");
+      const provider = String(payload.provider || gmSettings.agentProvider || "local");
+      const model = String(payload.model || gmSettings.agentModel || "");
+      const memorySnippets = searchCampaignMemory(campaignId, message, { limit: 5 });
+      const prompt = mode === "agent"
+        ? buildAgentGmPrompt({ state, campaignId, message, memorySnippets })
+        : buildHumanGmAssistPrompt({ state, campaignId, message, memorySnippets });
+
+      const result = provider === "placeholder" && mode === "human"
+        ? {
+            provider,
+            model: model || "AI_GM_MODEL_VALUE",
+            text: buildFallbackHumanAdvice({ state, campaignId, message, memorySnippets })
+          }
+        : await generateWithProvider({
+            provider,
+            type: "gm",
+            prompt,
+            model
+          });
+
+      applyOperation(
+        "push_chat_line",
+        {
+          campaignId,
+          speaker: user.displayName || "User",
+          text: message
+        },
+        { actorUserId: user.id }
+      );
+      applyOperation(
+        "push_chat_line",
+        {
+          campaignId,
+          speaker: mode === "agent" ? "Agent GM" : "GM Copilot",
+          text: result.text || "No response text returned."
+        },
+        { internal: true }
+      );
+      broadcastAuthoritativeState(campaignId, "gm-response", "push_chat_line");
+
+      writeJson(res, 200, {
+        ok: true,
+        mode,
+        result,
+        memorySnippets
+      });
     } catch (error) {
       routeError(res, error);
     }

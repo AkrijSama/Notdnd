@@ -110,6 +110,27 @@ export function createApiClient(baseUrl = "") {
         body: JSON.stringify(payload)
       });
     },
+    async respondAsGm(payload) {
+      return request("/api/gm/respond", {
+        method: "POST",
+        body: JSON.stringify(payload)
+      });
+    },
+    async getGmMemory(campaignId) {
+      return request(`/api/gm/memory?campaignId=${encodeURIComponent(campaignId)}`);
+    },
+    async saveGmMemory(payload) {
+      return request("/api/gm/memory", {
+        method: "POST",
+        body: JSON.stringify(payload)
+      });
+    },
+    async searchGmMemory(payload) {
+      return request("/api/gm/memory/search", {
+        method: "POST",
+        body: JSON.stringify(payload)
+      });
+    },
     async buildQuickstartCampaign(payload) {
       return request("/api/quickstart/build", {
         method: "POST",

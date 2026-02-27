@@ -23,7 +23,8 @@ function renderQuickstartReview(parsed) {
     <div class="kv-list">
       <div class="kv-item"><strong>Confidence:</strong> ${confidence.score}/100 (${confidence.band})</div>
       <div class="kv-item"><strong>Documents:</strong> ${summary.documents || 0} | Books: ${summary.books || 0}</div>
-      <div class="kv-item"><strong>Extracted:</strong> ${summary.classes || 0} classes, ${summary.monsters || 0} monsters, ${summary.spells || 0} spells</div>
+      <div class="kv-item"><strong>Extracted:</strong> ${summary.classes || 0} classes, ${summary.monsters || 0} monsters, ${summary.spells || 0} spells, ${summary.items || 0} items</div>
+      <div class="kv-item"><strong>Scaffold:</strong> ${summary.chapters || 0} chapters, ${summary.scenes || 0} scenes, ${summary.encounters || 0} encounters</div>
       ${renderEntityList("Classes", parsed.entities?.classes || [])}
       ${renderEntityList("Monsters", parsed.entities?.monsters || [])}
       ${renderEntityList("Spells", parsed.entities?.spells || [])}

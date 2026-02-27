@@ -37,6 +37,74 @@ export function createSeedState() {
     recentRollsByCampaign: {
       cmp_001: []
     },
+    campaignPackagesByCampaign: {
+      cmp_001: {
+        campaignId: "cmp_001",
+        chapters: [
+          {
+            id: "chapter_001",
+            title: "Ash Gate Pressure",
+            summary: "The party must hold the outpost while the ash gate begins to fail.",
+            keywords: ["ash", "gate", "pressure"]
+          }
+        ],
+        scenes: [
+          {
+            id: "scene_001",
+            name: "Ashfall Outpost",
+            chapterTitle: "Ash Gate Pressure",
+            locationName: "Ashfall Outpost",
+            objective: "Stabilize the gate before cultists reach the inner wall.",
+            summary: "A defensive opening scene with urgency and visible consequences.",
+            mapId: "map_001",
+            encounterId: "enc_001",
+            keywords: ["outpost", "gate", "defense"]
+          }
+        ],
+        npcs: [
+          {
+            id: "npc_001",
+            name: "Warden Elra",
+            role: "guide",
+            summary: "Quest giver and field commander for the outpost.",
+            keywords: ["warden", "elra", "guide"]
+          }
+        ],
+        items: [
+          {
+            id: "item_001",
+            name: "Gatehouse Seal",
+            kind: "plot-device",
+            summary: "A failing seal that can close the breach if restored.",
+            keywords: ["seal", "gate", "plot"]
+          }
+        ],
+        spells: [
+          {
+            id: "spell_001",
+            name: "Healing Word",
+            summary: "Common emergency support spell in the opening defense."
+          }
+        ],
+        rules: [
+          {
+            id: "rule_001",
+            name: "Ash Visibility",
+            summary: "Heavy ash reduces sight lines and raises tension.",
+            keywords: ["ash", "visibility", "hazard"]
+          }
+        ],
+        starterOptions: [
+          {
+            id: "starter_001",
+            className: "Ranger",
+            hook: "Tie the ranger to the perimeter scouts.",
+            spell: "Hunter's Mark",
+            keywords: ["ranger", "scout"]
+          }
+        ]
+      }
+    },
     campaigns: [
       {
         id: "cmp_001",
@@ -122,6 +190,7 @@ export function createSeedState() {
         height: 10,
         fogEnabled: true,
         dynamicLighting: true,
+        imageUrl: "ASSET_MAP_PLACEHOLDER_1",
         createdAt: Math.floor(Date.now() / 1000)
       }
     ],
@@ -153,6 +222,9 @@ export function createSeedState() {
         gmStyle: "Cinematic Tactical",
         safetyProfile: "Table-Friendly",
         primaryRulebook: "Core Rules SRD",
+        gmMode: "human",
+        agentProvider: "local",
+        agentModel: "local-gm-v1",
         updatedAt: Math.floor(Date.now() / 1000)
       }
     }

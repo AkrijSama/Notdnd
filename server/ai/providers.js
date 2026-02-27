@@ -3,109 +3,305 @@ const PLACEHOLDER_MEDIA = {
   voice: "VOICE_RESULT_PLACEHOLDER_URL"
 };
 
-export function listAiProviders() {
-  return [
-    {
-      key: "placeholder",
-      label: "Placeholder Provider",
-      models: {
-        gm: "AI_GM_MODEL_VALUE",
-        image: "IMAGE_MODEL_VALUE",
-        voice: "VOICE_MODEL_VALUE"
-      },
-      status: "ready"
-    },
-    {
-      key: "local-mock",
-      label: "Local Mock Provider",
-      models: {
-        gm: "mock-gm-v1",
-        image: "mock-image-v1",
-        voice: "mock-voice-v1"
-      },
-      status: "ready"
-    },
-    {
-      key: "openai-compatible",
-      label: "OpenAI-Compatible Endpoint",
-      models: {
-        gm: process.env.NOTDND_AI_GM_MODEL || "gpt-placeholder",
-        image: process.env.NOTDND_AI_IMAGE_MODEL || "image-placeholder",
-        voice: process.env.NOTDND_AI_VOICE_MODEL || "voice-placeholder"
-      },
-      status: process.env.NOTDND_AI_ENDPOINT ? "configured" : "missing-config"
+const PROVIDER_SPECS = {
+  placeholder: {
+    key: "placeholder",
+    label: "Placeholder Provider",
+    type: "mock",
+    status: "ready",
+    models: {
+      gm: "AI_GM_MODEL_VALUE",
+      image: "IMAGE_MODEL_VALUE",
+      voice: "VOICE_MODEL_VALUE"
     }
-  ];
+  },
+  local: {
+    key: "local",
+    label: "Local Model",
+    type: "mock",
+    status: "ready",
+    models: {
+      gm: process.env.NOTDND_LOCAL_GM_MODEL || "local-gm-v1",
+      image: process.env.NOTDND_LOCAL_IMAGE_MODEL || "local-image-v1",
+      voice: process.env.NOTDND_LOCAL_VOICE_MODEL || "local-voice-v1"
+    }
+  },
+  chatgpt: {
+    key: "chatgpt",
+    label: "ChatGPT",
+    type: "openai-responses",
+    apiKeyEnv: "OPENAI_API_KEY",
+    endpointEnv: "NOTDND_CHATGPT_ENDPOINT",
+    defaultEndpoint: "https://api.openai.com/v1/responses",
+    models: {
+      gm: process.env.NOTDND_CHATGPT_GM_MODEL || "gpt-5-mini",
+      image: process.env.NOTDND_CHATGPT_IMAGE_MODEL || "gpt-image-1",
+      voice: process.env.NOTDND_CHATGPT_VOICE_MODEL || "gpt-4o-mini-tts"
+    }
+  },
+  grok: {
+    key: "grok",
+    label: "Grok",
+    type: "openai-chat-completions",
+    apiKeyEnv: "XAI_API_KEY",
+    endpointEnv: "NOTDND_GROK_ENDPOINT",
+    defaultEndpoint: "https://api.x.ai/v1/chat/completions",
+    models: {
+      gm: process.env.NOTDND_GROK_GM_MODEL || "grok-4-fast-reasoning",
+      image: process.env.NOTDND_GROK_IMAGE_MODEL || "grok-2-image",
+      voice: process.env.NOTDND_GROK_VOICE_MODEL || "grok-voice-preview"
+    }
+  },
+  gemini: {
+    key: "gemini",
+    label: "Gemini",
+    type: "gemini-generate-content",
+    apiKeyEnv: "GEMINI_API_KEY",
+    endpointEnv: "NOTDND_GEMINI_ENDPOINT",
+    defaultEndpoint: "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+    models: {
+      gm: process.env.NOTDND_GEMINI_GM_MODEL || "gemini-2.5-flash",
+      image: process.env.NOTDND_GEMINI_IMAGE_MODEL || "imagen-3.0-generate-002",
+      voice: process.env.NOTDND_GEMINI_VOICE_MODEL || "gemini-2.5-flash-preview-tts"
+    }
+  }
+};
+
+function resolveSpec(provider) {
+  const spec = PROVIDER_SPECS[provider];
+  if (!spec) {
+    throw new Error(`Unsupported provider: ${provider}`);
+  }
+  return spec;
 }
 
-function localMockResult({ type, prompt }) {
+function resolveProviderConfig(provider, overrides = {}) {
+  const spec = resolveSpec(provider);
+  const apiKey = overrides.apiKey ?? (spec.apiKeyEnv ? process.env[spec.apiKeyEnv] : "");
+  const endpoint = overrides.endpoint ?? (spec.endpointEnv ? process.env[spec.endpointEnv] : spec.defaultEndpoint || "");
+
+  let status = spec.status || "ready";
+  if (spec.type !== "mock") {
+    if (!apiKey) {
+      status = "missing-api-key";
+    } else if (!endpoint) {
+      status = "missing-endpoint";
+    } else {
+      status = "configured";
+    }
+  }
+
+  return {
+    ...spec,
+    apiKey,
+    endpoint,
+    status
+  };
+}
+
+export function listAiProviders() {
+  return Object.keys(PROVIDER_SPECS).map((provider) => {
+    const config = resolveProviderConfig(provider);
+    return {
+      key: config.key,
+      label: config.label,
+      models: config.models,
+      status: config.status,
+      apiKeyEnv: config.apiKeyEnv || null,
+      endpointEnv: config.endpointEnv || null,
+      endpoint: config.type === "mock" ? null : config.endpoint,
+      supports: ["gm", "image", "voice"]
+    };
+  });
+}
+
+function localMockResult({ provider, type, prompt, model }) {
   const stamp = new Date().toISOString();
   if (type === "image") {
     return {
+      provider,
+      model,
       text: `Generated mock image prompt at ${stamp}`,
       imageUrl: `mock://image/${encodeURIComponent(prompt.slice(0, 48))}`
     };
   }
   if (type === "voice") {
     return {
+      provider,
+      model,
       text: `Generated mock voice line at ${stamp}`,
       audioUrl: `mock://voice/${encodeURIComponent(prompt.slice(0, 48))}`
     };
   }
   return {
-    text: `Mock GM response (${stamp}): ${prompt.slice(0, 140)}`
+    provider,
+    model,
+    text: `Mock GM response (${stamp}): ${prompt.slice(0, 220)}`
   };
 }
 
-async function openAiCompatibleResult({ type, prompt, model }) {
-  const endpoint = process.env.NOTDND_AI_ENDPOINT;
-  const apiKey = process.env.NOTDND_AI_API_KEY;
+async function safeReadBody(response) {
+  try {
+    return await response.text();
+  } catch {
+    return "";
+  }
+}
 
-  if (!endpoint || !apiKey) {
-    throw new Error("NOTDND_AI_ENDPOINT and NOTDND_AI_API_KEY are required");
+function makeProviderError(provider, message, code = "AI_PROVIDER_ERROR", statusCode = 400) {
+  const error = new Error(message);
+  error.code = code;
+  error.statusCode = statusCode;
+  return error;
+}
+
+function assertProviderReady(config) {
+  if (config.type === "mock") {
+    return;
+  }
+  if (!config.apiKey) {
+    throw makeProviderError(config.key, `${config.label} is not configured. Missing ${config.apiKeyEnv}.`, "MISSING_API_KEY", 400);
+  }
+  if (!config.endpoint) {
+    throw makeProviderError(config.key, `${config.label} is not configured. Missing endpoint.`, "MISSING_ENDPOINT", 400);
+  }
+}
+
+function extractTextFromResponse(provider, payload) {
+  if (provider === "chatgpt") {
+    if (typeof payload.output_text === "string" && payload.output_text.trim()) {
+      return payload.output_text.trim();
+    }
+    const content = Array.isArray(payload.output) ? payload.output : [];
+    for (const item of content) {
+      for (const part of item?.content || []) {
+        if (part?.type === "output_text" && part.text) {
+          return String(part.text).trim();
+        }
+      }
+    }
   }
 
-  const res = await fetch(endpoint, {
+  if (provider === "grok") {
+    const choice = Array.isArray(payload.choices) ? payload.choices[0] : null;
+    const text = choice?.message?.content;
+    if (typeof text === "string" && text.trim()) {
+      return text.trim();
+    }
+  }
+
+  if (provider === "gemini") {
+    const text = payload?.candidates?.[0]?.content?.parts?.map((part) => part?.text || "").join(" ").trim();
+    if (text) {
+      return text;
+    }
+  }
+
+  return payload?.text || "";
+}
+
+async function remoteProviderResult({ provider, type, prompt, model, fetchImpl = fetch, configOverride = {} }) {
+  const config = resolveProviderConfig(provider, configOverride);
+  assertProviderReady(config);
+
+  const resolvedModel = model || config.models[type] || config.models.gm;
+  let endpoint = config.endpoint;
+  let body;
+  const headers = {};
+
+  if (provider === "chatgpt") {
+    headers.Authorization = `Bearer ${config.apiKey}`;
+    headers["Content-Type"] = "application/json";
+    body = {
+      model: resolvedModel,
+      input: prompt
+    };
+  } else if (provider === "grok") {
+    headers.Authorization = `Bearer ${config.apiKey}`;
+    headers["Content-Type"] = "application/json";
+    body = {
+      model: resolvedModel,
+      messages: [
+        {
+          role: "user",
+          content: prompt
+        }
+      ]
+    };
+  } else if (provider === "gemini") {
+    endpoint = endpoint.replace("{model}", encodeURIComponent(resolvedModel));
+    const separator = endpoint.includes("?") ? "&" : "?";
+    endpoint = `${endpoint}${separator}key=${encodeURIComponent(config.apiKey)}`;
+    headers["Content-Type"] = "application/json";
+    body = {
+      contents: [
+        {
+          parts: [
+            {
+              text: prompt
+            }
+          ]
+        }
+      ]
+    };
+  }
+
+  const response = await fetchImpl(endpoint, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`
-    },
-    body: JSON.stringify({
-      model,
-      type,
-      prompt
-    })
+    headers,
+    body: JSON.stringify(body)
   });
 
-  if (!res.ok) {
-    throw new Error(`Upstream AI endpoint failed with status ${res.status}`);
+  const rawBody = await safeReadBody(response);
+  let payload = {};
+  try {
+    payload = rawBody ? JSON.parse(rawBody) : {};
+  } catch {
+    payload = { text: rawBody };
   }
 
-  const data = await res.json();
+  if (!response.ok) {
+    const upstreamMessage = payload?.error?.message || payload?.message || rawBody || `HTTP ${response.status}`;
+    const normalized = response.status === 401 || response.status === 403
+      ? `${config.label} API key rejected. ${upstreamMessage}`
+      : `${config.label} request failed (${response.status}). ${upstreamMessage}`;
+    throw makeProviderError(provider, normalized.trim(), response.status === 401 || response.status === 403 ? "BAD_API_KEY" : "UPSTREAM_AI_ERROR", response.status);
+  }
+
+  const text = extractTextFromResponse(provider, payload) || `${config.label} completed ${type} generation.`;
   if (type === "image") {
     return {
-      text: data.text || "Image generation complete",
-      imageUrl: data.imageUrl || PLACEHOLDER_MEDIA.image
+      provider,
+      model: resolvedModel,
+      text,
+      imageUrl: payload.imageUrl || PLACEHOLDER_MEDIA.image
     };
   }
   if (type === "voice") {
     return {
-      text: data.text || "Voice generation complete",
-      audioUrl: data.audioUrl || PLACEHOLDER_MEDIA.voice
+      provider,
+      model: resolvedModel,
+      text,
+      audioUrl: payload.audioUrl || PLACEHOLDER_MEDIA.voice
     };
   }
   return {
-    text: data.text || "GM response generated"
+    provider,
+    model: resolvedModel,
+    text
   };
 }
 
-export async function generateWithProvider({ provider = "placeholder", type = "gm", prompt = "", model = "" }) {
-  if (provider === "placeholder") {
+export async function generateWithProvider({ provider = "placeholder", type = "gm", prompt = "", model = "", fetchImpl, configOverride } = {}) {
+  const resolvedProvider = provider || "placeholder";
+  const spec = resolveProviderConfig(resolvedProvider, configOverride);
+  const resolvedModel = model || spec.models[type] || spec.models.gm;
+
+  if (resolvedProvider === "placeholder") {
     if (type === "image") {
       return {
         provider: "placeholder",
-        model: model || "IMAGE_MODEL_VALUE",
+        model: resolvedModel,
         text: "Placeholder image job complete.",
         imageUrl: PLACEHOLDER_MEDIA.image
       };
@@ -113,35 +309,28 @@ export async function generateWithProvider({ provider = "placeholder", type = "g
     if (type === "voice") {
       return {
         provider: "placeholder",
-        model: model || "VOICE_MODEL_VALUE",
+        model: resolvedModel,
         text: "Placeholder voice job complete.",
         audioUrl: PLACEHOLDER_MEDIA.voice
       };
     }
     return {
       provider: "placeholder",
-      model: model || "AI_GM_MODEL_VALUE",
-      text: `Placeholder GM output: ${prompt.slice(0, 160)}`
+      model: resolvedModel,
+      text: `Placeholder GM output: ${prompt.slice(0, 220)}`
     };
   }
 
-  if (provider === "local-mock") {
-    const result = localMockResult({ type, prompt });
-    return {
-      provider,
-      model: model || `${type}-mock-v1`,
-      ...result
-    };
+  if (resolvedProvider === "local") {
+    return localMockResult({ provider: "local", type, prompt, model: resolvedModel });
   }
 
-  if (provider === "openai-compatible") {
-    const result = await openAiCompatibleResult({ type, prompt, model });
-    return {
-      provider,
-      model: model || `${type}-remote`,
-      ...result
-    };
-  }
-
-  throw new Error(`Unsupported provider: ${provider}`);
+  return remoteProviderResult({
+    provider: resolvedProvider,
+    type,
+    prompt,
+    model: resolvedModel,
+    fetchImpl,
+    configOverride
+  });
 }
