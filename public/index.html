@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NOTDND - AI Game Master</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="app-container">
+    <header>
+      <h1>NOTDND</h1>
+      <p>AI-Powered Game Master with BYOK Support</p>
+    </header>
+
+    <nav>
+      <button id="show-settings-btn" class="btn">Settings</button>
+      <button id="show-game-btn" class="btn">Game</button>
+    </nav>
+
+    <main>
+      <div id="settings-container" class="view"></div>
+      <div id="game-container" class="view" style="display: none;">
+        <div id="gm-panel-container"></div>
+      </div>
+    </main>
+  </div>
+
+  <script type="module">
+    import { Settings } from '/components/Settings.js';
+    import { GMPanel } from '/components/GMPanel.js';
+
+    // Initialize Settings
+    const settingsContainer = document.getElementById('settings-container');
+    const gameContainer = document.getElementById('game-container');
+    const gmPanelContainer = document.getElementById('gm-panel-container');
+    new Settings(settingsContainer);
+    new GMPanel(gmPanelContainer);
+
+    // Navigation
+    document.getElementById('show-settings-btn').addEventListener('click', () => {
+      settingsContainer.style.display = 'block';
+      gameContainer.style.display = 'none';
+    });
+
+    document.getElementById('show-game-btn').addEventListener('click', () => {
+      settingsContainer.style.display = 'none';
+      gameContainer.style.display = 'block';
+    });
+  </script>
+</body>
+</html>

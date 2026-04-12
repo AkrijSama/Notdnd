@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>notdnd test harness</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Courier New', monospace;
+            background: #0a0a0a;
+            color: #00ff00;
+            padding: 20px;
+            line-height: 1.6;
+        }
+
+        .harness-container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            font-size: 24px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #00ff00;
+            padding-bottom: 10px;
+        }
+
+        .section {
+            margin-bottom: 30px;
+            border: 1px solid #333;
+            padding: 15px;
+            background: #0f0f0f;
+        }
+
+        .section-title {
+            font-size: 16px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #00ffff;
+        }
+
+        .controls {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        button {
+            background: #1a1a1a;
+            color: #00ff00;
+            border: 1px solid #00ff00;
+            padding: 10px 15px;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        button:hover {
+            background: #00ff00;
+            color: #0a0a0a;
+        }
+
+        button:active {
+            transform: scale(0.98);
+        }
+
+        button:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+
+        .status-grid {
+            display: grid;
+            grid-template-columns: 200px 1fr;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .status-label {
+            color: #888;
+        }
+
+        .status-value {
+            font-weight: bold;
+        }
+
+        .status-value.active {
+            color: #00ff00;
+        }
+
+        .status-value.inactive {
+            color: #ff0000;
+        }
+
+        .status-value.unknown {
+            color: #ffff00;
+        }
+
+        .event-log {
+            background: #000;
+            border: 1px solid #333;
+            padding: 10px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-size: 12px;
+        }
+
+        .log-entry {
+            margin-bottom: 5px;
+            padding: 5px;
+            border-left: 2px solid #333;
+            padding-left: 10px;
+        }
+
+        .log-entry.info {
+            border-left-color: #00ff00;
+        }
+
+        .log-entry.warn {
+            border-left-color: #ffff00;
+            color: #ffff00;
+        }
+
+        .log-entry.error {
+            border-left-color: #ff0000;
+            color: #ff0000;
+        }
+
+        .log-entry.state-change {
+            border-left-color: #00ffff;
+            color: #00ffff;
+        }
+
+        .timestamp {
+            color: #666;
+            font-size: 11px;
+            margin-right: 10px;
+        }
+
+        .api-status {
+            display: grid;
+            grid-template-columns: 200px 1fr;
+            gap: 10px;
+            font-size: 12px;
+            margin-top: 10px;
+        }
+
+        .api-available {
+            color: #00ff00;
+        }
+
+        .api-unavailable {
+            color: #ff0000;
+        }
+
+        .failure-mode-selector {
+            margin-bottom: 10px;
+        }
+
+        select {
+            background: #1a1a1a;
+            color: #00ff00;
+            border: 1px solid #00ff00;
+            padding: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            width: 100%;
+            max-width: 400px;
+        }
+
+        .metric {
+            display: inline-block;
+            margin-right: 20px;
+            padding: 5px 10px;
+            background: #1a1a1a;
+            border: 1px solid #333;
+        }
+
+        .metric-value {
+            font-weight: bold;
+            color: #00ffff;
+        }
+    </style>
+</head>
+<body>
+    <div class="harness-container">
+        <h1>notdnd test harness</h1>
+
+        <div class="section">
+            <div class="section-title">API availability</div>
+            <div id="api-status" class="api-status"></div>
+        </div>
+
+        <div class="section">
+            <div class="section-title">State controls</div>
+            <div class="controls">
+                <button id="btn-enable" onclick="harness.enableNotDND()">Enable notdnd</button>
+                <button id="btn-disable" onclick="harness.disableNotDND()">Disable notdnd</button>
+                <button id="btn-query" onclick="harness.queryState()">Query current state</button>
+                <button id="btn-reset" onclick="harness.resetState()">Reset state</button>
+            </div>
+
+            <div class="failure-mode-selector">
+                <label for="failure-mode">Failure mode injection:</label>
+                <select id="failure-mode" onchange="harness.setFailureMode(this.value)">
+                    <option value="none">None</option>
+                    <option value="permission-denied">Permission denied</option>
+                    <option value="api-unavailable">API unavailable</option>
+                    <option value="timeout">Timeout</option>
+                    <option value="state-desync">State desynchronization</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="section-title">Current state</div>
+            <div class="status-grid">
+                <div class="status-label">notdnd enabled:</div>
+                <div id="status-enabled" class="status-value unknown">UNKNOWN</div>
+
+                <div class="status-label">Interruption filter:</div>
+                <div id="status-filter" class="status-value unknown">UNKNOWN</div>
+
+                <div class="status-label">Permission state:</div>
+                <div id="status-permission" class="status-value unknown">UNKNOWN</div>
+
+                <div class="status-label">Last state change:</div>
+                <div id="status-last-change" class="status-value">Never</div>
+
+                <div class="status-label">Failure mode:</div>
+                <div id="status-failure-mode" class="status-value">None</div>
+            </div>
+
+            <div style="margin-top: 15px;">
+                <span class="metric">
+                    <span class="status-label">State transitions:</span>
+                    <span id="metric-transitions" class="metric-value">0</span>
+                </span>
+                <span class="metric">
+                    <span class="status-label">Failures:</span>
+                    <span id="metric-failures" class="metric-value">0</span>
+                </span>
+                <span class="metric">
+                    <span class="status-label">API calls:</span>
+                    <span id="metric-calls" class="metric-value">0</span>
+                </span>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="section-title">Transition history & failure log</div>
+            <div style="margin-bottom: 10px;">
+                <button onclick="harness.clearLog()">Clear log</button>
+                <button onclick="harness.exportLog()">Export log</button>
+            </div>
+            <div id="event-log" class="event-log"></div>
+        </div>
+    </div>
+
+    <script>
+        class NotDNDHarness {
+            constructor() {
+                this.state = {
+                    enabled: false,
+                    filter: 'none',
+                    permission: 'unknown',
+                    lastChange: null,
+                    failureMode: 'none'
+                };
+
+                this.metrics = {
+                    transitions: 0,
+                    failures: 0,
+                    apiCalls: 0
+                };
+
+                this.eventLog = [];
+                this.maxLogEntries = 1000;
+
+                this.init();
+            }
+
+            init() {
+                this.log('info', 'Harness initialized');
+                this.detectAPIs();
+                this.updateDisplay();
+                this.setupListeners();
+            }
+
+            detectAPIs() {
+                const apis = {
+                    'Notification API': typeof Notification !== 'undefined',
+                    'Permissions API': typeof navigator.permissions !== 'undefined',
+                    'Focus detection': typeof document.hasFocus === 'function',
+                    'Visibility API': typeof document.visibilityState !== 'undefined',
+                    'Page Visibility': typeof document.hidden !== 'undefined'
+                };
+
+                const statusEl = document.getElementById('api-status');
+                statusEl.innerHTML = '';
+
+                for (const [name, available] of Object.entries(apis)) {
+                    const row = document.createElement('div');
+                    row.style.display = 'contents';
+                    row.innerHTML = `
+                        <div>${name}:</div>
+                        <div class="${available ? 'api-available' : 'api-unavailable'}">
+                            ${available ? 'AVAILABLE' : 'UNAVAILABLE'}
+                        </div>
+                    `;
+                    statusEl.appendChild(row);
+                }
+
+                if (!apis['Notification API']) {
+                    this.log('warn', 'Notification API unavailable - core notdnd functionality cannot be tested');
+                }
+            }
+
+            setupListeners() {
+                if (typeof Notification !== 'undefined') {
+                    // Monitor permission changes
+                    if (navigator.permissions) {
+                        navigator.permissions.query({name: 'notifications'}).then(permissionStatus => {
+                            this.state.permission = permissionStatus.state;
+                            this.updateDisplay();
+
+                            permissionStatus.onchange = () => {
+                                const oldPerm = this.state.permission;
+                                this.state.permission = permissionStatus.state;
+                                this.log('state-change', `Permission changed: ${oldPerm} → ${permissionStatus.state}`);
+                                this.updateDisplay();
+                            };
+                        }).catch(err => {
+                            this.log('error', `Permission query failed: ${err.message}`);
+                        });
+                    }
+                }
+
+                // Monitor visibility changes
+                document.addEventListener('visibilitychange', () => {
+                    this.log('info', `Visibility changed: ${document.visibilityState}`);
+                });
+
+                // Monitor focus changes
+                window.addEventListener('focus', () => {
+                    this.log('info', 'Window gained focus');
+                });
+
+                window.addEventListener('blur', () => {
+                    this.log('info', 'Window lost focus');
+                });
+            }
+
+            async enableNotDND() {
+                this.metrics.apiCalls++;
+                this.log('info', 'Attempting to enable notdnd');
+
+                if (this.state.failureMode === 'permission-denied') {
+                    this.metrics.failures++;
+                    this.log('error', 'FAILURE INJECTED: Permission denied');
+                    this.updateDisplay();
+                    return;
+                }
+
+                if (this.state.failureMode === 'api-unavailable') {
+                    this.metrics.failures++;
+                    this.log('error', 'FAILURE INJECTED: API unavailable');
+                    this.updateDisplay();
+                    return;
+                }
+
+                if (this.state.failureMode === 'timeout') {
+                    this.metrics.failures++;
+                    this.log('error', 'FAILURE INJECTED: Operation timeout');
+                    this.updateDisplay();
+                    return;
+                }
+
+                if (typeof Notification === 'undefined') {
+                    this.metrics.failures++;
+                    this.log('error', 'Cannot enable: Notification API unavailable');
+                    this.updateDisplay();
+                    return;
+                }
+
+                try {
+                    if (Notification.permission === 'default') {
+                        this.log('info', 'Requesting notification permission');
+                        const permission = await Notification.requestPermission();
+                        this.state.permission = permission;
+
+                        if (permission !== 'granted') {
+                            this.metrics.failures++;
+                            this.log('error', `Permission denied: ${permission}`);
+                            this.updateDisplay();
+                            return;
+                        }
+                    }
+
+                    if (Notification.permission !== 'granted') {
+                        this.metrics.failures++;
+                        this.log('error', `Cannot enable: permission is ${Notification.permission}`);
+                        this.updateDisplay();
+                        return;
+                    }
+
+                    const oldState = this.state.enabled;
+                    this.state.enabled = true;
+                    this.state.filter = 'all';
+                    this.state.lastChange = new Date().toISOString();
+
+                    if (this.state.failureMode === 'state-desync') {
+                        this.log('warn', 'FAILURE INJECTED: State desynchronization - internal state differs from reported state');
+                        this.state.enabled = !this.state.enabled;
+                    }
+
+                    this.metrics.transitions++;
+                    this.log('state-change', `notdnd enabled: ${oldState} → ${this.state.enabled}`);
+                    this.log('info', 'Interruption filter set to: ALL');
+
+                } catch (error) {
+                    this.metrics.failures++;
+                    this.log('error', `Enable failed: ${error.message}`);
+                }
+
+                this.updateDisplay();
+            }
+
+            disableNotDND() {
+                this.metrics.apiCalls++;
+                this.log('info', 'Attempting to disable notdnd');
+
+                if (this.state.failureMode === 'timeout') {
+                    this.metrics.failures++;
+                    this.log('error', 'FAILURE INJECTED: Operation timeout');
+                    this.updateDisplay();
+                    return;
+                }
+
+                const oldState = this.state.enabled;
+                this.state.enabled = false;
+                this.state.filter = 'none';
+                this.state.lastChange = new Date().toISOString();
+
+                this.metrics.transitions++;
+                this.log('state-change', `notdnd disabled: ${oldState} → ${this.state.enabled}`);
+                this.log('info', 'Interruption filter set to: NONE');
+
+                this.updateDisplay();
+            }
+
+            queryState() {
+                this.metrics.apiCalls++;
+                this.log('info', 'Querying current state');
+
+                if (typeof Notification !== 'undefined') {
+                    this.state.permission = Notification.permission;
+                    this.log('info', `Notification permission: ${Notification.permission}`);
+                }
+
+                this.log('info', `notdnd enabled: ${this.state.enabled}`);
+                this.log('info', `Interruption filter: ${this.state.filter}`);
+                this.log('info', `Document visibility: ${document.visibilityState}`);
+                this.log('info', `Document hidden: ${document.hidden}`);
+                this.log('info', `Window has focus: ${document.hasFocus()}`);
+
+                this.updateDisplay();
+            }
+
+            resetState() {
+                this.log('info', 'Resetting state');
+
+                this.state.enabled = false;
+                this.state.filter = 'none';
+                this.state.lastChange = null;
+                this.state.failureMode = 'none';
+
+                this.metrics.transitions = 0;
+                this.metrics.failures = 0;
+                this.metrics.apiCalls = 0;
+
+                document.getElementById('failure-mode').value = 'none';
+
+                this.log('state-change', 'State reset to initial values');
+                this.updateDisplay();
+            }
+
+            setFailureMode(mode) {
+                this.state.failureMode = mode;
+                this.log('warn', `Failure mode set to: ${mode}`);
+                this.updateDisplay();
+            }
+
+            log(type, message) {
+                const timestamp = new Date().toISOString();
+                const entry = {
+                    timestamp,
+                    type,
+                    message
+                };
+
+                this.eventLog.push(entry);
+
+                if (this.eventLog.length > this.maxLogEntries) {
+                    this.eventLog.shift();
+                }
+
+                const logEl = document.getElementById('event-log');
+                const entryEl = document.createElement('div');
+                entryEl.className = `log-entry ${type}`;
+                entryEl.innerHTML = `
+                    <span class="timestamp">${timestamp}</span>
+                    <span>${message}</span>
+                `;
+
+                logEl.appendChild(entryEl);
+                logEl.scrollTop = logEl.scrollHeight;
+            }
+
+            clearLog() {
+                this.eventLog = [];
+                document.getElementById('event-log').innerHTML = '';
+                this.log('info', 'Log cleared');
+            }
+
+            exportLog() {
+                const logText = this.eventLog
+                    .map(e => `${e.timestamp} [${e.type.toUpperCase()}] ${e.message}`)
+                    .join('\n');
+
+                const blob = new Blob([logText], { type: 'text/plain' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `notdnd-harness-log-${Date.now()}.txt`;
+                a.click();
+                URL.revokeObjectURL(url);
+
+                this.log('info', 'Log exported');
+            }
+
+            updateDisplay() {
+                // Status values
+                document.getElementById('status-enabled').textContent = this.state.enabled ? 'TRUE' : 'FALSE';
+                document.getElementById('status-enabled').className = `status-value ${this.state.enabled ? 'active' : 'inactive'}`;
+
+                document.getElementById('status-filter').textContent = this.state.filter.toUpperCase();
+                document.getElementById('status-filter').className = `status-value ${this.state.filter !== 'none' ? 'active' : 'inactive'}`;
+
+                document.getElementById('status-permission').textContent = this.state.permission.toUpperCase();
+                document.getElementById('status-permission').className = `status-value ${this.state.permission === 'granted' ? 'active' : this.state.permission === 'denied' ? 'inactive' : 'unknown'}`;
+
+                document.getElementById('status-last-change').textContent = this.state.lastChange || 'Never';
+
+                document.getElementById('status-failure-mode').textContent = this.state.failureMode.replace(/-/g, ' ').toUpperCase();
+                document.getElementById('status-failure-mode').className = `status-value ${this.state.failureMode === 'none' ? '' : 'error'}`;
+
+                // Metrics
+                document.getElementById('metric-transitions').textContent = this.metrics.transitions;
+                document.getElementById('metric-failures').textContent = this.metrics.failures;
+                document.getElementById('metric-calls').textContent = this.metrics.apiCalls;
+            }
+        }
+
+        // Initialize harness
+        const harness = new NotDNDHarness();
+    </script>
+</body>
+</html>

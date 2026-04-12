@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "NOTDND Homebrew Entity Schema",
+  "definitions": {
+    "entityStats": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["str", "dex", "con", "int", "wis", "cha"],
+      "properties": {
+        "str": { "type": "integer", "minimum": 1, "maximum": 30 },
+        "dex": { "type": "integer", "minimum": 1, "maximum": 30 },
+        "con": { "type": "integer", "minimum": 1, "maximum": 30 },
+        "int": { "type": "integer", "minimum": 1, "maximum": 30 },
+        "wis": { "type": "integer", "minimum": 1, "maximum": 30 },
+        "cha": { "type": "integer", "minimum": 1, "maximum": 30 }
+      }
+    },
+    "entityStatBlock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "name", "hp", "ac", "stats", "actions", "disposition", "tokenColor"],
+      "properties": {
+        "type": { "type": "string", "enum": ["npc", "monster"] },
+        "name": { "type": "string", "minLength": 1 },
+        "hp": { "type": "integer", "minimum": 1 },
+        "ac": { "type": "integer", "minimum": 1 },
+        "stats": { "$ref": "#/definitions/entityStats" },
+        "actions": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "disposition": {
+          "type": "string",
+          "enum": ["hostile", "neutral", "friendly"]
+        },
+        "tokenColor": {
+          "type": "string",
+          "pattern": "^#(?:[0-9a-fA-F]{3}){1,2}$"
+        }
+      }
+    },
+    "quickstartToken": {
+      "type": "object",
+      "required": ["id", "entityId", "kind", "name", "hp", "maxHp", "ac", "stats", "actions", "disposition", "tokenColor", "x", "y"],
+      "properties": {
+        "id": { "type": "string" },
+        "entityId": { "type": "string" },
+        "kind": { "type": "string", "enum": ["npc", "monster"] },
+        "name": { "type": "string" },
+        "hp": { "type": "integer", "minimum": 0 },
+        "maxHp": { "type": "integer", "minimum": 1 },
+        "ac": { "type": "integer", "minimum": 1 },
+        "stats": { "$ref": "#/definitions/entityStats" },
+        "actions": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "disposition": {
+          "type": "string",
+          "enum": ["hostile", "neutral", "friendly"]
+        },
+        "tokenColor": {
+          "type": "string",
+          "pattern": "^#(?:[0-9a-fA-F]{3}){1,2}$"
+        },
+        "x": { "type": "integer", "minimum": 0 },
+        "y": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "quickstartInitiativeEntry": {
+      "type": "object",
+      "required": ["id", "tokenId", "name", "initiative", "type", "disposition"],
+      "properties": {
+        "id": { "type": "string" },
+        "tokenId": { "type": "string" },
+        "name": { "type": "string" },
+        "initiative": { "type": "integer" },
+        "type": { "type": "string", "enum": ["npc", "monster"] },
+        "disposition": {
+          "type": "string",
+          "enum": ["hostile", "neutral", "friendly"]
+        }
+      }
+    }
+  }
+}

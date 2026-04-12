@@ -1,0 +1,401 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background-color: #1a1a1a;
+  color: #e0e0e0;
+  line-height: 1.6;
+}
+
+.app-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+header {
+  text-align: center;
+  margin-bottom: 30px;
+  padding: 20px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 10px;
+}
+
+header h1 {
+  font-size: 2.5em;
+  margin-bottom: 10px;
+}
+
+header p {
+  font-size: 1.1em;
+  opacity: 0.9;
+}
+
+nav {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+  justify-content: center;
+}
+
+.btn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 5px;
+  background-color: #667eea;
+  color: white;
+  cursor: pointer;
+  font-size: 1em;
+  transition: background-color 0.3s;
+}
+
+.btn:hover {
+  background-color: #5568d3;
+}
+
+.btn-primary {
+  background-color: #764ba2;
+}
+
+.btn-primary:hover {
+  background-color: #653a8b;
+}
+
+.btn-secondary {
+  background-color: #555;
+}
+
+.btn-secondary:hover {
+  background-color: #444;
+}
+
+.view {
+  background-color: #2a2a2a;
+  border-radius: 10px;
+  padding: 30px;
+  min-height: 400px;
+}
+
+/* Settings Panel */
+.settings-panel h2 {
+  margin-bottom: 20px;
+  font-size: 1.8em;
+  color: #667eea;
+}
+
+.settings-form {
+  max-width: 500px;
+}
+
+.settings-tabs {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.settings-tab {
+  padding: 10px 18px;
+  border: 1px solid #444;
+  border-radius: 999px;
+  background-color: #1a1a1a;
+  color: #b0b0b0;
+  cursor: pointer;
+  font-size: 0.95em;
+}
+
+.settings-tab.active {
+  background-color: #667eea;
+  border-color: #667eea;
+  color: #fff;
+}
+
+.settings-section {
+  display: none;
+}
+
+.settings-section.active {
+  display: block;
+}
+
+.form-group {
+  margin-bottom: 20px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 500;
+  color: #b0b0b0;
+}
+
+.form-control {
+  width: 100%;
+  padding: 10px;
+  border: 2px solid #444;
+  border-radius: 5px;
+  background-color: #1a1a1a;
+  color: #e0e0e0;
+  font-size: 1em;
+}
+
+.form-control:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+.form-text {
+  display: block;
+  margin-top: 5px;
+  font-size: 0.85em;
+  color: #888;
+}
+
+.form-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.status-message {
+  margin-top: 15px;
+  padding: 10px;
+  border-radius: 5px;
+  font-size: 0.9em;
+}
+
+.status-success {
+  background-color: #1e4620;
+  color: #4ade80;
+  border: 1px solid #4ade80;
+}
+
+.status-error {
+  background-color: #4a1e1e;
+  color: #f87171;
+  border: 1px solid #f87171;
+}
+
+.status-info {
+  background-color: #1e3a4a;
+  color: #60a5fa;
+  border: 1px solid #60a5fa;
+}
+
+/* Game Interface */
+.game-area {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.gm-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.gm-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 20px;
+  border: 1px solid #3a3a3a;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.15), rgba(118, 75, 162, 0.1));
+}
+
+.gm-toolbar p {
+  color: #b6b6b6;
+  margin-top: 6px;
+}
+
+.toggle-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 999px;
+  background-color: #171717;
+  border: 1px solid #444;
+  color: #f5f5f5;
+}
+
+.toggle-control input {
+  accent-color: #667eea;
+}
+
+.gm-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(320px, 0.9fr);
+  gap: 20px;
+}
+
+.gm-column {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.output-area {
+  background-color: #1a1a1a;
+  border: 2px solid #444;
+  border-radius: 5px;
+  padding: 20px;
+  min-height: 400px;
+  max-height: 600px;
+  overflow-y: auto;
+}
+
+.message {
+  margin-bottom: 15px;
+  padding: 10px;
+  border-radius: 5px;
+  background-color: #2a2a2a;
+}
+
+.message-error {
+  background-color: #4a1e1e;
+  color: #f87171;
+}
+
+.message strong {
+  color: #667eea;
+}
+
+.input-area {
+  display: flex;
+  gap: 10px;
+}
+
+.input-area input {
+  flex: 1;
+}
+
+.vtt-panel,
+.pending-panel {
+  padding: 16px;
+  border-radius: 12px;
+  background-color: #1a1a1a;
+  border: 1px solid #404040;
+}
+
+.vtt-panel-header,
+.pending-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 6px 10px;
+  background-color: #262f4f;
+  color: #c7d2fe;
+  font-size: 0.85em;
+}
+
+.vtt-canvas {
+  position: relative;
+  min-height: 360px;
+  border-radius: 10px;
+  border: 1px dashed #4b5563;
+  background:
+    radial-gradient(circle at top left, rgba(96, 165, 250, 0.14), transparent 30%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent),
+    #111827;
+  overflow: hidden;
+}
+
+.vtt-token {
+  position: absolute;
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.6);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+}
+
+.token-label {
+  font-size: 1.1em;
+  font-weight: 700;
+}
+
+.token-meta {
+  font-size: 0.7em;
+}
+
+.pending-spawn-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.pending-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 10px;
+  background-color: #252525;
+  border: 1px solid #3d3d3d;
+}
+
+.pending-card-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pending-card-copy span,
+.pending-empty {
+  color: #b0b0b0;
+  font-size: 0.9em;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: #1a1a1a;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #444;
+  border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
+@media (max-width: 960px) {
+  .gm-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .gm-toolbar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .input-area {
+    flex-direction: column;
+  }
+}
