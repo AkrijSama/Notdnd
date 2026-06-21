@@ -31,6 +31,7 @@ import { parseHomebrewDocuments } from "./homebrew/parser.js";
 import { fetchHomebrewUrl } from "./homebrew/urlImport.js";
 import { createWsHub } from "./realtime/wsHub.js";
 import { resolveSoloAction } from "./solo/actions.js";
+import { buildGmSceneInput, generatePlaceholderGmNarration, validateGmSceneOutput } from "./solo/gm.js";
 import { buildSoloScenePayload } from "./solo/scene.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -252,6 +253,18 @@ function parseSoloRunScenePath(pathname) {
   return decodeURIComponent(raw);
 }
 
+function parseSoloRunGmScenePath(pathname) {
+  const prefix = "/api/solo/runs/";
+  if (!pathname.startsWith(prefix) || !pathname.endsWith("/gm-scene")) {
+    return null;
+  }
+  const raw = pathname.slice(prefix.length, -"/gm-scene".length).replace(/\/+$/, "").trim();
+  if (!raw || raw.includes("/")) {
+    return null;
+  }
+  return decodeURIComponent(raw);
+}
+
 function assertSoloRunAccess(user, run) {
   if (!run || user.isAdmin || !run.userId || run.userId === user.id) {
     return;
@@ -423,6 +436,55 @@ async function handleApi(req, res) {
         details: resolved.details,
         availableMoves: resolved.availableMoves,
         availableActions: resolved.availableActions
+      });
+    } catch (error) {
+      routeError(res, error);
+    }
+    return true;
+  }
+
+  const soloGmSceneRunId = parseSoloRunGmScenePath(url.pathname);
+  if (soloGmSceneRunId && req.method === "GET") {
+    try {
+      const user = requireAuth(req);
+      const run = getSoloRun(soloGmSceneRunId);
+      if (!run) {
+        throw Object.assign(new Error("Solo run not found."), {
+          code: "NOT_FOUND",
+          statusCode: 404
+        });
+      }
+      assertSoloRunAccess(user, run);
+      const scene = buildSoloScenePayload(run);
+      if (!scene.ok) {
+        throw Object.assign(new Error("Solo scene could not be built."), {
+          code: "INVALID_SOLO_SCENE",
+          statusCode: 400,
+          validationErrors: scene.errors
+        });
+      }
+      const gmInput = buildGmSceneInput(scene);
+      if (!gmInput.ok) {
+        throw Object.assign(new Error("GM scene input could not be built."), {
+          code: "INVALID_GM_SCENE_INPUT",
+          statusCode: 400,
+          validationErrors: gmInput.errors
+        });
+      }
+      const gmNarration = generatePlaceholderGmNarration(scene);
+      const gmValidation = validateGmSceneOutput(gmNarration);
+      if (!gmValidation.ok) {
+        throw Object.assign(new Error("GM scene narration could not be validated."), {
+          code: "INVALID_GM_SCENE_OUTPUT",
+          statusCode: 400,
+          validationErrors: gmValidation.errors
+        });
+      }
+      writeJson(res, 200, {
+        ok: true,
+        scene,
+        gmNarration,
+        errors: []
       });
     } catch (error) {
       routeError(res, error);

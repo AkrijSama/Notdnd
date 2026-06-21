@@ -1,4 +1,4 @@
-import { fetchSoloScene, postSoloAction } from "./soloSceneApi.js";
+import { fetchSoloGmScene, fetchSoloScene, postSoloAction } from "./soloSceneApi.js";
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -507,6 +507,17 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     render();
     try {
       state.scene = await fetchSoloScene(apiClient, runId);
+      try {
+        const gmScene = await fetchSoloGmScene(apiClient, runId);
+        if (gmScene?.gmNarration) {
+          state.scene = {
+            ...state.scene,
+            gmNarration: gmScene.gmNarration
+          };
+        }
+      } catch {
+        // Placeholder GM narration is optional and must not block scene rendering.
+      }
       state.detail = null;
     } catch (error) {
       state.error = String(error?.message || error || "Failed to load solo scene.");

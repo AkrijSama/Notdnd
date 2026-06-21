@@ -13,6 +13,13 @@ export async function fetchSoloScene(apiClient, runId) {
   return apiClient.fetchSoloScene(requireRunId(runId));
 }
 
+export async function fetchSoloGmScene(apiClient, runId) {
+  if (!apiClient || typeof apiClient.fetchSoloGmScene !== "function") {
+    throw new Error("API client with fetchSoloGmScene is required.");
+  }
+  return apiClient.fetchSoloGmScene(requireRunId(runId));
+}
+
 export async function postSoloAction(apiClient, runId, action) {
   if (!apiClient || typeof apiClient.postSoloAction !== "function") {
     throw new Error("API client with postSoloAction is required.");

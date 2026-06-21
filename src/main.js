@@ -331,6 +331,10 @@ function bindAppEvents() {
 }
 
 function renderApp() {
+  if (soloRunIdFromUrl) {
+    return;
+  }
+
   const state = store.getState();
   const user = state.auth?.user;
 

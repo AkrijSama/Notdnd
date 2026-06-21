@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { fetchSoloScene, postSoloAction, requireRunId } from "../src/components/soloSceneApi.js";
+import { fetchSoloGmScene, fetchSoloScene, postSoloAction, requireRunId } from "../src/components/soloSceneApi.js";
 import {
   bindSoloSceneShell,
   createInspectAction,
   createMoveAction,
+  mountSoloSceneShell,
   renderEntityDetailPanel,
   renderSoloSceneShell
 } from "../src/components/soloSceneShell.js";
@@ -156,12 +157,79 @@ test("renderSoloSceneShell renders GM narration when present", () => {
   assert.match(html, /neutral GM Narration/);
   assert.match(html, /Server-truth narration placeholder/);
   assert.match(html, /quiet/);
+  assert.doesNotMatch(html, /"narration"/);
 });
 
 test("renderSoloSceneShell renders fallback GM placeholder when narration is absent", () => {
   const html = renderSoloSceneShell({ scene: sampleScene() });
   assert.match(html, /Future GM Narration/);
   assert.match(html, /generated from server truth and memory/);
+});
+
+test("mountSoloSceneShell loads GM narration after base scene", async () => {
+  const root = {
+    innerHTML: "",
+    querySelectorAll() {
+      return [];
+    }
+  };
+  const apiClient = {
+    async fetchSoloScene() {
+      return sampleScene();
+    },
+    async fetchSoloGmScene() {
+      return {
+        ok: true,
+        scene: sampleScene(),
+        gmNarration: {
+          ok: true,
+          narration: {
+            title: "Start Location",
+            body: "Mounted GM narration.",
+            tone: "neutral",
+            sensoryDetails: [],
+            focusEntityIds: []
+          },
+          suggestedActionLabels: [],
+          warnings: [],
+          stateMutations: []
+        },
+        errors: []
+      };
+    },
+    async postSoloAction() {
+      return { ok: true };
+    }
+  };
+
+  const mounted = mountSoloSceneShell(root, { apiClient, runId: "run_test" });
+  await mounted.reload();
+  assert.match(root.innerHTML, /Mounted GM narration/);
+});
+
+test("mountSoloSceneShell keeps fallback if GM narration request fails", async () => {
+  const root = {
+    innerHTML: "",
+    querySelectorAll() {
+      return [];
+    }
+  };
+  const apiClient = {
+    async fetchSoloScene() {
+      return sampleScene();
+    },
+    async fetchSoloGmScene() {
+      throw new Error("GM route unavailable");
+    },
+    async postSoloAction() {
+      return { ok: true };
+    }
+  };
+
+  const mounted = mountSoloSceneShell(root, { apiClient, runId: "run_test" });
+  await mounted.reload();
+  assert.match(root.innerHTML, /Future GM Narration/);
+  assert.doesNotMatch(root.innerHTML, /Solo Scene Unavailable/);
 });
 
 test("renderSoloSceneShell renders inspect details", () => {
@@ -299,6 +367,10 @@ test("solo scene API helpers call auth-aware client methods", async () => {
       calls.push(["scene", runId]);
       return { ok: true, runId };
     },
+    async fetchSoloGmScene(runId) {
+      calls.push(["gmScene", runId]);
+      return { ok: true, runId, gmNarration: {} };
+    },
     async postSoloAction(runId, action) {
       calls.push(["action", runId, action]);
       return { ok: true, action };
@@ -306,12 +378,14 @@ test("solo scene API helpers call auth-aware client methods", async () => {
   };
 
   assert.deepEqual(await fetchSoloScene(apiClient, "run_test"), { ok: true, runId: "run_test" });
+  assert.deepEqual(await fetchSoloGmScene(apiClient, "run_test"), { ok: true, runId: "run_test", gmNarration: {} });
   assert.deepEqual(await postSoloAction(apiClient, "run_test", { type: "inspect" }), {
     ok: true,
     action: { type: "inspect" }
   });
   assert.deepEqual(calls, [
     ["scene", "run_test"],
+    ["gmScene", "run_test"],
     ["action", "run_test", { type: "inspect" }]
   ]);
 });

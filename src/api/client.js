@@ -89,6 +89,9 @@ export function createApiClient(baseUrl = "") {
     async fetchSoloScene(runId) {
       return request(`/api/solo/runs/${encodeURIComponent(runId)}/scene`);
     },
+    async fetchSoloGmScene(runId) {
+      return request(`/api/solo/runs/${encodeURIComponent(runId)}/gm-scene`);
+    },
     async postSoloAction(runId, action) {
       return request(`/api/solo/runs/${encodeURIComponent(runId)}/actions`, {
         method: "POST",
