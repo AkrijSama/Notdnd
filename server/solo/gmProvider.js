@@ -145,6 +145,17 @@ export function parseProviderGmOutput(rawOutput, options = {}) {
       ]
     };
   }
+  if (/\b(SYSTEM|USER):/i.test(trimmed)) {
+    return {
+      ok: false,
+      errors: [
+        {
+          path: "providerOutput",
+          message: "Provider output appeared to include a raw prompt dump"
+        }
+      ]
+    };
+  }
 
   try {
     const parsed = JSON.parse(trimmed);

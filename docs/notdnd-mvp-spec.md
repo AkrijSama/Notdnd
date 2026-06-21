@@ -86,6 +86,8 @@ Real AI Provider Adapter: provider-backed narration must stay feature-flagged an
 
 GM Narration Evaluation Harness: prompt quality and model output should be tested against neutral sample scenes before real provider output is trusted. The first evaluator is deterministic and non-AI: it checks grounding, policy safety, mutation safety, style length/readability, unknown focus entities, unavailable action suggestions, and raw markup/JSON/table leakage. It is a guardrail, not a replacement for Akrij's lore direction or later human review.
 
+Safe Real Provider Smoke: real provider smoke is optional and must never print secrets, raw prompts, headers, or full provider responses. Default runtime remains placeholder unless explicitly feature-flagged. Smoke results report only safe facts such as provider attempted/configured booleans, fallback use, warning codes, and evaluation score.
+
 Accepted AI output for MVP:
 
 - Scene narration.

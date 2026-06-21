@@ -656,6 +656,40 @@ What not to build:
 - Final lore voice.
 - Model-specific prompt tuning.
 
+### 14. Safe Real Provider Smoke for GM Narration
+
+Goal:
+
+Add an optional safe smoke path for configured real-provider GM narration.
+
+Likely files/modules:
+
+- New `server/solo/gmSmoke.js`
+- Existing `server/solo/gmProvider.js`
+- Existing `server/solo/gmEval.js`
+- New `tests/solo-run-gm-smoke.test.js`
+- Existing `tests/solo-run-gm-api.test.js`
+
+Acceptance criteria:
+
+- Smoke builds a neutral solo scene from server truth.
+- Provider mode is attempted only when explicitly enabled and safely configured.
+- Missing config skips or falls back without crashing.
+- Provider output is validated, sanitized, evaluated, and fallback-safe.
+- Smoke summaries expose only safe booleans, warning codes, and evaluation score.
+- Raw prompts, provider dumps, headers, stack traces, secrets, and env values are never returned.
+
+Proof required:
+
+- Unit tests cover disabled, unconfigured, fake-provider success, malformed output fallback, thrown-provider fallback, safe summaries, and route provider-mode fallback.
+
+What not to build:
+
+- Required real provider config.
+- Package-level smoke script unless needed.
+- Provider-specific tuning.
+- Runtime UI toggle.
+
 ### 10. NPC Relationship State
 
 Goal:
