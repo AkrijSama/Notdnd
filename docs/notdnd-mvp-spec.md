@@ -260,6 +260,10 @@ MVP must avoid:
 
 Future AI NPCs must be constrained by structured state, route boundaries, moderation, and safety logging.
 
+## 10. Search Area Action
+
+Search Area is the first non-movement, non-inspect gameplay verb. It must resolve through deterministic server code, reveal only pre-existing structured location details, and create timeline/memory records only when a real discovery occurs. It must not call AI, invent lore, create random loot, add exits, or reveal forbidden/blocked content into mainline scenes.
+
 ## MVP Acceptance Criteria
 
 - User can start a solo run.

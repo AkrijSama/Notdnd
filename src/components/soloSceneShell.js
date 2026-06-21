@@ -88,6 +88,13 @@ export function createInspectAction(entity) {
   };
 }
 
+export function createSearchAction() {
+  return {
+    type: "search",
+    actorId: "player"
+  };
+}
+
 export function renderSceneHeader(scene = {}, state = {}) {
   const location = scene.location || {};
   const time = scene.world?.time || scene.time || {};
@@ -304,7 +311,7 @@ export function renderSceneActionBar(scene = {}) {
           actions.length
             ? actions
                 .map((action) => {
-                  const implemented = action.type === "move" || action.type === "inspect";
+                  const implemented = action.type === "move" || action.type === "inspect" || action.type === "search";
                   const enabled = action.enabled !== false && implemented;
                   return `
                     <button
@@ -324,6 +331,48 @@ export function renderSceneActionBar(scene = {}) {
             : renderEmpty("No actions available.")
         }
       </div>
+    </section>
+  `;
+}
+
+export function renderSearchResultPanel(searchResult = null, discoveredDetails = []) {
+  const details = Array.isArray(discoveredDetails) ? discoveredDetails : [];
+  return `
+    <section class="module-card solo-panel solo-search-panel">
+      <div class="module-header">
+        <h3>Area Search</h3>
+        <span class="small">Server result</span>
+      </div>
+      ${
+        searchResult
+          ? `
+            <div class="solo-search-result ${searchResult.found ? "found" : "empty"}">
+              <strong>${escapeHtml(searchResult.found ? "Detail found" : "Nothing new found")}</strong>
+              <p>${escapeHtml(searchResult.summary || "You find nothing new right now.")}</p>
+              ${
+                Array.isArray(searchResult.warningCodes) && searchResult.warningCodes.length
+                  ? `<div class="solo-tag-row">${searchResult.warningCodes
+                      .map((warning) => `<span class="tag">${escapeHtml(warning)}</span>`)
+                      .join("")}</div>`
+                  : ""
+              }
+            </div>
+          `
+          : renderEmpty("Search this area to reveal pre-authored details.")
+      }
+      ${
+        details.length
+          ? `<div class="solo-sheet-section">
+              <h5>Discovered Details</h5>
+              ${renderCompactList(details, "No discovered details yet.", (detail) => `
+                <div class="solo-compact-row">
+                  <strong>${escapeHtml(detail.label || detail.detailId || "Detail")}</strong>
+                  <span>${escapeHtml(detail.description || "")}</span>
+                </div>
+              `)}
+            </div>`
+          : ""
+      }
     </section>
   `;
 }
@@ -498,6 +547,7 @@ export function renderSoloSceneShell(state = {}) {
         </main>
         <aside class="solo-scene-side">
           ${renderSceneActionBar(scene)}
+          ${renderSearchResultPanel(state.searchResult, scene.discoveredDetails)}
           ${renderEntityDetailPanel(state.detail)}
           ${renderSceneTimelinePanel(scene)}
           ${renderSceneMemoryPanel(scene)}
@@ -528,6 +578,10 @@ export function bindSoloSceneShell(root, handlers = {}) {
         entityId: button.getAttribute("data-entity-id")
       });
     });
+  });
+
+  root.querySelectorAll("[data-solo-action='search']").forEach((button) => {
+    button.addEventListener("click", () => handlers.onSearch?.());
   });
 
   root.querySelectorAll("[data-solo-gm-mode]").forEach((button) => {
@@ -562,6 +616,7 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     error: "",
     scene: null,
     detail: null,
+    searchResult: null,
     gmMode: "placeholder"
   };
 
@@ -571,6 +626,7 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       onReload: loadScene,
       onMove: handleMove,
       onInspect: handleInspect,
+      onSearch: handleSearch,
       onGmMode: handleGmMode
     });
   }
@@ -594,6 +650,7 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
         // Placeholder GM narration is optional and must not block scene rendering.
       }
       state.detail = null;
+      state.searchResult = null;
     } catch (error) {
       state.error = String(error?.message || error || "Failed to load solo scene.");
     } finally {
@@ -621,6 +678,23 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       render();
     } catch (error) {
       state.error = String(error?.message || error || "Inspect failed.");
+      render();
+    }
+  }
+
+  async function handleSearch() {
+    try {
+      const response = await postSoloAction(apiClient, runId, createSearchAction());
+      state.searchResult = response.searchResult || null;
+      const refreshed = await fetchSoloScene(apiClient, runId);
+      state.scene = {
+        ...refreshed,
+        gmNarration: state.scene?.gmNarration || null,
+        gmStatus: state.scene?.gmStatus || null
+      };
+      render();
+    } catch (error) {
+      state.error = String(error?.message || error || "Search failed.");
       render();
     }
   }

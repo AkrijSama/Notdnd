@@ -8,6 +8,7 @@ import {
   summarizeSceneForUi,
   validateSoloScenePayload
 } from "../server/solo/scene.js";
+import { resolveSearchAction } from "../server/solo/search.js";
 
 function errorPaths(result) {
   return result.errors.map((error) => error.path);
@@ -118,6 +119,22 @@ test("payload includes available actions", () => {
   const payload = buildSoloScenePayload(run);
   assert.ok(payload.availableActions.some((action) => action.type === "move" && action.toLocationId === "second_location"));
   assert.ok(payload.availableActions.some((action) => action.type === "inspect" && action.entityId === "location:start_location"));
+  assert.ok(payload.availableActions.some((action) => action.type === "search" && action.enabled === true));
+});
+
+test("scene payload includes revealed search details only", () => {
+  const run = createDefaultSoloRun({ runId: "run_scene_search_details" });
+
+  const before = buildSoloScenePayload(run);
+  const searched = resolveSearchAction(run, { type: "search", actorId: "player" }, {
+    now: "2026-01-01T00:00:00.000Z",
+    idFactory: (prefix) => `${prefix}_test`
+  });
+  const after = buildSoloScenePayload(searched.run);
+
+  assert.deepEqual(before.discoveredDetails, []);
+  assert.equal(after.discoveredDetails.length, 1);
+  assert.equal(after.discoveredDetails[0].detailId, "start_location_scuffed_mark");
 });
 
 test("payload includes recent timeline events", () => {

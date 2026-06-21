@@ -433,6 +433,7 @@ async function handleApi(req, res) {
         action: resolved.action,
         event: resolved.event,
         memoryFact: resolved.memoryFact,
+        searchResult: resolved.searchResult,
         entity: resolved.entity,
         details: resolved.details,
         availableMoves: resolved.availableMoves,

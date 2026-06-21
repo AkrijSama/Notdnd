@@ -64,6 +64,25 @@ function locationPayload(location) {
   };
 }
 
+function revealedSearchDetails(location, policyProfile) {
+  if (!Array.isArray(location?.searchDetails)) {
+    return [];
+  }
+
+  return location.searchDetails
+    .filter((detail) => detail?.revealed === true && policyAllows(detail, policyProfile))
+    .map((detail) => ({
+      detailId: detail.detailId,
+      label: detail.label,
+      description: detail.description,
+      contentTags: detail.contentTags || [],
+      linkedEntityIds: detail.linkedEntityIds || [],
+      linkedMemoryFactIds: detail.linkedMemoryFactIds || [],
+      edition: detail.edition ?? location.edition ?? null,
+      policyProfileId: detail.policyProfileId ?? location.policyProfileId ?? null
+    }));
+}
+
 function entityFactIds(entities) {
   const ids = new Set();
   for (const entity of entities) {
@@ -184,6 +203,28 @@ export function validateSoloScenePayload(payload) {
   if (!Array.isArray(payload.availableActions)) {
     push(errors, "availableActions", "Expected array");
   }
+  if (payload.discoveredDetails !== undefined) {
+    if (!Array.isArray(payload.discoveredDetails)) {
+      push(errors, "discoveredDetails", "Expected array");
+    } else {
+      payload.discoveredDetails.forEach((detail, index) => {
+        if (!isPlainObject(detail)) {
+          push(errors, `discoveredDetails.${index}`, "Expected object");
+          return;
+        }
+        if (!isString(detail.detailId)) {
+          push(errors, `discoveredDetails.${index}.detailId`, "Expected non-empty string");
+        }
+        if (!isString(detail.label)) {
+          push(errors, `discoveredDetails.${index}.label`, "Expected non-empty string");
+        }
+        if (!isString(detail.description)) {
+          push(errors, `discoveredDetails.${index}.description`, "Expected non-empty string");
+        }
+        validateStringArray(detail.contentTags || [], `discoveredDetails.${index}.contentTags`, errors);
+      });
+    }
+  }
   if (!Array.isArray(payload.recentTimeline)) {
     push(errors, "recentTimeline", "Expected array");
   }
@@ -278,6 +319,7 @@ export function buildSoloScenePayload(run, options = {}) {
       }
       return true;
     }),
+    discoveredDetails: revealedSearchDetails(currentLocation, policyProfile),
     recentTimeline: getRecentTimelineEvents(run, { policyProfile, limit: options.timelineLimit }),
     relevantMemoryFacts: getRelevantMemoryFacts(run, {
       policyProfile,

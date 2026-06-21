@@ -204,6 +204,31 @@ test("POST recognized but unimplemented action returns ACTION_NOT_IMPLEMENTED", 
   assert.equal(payload.actionType, "talk");
 });
 
+test("POST search action persists search result", async () => {
+  await createRun("api_action_search");
+
+  const payload = await request("/api/solo/runs/api_action_search/actions", {
+    method: "POST",
+    body: {
+      action: {
+        type: "search",
+        actorId: "player"
+      }
+    }
+  });
+
+  assert.equal(payload.ok, true);
+  assert.equal(payload.searchResult.found, true);
+  assert.equal(payload.event.type, "search");
+  assert.equal(payload.memoryFact.type, "search_discovery");
+  assert.equal(payload.run.locations.start_location.searchDetails[0].revealed, true);
+  assert.ok(payload.availableActions.some((action) => action.type === "search" && action.enabled === true));
+
+  const fetched = await request("/api/solo/runs/api_action_search");
+  assert.equal(fetched.run.locations.start_location.searchDetails[0].revealed, true);
+  assert.equal(fetched.run.memoryFacts.filter((fact) => fact.type === "search_discovery").length, 1);
+});
+
 test("ownership rules match existing solo run route behavior", async () => {
   await createRun("api_action_owned");
 

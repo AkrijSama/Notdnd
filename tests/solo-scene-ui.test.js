@@ -5,6 +5,7 @@ import {
   bindSoloSceneShell,
   createInspectAction,
   createMoveAction,
+  createSearchAction,
   mountSoloSceneShell,
   renderEntityDetailPanel,
   renderSoloSceneShell
@@ -55,6 +56,7 @@ function sampleScene() {
         policyProfileId: "mainline_default"
       }
     ],
+    discoveredDetails: [],
     availableActions: [
       {
         type: "move",
@@ -65,8 +67,7 @@ function sampleScene() {
       {
         type: "search",
         label: "Search area",
-        enabled: false,
-        reason: "Not implemented yet"
+        enabled: true
       }
     ],
     recentTimeline: [
@@ -122,11 +123,69 @@ test("renderSoloSceneShell renders available moves", () => {
 });
 
 test("renderSoloSceneShell renders available actions and disables unimplemented actions", () => {
-  const html = renderSoloSceneShell({ scene: sampleScene() });
+  const scene = {
+    ...sampleScene(),
+    availableActions: [
+      ...sampleScene().availableActions,
+      {
+        type: "rest",
+        label: "Rest",
+        enabled: false,
+        reason: "Not implemented yet"
+      }
+    ]
+  };
+  const html = renderSoloSceneShell({ scene });
   assert.match(html, /Move to Second Location/);
   assert.match(html, /Search area/);
+  assert.match(html, /data-solo-action="search"/);
   assert.match(html, /Not implemented yet/);
   assert.match(html, /disabled/);
+});
+
+test("renderSoloSceneShell renders search result and discovered details", () => {
+  const html = renderSoloSceneShell({
+    scene: {
+      ...sampleScene(),
+      discoveredDetails: [
+        {
+          detailId: "detail_scuffed_mark",
+          label: "Scuffed Mark",
+          description: "A scuffed mark is visible near the edge of the path."
+        }
+      ]
+    },
+    searchResult: {
+      locationId: "start_location",
+      found: true,
+      summary: "A scuffed mark is visible near the edge of the path.",
+      revealedDetailIds: ["detail_scuffed_mark"],
+      warningCodes: []
+    }
+  });
+
+  assert.match(html, /Area Search/);
+  assert.match(html, /Detail found/);
+  assert.match(html, /Scuffed Mark/);
+  assert.match(html, /A scuffed mark is visible/);
+  assert.doesNotMatch(html, /"searchResult"/);
+});
+
+test("renderSoloSceneShell renders nothing-new search result", () => {
+  const html = renderSoloSceneShell({
+    scene: sampleScene(),
+    searchResult: {
+      locationId: "start_location",
+      found: false,
+      summary: "You find nothing new right now.",
+      revealedDetailIds: [],
+      warningCodes: ["SEARCH_NOTHING_NEW"]
+    }
+  });
+
+  assert.match(html, /Nothing new found/);
+  assert.match(html, /You find nothing new right now/);
+  assert.match(html, /SEARCH_NOTHING_NEW/);
 });
 
 test("renderSoloSceneShell renders timeline and memory panels", () => {
@@ -306,6 +365,61 @@ test("mountSoloSceneShell keeps fallback if GM narration request fails", async (
   assert.doesNotMatch(root.innerHTML, /Solo Scene Unavailable/);
 });
 
+test("mountSoloSceneShell posts search action and shows result", async () => {
+  const searchButton = {
+    handler: null,
+    addEventListener(_event, handler) {
+      this.handler = handler;
+    }
+  };
+  const root = {
+    innerHTML: "",
+    querySelectorAll(selector) {
+      return selector === "[data-solo-action='search']" ? [searchButton] : [];
+    }
+  };
+  const calls = [];
+  const discoveredScene = {
+    ...sampleScene(),
+    discoveredDetails: [
+      {
+        detailId: "detail_scuffed_mark",
+        label: "Scuffed Mark",
+        description: "A scuffed mark is visible near the edge of the path."
+      }
+    ]
+  };
+  const apiClient = {
+    async fetchSoloScene() {
+      return calls.some((call) => call[0] === "action") ? discoveredScene : sampleScene();
+    },
+    async fetchSoloGmScene() {
+      return { ok: true, gmNarration: null, gmStatus: null };
+    },
+    async postSoloAction(runId, action) {
+      calls.push(["action", runId, action]);
+      return {
+        ok: true,
+        searchResult: {
+          locationId: "start_location",
+          found: true,
+          summary: "A scuffed mark is visible near the edge of the path.",
+          revealedDetailIds: ["detail_scuffed_mark"],
+          warningCodes: []
+        }
+      };
+    }
+  };
+
+  const mounted = mountSoloSceneShell(root, { apiClient, runId: "run_test" });
+  await mounted.reload();
+  await searchButton.handler();
+
+  assert.deepEqual(calls, [["action", "run_test", { type: "search", actorId: "player" }]]);
+  assert.match(root.innerHTML, /Detail found/);
+  assert.match(root.innerHTML, /Scuffed Mark/);
+});
+
 test("renderSoloSceneShell renders inspect details", () => {
   const html = renderSoloSceneShell({
     scene: sampleScene(),
@@ -452,6 +566,29 @@ test("bindSoloSceneShell lets GM mode buttons request mode changes", () => {
   assert.deepEqual(calls, [{ mode: "provider" }, { mode: "placeholder" }]);
 });
 
+test("bindSoloSceneShell lets Search Area trigger search action", () => {
+  const fakeButton = {
+    addEventListener(_event, handler) {
+      this.handler = handler;
+    }
+  };
+  const root = {
+    querySelectorAll(selector) {
+      return selector === "[data-solo-action='search']" ? [fakeButton] : [];
+    }
+  };
+  let searched = false;
+  bindSoloSceneShell(root, {
+    onSearch() {
+      searched = true;
+    }
+  });
+
+  fakeButton.handler();
+
+  assert.equal(searched, true);
+});
+
 test("createMoveAction builds persisted move action shape", () => {
   assert.deepEqual(createMoveAction(sampleScene(), { locationId: "second_location", direction: "east" }), {
     type: "move",
@@ -467,6 +604,13 @@ test("createInspectAction builds inspect action shape", () => {
     type: "inspect",
     actorId: "player",
     entityId: "npc:placeholder_npc"
+  });
+});
+
+test("createSearchAction builds search action shape", () => {
+  assert.deepEqual(createSearchAction(), {
+    type: "search",
+    actorId: "player"
   });
 });
 

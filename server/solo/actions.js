@@ -7,9 +7,13 @@ import {
   createEntityDetailPayload,
   getVisibleEntities
 } from "./entities.js";
+import {
+  resolveSearchAction,
+  validateSearchAction
+} from "./search.js";
 
-const IMPLEMENTED_ACTION_TYPES = new Set(["move", "inspect"]);
-const FUTURE_ACTION_TYPES = new Set(["talk", "interact", "use_item", "search", "rest", "enter", "exit"]);
+const IMPLEMENTED_ACTION_TYPES = new Set(["move", "inspect", "search"]);
+const FUTURE_ACTION_TYPES = new Set(["talk", "interact", "use_item", "rest", "enter", "exit"]);
 const RECOGNIZED_ACTION_TYPES = new Set([...IMPLEMENTED_ACTION_TYPES, ...FUTURE_ACTION_TYPES]);
 
 function result(errors) {
@@ -96,6 +100,9 @@ export function validateSoloAction(run, action) {
     }
     return result(errors);
   }
+  if (normalized.type === "search") {
+    return validateSearchAction(run, normalized);
+  }
 
   return notImplemented(normalized.type);
 }
@@ -133,8 +140,7 @@ export function getAvailableSoloActions(run, options = {}) {
     {
       type: "search",
       label: "Search area",
-      enabled: false,
-      reason: "Not implemented yet"
+      enabled: true
     },
     {
       type: "rest",
@@ -201,6 +207,30 @@ export function resolveSoloAction(run, action, options = {}) {
       details: detail.details,
       availableMoves: getAvailableMoves(run),
       availableActions: getAvailableSoloActions(run),
+      errors: []
+    };
+  }
+
+  if (normalized.type === "search") {
+    const search = resolveSearchAction(run, normalized, options);
+    if (!search.ok) {
+      return {
+        ok: false,
+        code: "ACTION_INVALID",
+        actionType: "search",
+        errors: search.errors
+      };
+    }
+
+    return {
+      ok: true,
+      action: normalized,
+      run: search.run,
+      event: search.event,
+      memoryFact: search.memoryFact,
+      searchResult: search.searchResult,
+      availableMoves: getAvailableMoves(search.run),
+      availableActions: getAvailableSoloActions(search.run),
       errors: []
     };
   }

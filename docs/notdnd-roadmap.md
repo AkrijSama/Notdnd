@@ -903,3 +903,40 @@ What not to build:
 - Full UI rewrite.
 - Removing VTT.
 - Multiplayer features.
+
+### 16. Basic Search / Inspect Area Action
+
+Goal:
+
+Add the first deterministic gameplay verb beyond movement and entity inspection.
+
+Likely files/modules:
+
+- `server/solo/search.js`
+- `server/solo/actions.js`
+- `server/solo/schema.js`
+- `server/solo/scene.js`
+- `src/components/soloSceneShell.js`
+- Solo action, scene, and UI tests.
+
+Acceptance criteria:
+
+- Search Area is available from the server action bar.
+- Search reveals only pre-existing structured location details.
+- Discoveries create a timeline event and one memory fact.
+- No-result searches do not spam duplicate memory facts.
+- Mainline searches cannot reveal blocked or forbidden-lane details.
+- The UI posts a structured search action and displays the result without raw JSON.
+
+Proof required:
+
+- Unit/API/UI tests for resolver, persistence, scene payload, and click handling.
+- Browser screenshot after using Search Area.
+
+What not to build:
+
+- AI-driven search.
+- Random loot.
+- New NPC/item/exit generation.
+- Freeform search input.
+- Lore authored by Codex.

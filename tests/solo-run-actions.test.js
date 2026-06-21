@@ -130,7 +130,20 @@ test("move result returns availableActions", () => {
   const result = resolveSoloAction(run, moveAction(), { now: TEST_NOW, idFactory: idFactory() });
   assert.equal(result.ok, true);
   assert.ok(result.availableActions.some((action) => action.type === "move" && action.toLocationId === "third_location"));
-  assert.ok(result.availableActions.some((action) => action.type === "search" && action.enabled === false));
+  assert.ok(result.availableActions.some((action) => action.type === "search" && action.enabled === true));
+});
+
+test("action dispatcher resolves search", () => {
+  const run = createDefaultSoloRun({ runId: "run_action_search" });
+
+  const result = resolveSoloAction(run, { type: "search", actorId: "player" }, { now: TEST_NOW, idFactory: idFactory() });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.action.type, "search");
+  assert.equal(result.searchResult.found, true);
+  assert.equal(result.event.type, "search");
+  assert.equal(result.memoryFact.type, "search_discovery");
+  assert.equal(result.run.locations.start_location.searchDetails[0].revealed, true);
 });
 
 test("invalid move returns useful path errors", () => {

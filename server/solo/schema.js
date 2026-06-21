@@ -195,6 +195,27 @@ function generatedId(prefix) {
   return `${prefix}_${crypto.randomUUID()}`;
 }
 
+export function validateSearchDetail(detail) {
+  const errors = [];
+  if (!isPlainObject(detail)) {
+    push(errors, "detail", "Expected object");
+    return result(errors);
+  }
+
+  validateRequiredString(detail.detailId, "detailId", errors);
+  validateRequiredString(detail.label, "label", errors);
+  validateRequiredString(detail.description, "description", errors);
+  if (detail.revealed !== undefined) {
+    validateBoolean(detail.revealed, "revealed", errors);
+  }
+  validateStringArray(detail.contentTags || [], "contentTags", errors);
+  validateStringArray(detail.linkedEntityIds || [], "linkedEntityIds", errors);
+  validateStringArray(detail.linkedMemoryFactIds || [], "linkedMemoryFactIds", errors);
+  validateContentMetadata(detail, errors);
+
+  return result(errors);
+}
+
 export function validatePlayerState(player) {
   const errors = [];
   if (!isPlainObject(player)) {
@@ -273,6 +294,23 @@ export function validateLocation(location) {
   validateStringArray(location.tags, "tags", errors);
   validateObject(location.flags, "flags", errors);
   validateContentMetadata(location, errors);
+
+  if (location.searchDetails !== undefined) {
+    if (!Array.isArray(location.searchDetails)) {
+      push(errors, "searchDetails", "Expected array");
+    } else {
+      const seenDetailIds = new Set();
+      location.searchDetails.forEach((detail, index) => {
+        appendNestedErrors(errors, `searchDetails.${index}`, validateSearchDetail(detail));
+        if (isPlainObject(detail) && isString(detail.detailId)) {
+          if (seenDetailIds.has(detail.detailId)) {
+            push(errors, `searchDetails.${index}.detailId`, "Duplicate search detail id");
+          }
+          seenDetailIds.add(detail.detailId);
+        }
+      });
+    }
+  }
 
   return result(errors);
 }
@@ -626,6 +664,33 @@ export function validateSoloRun(run) {
     run.timeline.forEach((event, index) => appendNestedErrors(errors, `timeline.${index}`, validateTimelineEvent(event)));
   }
 
+  const knownEntityIds = new Set([
+    run.runId,
+    run.player?.playerId,
+    ...Object.keys(run.locations || {}),
+    ...Object.keys(run.npcs || {}),
+    ...Object.keys(run.inventory || {}),
+    ...Object.keys(run.playerAssets || {})
+  ].filter(Boolean));
+  const knownFactIds = new Set(Array.isArray(run.memoryFacts) ? run.memoryFacts.map((fact) => fact.factId).filter(Boolean) : []);
+  for (const [locationId, location] of Object.entries(run.locations || {})) {
+    if (!Array.isArray(location?.searchDetails)) {
+      continue;
+    }
+    location.searchDetails.forEach((detail, detailIndex) => {
+      (detail.linkedEntityIds || []).forEach((entityId, entityIndex) => {
+        if (!knownEntityIds.has(entityId)) {
+          push(errors, `locations.${locationId}.searchDetails.${detailIndex}.linkedEntityIds.${entityIndex}`, "Linked entity does not exist");
+        }
+      });
+      (detail.linkedMemoryFactIds || []).forEach((factId, factIndex) => {
+        if (!knownFactIds.has(factId)) {
+          push(errors, `locations.${locationId}.searchDetails.${detailIndex}.linkedMemoryFactIds.${factIndex}`, "Linked memory fact does not exist");
+        }
+      });
+    });
+  }
+
   return result(errors);
 }
 
@@ -659,6 +724,19 @@ export function createDefaultLocationGraph(options = {}) {
       edition: "mainline",
       policyProfileId: "mainline_default",
       contentTags: [],
+      searchDetails: [
+        {
+          detailId: "start_location_scuffed_mark",
+          label: "Scuffed Mark",
+          description: "A scuffed mark is visible near the edge of the path.",
+          revealed: false,
+          contentTags: [],
+          linkedEntityIds: ["start_location"],
+          linkedMemoryFactIds: [],
+          edition: "mainline",
+          policyProfileId: "mainline_default"
+        }
+      ],
       flags: {}
     },
     second_location: {
