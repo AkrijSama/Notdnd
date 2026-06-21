@@ -1007,3 +1007,42 @@ What not to build:
 - Full dialogue trees.
 - Romance systems.
 - Lore authored by Codex.
+
+### 18. Rest Action + Time/Resource Recovery Contract
+
+Goal:
+
+Add deterministic rest as a small server-side time and recovery action.
+
+Likely files/modules:
+
+- `server/solo/rest.js`
+- `server/solo/actions.js`
+- `server/solo/schema.js`
+- `server/solo/scene.js`
+- `src/components/soloSceneShell.js`
+- Solo rest/action/API/UI tests.
+
+Acceptance criteria:
+
+- Rest is available only when the current location allows it.
+- Short rest advances time by 1 tick.
+- Long rest advances time by 8 ticks when available.
+- Simple stamina/HP resources can recover if present.
+- Successful rest creates a timeline event.
+- Rest does not create memory facts by default.
+- Mainline rest cannot expose blocked rest metadata.
+- The UI posts a structured rest action and displays time/recovery result without raw JSON.
+
+Proof required:
+
+- Unit/API/UI tests for resolver, persistence, scene/action availability, and click handling.
+- Browser screenshot after using Rest.
+
+What not to build:
+
+- Full 5e rest rules.
+- Combat, spells, spell slots, classes, races, backgrounds, or equipment rules.
+- Survival/camp systems.
+- Random encounters.
+- AI narration.

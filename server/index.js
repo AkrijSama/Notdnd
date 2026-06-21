@@ -435,6 +435,7 @@ async function handleApi(req, res) {
         memoryFact: resolved.memoryFact,
         searchResult: resolved.searchResult,
         talkResult: resolved.talkResult,
+        restResult: resolved.restResult,
         entity: resolved.entity,
         details: resolved.details,
         availableMoves: resolved.availableMoves,

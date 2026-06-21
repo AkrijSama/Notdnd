@@ -5,6 +5,7 @@ import {
   bindSoloSceneShell,
   createInspectAction,
   createMoveAction,
+  createRestAction,
   createSearchAction,
   createTalkAction,
   mountSoloSceneShell,
@@ -75,6 +76,12 @@ function sampleScene() {
         label: "Talk to Placeholder NPC",
         targetEntityId: "npc:placeholder_npc",
         enabled: true
+      },
+      {
+        type: "rest",
+        label: "Short Rest",
+        restType: "short",
+        enabled: true
       }
     ],
     recentTimeline: [
@@ -136,8 +143,8 @@ test("renderSoloSceneShell renders available actions and disables unimplemented 
     availableActions: [
       ...sampleScene().availableActions,
       {
-        type: "rest",
-        label: "Rest",
+        type: "use_item",
+        label: "Use item",
         enabled: false,
         reason: "Not implemented yet"
       }
@@ -148,6 +155,8 @@ test("renderSoloSceneShell renders available actions and disables unimplemented 
   assert.match(html, /Search area/);
   assert.match(html, /Talk to Placeholder NPC/);
   assert.match(html, /data-solo-action="talk"/);
+  assert.match(html, /Short Rest/);
+  assert.match(html, /data-solo-action="rest"/);
   assert.match(html, /data-solo-action="search"/);
   assert.match(html, /Not implemented yet/);
   assert.match(html, /disabled/);
@@ -243,6 +252,56 @@ test("renderSoloSceneShell renders neutral fallback talk result", () => {
   assert.match(html, /There is not much new to say/);
   assert.match(html, /Check failed/);
   assert.match(html, /TALK_CHECK_FAILED/);
+});
+
+test("renderSoloSceneShell renders rest result with recovered resources", () => {
+  const html = renderSoloSceneShell({
+    scene: sampleScene(),
+    restResult: {
+      locationId: "start_location",
+      restType: "short",
+      allowed: true,
+      safety: "safe",
+      timeAdvanced: 1,
+      resourcesRecovered: [
+        {
+          resourceId: "stamina",
+          before: 3,
+          after: 5,
+          amount: 2
+        }
+      ],
+      summary: "You take a moment to recover.",
+      warningCodes: []
+    }
+  });
+
+  assert.match(html, /Rest/);
+  assert.match(html, /Short Rest/);
+  assert.match(html, /Time advanced: 1 tick/);
+  assert.match(html, /stamina/);
+  assert.match(html, /3 -> 5/);
+  assert.doesNotMatch(html, /"restResult"/);
+});
+
+test("renderSoloSceneShell renders denied rest result", () => {
+  const html = renderSoloSceneShell({
+    scene: sampleScene(),
+    restResult: {
+      locationId: "start_location",
+      restType: "short",
+      allowed: false,
+      safety: "unsafe",
+      timeAdvanced: 0,
+      resourcesRecovered: [],
+      summary: "You cannot rest here right now.",
+      warningCodes: ["REST_NOT_ALLOWED"]
+    }
+  });
+
+  assert.match(html, /Rest denied/);
+  assert.match(html, /You cannot rest here right now/);
+  assert.match(html, /REST_NOT_ALLOWED/);
 });
 
 test("renderSoloSceneShell renders timeline and memory panels", () => {
@@ -529,6 +588,65 @@ test("mountSoloSceneShell posts talk action and shows dialogue result", async ()
   assert.match(root.innerHTML, /area has been quiet/);
 });
 
+test("mountSoloSceneShell posts rest action and shows rest result", async () => {
+  const restButton = {
+    handler: null,
+    addEventListener(_event, handler) {
+      this.handler = handler;
+    },
+    getAttribute(name) {
+      return name === "data-rest-type" ? "short" : "";
+    }
+  };
+  const root = {
+    innerHTML: "",
+    querySelectorAll(selector) {
+      return selector === "[data-solo-action='rest']" ? [restButton] : [];
+    }
+  };
+  const calls = [];
+  const apiClient = {
+    async fetchSoloScene() {
+      return sampleScene();
+    },
+    async fetchSoloGmScene() {
+      return { ok: true, gmNarration: null, gmStatus: null };
+    },
+    async postSoloAction(runId, action) {
+      calls.push(["action", runId, action]);
+      return {
+        ok: true,
+        restResult: {
+          locationId: "start_location",
+          restType: "short",
+          allowed: true,
+          safety: "safe",
+          timeAdvanced: 1,
+          resourcesRecovered: [
+            {
+              resourceId: "stamina",
+              before: 3,
+              after: 5,
+              amount: 2
+            }
+          ],
+          summary: "You take a moment to recover.",
+          warningCodes: []
+        }
+      };
+    }
+  };
+
+  const mounted = mountSoloSceneShell(root, { apiClient, runId: "run_test" });
+  await mounted.reload();
+  await restButton.handler();
+
+  assert.deepEqual(calls, [["action", "run_test", { type: "rest", actorId: "player", restType: "short" }]]);
+  assert.match(root.innerHTML, /Short Rest/);
+  assert.match(root.innerHTML, /You take a moment to recover/);
+  assert.match(root.innerHTML, /stamina/);
+});
+
 test("renderSoloSceneShell renders inspect details", () => {
   const html = renderSoloSceneShell({
     scene: sampleScene(),
@@ -727,6 +845,32 @@ test("bindSoloSceneShell lets Talk trigger talk action", () => {
   });
 });
 
+test("bindSoloSceneShell lets Rest trigger rest action", () => {
+  const fakeButton = {
+    addEventListener(_event, handler) {
+      this.handler = handler;
+    },
+    getAttribute(name) {
+      return name === "data-rest-type" ? "long" : "";
+    }
+  };
+  const root = {
+    querySelectorAll(selector) {
+      return selector === "[data-solo-action='rest']" ? [fakeButton] : [];
+    }
+  };
+  let rested = null;
+  bindSoloSceneShell(root, {
+    onRest(action) {
+      rested = action;
+    }
+  });
+
+  fakeButton.handler();
+
+  assert.deepEqual(rested, { restType: "long" });
+});
+
 test("createMoveAction builds persisted move action shape", () => {
   assert.deepEqual(createMoveAction(sampleScene(), { locationId: "second_location", direction: "east" }), {
     type: "move",
@@ -749,6 +893,14 @@ test("createSearchAction builds search action shape", () => {
   assert.deepEqual(createSearchAction(), {
     type: "search",
     actorId: "player"
+  });
+});
+
+test("createRestAction builds rest action shape", () => {
+  assert.deepEqual(createRestAction({ restType: "long" }), {
+    type: "rest",
+    actorId: "player",
+    restType: "long"
   });
 });
 

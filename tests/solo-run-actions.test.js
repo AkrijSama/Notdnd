@@ -106,12 +106,12 @@ test("resolveSoloAction rejects unknown action type", () => {
 });
 
 test("resolveSoloAction returns ACTION_NOT_IMPLEMENTED for recognized future action", () => {
-  const run = createDefaultSoloRun({ runId: "run_action_rest" });
+  const run = createDefaultSoloRun({ runId: "run_action_use_item" });
 
-  const result = resolveSoloAction(run, { type: "rest" });
+  const result = resolveSoloAction(run, { type: "use_item" });
   assert.equal(result.ok, false);
   assert.equal(result.code, "ACTION_NOT_IMPLEMENTED");
-  assert.equal(result.actionType, "rest");
+  assert.equal(result.actionType, "use_item");
   assert.ok(errorPaths(result).includes("action.type"));
 });
 
@@ -157,6 +157,7 @@ test("move result returns availableActions", () => {
   assert.equal(result.ok, true);
   assert.ok(result.availableActions.some((action) => action.type === "move" && action.toLocationId === "third_location"));
   assert.ok(result.availableActions.some((action) => action.type === "search" && action.enabled === true));
+  assert.ok(result.availableActions.some((action) => action.type === "rest" && action.restType === "short"));
 });
 
 test("action dispatcher resolves search", () => {
@@ -198,6 +199,25 @@ test("action dispatcher resolves talk", () => {
   assert.equal(result.memoryFact.type, "dialogue_beat");
   assert.equal(result.run.npcs.placeholder_npc.dialogueBeats[0].revealed, true);
   assert.ok(result.availableActions.some((action) => action.type === "search" && action.enabled === true));
+});
+
+test("action dispatcher resolves rest", () => {
+  const run = createDefaultSoloRun({ runId: "run_action_rest" });
+  run.player.resources.stamina.current = 3;
+
+  const result = resolveSoloAction(run, {
+    type: "rest",
+    actorId: "player",
+    restType: "short"
+  }, { now: TEST_NOW, idFactory: idFactory() });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.action.type, "rest");
+  assert.equal(result.restResult.allowed, true);
+  assert.equal(result.restResult.timeAdvanced, 1);
+  assert.equal(result.event.type, "rest");
+  assert.equal(result.memoryFact, null);
+  assert.equal(result.run.player.resources.stamina.current, 5);
 });
 
 test("invalid move returns useful path errors", () => {

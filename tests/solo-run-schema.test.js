@@ -18,6 +18,7 @@ import {
   validatePlayerState,
   validateQuestState,
   validateRelationship,
+  validateRestMetadata,
   validateSoloRun,
   validateTimelineEvent
 } from "../server/solo/schema.js";
@@ -392,6 +393,17 @@ test("validateDialogueBeat accepts neutral structured dialogue", () => {
     contentTags: [],
     linkedMemoryFactIds: [],
     linkedQuestIds: []
+  });
+
+  assert.equal(result.ok, true);
+});
+
+test("validateRestMetadata accepts neutral rest configuration", () => {
+  const result = validateRestMetadata({
+    allowed: true,
+    safety: "safe",
+    availableTypes: ["short", "long"],
+    contentTags: []
   });
 
   assert.equal(result.ok, true);

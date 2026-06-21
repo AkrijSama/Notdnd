@@ -103,6 +103,14 @@ export function createTalkAction(entityOrAction = {}) {
   };
 }
 
+export function createRestAction(action = {}) {
+  return {
+    type: "rest",
+    actorId: "player",
+    restType: action.restType || "short"
+  };
+}
+
 export function renderSceneHeader(scene = {}, state = {}) {
   const location = scene.location || {};
   const time = scene.world?.time || scene.time || {};
@@ -331,7 +339,7 @@ export function renderSceneActionBar(scene = {}) {
           actions.length
             ? actions
                 .map((action) => {
-                  const implemented = action.type === "move" || action.type === "inspect" || action.type === "search" || action.type === "talk";
+                  const implemented = action.type === "move" || action.type === "inspect" || action.type === "search" || action.type === "talk" || action.type === "rest";
                   const enabled = action.enabled !== false && implemented;
                   return `
                     <button
@@ -339,6 +347,7 @@ export function renderSceneActionBar(scene = {}) {
                       data-solo-action="${escapeHtml(action.type || "")}"
                       data-location-id="${escapeHtml(action.toLocationId || "")}"
                       data-entity-id="${escapeHtml(action.entityId || action.targetEntityId || "")}"
+                      data-rest-type="${escapeHtml(action.restType || "")}"
                       ${enabled ? "" : "disabled"}
                       title="${escapeHtml(enabled ? labelForAction(action) : action.reason || "Action not implemented yet.")}"
                     >
@@ -438,6 +447,48 @@ export function renderTalkResultPanel(talkResult = null) {
             </div>
           `
           : renderEmpty("Talk to a visible NPC to see structured dialogue.")
+      }
+    </section>
+  `;
+}
+
+export function renderRestResultPanel(restResult = null) {
+  return `
+    <section class="module-card solo-panel solo-rest-panel">
+      <div class="module-header">
+        <h3>Rest</h3>
+        <span class="small">Server result</span>
+      </div>
+      ${
+        restResult
+          ? `
+            <div class="solo-rest-result ${restResult.allowed ? "found" : "empty"}">
+              <strong>${escapeHtml(restResult.allowed ? `${titleCase(restResult.restType || "short")} Rest` : "Rest denied")}</strong>
+              <p>${escapeHtml(restResult.summary || "You cannot rest here right now.")}</p>
+              <div class="small">Time advanced: ${escapeHtml(restResult.timeAdvanced ?? 0)} tick(s) / Safety: ${escapeHtml(restResult.safety || "unknown")}</div>
+              ${
+                Array.isArray(restResult.resourcesRecovered) && restResult.resourcesRecovered.length
+                  ? `<div class="solo-sheet-section">
+                      <h5>Recovered Resources</h5>
+                      ${renderCompactList(restResult.resourcesRecovered, "No resources recovered.", (resource) => `
+                        <div class="solo-compact-row">
+                          <strong>${escapeHtml(typeLabel(resource.resourceId || "resource"))}</strong>
+                          <span>${escapeHtml(resource.before)} -> ${escapeHtml(resource.after)} (+${escapeHtml(resource.amount)})</span>
+                        </div>
+                      `)}
+                    </div>`
+                  : renderEmpty("No resources recovered.")
+              }
+              ${
+                Array.isArray(restResult.warningCodes) && restResult.warningCodes.length
+                  ? `<div class="solo-tag-row">${restResult.warningCodes
+                      .map((warning) => `<span class="tag">${escapeHtml(warning)}</span>`)
+                      .join("")}</div>`
+                  : ""
+              }
+            </div>
+          `
+          : renderEmpty("Rest here to advance time and recover simple resources.")
       }
     </section>
   `;
@@ -615,6 +666,7 @@ export function renderSoloSceneShell(state = {}) {
           ${renderSceneActionBar(scene)}
           ${renderSearchResultPanel(state.searchResult, scene.discoveredDetails)}
           ${renderTalkResultPanel(state.talkResult)}
+          ${renderRestResultPanel(state.restResult)}
           ${renderEntityDetailPanel(state.detail)}
           ${renderSceneTimelinePanel(scene)}
           ${renderSceneMemoryPanel(scene)}
@@ -661,6 +713,14 @@ export function bindSoloSceneShell(root, handlers = {}) {
     });
   });
 
+  root.querySelectorAll("[data-solo-action='rest']").forEach((button) => {
+    button.addEventListener("click", () => {
+      return handlers.onRest?.({
+        restType: button.getAttribute("data-rest-type") || "short"
+      });
+    });
+  });
+
   root.querySelectorAll("[data-solo-gm-mode]").forEach((button) => {
     button.addEventListener("click", () => {
       handlers.onGmMode?.({
@@ -695,6 +755,7 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     detail: null,
     searchResult: null,
     talkResult: null,
+    restResult: null,
     gmMode: "placeholder"
   };
 
@@ -706,6 +767,7 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       onInspect: handleInspect,
       onSearch: handleSearch,
       onTalk: handleTalk,
+      onRest: handleRest,
       onGmMode: handleGmMode
     });
   }
@@ -731,6 +793,7 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       state.detail = null;
       state.searchResult = null;
       state.talkResult = null;
+      state.restResult = null;
     } catch (error) {
       state.error = String(error?.message || error || "Failed to load solo scene.");
     } finally {
@@ -767,6 +830,7 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       const response = await postSoloAction(apiClient, runId, createSearchAction());
       state.searchResult = response.searchResult || null;
       state.talkResult = null;
+      state.restResult = null;
       const refreshed = await fetchSoloScene(apiClient, runId);
       state.scene = {
         ...refreshed,
@@ -785,6 +849,7 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       const response = await postSoloAction(apiClient, runId, createTalkAction(entity));
       state.talkResult = response.talkResult || null;
       state.searchResult = null;
+      state.restResult = null;
       const refreshed = await fetchSoloScene(apiClient, runId);
       state.scene = {
         ...refreshed,
@@ -794,6 +859,25 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       render();
     } catch (error) {
       state.error = String(error?.message || error || "Talk failed.");
+      render();
+    }
+  }
+
+  async function handleRest(action) {
+    try {
+      const response = await postSoloAction(apiClient, runId, createRestAction(action));
+      state.restResult = response.restResult || null;
+      state.searchResult = null;
+      state.talkResult = null;
+      const refreshed = await fetchSoloScene(apiClient, runId);
+      state.scene = {
+        ...refreshed,
+        gmNarration: state.scene?.gmNarration || null,
+        gmStatus: state.scene?.gmStatus || null
+      };
+      render();
+    } catch (error) {
+      state.error = String(error?.message || error || "Rest failed.");
       render();
     }
   }

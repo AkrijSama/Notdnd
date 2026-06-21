@@ -212,13 +212,13 @@ test("POST unknown action returns 400", async () => {
 });
 
 test("POST recognized but unimplemented action returns ACTION_NOT_IMPLEMENTED", async () => {
-  await createRun("api_action_rest");
+  await createRun("api_action_use_item");
 
-  const payload = await request("/api/solo/runs/api_action_rest/actions", {
+  const payload = await request("/api/solo/runs/api_action_use_item/actions", {
     method: "POST",
     body: {
       action: {
-        type: "rest"
+        type: "use_item"
       }
     },
     expectedStatus: 400
@@ -226,7 +226,7 @@ test("POST recognized but unimplemented action returns ACTION_NOT_IMPLEMENTED", 
 
   assert.equal(payload.ok, false);
   assert.equal(payload.code, "ACTION_NOT_IMPLEMENTED");
-  assert.equal(payload.actionType, "rest");
+  assert.equal(payload.actionType, "use_item");
 });
 
 test("POST search action persists search result", async () => {
@@ -314,6 +314,39 @@ test("POST talk action persists talk result", async () => {
   const fetched = await request("/api/solo/runs/api_action_talk");
   assert.equal(fetched.run.npcs.placeholder_npc.dialogueBeats[0].revealed, true);
   assert.equal(fetched.run.memoryFacts.filter((fact) => fact.type === "dialogue_beat").length, 1);
+});
+
+test("POST rest action persists rest result", async () => {
+  const run = await createRun("api_action_rest");
+  run.player.resources.stamina.current = 3;
+
+  await request("/api/solo/runs/api_action_rest", {
+    method: "PUT",
+    body: run
+  });
+
+  const payload = await request("/api/solo/runs/api_action_rest/actions", {
+    method: "POST",
+    body: {
+      action: {
+        type: "rest",
+        actorId: "player",
+        restType: "short"
+      }
+    }
+  });
+
+  assert.equal(payload.ok, true);
+  assert.equal(payload.restResult.allowed, true);
+  assert.equal(payload.restResult.timeAdvanced, 1);
+  assert.equal(payload.event.type, "rest");
+  assert.equal(payload.memoryFact, null);
+  assert.equal(payload.run.world.time.tick, 1);
+  assert.equal(payload.run.player.resources.stamina.current, 5);
+
+  const fetched = await request("/api/solo/runs/api_action_rest");
+  assert.equal(fetched.run.world.time.tick, 1);
+  assert.equal(fetched.run.player.resources.stamina.current, 5);
 });
 
 test("ownership rules match existing solo run route behavior", async () => {

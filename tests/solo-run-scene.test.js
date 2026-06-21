@@ -122,6 +122,29 @@ test("payload includes available actions", () => {
   assert.ok(payload.availableActions.some((action) => action.type === "inspect" && action.entityId === "location:start_location"));
   assert.ok(payload.availableActions.some((action) => action.type === "search" && action.enabled === true));
   assert.ok(payload.availableActions.some((action) => action.type === "talk" && action.targetEntityId === "npc:placeholder_npc"));
+  assert.ok(payload.availableActions.some((action) => action.type === "rest" && action.restType === "short"));
+});
+
+test("scene payload exposes rest availability", () => {
+  const run = createDefaultSoloRun({ runId: "run_scene_rest" });
+  run.locations.start_location.rest.availableTypes = ["short", "long"];
+
+  const payload = buildSoloScenePayload(run);
+
+  assert.equal(payload.rest.allowed, true);
+  assert.equal(payload.rest.safety, "safe");
+  assert.deepEqual(payload.rest.availableTypes, ["short", "long"]);
+});
+
+test("scene payload hides blocked rest metadata from mainline", () => {
+  const run = createDefaultSoloRun({ runId: "run_scene_rest_blocked" });
+  run.locations.start_location.rest.contentTags = ["explicit_sexual_content"];
+
+  const payload = buildSoloScenePayload(run);
+
+  assert.equal(payload.rest.allowed, false);
+  assert.deepEqual(payload.rest.availableTypes, []);
+  assert.deepEqual(payload.rest.contentTags, []);
 });
 
 test("scene payload includes revealed search details only", () => {

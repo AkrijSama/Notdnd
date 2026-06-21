@@ -16,9 +16,14 @@ import {
   resolveTalkAction,
   validateTalkAction
 } from "./talk.js";
+import {
+  getAvailableRestTypes,
+  resolveRestAction,
+  validateRestAction
+} from "./rest.js";
 
-const IMPLEMENTED_ACTION_TYPES = new Set(["move", "inspect", "search", "talk"]);
-const FUTURE_ACTION_TYPES = new Set(["interact", "use_item", "rest", "enter", "exit"]);
+const IMPLEMENTED_ACTION_TYPES = new Set(["move", "inspect", "search", "talk", "rest"]);
+const FUTURE_ACTION_TYPES = new Set(["interact", "use_item", "enter", "exit"]);
 const RECOGNIZED_ACTION_TYPES = new Set([...IMPLEMENTED_ACTION_TYPES, ...FUTURE_ACTION_TYPES]);
 
 function result(errors) {
@@ -111,6 +116,9 @@ export function validateSoloAction(run, action) {
   if (normalized.type === "talk") {
     return validateTalkAction(run, normalized);
   }
+  if (normalized.type === "rest") {
+    return validateRestAction(run, normalized);
+  }
 
   return notImplemented(normalized.type);
 }
@@ -145,25 +153,26 @@ export function getAvailableSoloActions(run, options = {}) {
       npcId: npc.npcId,
       enabled: true
     }));
+  const restActions = getAvailableRestTypes(run).map((restType) => ({
+    type: "rest",
+    label: restType === "long" ? "Long Rest" : "Short Rest",
+    restType,
+    enabled: true
+  }));
 
   if (!includePlaceholders) {
-    return [...movementActions, ...inspectActions, ...talkActions];
+    return [...movementActions, ...inspectActions, ...talkActions, ...restActions];
   }
 
   return [
     ...movementActions,
     ...inspectActions,
     ...talkActions,
+    ...restActions,
     {
       type: "search",
       label: "Search area",
       enabled: true
-    },
-    {
-      type: "rest",
-      label: "Rest",
-      enabled: false,
-      reason: "Not implemented yet"
     }
   ];
 }
@@ -272,6 +281,31 @@ export function resolveSoloAction(run, action, options = {}) {
       talkResult: talk.talkResult,
       availableMoves: getAvailableMoves(talk.run),
       availableActions: getAvailableSoloActions(talk.run),
+      errors: []
+    };
+  }
+
+  if (normalized.type === "rest") {
+    const rest = resolveRestAction(run, normalized, options);
+    if (!rest.ok) {
+      return {
+        ok: false,
+        code: "ACTION_INVALID",
+        actionType: "rest",
+        errors: rest.errors
+      };
+    }
+
+    const actionRun = rest.run || run;
+    return {
+      ok: true,
+      action: normalized,
+      run: rest.run,
+      event: rest.event,
+      memoryFact: rest.memoryFact,
+      restResult: rest.restResult,
+      availableMoves: getAvailableMoves(actionRun),
+      availableActions: getAvailableSoloActions(actionRun),
       errors: []
     };
   }

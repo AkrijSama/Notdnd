@@ -36,6 +36,8 @@ const REQUIRED_PLAYER_STATS = ["alchemy", "charm", "cunning", "might", "spirit",
 const PLAYER_ABILITIES = ["strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma"];
 const PLAYER_SKILLS = ["investigation", "perception", "stealth", "persuasion", "insight"];
 const REQUIRED_RELATIONSHIP_METERS = ["trust", "affection", "fear", "debt", "suspicion", "loyalty", "rivalry"];
+const REST_SAFETY_VALUES = new Set(["safe", "uncertain", "unsafe"]);
+const REST_TYPE_VALUES = new Set(["short", "long"]);
 
 function result(errors) {
   return {
@@ -181,6 +183,42 @@ function validateNumberRecord(value, path, requiredKeys, errors) {
   }
 }
 
+function validateResourceGauge(value, path, errors) {
+  if (value === undefined || value === null) {
+    return;
+  }
+  if (!isPlainObject(value)) {
+    push(errors, path, "Expected object");
+    return;
+  }
+  validateNumber(value.current, `${path}.current`, errors);
+  validateNumber(value.max, `${path}.max`, errors);
+}
+
+export function validateRestMetadata(rest) {
+  const errors = [];
+  if (!isPlainObject(rest)) {
+    push(errors, "rest", "Expected object");
+    return result(errors);
+  }
+
+  validateBoolean(rest.allowed, "allowed", errors);
+  validateEnum(rest.safety, REST_SAFETY_VALUES, "safety", errors);
+  if (!Array.isArray(rest.availableTypes)) {
+    push(errors, "availableTypes", "Expected array");
+  } else {
+    rest.availableTypes.forEach((restType, index) => {
+      if (!REST_TYPE_VALUES.has(restType)) {
+        push(errors, `availableTypes.${index}`, "Expected one of: short, long");
+      }
+    });
+  }
+  validateStringArray(rest.contentTags || [], "contentTags", errors);
+  validateContentMetadata(rest, errors);
+
+  return result(errors);
+}
+
 function validateRecord(value, path, errors, validator) {
   if (!isPlainObject(value)) {
     push(errors, path, "Expected object");
@@ -322,6 +360,14 @@ export function validatePlayerState(player) {
   }
   validateNumberRecord(player.abilities, "abilities", PLAYER_ABILITIES, errors);
   validateNumberRecord(player.skills, "skills", PLAYER_SKILLS, errors);
+  if (player.resources !== undefined) {
+    if (!isPlainObject(player.resources)) {
+      push(errors, "resources", "Expected object");
+    } else {
+      validateResourceGauge(player.resources.hitPoints, "resources.hitPoints", errors);
+      validateResourceGauge(player.resources.stamina, "resources.stamina", errors);
+    }
+  }
 
   return result(errors);
 }
@@ -375,6 +421,9 @@ export function validateLocation(location) {
   validateStringArray(location.tags, "tags", errors);
   validateObject(location.flags, "flags", errors);
   validateContentMetadata(location, errors);
+  if (location.rest !== undefined) {
+    appendNestedErrors(errors, "rest", validateRestMetadata(location.rest));
+  }
 
   if (location.searchDetails !== undefined) {
     if (!Array.isArray(location.searchDetails)) {
@@ -840,6 +889,14 @@ export function createDefaultLocationGraph(options = {}) {
       edition: "mainline",
       policyProfileId: "mainline_default",
       contentTags: [],
+      rest: {
+        allowed: true,
+        safety: "safe",
+        availableTypes: ["short"],
+        contentTags: [],
+        edition: "mainline",
+        policyProfileId: "mainline_default"
+      },
       searchDetails: [
         {
           detailId: "start_location_scuffed_mark",
@@ -869,6 +926,14 @@ export function createDefaultLocationGraph(options = {}) {
       edition: "mainline",
       policyProfileId: "mainline_default",
       contentTags: [],
+      rest: {
+        allowed: true,
+        safety: "safe",
+        availableTypes: ["short"],
+        contentTags: [],
+        edition: "mainline",
+        policyProfileId: "mainline_default"
+      },
       flags: {}
     },
     third_location: {
@@ -885,6 +950,14 @@ export function createDefaultLocationGraph(options = {}) {
       edition: "mainline",
       policyProfileId: "mainline_default",
       contentTags: [],
+      rest: {
+        allowed: true,
+        safety: "safe",
+        availableTypes: ["short"],
+        contentTags: [],
+        edition: "mainline",
+        policyProfileId: "mainline_default"
+      },
       flags: {}
     }
   };
@@ -941,6 +1014,16 @@ export function createDefaultSoloRun(options = {}) {
         stealth: 0,
         persuasion: 0,
         insight: 0
+      },
+      resources: {
+        hitPoints: {
+          current: 10,
+          max: 10
+        },
+        stamina: {
+          current: 6,
+          max: 6
+        }
       },
       tags: [],
       flags: {}

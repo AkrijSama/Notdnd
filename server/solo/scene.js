@@ -64,6 +64,29 @@ function locationPayload(location) {
   };
 }
 
+function restPayload(location, policyProfile) {
+  const rest = location?.rest || {};
+  const payload = {
+    allowed: rest.allowed !== false,
+    safety: rest.safety || "safe",
+    availableTypes: Array.isArray(rest.availableTypes) ? rest.availableTypes : ["short"],
+    contentTags: rest.contentTags || [],
+    edition: rest.edition ?? location?.edition ?? null,
+    policyProfileId: rest.policyProfileId ?? location?.policyProfileId ?? null
+  };
+  if (!policyAllows(payload, policyProfile)) {
+    return {
+      allowed: false,
+      safety: payload.safety,
+      availableTypes: [],
+      contentTags: [],
+      edition: null,
+      policyProfileId: null
+    };
+  }
+  return payload;
+}
+
 function revealedSearchDetails(location, policyProfile) {
   if (!Array.isArray(location?.searchDetails)) {
     return [];
@@ -225,6 +248,20 @@ export function validateSoloScenePayload(payload) {
       });
     }
   }
+  if (payload.rest !== undefined) {
+    if (!isPlainObject(payload.rest)) {
+      push(errors, "rest", "Expected object");
+    } else {
+      if (typeof payload.rest.allowed !== "boolean") {
+        push(errors, "rest.allowed", "Expected boolean");
+      }
+      if (!isString(payload.rest.safety)) {
+        push(errors, "rest.safety", "Expected non-empty string");
+      }
+      validateStringArray(payload.rest.availableTypes, "rest.availableTypes", errors);
+      validateStringArray(payload.rest.contentTags || [], "rest.contentTags", errors);
+    }
+  }
   if (!Array.isArray(payload.recentTimeline)) {
     push(errors, "recentTimeline", "Expected array");
   }
@@ -307,6 +344,7 @@ export function buildSoloScenePayload(run, options = {}) {
     edition: run.edition,
     policyProfileId: run.policyProfileId,
     location: locationPayload(currentLocation),
+    rest: restPayload(currentLocation, policyProfile),
     visibleEntities,
     availableMoves: getAvailableMoves(run).filter((move) => {
       const destination = run.locations[move.locationId];

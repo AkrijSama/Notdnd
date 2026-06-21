@@ -272,6 +272,10 @@ NotDND supports a small ruleset adapter pattern for server-side adjudication. Th
 
 Talk is a structured server action for visible NPCs. It reveals only pre-existing `dialogueBeats`, may use the ruleset adapter for optional checks, and records timeline/memory only when a new meaningful beat is revealed. It is not freeform chat, not AI dialogue, not romance, and not a source of lore invention.
 
+## 13. Rest Action + Time/Recovery Contract
+
+Rest is a structured server action for advancing world time and recovering simple resources. The current contract supports short and long rest hooks, location-level rest availability, timeline events, and simple HP/stamina recovery if those resources exist. It is not a full 5e rest engine, survival system, random encounter system, spell recovery system, or AI narration path.
+
 ## MVP Acceptance Criteria
 
 - User can start a solo run.
