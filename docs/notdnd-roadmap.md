@@ -480,36 +480,43 @@ What not to build:
 - AI GM scene generation.
 - Image generation/display.
 
-### 9. AI GM Prompt Contract
+### 9. Minimal Solo Scene UI Shell
 
 Goal:
 
-Define how structured state and memory feed AI GM scene framing.
+Render the server-built solo scene payload as the first playable visual surface.
 
 Likely files/modules:
 
-- New `server/gm/soloGm.js`
-- Existing `server/gm/prompting.js`
-- `docs/content-safety-policy.md`
-- New tests for prompt assembly.
+- New `src/components/soloSceneShell.js`
+- New `src/components/soloSceneApi.js`
+- Existing `src/api/client.js`
+- Existing `src/main.js` only for a small mount hook.
+- New UI/helper tests if no browser test harness exists.
 
 Acceptance criteria:
 
-- Prompt includes current location, player state, NPC relationships, relevant facts, recent timeline, allowed actions, and safety policy.
-- Prompt says AI cannot mutate state or invent durable canon.
-- Prompt does not use "uncensored" as a mainline safety stance.
+- The shell renders current location, image placeholder, description, visible entities, movement exits, action bar, recent timeline, relevant memory facts, and inspect details.
+- Movement posts a structured `move` action and refreshes the scene.
+- Inspect posts a structured `inspect` action and shows the returned detail payload.
+- Disabled future actions remain visible but not clickable.
+- The UI reads server scene truth instead of inventing location, entity, movement, or memory data.
 
 Proof required:
 
-- Snapshot-style test or string assertions for prompt contract.
+- Unit/helper tests for render and API helper behavior.
+- `npm run check`.
+- `npm run unit`.
 
 What not to build:
 
-- Live provider calls.
-- AI NPC routes.
-- New lore.
+- Final art/theme.
+- AI GM scene generation.
+- Image generation/display pipeline.
+- Full talk/search/use/rest actions.
+- Character sheet UI.
 
-### 9. Placeholder GM Scene Generator
+### 10. Placeholder GM Scene Generator
 
 Goal:
 

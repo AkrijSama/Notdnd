@@ -6,6 +6,7 @@ import { renderCommandCenter, bindCommandCenter } from "./components/commandCent
 import { renderCompendium, bindCompendium } from "./components/compendium.js";
 import { renderHomebrewStudio, bindHomebrewStudio } from "./components/homebrewStudio.js";
 import { renderSidebar } from "./components/sidebar.js";
+import { mountSoloSceneShell } from "./components/soloSceneShell.js";
 import { renderTopbar } from "./components/topbar.js";
 import { renderVttTable, bindVttTable } from "./components/vttTable.js";
 import { createRealtimeClient } from "./realtime/client.js";
@@ -30,6 +31,7 @@ const uiState = {
 };
 
 const appRoot = document.querySelector("#app");
+const soloRunIdFromUrl = new URLSearchParams(window.location.search).get("soloRunId");
 
 const realtimeClient = createRealtimeClient({
   campaignId: "global",
@@ -403,7 +405,14 @@ async function bootstrap() {
   renderApp();
 }
 
-bootstrap();
+if (soloRunIdFromUrl) {
+  mountSoloSceneShell(appRoot, {
+    apiClient,
+    runId: soloRunIdFromUrl
+  });
+} else {
+  bootstrap();
+}
 
 window.addEventListener("beforeunload", () => {
   realtimeClient.close();

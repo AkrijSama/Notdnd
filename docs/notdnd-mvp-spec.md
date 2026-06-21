@@ -60,6 +60,8 @@ Entity Detail Panels: future character/entity sheets should feel modern but tabl
 
 Solo Scene Payload: future UI should render from one server-built scene payload containing current location, location image reference, description, visible entities, available moves, available actions, recent timeline events, relevant memory facts, and edition/policy info. AI GM narration can later attach to this payload, but it does not own truth.
 
+Minimal Solo Scene UI Shell: the first UI surface should render that payload directly: location image placeholder, location description, visible inspectable entities, movement exits, structured action bar, recent timeline, relevant memory facts, and inspect details. It should stay spatial and server-truth-first, not raw chat-first, dashboard-first, final VTT clone, image-generation demo, or final IP theme.
+
 ## 3. AI GM Scene Framing
 
 The AI GM can generate or placeholder-generate scene text from current structured state.

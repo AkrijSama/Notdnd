@@ -86,6 +86,15 @@ export function createApiClient(baseUrl = "") {
     async getState() {
       return request("/api/state");
     },
+    async fetchSoloScene(runId) {
+      return request(`/api/solo/runs/${encodeURIComponent(runId)}/scene`);
+    },
+    async postSoloAction(runId, action) {
+      return request(`/api/solo/runs/${encodeURIComponent(runId)}/actions`, {
+        method: "POST",
+        body: JSON.stringify({ action })
+      });
+    },
     async applyOperation(op, payload = {}, expectedVersion = null) {
       return request("/api/ops", {
         method: "POST",
