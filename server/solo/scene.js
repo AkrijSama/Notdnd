@@ -1,5 +1,6 @@
 import { getAvailableSoloActions } from "./actions.js";
 import { getVisibleEntities, validateVisibleEntity } from "./entities.js";
+import { generatePlaceholderGmNarration, validateGmSceneOutput } from "./gm.js";
 import { getAvailableMoves } from "./movement.js";
 import {
   createDefaultForbiddenPolicyProfile,
@@ -207,6 +208,10 @@ export function validateSoloScenePayload(payload) {
     push(errors, "errors", "Expected array");
   }
 
+  if (payload.gmNarration !== undefined) {
+    appendNestedErrors(errors, "gmNarration", validateGmSceneOutput(payload.gmNarration));
+  }
+
   return result(errors);
 }
 
@@ -288,6 +293,10 @@ export function buildSoloScenePayload(run, options = {}) {
     },
     errors: []
   };
+
+  if (options.includePlaceholderGm === true) {
+    payload.gmNarration = generatePlaceholderGmNarration(payload, options.gmOptions || {});
+  }
 
   const payloadValidation = validateSoloScenePayload(payload);
   if (!payloadValidation.ok) {

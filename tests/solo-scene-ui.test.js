@@ -134,6 +134,36 @@ test("renderSoloSceneShell renders timeline and memory panels", () => {
   assert.match(html, /The run began at the starting location/);
 });
 
+test("renderSoloSceneShell renders GM narration when present", () => {
+  const scene = {
+    ...sampleScene(),
+    gmNarration: {
+      ok: true,
+      narration: {
+        title: "Start Location",
+        body: "Server-truth narration placeholder.",
+        tone: "neutral",
+        sensoryDetails: ["quiet"],
+        focusEntityIds: []
+      },
+      suggestedActionLabels: [],
+      warnings: [],
+      stateMutations: []
+    }
+  };
+
+  const html = renderSoloSceneShell({ scene });
+  assert.match(html, /neutral GM Narration/);
+  assert.match(html, /Server-truth narration placeholder/);
+  assert.match(html, /quiet/);
+});
+
+test("renderSoloSceneShell renders fallback GM placeholder when narration is absent", () => {
+  const html = renderSoloSceneShell({ scene: sampleScene() });
+  assert.match(html, /Future GM Narration/);
+  assert.match(html, /generated from server truth and memory/);
+});
+
 test("renderSoloSceneShell renders inspect details", () => {
   const html = renderSoloSceneShell({
     scene: sampleScene(),

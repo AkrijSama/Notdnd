@@ -555,29 +555,37 @@ What not to build:
 
 Goal:
 
-Generate scene framing without requiring real AI.
+Define the AI GM scene framing contract and generate deterministic placeholder narration without requiring real AI.
 
 Likely files/modules:
 
-- New `server/gm/soloGm.js`
-- Existing `server/ai/providers.js`
-- `server/index.js`
-- Tests.
+- New `server/solo/gm.js`
+- Existing `server/solo/scene.js`
+- Existing `src/components/soloSceneShell.js`
+- New `tests/solo-run-gm.test.js`
+- Existing `tests/solo-scene-ui.test.js`
 
 Acceptance criteria:
 
-- Placeholder GM returns narration and suggested structured actions.
-- Output follows schema.
-- No state mutation occurs from GM output.
+- GM input is built from the validated solo scene payload.
+- GM input includes edition/policy, location, visible entities, moves, actions, recent timeline, and relevant memory facts.
+- Mainline GM input excludes forbidden entities/facts and blocked content tags.
+- GM output validates as plain-text narration with supported tone, optional labels/warnings, and empty `stateMutations`.
+- Placeholder GM returns deterministic neutral narration.
+- Scene payload can optionally include placeholder GM narration.
+- UI renders GM narration when present and keeps the fallback when absent.
 
 Proof required:
 
-- Unit/API tests verify output shape and unchanged state.
+- Unit tests verify input shape, policy filtering, output validation, sanitization, deterministic placeholder narration, unchanged scene/run state, optional scene integration, and UI rendering.
 
 What not to build:
 
+- Real provider calls.
 - Real image generation.
 - Open-ended chat.
+- Final Akrij lore voice.
+- AI-owned state mutation.
 - NPC romance runtime.
 
 ### 10. NPC Relationship State

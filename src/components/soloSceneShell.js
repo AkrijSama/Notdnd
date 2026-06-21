@@ -101,7 +101,34 @@ export function renderSceneHeader(scene = {}, state = {}) {
   `;
 }
 
-export function renderLocationPanel(location = {}) {
+export function renderGmNarrationPanel(gmNarration = null) {
+  const narration = gmNarration?.narration || null;
+  if (!narration) {
+    return `
+      <div class="solo-gm-placeholder">
+        <span>Future GM Narration</span>
+        <p>Scene narration will appear here later, generated from server truth and memory.</p>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="solo-gm-placeholder solo-gm-narration">
+      <span>${escapeHtml(narration.tone || "neutral")} GM Narration</span>
+      <strong>${escapeHtml(narration.title || "Current Scene")}</strong>
+      <p>${escapeHtml(narration.body || "")}</p>
+      ${
+        Array.isArray(narration.sensoryDetails) && narration.sensoryDetails.length
+          ? `<div class="solo-tag-row">${narration.sensoryDetails
+              .map((detail) => `<span class="tag">${escapeHtml(detail)}</span>`)
+              .join("")}</div>`
+          : ""
+      }
+    </div>
+  `;
+}
+
+export function renderLocationPanel(location = {}, gmNarration = null) {
   const imageLabel = location.imageAssetId ? `Image asset: ${location.imageAssetId}` : "No image assigned yet.";
   return `
     <section class="solo-location-card">
@@ -116,10 +143,7 @@ export function renderLocationPanel(location = {}) {
         <h3>${escapeHtml(location.name || "Current Location")}</h3>
         <p>${escapeHtml(location.description || "No location description is available.")}</p>
         ${renderTags(location.tags)}
-        <div class="solo-gm-placeholder">
-          <span>Future GM Narration</span>
-          <p>Scene narration will appear here later, generated from server truth and memory.</p>
-        </div>
+        ${renderGmNarrationPanel(gmNarration)}
       </div>
     </section>
   `;
@@ -404,7 +428,7 @@ export function renderSoloSceneShell(state = {}) {
       ${renderSceneHeader(scene, state)}
       <div class="solo-scene-grid">
         <main class="solo-scene-main">
-          ${renderLocationPanel(scene.location || {})}
+          ${renderLocationPanel(scene.location || {}, scene.gmNarration)}
           ${renderMovementPanel(scene)}
           ${renderEntityPanel(scene, selectedEntityId)}
         </main>
