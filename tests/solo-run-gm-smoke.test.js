@@ -61,14 +61,41 @@ test("smoke with fake provider succeeds", async () => {
     env: SAFE_ENV,
     providerEnabled: true,
     provider: "fake",
+    model: "fake-gm-model",
     providerFn: async () => validProviderOutput()
   });
 
   assert.equal(result.ok, true);
   assert.equal(result.providerAttempted, true);
   assert.equal(result.providerConfigured, true);
+  assert.equal(result.providerName, "fake");
+  assert.equal(result.providerKind, "mock");
+  assert.equal(result.providerSucceeded, true);
   assert.equal(result.fallbackUsed, false);
   assert.equal(result.errorCode, null);
+});
+
+test("safe local mock provider smoke path succeeds", async () => {
+  const result = await runGmProviderSmoke({
+    env: SAFE_ENV,
+    providerEnabled: true,
+    provider: "local",
+    model: "local-gm-v1"
+  });
+  const encoded = JSON.stringify(result);
+
+  assert.equal(result.ok, true);
+  assert.equal(result.providerAttempted, true);
+  assert.equal(result.providerConfigured, true);
+  assert.equal(result.modelConfigured, true);
+  assert.equal(result.providerName, "local");
+  assert.equal(result.providerKind, "local");
+  assert.equal(result.providerSucceeded, true);
+  assert.equal(result.fallbackUsed, false);
+  assert.equal(typeof result.evaluationScore, "number");
+  assert.equal(typeof result.narrationLength, "number");
+  assert.ok(result.warnings.includes("GM_LOCAL_MOCK_PROVIDER"));
+  assert.doesNotMatch(encoded, /SYSTEM:|USER:|OPENAI_API_KEY|secret|Bearer|token|prompt/i);
 });
 
 test("smoke with fake provider evaluates output", async () => {
@@ -76,6 +103,7 @@ test("smoke with fake provider evaluates output", async () => {
     env: SAFE_ENV,
     providerEnabled: true,
     provider: "fake",
+    model: "fake-gm-model",
     providerFn: async () => validProviderOutput()
   });
 
@@ -88,6 +116,7 @@ test("smoke with malformed provider output falls back", async () => {
     env: SAFE_ENV,
     providerEnabled: true,
     provider: "fake",
+    model: "fake-gm-model",
     providerFn: async () => ({
       ok: true,
       narration: {
@@ -114,6 +143,7 @@ test("smoke with fake provider throw returns safe error code", async () => {
     env: SAFE_ENV,
     providerEnabled: true,
     provider: "fake",
+    model: "fake-gm-model",
     providerFn: async () => {
       throw new Error("Authorization: Bearer secret-token");
     }
@@ -121,15 +151,35 @@ test("smoke with fake provider throw returns safe error code", async () => {
   const encoded = JSON.stringify(result);
 
   assert.equal(result.providerAttempted, true);
+  assert.equal(result.providerSucceeded, false);
   assert.equal(result.fallbackUsed, true);
   assert.equal(result.errorCode, "GM_PROVIDER_FALLBACK_USED");
   assert.doesNotMatch(encoded, /secret-token|Authorization|Bearer/i);
+});
+
+test("provider enabled but model missing reports safe fallback", async () => {
+  const result = await runGmProviderSmoke({
+    env: SAFE_ENV,
+    providerEnabled: true,
+    provider: "local"
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.providerAttempted, false);
+  assert.equal(result.providerConfigured, true);
+  assert.equal(result.modelConfigured, false);
+  assert.equal(result.providerSucceeded, false);
+  assert.equal(result.fallbackUsed, true);
+  assert.equal(result.errorCode, "GM_PROVIDER_MODEL_UNCONFIGURED");
 });
 
 test("smoke summary does not include raw prompt", () => {
   const summary = summarizeGmSmokeResult({
     ok: true,
     providerAttempted: true,
+    providerName: "local",
+    providerKind: "local",
+    providerSucceeded: true,
     providerConfigured: true,
     modelConfigured: true,
     fallbackUsed: false,
@@ -146,6 +196,9 @@ test("smoke summary does not include raw provider response", () => {
   const summary = summarizeGmSmokeResult({
     ok: true,
     providerAttempted: true,
+    providerName: "local",
+    providerKind: "local",
+    providerSucceeded: true,
     providerConfigured: true,
     modelConfigured: true,
     fallbackUsed: false,
@@ -171,6 +224,8 @@ test("smoke summary does not include env values", () => {
   assert.equal(status.providerEnabled, true);
   assert.equal(status.providerConfigured, false);
   assert.equal(status.modelConfigured, true);
+  assert.equal(status.providerName, "chatgpt");
+  assert.equal(status.providerKind, "external");
   assert.doesNotMatch(encoded, /private-key|private-model/);
 });
 

@@ -95,6 +95,7 @@ Contract boundary:
 - Real provider calls are disabled unless `NOTDND_GM_PROVIDER_ENABLED=true`. Provider/model selection uses `NOTDND_GM_PROVIDER` and `NOTDND_GM_MODEL`, validates/sanitizes output, and falls back to placeholder narration on failure without exposing raw prompts, secrets, or provider errors to the client.
 - GM narration quality is evaluated by deterministic checks in `server/solo/gmEval.js`: grounding to the current scene, no state mutation claims, no blocked mainline content, no unsafe markup, reasonable length, no raw JSON/table output, and no unavailable action suggestions.
 - Safe provider smoke lives in `server/solo/gmSmoke.js`. It creates a neutral scene, attempts provider mode only when explicitly enabled/configured, validates/sanitizes/evaluates the result, and returns a safe summary without raw prompts, provider dumps, headers, stack traces, or env values.
+- The committed `local` provider is a mock provider suitable for secret-free adapter smoke. Its output must still pass through the same validation, sanitization, evaluation, and prompt-leak prevention as external providers.
 
 Prompt contract should include:
 

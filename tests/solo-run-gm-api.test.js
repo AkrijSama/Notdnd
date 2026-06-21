@@ -217,7 +217,7 @@ test("GM scene response does not expose raw prompt or provider dumps", async () 
   assert.doesNotMatch(encoded, /SYSTEM:|USER:|providerOutput|Authorization|apiKey|OPENAI_API_KEY|prompt/i);
 });
 
-test("provider mode route falls back safely when provider output is unsafe", async () => {
+test("provider mode route can use safe local mock provider without leaking prompt data", async () => {
   await withProviderServer(
     {
       NOTDND_GM_PROVIDER_ENABLED: "true",
@@ -249,7 +249,7 @@ test("provider mode route falls back safely when provider output is unsafe", asy
 
       assert.equal(payload.ok, true);
       assert.equal(payload.gmNarration.ok, true);
-      assert.ok(payload.gmNarration.warnings.includes("GM_PROVIDER_OUTPUT_INVALID"));
+      assert.ok(payload.gmNarration.warnings.includes("GM_LOCAL_MOCK_PROVIDER"));
       assert.doesNotMatch(encoded, /SYSTEM:|USER:|Authorization|apiKey|OPENAI_API_KEY|prompt/i);
     }
   );

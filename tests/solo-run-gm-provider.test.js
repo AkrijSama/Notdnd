@@ -114,6 +114,19 @@ test("valid fake provider plain text is wrapped safely", async () => {
   assert.equal(narration.narration.body, "Plain provider narration.");
 });
 
+test("local mock provider output is converted without leaking prompt text", async () => {
+  const narration = await resolveGmNarration(makeScene(), {
+    providerEnabled: true,
+    provider: "local",
+    model: "local-gm-v1"
+  });
+  const encoded = JSON.stringify(narration);
+
+  assert.equal(narration.ok, true);
+  assert.ok(narration.warnings.includes("GM_LOCAL_MOCK_PROVIDER"));
+  assert.doesNotMatch(encoded, /SYSTEM:|USER:|prompt|OPENAI_API_KEY|Bearer/i);
+});
+
 test("non-empty stateMutations falls back to placeholder", async () => {
   const narration = await resolveGmNarration(makeScene(), {
     providerEnabled: true,

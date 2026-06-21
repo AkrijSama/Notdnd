@@ -64,8 +64,26 @@ function modelHasConfig(env, options = {}) {
   return Boolean(modelName(env, options));
 }
 
+function providerKind(provider, options = {}) {
+  if (provider === "placeholder") {
+    return "placeholder";
+  }
+  if (provider === "local") {
+    return "local";
+  }
+  if (typeof options.providerFn === "function" || provider === "fake") {
+    return "mock";
+  }
+  return "external";
+}
+
 function safeWarnings(gmNarration, extra = []) {
   return Array.from(new Set([...(gmNarration?.warnings || []), ...extra].filter(Boolean)));
+}
+
+function narrationLength(gmNarration) {
+  const body = gmNarration?.narration?.body;
+  return typeof body === "string" ? body.length : null;
 }
 
 export function buildSmokeSoloRun(options = {}) {
@@ -85,6 +103,7 @@ export function getSafeGmProviderConfigStatus(options = {}) {
     providerConfigured: providerHasConfig(env, provider, options),
     modelConfigured: modelHasConfig(env, options),
     providerName: provider,
+    providerKind: providerKind(provider, options),
     knownConfigNames: [
       "NOTDND_GM_PROVIDER_ENABLED",
       "NOTDND_GM_PROVIDER",
@@ -105,9 +124,13 @@ export async function runGmProviderSmoke(options = {}) {
       ok: false,
       providerAttempted: false,
       providerConfigured: config.providerConfigured,
+      providerName: config.providerName,
+      providerKind: config.providerKind,
       modelConfigured: config.modelConfigured,
+      providerSucceeded: false,
       fallbackUsed: false,
       evaluationScore: null,
+      narrationLength: null,
       warnings: [],
       errorCode: "GM_SMOKE_SCENE_INVALID"
     });
@@ -120,9 +143,13 @@ export async function runGmProviderSmoke(options = {}) {
       ok: true,
       providerAttempted: false,
       providerConfigured: config.providerConfigured,
+      providerName: config.providerName,
+      providerKind: config.providerKind,
       modelConfigured: config.modelConfigured,
+      providerSucceeded: false,
       fallbackUsed: true,
       evaluationScore: evaluation.score,
+      narrationLength: narrationLength(gmNarration),
       warnings: safeWarnings(gmNarration, ["GM_PROVIDER_DISABLED"]),
       errorCode: "GM_PROVIDER_DISABLED"
     });
@@ -135,11 +162,34 @@ export async function runGmProviderSmoke(options = {}) {
       ok: true,
       providerAttempted: false,
       providerConfigured: false,
+      providerName: config.providerName,
+      providerKind: config.providerKind,
       modelConfigured: config.modelConfigured,
+      providerSucceeded: false,
       fallbackUsed: true,
       evaluationScore: evaluation.score,
+      narrationLength: narrationLength(gmNarration),
       warnings: safeWarnings(gmNarration, ["GM_PROVIDER_UNCONFIGURED"]),
       errorCode: "GM_PROVIDER_UNCONFIGURED"
+    });
+  }
+
+  if (!config.modelConfigured) {
+    const gmNarration = await resolveGmNarration(scene, { mode: "placeholder" });
+    const evaluation = evaluateGmNarration(scene, gmNarration);
+    return summarizeGmSmokeResult({
+      ok: true,
+      providerAttempted: false,
+      providerConfigured: true,
+      providerName: config.providerName,
+      providerKind: config.providerKind,
+      modelConfigured: false,
+      providerSucceeded: false,
+      fallbackUsed: true,
+      evaluationScore: evaluation.score,
+      narrationLength: narrationLength(gmNarration),
+      warnings: safeWarnings(gmNarration, ["GM_PROVIDER_MODEL_UNCONFIGURED"]),
+      errorCode: "GM_PROVIDER_MODEL_UNCONFIGURED"
     });
   }
 
@@ -158,9 +208,13 @@ export async function runGmProviderSmoke(options = {}) {
     ok: evaluation.ok,
     providerAttempted: true,
     providerConfigured: true,
+    providerName: config.providerName,
+    providerKind: config.providerKind,
     modelConfigured: config.modelConfigured,
+    providerSucceeded: evaluation.ok && !fallbackUsed,
     fallbackUsed,
     evaluationScore: evaluation.score,
+    narrationLength: narrationLength(gmNarration),
     warnings: safeWarnings(gmNarration, evaluation.warnings),
     errorCode: fallbackUsed ? "GM_PROVIDER_FALLBACK_USED" : null
   });
@@ -170,10 +224,14 @@ export function summarizeGmSmokeResult(result = {}) {
   return {
     ok: Boolean(result.ok),
     providerAttempted: Boolean(result.providerAttempted),
+    providerName: typeof result.providerName === "string" ? result.providerName : null,
+    providerKind: typeof result.providerKind === "string" ? result.providerKind : null,
+    providerSucceeded: Boolean(result.providerSucceeded),
     providerConfigured: Boolean(result.providerConfigured),
     modelConfigured: Boolean(result.modelConfigured),
     fallbackUsed: Boolean(result.fallbackUsed),
     evaluationScore: Number.isFinite(result.evaluationScore) ? result.evaluationScore : null,
+    narrationLength: Number.isFinite(result.narrationLength) ? result.narrationLength : null,
     warnings: Array.isArray(result.warnings) ? Array.from(new Set(result.warnings.map(String))) : [],
     errorCode: result.errorCode || null
   };

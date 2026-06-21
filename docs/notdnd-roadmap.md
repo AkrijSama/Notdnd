@@ -690,6 +690,40 @@ What not to build:
 - Provider-specific tuning.
 - Runtime UI toggle.
 
+### 14.5. Configure One Safe Local Provider Smoke
+
+Goal:
+
+Prove one provider-mode smoke path without requiring external secrets.
+
+Likely files/modules:
+
+- Existing `server/solo/gmSmoke.js`
+- Existing `server/solo/gmProvider.js`
+- Existing `tests/solo-run-gm-smoke.test.js`
+- Existing `tests/solo-run-gm-provider.test.js`
+- Existing `tests/solo-run-gm-api.test.js`
+
+Acceptance criteria:
+
+- The committed `local` mock provider can run through provider mode with explicit model config.
+- Smoke summary reports provider name/kind, attempt/success/fallback booleans, evaluation score, warning codes, and narration length only.
+- Prompt-like provider output is converted or rejected before it reaches the client.
+- Missing model config falls back safely.
+- No raw prompt, raw provider response, env value, key, header, or secret appears in summaries or route responses.
+
+Proof required:
+
+- Unit tests verify safe local/mock provider success, safe summary shape, fallback behavior, and route provider-mode safety.
+- Manual smoke command prints only safe summary fields.
+
+What not to build:
+
+- External provider setup.
+- Paid model requirement.
+- Runtime UI toggle.
+- Prompt tuning.
+
 ### 10. NPC Relationship State
 
 Goal:

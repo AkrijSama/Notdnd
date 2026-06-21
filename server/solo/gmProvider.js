@@ -145,6 +145,21 @@ export function parseProviderGmOutput(rawOutput, options = {}) {
       ]
     };
   }
+  if (rawOutput?.provider === "local" && /^Mock GM response\b/i.test(trimmed)) {
+    return {
+      ok: true,
+      narration: {
+        title: options.title || "Current Scene",
+        body: `${options.title || "Current Scene"} is ready for local mock GM narration. The scene remains grounded in the server payload, with available movement, visible entities, and memory context preserved for evaluation.`,
+        tone: "neutral",
+        sensoryDetails: [],
+        focusEntityIds: []
+      },
+      suggestedActionLabels: [],
+      warnings: ["GM_LOCAL_MOCK_PROVIDER"],
+      stateMutations: []
+    };
+  }
   if (/\b(SYSTEM|USER):/i.test(trimmed)) {
     return {
       ok: false,

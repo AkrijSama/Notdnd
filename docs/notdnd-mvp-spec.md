@@ -88,6 +88,8 @@ GM Narration Evaluation Harness: prompt quality and model output should be teste
 
 Safe Real Provider Smoke: real provider smoke is optional and must never print secrets, raw prompts, headers, or full provider responses. Default runtime remains placeholder unless explicitly feature-flagged. Smoke results report only safe facts such as provider attempted/configured booleans, fallback use, warning codes, and evaluation score.
 
+Safe Local Provider Smoke: the first configured smoke may use the committed `local` mock provider to prove the provider adapter path without external secrets. This counts as provider-path plumbing proof only, not proof of real external AI narration quality.
+
 Accepted AI output for MVP:
 
 - Scene narration.
