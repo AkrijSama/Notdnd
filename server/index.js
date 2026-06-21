@@ -9,23 +9,29 @@ import { tokenFromRequest } from "./auth/httpAuth.js";
 import {
   addCampaignMember,
   applyOperation,
+  createSoloRun,
   createQuickstartCampaignFromParsed,
   getCurrentStateVersion,
   getMetrics,
+  getSoloRun,
   getState,
   getUserBySessionToken,
   initializeDatabase,
   listCampaignMembers,
+  listSoloRunsForUser,
   loginUser,
   logoutSessionToken,
   registerUser,
-  resolveStorePath
+  resolveStorePath,
+  saveSoloRun
 } from "./db/repository.js";
 import { listCampaignMemoryDocs, searchCampaignMemory, writeCampaignMemoryDoc } from "./gm/memoryStore.js";
 import { buildAgentGmPrompt, buildFallbackHumanAdvice, buildHumanGmAssistPrompt } from "./gm/prompting.js";
 import { parseHomebrewDocuments } from "./homebrew/parser.js";
 import { fetchHomebrewUrl } from "./homebrew/urlImport.js";
 import { createWsHub } from "./realtime/wsHub.js";
+import { resolveSoloAction } from "./solo/actions.js";
+import { buildSoloScenePayload } from "./solo/scene.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -44,6 +50,12 @@ function routeError(res, error) {
   if (error?.code === "VERSION_CONFLICT") {
     payload.expectedVersion = error.expectedVersion;
     payload.currentVersion = error.currentVersion;
+  }
+  if (Array.isArray(error?.validationErrors)) {
+    payload.validationErrors = error.validationErrors;
+  }
+  if (error?.actionType) {
+    payload.actionType = error.actionType;
   }
 
   writeJson(res, statusCode, payload);
@@ -204,6 +216,52 @@ const aiProcessor = createAiJobProcessor({
   }
 });
 
+function parseSoloRunIdFromPath(pathname) {
+  const prefix = "/api/solo/runs/";
+  if (!pathname.startsWith(prefix)) {
+    return null;
+  }
+  const raw = pathname.slice(prefix.length).trim();
+  if (!raw || raw.includes("/")) {
+    return null;
+  }
+  return decodeURIComponent(raw);
+}
+
+function parseSoloRunActionPath(pathname) {
+  const prefix = "/api/solo/runs/";
+  if (!pathname.startsWith(prefix) || !pathname.endsWith("/actions")) {
+    return null;
+  }
+  const raw = pathname.slice(prefix.length, -"/actions".length).replace(/\/+$/, "").trim();
+  if (!raw || raw.includes("/")) {
+    return null;
+  }
+  return decodeURIComponent(raw);
+}
+
+function parseSoloRunScenePath(pathname) {
+  const prefix = "/api/solo/runs/";
+  if (!pathname.startsWith(prefix) || !pathname.endsWith("/scene")) {
+    return null;
+  }
+  const raw = pathname.slice(prefix.length, -"/scene".length).replace(/\/+$/, "").trim();
+  if (!raw || raw.includes("/")) {
+    return null;
+  }
+  return decodeURIComponent(raw);
+}
+
+function assertSoloRunAccess(user, run) {
+  if (!run || user.isAdmin || !run.userId || run.userId === user.id) {
+    return;
+  }
+  throw Object.assign(new Error("User does not have access to this solo run."), {
+    code: "FORBIDDEN",
+    statusCode: 403
+  });
+}
+
 async function handleApi(req, res) {
   const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
 
@@ -296,6 +354,146 @@ async function handleApi(req, res) {
         ok: true,
         state: getState({ userId: user.id })
       });
+    } catch (error) {
+      routeError(res, error);
+    }
+    return true;
+  }
+
+
+  if (req.method === "POST" && url.pathname === "/api/solo/runs") {
+    try {
+      const user = requireAuth(req);
+      const payload = await readJsonBody(req);
+      const run = createSoloRun({
+        userId: user.id,
+        runId: payload.runId,
+        worldSeed: payload.worldSeed
+      });
+      writeJson(res, 201, { ok: true, run });
+    } catch (error) {
+      routeError(res, error);
+    }
+    return true;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/solo/runs") {
+    try {
+      const user = requireAuth(req);
+      const runs = listSoloRunsForUser(user.id);
+      writeJson(res, 200, { ok: true, runs });
+    } catch (error) {
+      routeError(res, error);
+    }
+    return true;
+  }
+
+  const soloActionRunId = parseSoloRunActionPath(url.pathname);
+  if (soloActionRunId && req.method === "POST") {
+    try {
+      const user = requireAuth(req);
+      const run = getSoloRun(soloActionRunId);
+      if (!run) {
+        throw Object.assign(new Error("Solo run not found."), {
+          code: "NOT_FOUND",
+          statusCode: 404
+        });
+      }
+      assertSoloRunAccess(user, run);
+      const payload = await readJsonBody(req);
+      const action = payload.action || payload;
+      const resolved = resolveSoloAction(run, action);
+      if (!resolved.ok) {
+        throw Object.assign(new Error("Solo action could not be resolved."), {
+          code: resolved.code || "ACTION_INVALID",
+          statusCode: 400,
+          validationErrors: resolved.errors,
+          actionType: resolved.actionType
+        });
+      }
+
+      const responseRun = resolved.run ? saveSoloRun(resolved.run) : run;
+      writeJson(res, 200, {
+        ok: true,
+        run: responseRun,
+        action: resolved.action,
+        event: resolved.event,
+        memoryFact: resolved.memoryFact,
+        entity: resolved.entity,
+        details: resolved.details,
+        availableMoves: resolved.availableMoves,
+        availableActions: resolved.availableActions
+      });
+    } catch (error) {
+      routeError(res, error);
+    }
+    return true;
+  }
+
+  const soloSceneRunId = parseSoloRunScenePath(url.pathname);
+  if (soloSceneRunId && req.method === "GET") {
+    try {
+      const user = requireAuth(req);
+      const run = getSoloRun(soloSceneRunId);
+      if (!run) {
+        throw Object.assign(new Error("Solo run not found."), {
+          code: "NOT_FOUND",
+          statusCode: 404
+        });
+      }
+      assertSoloRunAccess(user, run);
+      const scene = buildSoloScenePayload(run);
+      if (!scene.ok) {
+        throw Object.assign(new Error("Solo scene could not be built."), {
+          code: "INVALID_SOLO_SCENE",
+          statusCode: 400,
+          validationErrors: scene.errors
+        });
+      }
+      writeJson(res, 200, scene);
+    } catch (error) {
+      routeError(res, error);
+    }
+    return true;
+  }
+
+  const soloRunId = parseSoloRunIdFromPath(url.pathname);
+  if (soloRunId && req.method === "GET") {
+    try {
+      const user = requireAuth(req);
+      const run = getSoloRun(soloRunId);
+      if (!run) {
+        throw Object.assign(new Error("Solo run not found."), {
+          code: "NOT_FOUND",
+          statusCode: 404
+        });
+      }
+      assertSoloRunAccess(user, run);
+      writeJson(res, 200, { ok: true, run });
+    } catch (error) {
+      routeError(res, error);
+    }
+    return true;
+  }
+
+  if (soloRunId && req.method === "PUT") {
+    try {
+      const user = requireAuth(req);
+      const payload = await readJsonBody(req);
+      const run = payload.run || payload;
+      if (run?.runId !== soloRunId) {
+        throw Object.assign(new Error("Path runId must match body runId."), {
+          code: "RUN_ID_MISMATCH",
+          statusCode: 400
+        });
+      }
+      const existing = getSoloRun(soloRunId);
+      if (existing) {
+        assertSoloRunAccess(user, existing);
+      }
+      assertSoloRunAccess(user, run);
+      const saved = saveSoloRun(run);
+      writeJson(res, 200, { ok: true, run: saved });
     } catch (error) {
       routeError(res, error);
     }

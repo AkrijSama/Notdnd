@@ -4,6 +4,7 @@ import path from "node:path";
 import { buildQuickstartBlueprint } from "../campaign/quickstart.js";
 import { ensureCampaignMemoryDocs } from "../gm/memoryStore.js";
 import { formatRollSummary, resolveAttack, resolveSkillCheck, rollDiceExpression } from "../rules/engine.js";
+import { createDefaultSoloRun, validateSoloRun } from "../solo/schema.js";
 import { uid } from "../utils/ids.js";
 import { createSeedState } from "./seedState.js";
 
@@ -118,6 +119,7 @@ function ensureDefaults(target) {
     target.campaignPackagesByCampaign && typeof target.campaignPackagesByCampaign === "object"
       ? target.campaignPackagesByCampaign
       : {};
+  target.soloRuns = target.soloRuns && typeof target.soloRuns === "object" ? target.soloRuns : {};
 
   target.selectedCampaignId = target.selectedCampaignId || target.campaigns?.[0]?.id || null;
 
@@ -526,6 +528,19 @@ function campaignIdFromMapId(mapId) {
   return map?.campaignId || null;
 }
 
+function validateSoloRunOrThrow(run) {
+  const validation = validateSoloRun(run);
+  if (!validation.ok) {
+    throw makeError("INVALID_SOLO_RUN", "Solo run validation failed.", 400, {
+      validationErrors: validation.errors
+    });
+  }
+}
+
+function nowIso() {
+  return new Date().toISOString();
+}
+
 export function resolveStorePath() {
   return storePath();
 }
@@ -546,10 +561,72 @@ export function resetDatabase() {
   db.userPrefsByUser = {};
   db.campaignMembersByCampaign = {};
   db.campaignVersions = {};
+  db.soloRuns = {};
   db.stateVersion = 0;
 
   bootstrapAdminAndMemberships();
   writeToDisk();
+}
+
+export function createSoloRun({ userId = null, runId = null, worldSeed = null, now = null } = {}) {
+  ensureDb();
+  const run = createDefaultSoloRun({
+    userId,
+    runId,
+    worldSeed,
+    now
+  });
+  validateSoloRunOrThrow(run);
+  if (db.soloRuns[run.runId]) {
+    throw makeError("CONFLICT", "Solo run already exists.", 409);
+  }
+
+  db.soloRuns[run.runId] = deepClone(run);
+  bumpStateVersion();
+  writeToDisk();
+  return deepClone(run);
+}
+
+export function getSoloRun(runId) {
+  ensureDb();
+  const key = String(runId || "").trim();
+  if (!key) {
+    return null;
+  }
+  return db.soloRuns[key] ? deepClone(db.soloRuns[key]) : null;
+}
+
+export function listSoloRunsForUser(userId) {
+  ensureDb();
+  const key = userId === null || userId === undefined ? null : String(userId);
+  return Object.values(db.soloRuns)
+    .filter((run) => run.userId === key)
+    .map((run) => deepClone(run))
+    .sort((left, right) => String(right.updatedAt || "").localeCompare(String(left.updatedAt || "")));
+}
+
+export function saveSoloRun(run) {
+  ensureDb();
+  const next = deepClone(run);
+  next.updatedAt = nowIso();
+  validateSoloRunOrThrow(next);
+
+  db.soloRuns[next.runId] = next;
+  bumpStateVersion();
+  writeToDisk();
+  return deepClone(next);
+}
+
+export function deleteSoloRun(runId) {
+  ensureDb();
+  const key = String(runId || "").trim();
+  if (!key || !db.soloRuns[key]) {
+    return false;
+  }
+  delete db.soloRuns[key];
+  bumpStateVersion();
+  writeToDisk();
+  return true;
 }
 
 export function getState(options = {}) {
