@@ -160,6 +160,11 @@ test("GET /api/solo/runs/:runId/gm-scene returns scene and narration", async () 
   assert.equal(payload.scene.runId, "api_gm_scene_run");
   assert.equal(payload.gmNarration.ok, true);
   assert.equal(payload.gmNarration.narration.title, "Start Location");
+  assert.equal(payload.gmStatus.mode, "placeholder");
+  assert.equal(payload.gmStatus.providerAttempted, false);
+  assert.equal(payload.gmStatus.providerName, "placeholder");
+  assert.equal(payload.gmStatus.providerKind, "placeholder");
+  assert.equal(typeof payload.gmStatus.evaluationScore, "number");
   assert.match(payload.gmNarration.narration.body, /Neutral placeholder starting location/);
 });
 
@@ -207,6 +212,10 @@ test("provider mode without feature flag falls back safely", async () => {
   assert.equal(payload.ok, true);
   assert.match(payload.gmNarration.narration.body, /Neutral placeholder starting location/);
   assert.ok(payload.gmNarration.warnings.includes("GM_PROVIDER_DISABLED"));
+  assert.equal(payload.gmStatus.mode, "fallback");
+  assert.equal(payload.gmStatus.providerAttempted, false);
+  assert.equal(payload.gmStatus.fallbackUsed, true);
+  assert.ok(payload.gmStatus.warningCodes.includes("GM_PROVIDER_DISABLED"));
 });
 
 test("GM scene response does not expose raw prompt or provider dumps", async () => {
@@ -250,7 +259,56 @@ test("provider mode route can use safe local mock provider without leaking promp
       assert.equal(payload.ok, true);
       assert.equal(payload.gmNarration.ok, true);
       assert.ok(payload.gmNarration.warnings.includes("GM_LOCAL_MOCK_PROVIDER"));
+      assert.equal(payload.gmStatus.mode, "provider");
+      assert.equal(payload.gmStatus.providerAttempted, true);
+      assert.equal(payload.gmStatus.providerName, "local");
+      assert.equal(payload.gmStatus.providerKind, "local");
+      assert.equal(payload.gmStatus.providerSucceeded, true);
+      assert.equal(payload.gmStatus.fallbackUsed, false);
+      assert.equal(typeof payload.gmStatus.evaluationScore, "number");
+      assert.ok(payload.gmStatus.warningCodes.includes("GM_LOCAL_MOCK_PROVIDER"));
       assert.doesNotMatch(encoded, /SYSTEM:|USER:|Authorization|apiKey|OPENAI_API_KEY|prompt/i);
+    }
+  );
+});
+
+test("provider mode route reports fallback status when provider fails", async () => {
+  await withProviderServer(
+    {
+      NOTDND_GM_PROVIDER_ENABLED: "true",
+      NOTDND_GM_PROVIDER: "chatgpt",
+      NOTDND_GM_MODEL: "safe-test-model"
+    },
+    async (providerRequest) => {
+      const login = await providerRequest("/api/auth/login", {
+        method: "POST",
+        body: {
+          email: "demo@notdnd.local",
+          password: "demo1234"
+        }
+      });
+      await providerRequest("/api/solo/runs", {
+        method: "POST",
+        token: login.token,
+        body: {
+          runId: "api_gm_scene_provider_fail",
+          worldSeed: "api_gm_scene_provider_fail_seed"
+        },
+        expectedStatus: 201
+      });
+
+      const payload = await providerRequest("/api/solo/runs/api_gm_scene_provider_fail/gm-scene?mode=provider", {
+        token: login.token
+      });
+      const encoded = JSON.stringify(payload);
+
+      assert.equal(payload.ok, true);
+      assert.equal(payload.gmStatus.mode, "fallback");
+      assert.equal(payload.gmStatus.providerName, "chatgpt");
+      assert.equal(payload.gmStatus.providerKind, "external");
+      assert.equal(payload.gmStatus.fallbackUsed, true);
+      assert.ok(payload.gmStatus.warningCodes.includes("GM_PROVIDER_UNAVAILABLE"));
+      assert.doesNotMatch(encoded, /SYSTEM:|USER:|Authorization|apiKey|OPENAI_API_KEY|prompt|safe-test-model/i);
     }
   );
 });

@@ -32,6 +32,7 @@ import { fetchHomebrewUrl } from "./homebrew/urlImport.js";
 import { createWsHub } from "./realtime/wsHub.js";
 import { resolveSoloAction } from "./solo/actions.js";
 import { resolveGmNarration } from "./solo/gmProvider.js";
+import { buildGmRuntimeStatus } from "./solo/gmSmoke.js";
 import { buildSoloScenePayload } from "./solo/scene.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -463,13 +464,18 @@ async function handleApi(req, res) {
           validationErrors: scene.errors
         });
       }
+      const gmMode = url.searchParams.get("mode") || undefined;
       const gmNarration = await resolveGmNarration(scene, {
-        mode: url.searchParams.get("mode") || undefined
+        mode: gmMode
+      });
+      const gmStatus = buildGmRuntimeStatus(scene, gmNarration, {
+        mode: gmMode
       });
       writeJson(res, 200, {
         ok: true,
         scene,
         gmNarration,
+        gmStatus,
         errors: []
       });
     } catch (error) {

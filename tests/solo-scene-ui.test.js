@@ -157,7 +157,69 @@ test("renderSoloSceneShell renders GM narration when present", () => {
   assert.match(html, /neutral GM Narration/);
   assert.match(html, /Server-truth narration placeholder/);
   assert.match(html, /quiet/);
+  assert.match(html, /GM Mode: Placeholder/);
   assert.doesNotMatch(html, /"narration"/);
+});
+
+test("renderSoloSceneShell renders GM status metadata", () => {
+  const scene = {
+    ...sampleScene(),
+    gmNarration: {
+      ok: true,
+      narration: {
+        title: "Start Location",
+        body: "Provider narration from safe status metadata.",
+        tone: "neutral",
+        sensoryDetails: [],
+        focusEntityIds: []
+      },
+      suggestedActionLabels: [],
+      warnings: ["GM_LOCAL_MOCK_PROVIDER"],
+      stateMutations: []
+    },
+    gmStatus: {
+      mode: "provider",
+      providerAttempted: true,
+      providerName: "local",
+      providerKind: "local",
+      providerSucceeded: true,
+      fallbackUsed: false,
+      evaluationScore: 100,
+      warningCodes: ["GM_LOCAL_MOCK_PROVIDER"],
+      narrationLength: 48
+    }
+  };
+
+  const html = renderSoloSceneShell({ scene, gmMode: "provider" });
+  assert.match(html, /GM Mode: Provider/);
+  assert.match(html, /Provider: local \/ local/);
+  assert.match(html, /Eval 100/);
+  assert.match(html, /GM_LOCAL_MOCK_PROVIDER/);
+  assert.match(html, /Provider OK/);
+  assert.match(html, /data-solo-gm-mode="provider"/);
+  assert.doesNotMatch(html, /"gmStatus"/);
+});
+
+test("renderSoloSceneShell renders fallback GM status", () => {
+  const scene = {
+    ...sampleScene(),
+    gmStatus: {
+      mode: "fallback",
+      providerAttempted: false,
+      providerName: "placeholder",
+      providerKind: "placeholder",
+      providerSucceeded: false,
+      fallbackUsed: true,
+      evaluationScore: 95,
+      warningCodes: ["GM_PROVIDER_DISABLED"],
+      narrationLength: 120
+    }
+  };
+
+  const html = renderSoloSceneShell({ scene, gmMode: "provider" });
+  assert.match(html, /GM Mode: Fallback/);
+  assert.match(html, /Fallback/);
+  assert.match(html, /GM_PROVIDER_DISABLED/);
 });
 
 test("renderSoloSceneShell renders fallback GM placeholder when narration is absent", () => {
@@ -194,6 +256,17 @@ test("mountSoloSceneShell loads GM narration after base scene", async () => {
           warnings: [],
           stateMutations: []
         },
+        gmStatus: {
+          mode: "placeholder",
+          providerAttempted: false,
+          providerName: "placeholder",
+          providerKind: "placeholder",
+          providerSucceeded: false,
+          fallbackUsed: false,
+          evaluationScore: 100,
+          warningCodes: [],
+          narrationLength: 21
+        },
         errors: []
       };
     },
@@ -205,6 +278,7 @@ test("mountSoloSceneShell loads GM narration after base scene", async () => {
   const mounted = mountSoloSceneShell(root, { apiClient, runId: "run_test" });
   await mounted.reload();
   assert.match(root.innerHTML, /Mounted GM narration/);
+  assert.match(root.innerHTML, /GM Mode: Placeholder/);
 });
 
 test("mountSoloSceneShell keeps fallback if GM narration request fails", async () => {
@@ -342,6 +416,42 @@ test("bindSoloSceneShell lets inspectable entity cards trigger inspect", () => {
   assert.deepEqual(inspected, { entityId: "npc:placeholder_npc" });
 });
 
+test("bindSoloSceneShell lets GM mode buttons request mode changes", () => {
+  const calls = [];
+  const buttons = [
+    {
+      addEventListener(_event, handler) {
+        this.handler = handler;
+      },
+      getAttribute(name) {
+        return name === "data-solo-gm-mode" ? "provider" : "";
+      }
+    },
+    {
+      addEventListener(_event, handler) {
+        this.handler = handler;
+      },
+      getAttribute(name) {
+        return name === "data-solo-gm-mode" ? "placeholder" : "";
+      }
+    }
+  ];
+  const root = {
+    querySelectorAll(selector) {
+      return selector === "[data-solo-gm-mode]" ? buttons : [];
+    }
+  };
+
+  bindSoloSceneShell(root, {
+    onGmMode(mode) {
+      calls.push(mode);
+    }
+  });
+  buttons[0].handler();
+  buttons[1].handler();
+  assert.deepEqual(calls, [{ mode: "provider" }, { mode: "placeholder" }]);
+});
+
 test("createMoveAction builds persisted move action shape", () => {
   assert.deepEqual(createMoveAction(sampleScene(), { locationId: "second_location", direction: "east" }), {
     type: "move",
@@ -367,8 +477,8 @@ test("solo scene API helpers call auth-aware client methods", async () => {
       calls.push(["scene", runId]);
       return { ok: true, runId };
     },
-    async fetchSoloGmScene(runId) {
-      calls.push(["gmScene", runId]);
+    async fetchSoloGmScene(runId, options) {
+      calls.push(["gmScene", runId, options]);
       return { ok: true, runId, gmNarration: {} };
     },
     async postSoloAction(runId, action) {
@@ -378,14 +488,18 @@ test("solo scene API helpers call auth-aware client methods", async () => {
   };
 
   assert.deepEqual(await fetchSoloScene(apiClient, "run_test"), { ok: true, runId: "run_test" });
-  assert.deepEqual(await fetchSoloGmScene(apiClient, "run_test"), { ok: true, runId: "run_test", gmNarration: {} });
+  assert.deepEqual(await fetchSoloGmScene(apiClient, "run_test", { mode: "provider" }), {
+    ok: true,
+    runId: "run_test",
+    gmNarration: {}
+  });
   assert.deepEqual(await postSoloAction(apiClient, "run_test", { type: "inspect" }), {
     ok: true,
     action: { type: "inspect" }
   });
   assert.deepEqual(calls, [
     ["scene", "run_test"],
-    ["gmScene", "run_test"],
+    ["gmScene", "run_test", { mode: "provider" }],
     ["action", "run_test", { type: "inspect" }]
   ]);
 });

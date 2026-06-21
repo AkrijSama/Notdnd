@@ -724,6 +724,44 @@ What not to build:
 - Runtime UI toggle.
 - Prompt tuning.
 
+### 15. GM Narration Runtime Toggle + UI Status
+
+Goal:
+
+Show safe GM narration mode/status in the runtime UI and let early users request placeholder or provider mode.
+
+Likely files/modules:
+
+- Existing `server/index.js`
+- Existing `server/solo/gmSmoke.js`
+- Existing `src/components/soloSceneShell.js`
+- Existing `src/components/soloSceneApi.js`
+- Existing `src/api/client.js`
+- Existing `tests/solo-run-gm-api.test.js`
+- Existing `tests/solo-scene-ui.test.js`
+
+Acceptance criteria:
+
+- GM scene route returns safe `gmStatus` metadata.
+- `?mode=placeholder` forces placeholder narration.
+- `?mode=provider` requests provider mode but falls back safely when provider mode is disabled, unavailable, or invalid.
+- Scene UI displays placeholder/provider/fallback mode, provider name/kind, evaluation score, warning codes, and fallback/provider badges.
+- UI mode controls request placeholder or provider mode without blocking scene rendering.
+- No raw prompt, provider response, env value, key, header, or secret reaches route response or UI.
+
+Proof required:
+
+- Backend tests verify status metadata for placeholder, fallback, local/mock provider, provider failure, and no raw dumps.
+- Frontend tests verify status rendering, warning display, mode controls, and no raw JSON dump.
+- Visual screenshot proves the status/control appears in the scene shell.
+
+What not to build:
+
+- Real external provider setup.
+- Final settings UI.
+- Chat.
+- Prompt tuning.
+
 ### 10. NPC Relationship State
 
 Goal:

@@ -90,6 +90,8 @@ Safe Real Provider Smoke: real provider smoke is optional and must never print s
 
 Safe Local Provider Smoke: the first configured smoke may use the committed `local` mock provider to prove the provider adapter path without external secrets. This counts as provider-path plumbing proof only, not proof of real external AI narration quality.
 
+GM Runtime Status: the client should show whether narration is placeholder, provider-backed, or fallback. Status metadata is safe-only: provider name/kind, attempted/succeeded booleans, fallback flag, evaluation score, warning codes, and narration length. The UI may request placeholder or provider mode, but provider mode remains feature-flagged and must never expose raw prompts, responses, headers, secrets, or env values.
+
 Accepted AI output for MVP:
 
 - Scene narration.

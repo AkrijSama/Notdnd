@@ -23,6 +23,14 @@ function labelForAction(action = {}) {
   return typeLabel(action.type || "Action");
 }
 
+function titleCase(value) {
+  return typeLabel(value)
+    .split(" ")
+    .filter(Boolean)
+    .map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
+    .join(" ");
+}
+
 function renderEmpty(label) {
   return `<div class="solo-empty-state">${escapeHtml(label)}</div>`;
 }
@@ -101,13 +109,67 @@ export function renderSceneHeader(scene = {}, state = {}) {
   `;
 }
 
-export function renderGmNarrationPanel(gmNarration = null) {
+export function renderGmStatusPanel(gmStatus = null, selectedMode = "placeholder") {
+  const status = gmStatus || {
+    mode: "placeholder",
+    providerAttempted: false,
+    providerName: "placeholder",
+    providerKind: "placeholder",
+    providerSucceeded: false,
+    fallbackUsed: false,
+    evaluationScore: null,
+    warningCodes: [],
+    narrationLength: null
+  };
+  const warnings = Array.isArray(status.warningCodes) ? status.warningCodes : [];
+  const mode = status.mode || "placeholder";
+  const providerLabel = [status.providerName, status.providerKind].filter(Boolean).join(" / ") || "placeholder";
+
+  return `
+    <div class="solo-gm-status-panel" data-gm-mode="${escapeHtml(mode)}">
+      <div class="solo-gm-status-topline">
+        <span class="tag">GM Mode: ${escapeHtml(titleCase(mode))}</span>
+        ${status.fallbackUsed ? `<span class="tag danger">Fallback</span>` : ""}
+        ${status.providerSucceeded ? `<span class="tag success">Provider OK</span>` : ""}
+      </div>
+      <div class="small">
+        Provider: ${escapeHtml(providerLabel)}
+        ${Number.isFinite(status.evaluationScore) ? ` / Eval ${escapeHtml(status.evaluationScore)}` : ""}
+        ${Number.isFinite(status.narrationLength) ? ` / ${escapeHtml(status.narrationLength)} chars` : ""}
+      </div>
+      ${
+        warnings.length
+          ? `<div class="solo-tag-row">${warnings.map((warning) => `<span class="tag">${escapeHtml(warning)}</span>`).join("")}</div>`
+          : ""
+      }
+      <div class="solo-gm-mode-toggle" role="group" aria-label="GM narration mode">
+        <button
+          class="ghost ${selectedMode === "placeholder" ? "selected" : ""}"
+          data-solo-gm-mode="placeholder"
+          type="button"
+        >
+          Placeholder
+        </button>
+        <button
+          class="ghost ${selectedMode === "provider" ? "selected" : ""}"
+          data-solo-gm-mode="provider"
+          type="button"
+        >
+          Provider
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+export function renderGmNarrationPanel(gmNarration = null, gmStatus = null, selectedMode = "placeholder") {
   const narration = gmNarration?.narration || null;
   if (!narration) {
     return `
       <div class="solo-gm-placeholder">
         <span>Future GM Narration</span>
         <p>Scene narration will appear here later, generated from server truth and memory.</p>
+        ${renderGmStatusPanel(gmStatus, selectedMode)}
       </div>
     `;
   }
@@ -124,11 +186,12 @@ export function renderGmNarrationPanel(gmNarration = null) {
               .join("")}</div>`
           : ""
       }
+      ${renderGmStatusPanel(gmStatus, selectedMode)}
     </div>
   `;
 }
 
-export function renderLocationPanel(location = {}, gmNarration = null) {
+export function renderLocationPanel(location = {}, gmNarration = null, gmStatus = null, selectedMode = "placeholder") {
   const imageLabel = location.imageAssetId ? `Image asset: ${location.imageAssetId}` : "No image assigned yet.";
   return `
     <section class="solo-location-card">
@@ -143,7 +206,7 @@ export function renderLocationPanel(location = {}, gmNarration = null) {
         <h3>${escapeHtml(location.name || "Current Location")}</h3>
         <p>${escapeHtml(location.description || "No location description is available.")}</p>
         ${renderTags(location.tags)}
-        ${renderGmNarrationPanel(gmNarration)}
+        ${renderGmNarrationPanel(gmNarration, gmStatus, selectedMode)}
       </div>
     </section>
   `;
@@ -422,13 +485,14 @@ export function renderSoloSceneShell(state = {}) {
 
   const scene = state.scene || {};
   const selectedEntityId = state.detail?.entity?.entityId || state.detail?.entityId || "";
+  const selectedGmMode = state.gmMode || "placeholder";
 
   return `
     <section class="solo-scene-shell solo-scene-shell-polished" data-run-id="${escapeHtml(scene.runId || state.runId || "")}">
       ${renderSceneHeader(scene, state)}
       <div class="solo-scene-grid">
         <main class="solo-scene-main">
-          ${renderLocationPanel(scene.location || {}, scene.gmNarration)}
+          ${renderLocationPanel(scene.location || {}, scene.gmNarration, scene.gmStatus, selectedGmMode)}
           ${renderMovementPanel(scene)}
           ${renderEntityPanel(scene, selectedEntityId)}
         </main>
@@ -466,6 +530,14 @@ export function bindSoloSceneShell(root, handlers = {}) {
     });
   });
 
+  root.querySelectorAll("[data-solo-gm-mode]").forEach((button) => {
+    button.addEventListener("click", () => {
+      handlers.onGmMode?.({
+        mode: button.getAttribute("data-solo-gm-mode")
+      });
+    });
+  });
+
   root.querySelectorAll(".solo-entity-card.inspectable").forEach((card) => {
     card.addEventListener("click", () => {
       handlers.onInspect?.({
@@ -489,7 +561,8 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     loading: true,
     error: "",
     scene: null,
-    detail: null
+    detail: null,
+    gmMode: "placeholder"
   };
 
   function render() {
@@ -497,7 +570,8 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     bindSoloSceneShell(root, {
       onReload: loadScene,
       onMove: handleMove,
-      onInspect: handleInspect
+      onInspect: handleInspect,
+      onGmMode: handleGmMode
     });
   }
 
@@ -508,11 +582,12 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     try {
       state.scene = await fetchSoloScene(apiClient, runId);
       try {
-        const gmScene = await fetchSoloGmScene(apiClient, runId);
+        const gmScene = await fetchSoloGmScene(apiClient, runId, { mode: state.gmMode });
         if (gmScene?.gmNarration) {
           state.scene = {
             ...state.scene,
-            gmNarration: gmScene.gmNarration
+            gmNarration: gmScene.gmNarration,
+            gmStatus: gmScene.gmStatus || null
           };
         }
       } catch {
@@ -548,6 +623,11 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       state.error = String(error?.message || error || "Inspect failed.");
       render();
     }
+  }
+
+  async function handleGmMode({ mode }) {
+    state.gmMode = mode === "provider" ? "provider" : "placeholder";
+    await loadScene();
   }
 
   render();

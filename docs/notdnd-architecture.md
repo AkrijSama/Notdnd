@@ -96,6 +96,7 @@ Contract boundary:
 - GM narration quality is evaluated by deterministic checks in `server/solo/gmEval.js`: grounding to the current scene, no state mutation claims, no blocked mainline content, no unsafe markup, reasonable length, no raw JSON/table output, and no unavailable action suggestions.
 - Safe provider smoke lives in `server/solo/gmSmoke.js`. It creates a neutral scene, attempts provider mode only when explicitly enabled/configured, validates/sanitizes/evaluates the result, and returns a safe summary without raw prompts, provider dumps, headers, stack traces, or env values.
 - The committed `local` provider is a mock provider suitable for secret-free adapter smoke. Its output must still pass through the same validation, sanitization, evaluation, and prompt-leak prevention as external providers.
+- `GET /api/solo/runs/:runId/gm-scene` returns `gmStatus` so UI can show placeholder/provider/fallback mode honestly. `?mode=placeholder` forces placeholder narration; `?mode=provider` requests provider mode but still falls back safely when disabled, misconfigured, failed, or invalid.
 
 Prompt contract should include:
 

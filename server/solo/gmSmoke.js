@@ -81,6 +81,17 @@ function safeWarnings(gmNarration, extra = []) {
   return Array.from(new Set([...(gmNarration?.warnings || []), ...extra].filter(Boolean)));
 }
 
+function providerFallbackWarning(warning) {
+  return [
+    "GM_PROVIDER_DISABLED",
+    "GM_PROVIDER_UNCONFIGURED",
+    "GM_PROVIDER_MODEL_UNCONFIGURED",
+    "GM_PROVIDER_UNAVAILABLE",
+    "GM_PROVIDER_OUTPUT_INVALID",
+    "GM_PROVIDER_FALLBACK_USED"
+  ].includes(warning);
+}
+
 function narrationLength(gmNarration) {
   const body = gmNarration?.narration?.body;
   return typeof body === "string" ? body.length : null;
@@ -234,5 +245,33 @@ export function summarizeGmSmokeResult(result = {}) {
     narrationLength: Number.isFinite(result.narrationLength) ? result.narrationLength : null,
     warnings: Array.isArray(result.warnings) ? Array.from(new Set(result.warnings.map(String))) : [],
     errorCode: result.errorCode || null
+  };
+}
+
+export function buildGmRuntimeStatus(scenePayload, gmNarration, options = {}) {
+  const config = getSafeGmProviderConfigStatus(options);
+  const warnings = safeWarnings(gmNarration);
+  const evaluation = scenePayload?.ok && gmNarration?.ok ? evaluateGmNarration(scenePayload, gmNarration) : null;
+  const fallbackUsed = warnings.some(providerFallbackWarning);
+  const providerCanRun = config.providerEnabled && config.providerConfigured && config.modelConfigured;
+  const requestedMode = options.mode || "default";
+  const providerAttempted =
+    !fallbackUsed &&
+    providerCanRun &&
+    requestedMode !== "placeholder" &&
+    (requestedMode === "provider" || warnings.includes("GM_LOCAL_MOCK_PROVIDER"));
+  const providerSucceeded = providerAttempted && Boolean(gmNarration?.ok);
+  const mode = fallbackUsed ? "fallback" : providerSucceeded ? "provider" : "placeholder";
+
+  return {
+    mode,
+    providerAttempted,
+    providerName: mode === "placeholder" && requestedMode !== "provider" ? "placeholder" : config.providerName,
+    providerKind: mode === "placeholder" && requestedMode !== "provider" ? "placeholder" : config.providerKind,
+    providerSucceeded,
+    fallbackUsed,
+    evaluationScore: evaluation ? evaluation.score : null,
+    warningCodes: warnings,
+    narrationLength: narrationLength(gmNarration)
   };
 }
