@@ -37,6 +37,32 @@ function moveAction(overrides = {}) {
   };
 }
 
+function addNpc(run) {
+  run.npcs.placeholder_npc = {
+    npcId: "placeholder_npc",
+    displayName: "Placeholder NPC",
+    role: "Neutral placeholder NPC",
+    currentLocationId: "start_location",
+    known: true,
+    status: "alive",
+    memoryFactIds: [],
+    tags: [],
+    flags: {},
+    dialogueBeats: [
+      {
+        beatId: "quiet_area",
+        label: "Quiet Area",
+        text: "There is not much to say yet, but the area has been quiet.",
+        revealed: false,
+        repeatable: false,
+        contentTags: [],
+        linkedMemoryFactIds: [],
+        linkedQuestIds: []
+      }
+    ]
+  };
+}
+
 test("normalizeSoloAction lowercases type and defaults actorId", () => {
   const normalized = normalizeSoloAction({ type: " MOVE ", toLocationId: "second_location" });
 
@@ -80,12 +106,12 @@ test("resolveSoloAction rejects unknown action type", () => {
 });
 
 test("resolveSoloAction returns ACTION_NOT_IMPLEMENTED for recognized future action", () => {
-  const run = createDefaultSoloRun({ runId: "run_action_talk" });
+  const run = createDefaultSoloRun({ runId: "run_action_rest" });
 
-  const result = resolveSoloAction(run, { type: "talk", targetId: "placeholder_npc" });
+  const result = resolveSoloAction(run, { type: "rest" });
   assert.equal(result.ok, false);
   assert.equal(result.code, "ACTION_NOT_IMPLEMENTED");
-  assert.equal(result.actionType, "talk");
+  assert.equal(result.actionType, "rest");
   assert.ok(errorPaths(result).includes("action.type"));
 });
 
@@ -144,6 +170,34 @@ test("action dispatcher resolves search", () => {
   assert.equal(result.event.type, "search");
   assert.equal(result.memoryFact.type, "search_discovery");
   assert.equal(result.run.locations.start_location.searchDetails[0].revealed, true);
+});
+
+test("getAvailableSoloActions includes talk when NPC is visible", () => {
+  const run = createDefaultSoloRun({ runId: "run_action_talk_available" });
+  addNpc(run);
+
+  const actions = getAvailableSoloActions(run);
+
+  assert.ok(actions.some((action) => action.type === "talk" && action.targetEntityId === "npc:placeholder_npc"));
+});
+
+test("action dispatcher resolves talk", () => {
+  const run = createDefaultSoloRun({ runId: "run_action_talk" });
+  addNpc(run);
+
+  const result = resolveSoloAction(run, {
+    type: "talk",
+    actorId: "player",
+    targetEntityId: "npc:placeholder_npc"
+  }, { now: TEST_NOW, idFactory: idFactory() });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.action.type, "talk");
+  assert.equal(result.talkResult.found, true);
+  assert.equal(result.event.type, "talk");
+  assert.equal(result.memoryFact.type, "dialogue_beat");
+  assert.equal(result.run.npcs.placeholder_npc.dialogueBeats[0].revealed, true);
+  assert.ok(result.availableActions.some((action) => action.type === "search" && action.enabled === true));
 });
 
 test("invalid move returns useful path errors", () => {

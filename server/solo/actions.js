@@ -11,9 +11,14 @@ import {
   resolveSearchAction,
   validateSearchAction
 } from "./search.js";
+import {
+  getTalkableNpcs,
+  resolveTalkAction,
+  validateTalkAction
+} from "./talk.js";
 
-const IMPLEMENTED_ACTION_TYPES = new Set(["move", "inspect", "search"]);
-const FUTURE_ACTION_TYPES = new Set(["talk", "interact", "use_item", "rest", "enter", "exit"]);
+const IMPLEMENTED_ACTION_TYPES = new Set(["move", "inspect", "search", "talk"]);
+const FUTURE_ACTION_TYPES = new Set(["interact", "use_item", "rest", "enter", "exit"]);
 const RECOGNIZED_ACTION_TYPES = new Set([...IMPLEMENTED_ACTION_TYPES, ...FUTURE_ACTION_TYPES]);
 
 function result(errors) {
@@ -103,6 +108,9 @@ export function validateSoloAction(run, action) {
   if (normalized.type === "search") {
     return validateSearchAction(run, normalized);
   }
+  if (normalized.type === "talk") {
+    return validateTalkAction(run, normalized);
+  }
 
   return notImplemented(normalized.type);
 }
@@ -129,14 +137,23 @@ export function getAvailableSoloActions(run, options = {}) {
       imageAssetId: entity.imageAssetId,
       enabled: true
     }));
+  const talkActions = getTalkableNpcs(run)
+    .map(({ npc, entity }) => ({
+      type: "talk",
+      label: `Talk to ${npc.displayName}`,
+      targetEntityId: entity.entityId,
+      npcId: npc.npcId,
+      enabled: true
+    }));
 
   if (!includePlaceholders) {
-    return [...movementActions, ...inspectActions];
+    return [...movementActions, ...inspectActions, ...talkActions];
   }
 
   return [
     ...movementActions,
     ...inspectActions,
+    ...talkActions,
     {
       type: "search",
       label: "Search area",
@@ -231,6 +248,30 @@ export function resolveSoloAction(run, action, options = {}) {
       searchResult: search.searchResult,
       availableMoves: getAvailableMoves(search.run),
       availableActions: getAvailableSoloActions(search.run),
+      errors: []
+    };
+  }
+
+  if (normalized.type === "talk") {
+    const talk = resolveTalkAction(run, normalized, options);
+    if (!talk.ok) {
+      return {
+        ok: false,
+        code: "ACTION_INVALID",
+        actionType: "talk",
+        errors: talk.errors
+      };
+    }
+
+    return {
+      ok: true,
+      action: normalized,
+      run: talk.run,
+      event: talk.event,
+      memoryFact: talk.memoryFact,
+      talkResult: talk.talkResult,
+      availableMoves: getAvailableMoves(talk.run),
+      availableActions: getAvailableSoloActions(talk.run),
       errors: []
     };
   }

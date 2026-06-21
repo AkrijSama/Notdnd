@@ -250,6 +250,47 @@ export function validateSearchDetail(detail) {
   return result(errors);
 }
 
+export function validateDialogueBeat(beat) {
+  const errors = [];
+  if (!isPlainObject(beat)) {
+    push(errors, "beat", "Expected object");
+    return result(errors);
+  }
+
+  validateRequiredString(beat.beatId, "beatId", errors);
+  validateRequiredString(beat.label, "label", errors);
+  validateRequiredString(beat.text, "text", errors);
+  if (beat.revealed !== undefined) {
+    validateBoolean(beat.revealed, "revealed", errors);
+  }
+  if (beat.repeatable !== undefined) {
+    validateBoolean(beat.repeatable, "repeatable", errors);
+  }
+  if (beat.check !== undefined && beat.check !== null) {
+    if (!isPlainObject(beat.check)) {
+      push(errors, "check", "Expected object");
+    } else {
+      validateOptionalString(beat.check.checkId, "check.checkId", errors);
+      validateOptionalString(beat.check.rulesetId, "check.rulesetId", errors);
+      validateRequiredString(beat.check.ability, "check.ability", errors);
+      validateOptionalString(beat.check.skill, "check.skill", errors);
+      validateNumber(beat.check.dc, "check.dc", errors);
+      if (beat.check.advantage !== undefined) {
+        validateBoolean(beat.check.advantage, "check.advantage", errors);
+      }
+      if (beat.check.disadvantage !== undefined) {
+        validateBoolean(beat.check.disadvantage, "check.disadvantage", errors);
+      }
+    }
+  }
+  validateStringArray(beat.contentTags || [], "contentTags", errors);
+  validateStringArray(beat.linkedMemoryFactIds || [], "linkedMemoryFactIds", errors);
+  validateStringArray(beat.linkedQuestIds || [], "linkedQuestIds", errors);
+  validateContentMetadata(beat, errors);
+
+  return result(errors);
+}
+
 export function validatePlayerState(player) {
   const errors = [];
   if (!isPlainObject(player)) {
@@ -431,6 +472,22 @@ export function validateNpc(npc) {
   validateStringArray(npc.tags, "tags", errors);
   validateObject(npc.flags, "flags", errors);
   validateContentMetadata(npc, errors);
+  if (npc.dialogueBeats !== undefined) {
+    if (!Array.isArray(npc.dialogueBeats)) {
+      push(errors, "dialogueBeats", "Expected array");
+    } else {
+      const seenBeatIds = new Set();
+      npc.dialogueBeats.forEach((beat, index) => {
+        appendNestedErrors(errors, `dialogueBeats.${index}`, validateDialogueBeat(beat));
+        if (isPlainObject(beat) && isString(beat.beatId)) {
+          if (seenBeatIds.has(beat.beatId)) {
+            push(errors, `dialogueBeats.${index}.beatId`, "Duplicate dialogue beat id");
+          }
+          seenBeatIds.add(beat.beatId);
+        }
+      });
+    }
+  }
 
   return result(errors);
 }
@@ -714,6 +771,7 @@ export function validateSoloRun(run) {
     ...Object.keys(run.playerAssets || {})
   ].filter(Boolean));
   const knownFactIds = new Set(Array.isArray(run.memoryFacts) ? run.memoryFacts.map((fact) => fact.factId).filter(Boolean) : []);
+  const knownQuestIds = new Set(Object.keys(run.quests || {}));
   for (const [locationId, location] of Object.entries(run.locations || {})) {
     if (!Array.isArray(location?.searchDetails)) {
       continue;
@@ -727,6 +785,23 @@ export function validateSoloRun(run) {
       (detail.linkedMemoryFactIds || []).forEach((factId, factIndex) => {
         if (!knownFactIds.has(factId)) {
           push(errors, `locations.${locationId}.searchDetails.${detailIndex}.linkedMemoryFactIds.${factIndex}`, "Linked memory fact does not exist");
+        }
+      });
+    });
+  }
+  for (const [npcId, npc] of Object.entries(run.npcs || {})) {
+    if (!Array.isArray(npc?.dialogueBeats)) {
+      continue;
+    }
+    npc.dialogueBeats.forEach((beat, beatIndex) => {
+      (beat.linkedMemoryFactIds || []).forEach((factId, factIndex) => {
+        if (!knownFactIds.has(factId)) {
+          push(errors, `npcs.${npcId}.dialogueBeats.${beatIndex}.linkedMemoryFactIds.${factIndex}`, "Linked memory fact does not exist");
+        }
+      });
+      (beat.linkedQuestIds || []).forEach((questId, questIndex) => {
+        if (!knownQuestIds.has(questId)) {
+          push(errors, `npcs.${npcId}.dialogueBeats.${beatIndex}.linkedQuestIds.${questIndex}`, "Linked quest does not exist");
         }
       });
     });

@@ -115,11 +115,13 @@ test("payload includes available moves", () => {
 
 test("payload includes available actions", () => {
   const run = createDefaultSoloRun({ runId: "run_scene_actions" });
+  addNpc(run);
 
   const payload = buildSoloScenePayload(run);
   assert.ok(payload.availableActions.some((action) => action.type === "move" && action.toLocationId === "second_location"));
   assert.ok(payload.availableActions.some((action) => action.type === "inspect" && action.entityId === "location:start_location"));
   assert.ok(payload.availableActions.some((action) => action.type === "search" && action.enabled === true));
+  assert.ok(payload.availableActions.some((action) => action.type === "talk" && action.targetEntityId === "npc:placeholder_npc"));
 });
 
 test("scene payload includes revealed search details only", () => {

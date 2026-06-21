@@ -59,6 +59,32 @@ async function createRun(runId) {
   return payload.run;
 }
 
+function addNpc(run) {
+  run.npcs.placeholder_npc = {
+    npcId: "placeholder_npc",
+    displayName: "Placeholder NPC",
+    role: "Neutral placeholder NPC",
+    currentLocationId: "start_location",
+    known: true,
+    status: "alive",
+    memoryFactIds: [],
+    tags: [],
+    flags: {},
+    dialogueBeats: [
+      {
+        beatId: "quiet_area",
+        label: "Quiet Area",
+        text: "There is not much to say yet, but the area has been quiet.",
+        revealed: false,
+        repeatable: false,
+        contentTags: [],
+        linkedMemoryFactIds: [],
+        linkedQuestIds: []
+      }
+    ]
+  };
+}
+
 test.before(async () => {
   serverProcess = spawn(process.execPath, ["server/index.js"], {
     cwd: path.resolve("."),
@@ -186,14 +212,13 @@ test("POST unknown action returns 400", async () => {
 });
 
 test("POST recognized but unimplemented action returns ACTION_NOT_IMPLEMENTED", async () => {
-  await createRun("api_action_talk");
+  await createRun("api_action_rest");
 
-  const payload = await request("/api/solo/runs/api_action_talk/actions", {
+  const payload = await request("/api/solo/runs/api_action_rest/actions", {
     method: "POST",
     body: {
       action: {
-        type: "talk",
-        targetId: "placeholder_npc"
+        type: "rest"
       }
     },
     expectedStatus: 400
@@ -201,7 +226,7 @@ test("POST recognized but unimplemented action returns ACTION_NOT_IMPLEMENTED", 
 
   assert.equal(payload.ok, false);
   assert.equal(payload.code, "ACTION_NOT_IMPLEMENTED");
-  assert.equal(payload.actionType, "talk");
+  assert.equal(payload.actionType, "rest");
 });
 
 test("POST search action persists search result", async () => {
@@ -257,6 +282,38 @@ test("POST checked search action includes checkResult", async () => {
   assert.equal(payload.searchResult.checkResult.ok, true);
   assert.equal(payload.searchResult.checkResult.dc, 5);
   assert.equal(typeof payload.searchResult.checkResult.keptRoll, "number");
+});
+
+test("POST talk action persists talk result", async () => {
+  const run = await createRun("api_action_talk");
+  addNpc(run);
+
+  await request("/api/solo/runs/api_action_talk", {
+    method: "PUT",
+    body: run
+  });
+
+  const payload = await request("/api/solo/runs/api_action_talk/actions", {
+    method: "POST",
+    body: {
+      action: {
+        type: "talk",
+        actorId: "player",
+        targetEntityId: "npc:placeholder_npc"
+      }
+    }
+  });
+
+  assert.equal(payload.ok, true);
+  assert.equal(payload.talkResult.found, true);
+  assert.equal(payload.talkResult.speakerName, "Placeholder NPC");
+  assert.equal(payload.event.type, "talk");
+  assert.equal(payload.memoryFact.type, "dialogue_beat");
+  assert.equal(payload.run.npcs.placeholder_npc.dialogueBeats[0].revealed, true);
+
+  const fetched = await request("/api/solo/runs/api_action_talk");
+  assert.equal(fetched.run.npcs.placeholder_npc.dialogueBeats[0].revealed, true);
+  assert.equal(fetched.run.memoryFacts.filter((fact) => fact.type === "dialogue_beat").length, 1);
 });
 
 test("ownership rules match existing solo run route behavior", async () => {

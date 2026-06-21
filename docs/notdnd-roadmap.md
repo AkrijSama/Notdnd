@@ -970,3 +970,40 @@ What not to build:
 
 - Full 5e.
 - Combat, spells, classes, races, backgrounds, equipment, or inventory rules.
+
+### 17. Basic Talk Action + NPC Dialogue Contract
+
+Goal:
+
+Add structured NPC dialogue without freeform chat or AI dialogue.
+
+Likely files/modules:
+
+- `server/solo/talk.js`
+- `server/solo/actions.js`
+- `server/solo/schema.js`
+- `src/components/soloSceneShell.js`
+- Solo talk/action/API/UI tests.
+
+Acceptance criteria:
+
+- Talk is available only for visible NPCs.
+- NPCs may define neutral `dialogueBeats`.
+- Talk reveals only pre-existing allowed beats.
+- Optional ability checks can gate a beat.
+- New meaningful beats create timeline and memory records.
+- Mainline talk cannot reveal blocked or forbidden-lane dialogue.
+- The UI posts a structured talk action and displays speaker/line without raw JSON.
+
+Proof required:
+
+- Unit/API/UI tests for resolver, persistence, scene/action availability, and click handling.
+- Browser screenshot after using Talk.
+
+What not to build:
+
+- AI dialogue.
+- Freeform chat input.
+- Full dialogue trees.
+- Romance systems.
+- Lore authored by Codex.

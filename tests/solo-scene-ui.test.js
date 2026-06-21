@@ -6,6 +6,7 @@ import {
   createInspectAction,
   createMoveAction,
   createSearchAction,
+  createTalkAction,
   mountSoloSceneShell,
   renderEntityDetailPanel,
   renderSoloSceneShell
@@ -68,6 +69,12 @@ function sampleScene() {
         type: "search",
         label: "Search area",
         enabled: true
+      },
+      {
+        type: "talk",
+        label: "Talk to Placeholder NPC",
+        targetEntityId: "npc:placeholder_npc",
+        enabled: true
       }
     ],
     recentTimeline: [
@@ -113,6 +120,7 @@ test("renderSoloSceneShell renders visible entities", () => {
   const html = renderSoloSceneShell({ scene: sampleScene() });
   assert.match(html, /Placeholder NPC/);
   assert.match(html, /data-entity-id="npc:placeholder_npc"/);
+  assert.match(html, /Talk/);
 });
 
 test("renderSoloSceneShell renders available moves", () => {
@@ -138,6 +146,8 @@ test("renderSoloSceneShell renders available actions and disables unimplemented 
   const html = renderSoloSceneShell({ scene });
   assert.match(html, /Move to Second Location/);
   assert.match(html, /Search area/);
+  assert.match(html, /Talk to Placeholder NPC/);
+  assert.match(html, /data-solo-action="talk"/);
   assert.match(html, /data-solo-action="search"/);
   assert.match(html, /Not implemented yet/);
   assert.match(html, /disabled/);
@@ -186,6 +196,53 @@ test("renderSoloSceneShell renders nothing-new search result", () => {
   assert.match(html, /Nothing new found/);
   assert.match(html, /You find nothing new right now/);
   assert.match(html, /SEARCH_NOTHING_NEW/);
+});
+
+test("renderSoloSceneShell renders talk result", () => {
+  const html = renderSoloSceneShell({
+    scene: sampleScene(),
+    talkResult: {
+      npcId: "placeholder_npc",
+      beatId: "quiet_area",
+      found: true,
+      speakerName: "Placeholder NPC",
+      line: "There is not much to say yet, but the area has been quiet.",
+      summary: "Placeholder NPC: Quiet Area",
+      revealed: true,
+      checkResult: null,
+      warningCodes: []
+    }
+  });
+
+  assert.match(html, /Dialogue/);
+  assert.match(html, /Placeholder NPC/);
+  assert.match(html, /area has been quiet/);
+  assert.doesNotMatch(html, /"talkResult"/);
+});
+
+test("renderSoloSceneShell renders neutral fallback talk result", () => {
+  const html = renderSoloSceneShell({
+    scene: sampleScene(),
+    talkResult: {
+      npcId: "placeholder_npc",
+      beatId: null,
+      found: false,
+      speakerName: "Placeholder NPC",
+      line: "There is not much new to say right now.",
+      summary: "No new dialogue is available.",
+      revealed: false,
+      checkResult: {
+        success: false,
+        total: 8,
+        dc: 12
+      },
+      warningCodes: ["TALK_CHECK_FAILED"]
+    }
+  });
+
+  assert.match(html, /There is not much new to say/);
+  assert.match(html, /Check failed/);
+  assert.match(html, /TALK_CHECK_FAILED/);
 });
 
 test("renderSoloSceneShell renders timeline and memory panels", () => {
@@ -420,6 +477,58 @@ test("mountSoloSceneShell posts search action and shows result", async () => {
   assert.match(root.innerHTML, /Scuffed Mark/);
 });
 
+test("mountSoloSceneShell posts talk action and shows dialogue result", async () => {
+  const talkButton = {
+    handler: null,
+    addEventListener(_event, handler) {
+      this.handler = handler;
+    },
+    getAttribute(name) {
+      return name === "data-entity-id" ? "npc:placeholder_npc" : "";
+    }
+  };
+  const root = {
+    innerHTML: "",
+    querySelectorAll(selector) {
+      return selector === "[data-solo-action='talk']" ? [talkButton] : [];
+    }
+  };
+  const calls = [];
+  const apiClient = {
+    async fetchSoloScene() {
+      return sampleScene();
+    },
+    async fetchSoloGmScene() {
+      return { ok: true, gmNarration: null, gmStatus: null };
+    },
+    async postSoloAction(runId, action) {
+      calls.push(["action", runId, action]);
+      return {
+        ok: true,
+        talkResult: {
+          npcId: "placeholder_npc",
+          beatId: "quiet_area",
+          found: true,
+          speakerName: "Placeholder NPC",
+          line: "There is not much to say yet, but the area has been quiet.",
+          summary: "Placeholder NPC: Quiet Area",
+          revealed: true,
+          checkResult: null,
+          warningCodes: []
+        }
+      };
+    }
+  };
+
+  const mounted = mountSoloSceneShell(root, { apiClient, runId: "run_test" });
+  await mounted.reload();
+  await talkButton.handler({ stopPropagation() {} });
+
+  assert.deepEqual(calls, [["action", "run_test", { type: "talk", actorId: "player", targetEntityId: "npc:placeholder_npc" }]]);
+  assert.match(root.innerHTML, /Dialogue/);
+  assert.match(root.innerHTML, /area has been quiet/);
+});
+
 test("renderSoloSceneShell renders inspect details", () => {
   const html = renderSoloSceneShell({
     scene: sampleScene(),
@@ -589,6 +698,35 @@ test("bindSoloSceneShell lets Search Area trigger search action", () => {
   assert.equal(searched, true);
 });
 
+test("bindSoloSceneShell lets Talk trigger talk action", () => {
+  const fakeButton = {
+    addEventListener(_event, handler) {
+      this.handler = handler;
+    },
+    getAttribute(name) {
+      return name === "data-entity-id" ? "npc:placeholder_npc" : "";
+    }
+  };
+  const root = {
+    querySelectorAll(selector) {
+      return selector === "[data-solo-action='talk']" ? [fakeButton] : [];
+    }
+  };
+  let talked = null;
+  bindSoloSceneShell(root, {
+    onTalk(entity) {
+      talked = entity;
+    }
+  });
+
+  fakeButton.handler({ stopPropagation() {} });
+
+  assert.deepEqual(talked, {
+    entityId: "npc:placeholder_npc",
+    targetEntityId: "npc:placeholder_npc"
+  });
+});
+
 test("createMoveAction builds persisted move action shape", () => {
   assert.deepEqual(createMoveAction(sampleScene(), { locationId: "second_location", direction: "east" }), {
     type: "move",
@@ -611,6 +749,14 @@ test("createSearchAction builds search action shape", () => {
   assert.deepEqual(createSearchAction(), {
     type: "search",
     actorId: "player"
+  });
+});
+
+test("createTalkAction builds talk action shape", () => {
+  assert.deepEqual(createTalkAction({ entityId: "npc:placeholder_npc" }), {
+    type: "talk",
+    actorId: "player",
+    targetEntityId: "npc:placeholder_npc"
   });
 });
 

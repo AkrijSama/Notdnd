@@ -268,6 +268,10 @@ Search Area is the first non-movement, non-inspect gameplay verb. It must resolv
 
 NotDND supports a small ruleset adapter pattern for server-side adjudication. The current implementation is an ability-check contract compatible with 5e-style math, not a full 5e engine. AI GM narration may describe adjudicated results later, but rolls, DCs, modifiers, success, and failure come from server rules code.
 
+## 12. Basic Talk Action
+
+Talk is a structured server action for visible NPCs. It reveals only pre-existing `dialogueBeats`, may use the ruleset adapter for optional checks, and records timeline/memory only when a new meaningful beat is revealed. It is not freeform chat, not AI dialogue, not romance, and not a source of lore invention.
+
 ## MVP Acceptance Criteria
 
 - User can start a solo run.

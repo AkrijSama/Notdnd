@@ -95,6 +95,14 @@ export function createSearchAction() {
   };
 }
 
+export function createTalkAction(entityOrAction = {}) {
+  return {
+    type: "talk",
+    actorId: "player",
+    targetEntityId: entityOrAction.entityId || entityOrAction.targetEntityId
+  };
+}
+
 export function renderSceneHeader(scene = {}, state = {}) {
   const location = scene.location || {};
   const time = scene.world?.time || scene.time || {};
@@ -255,6 +263,7 @@ export function renderMovementPanel(scene = {}) {
 export function renderEntityCard(entity = {}, selectedEntityId = "") {
   const selected = entity.entityId && entity.entityId === selectedEntityId;
   const inspectable = entity.inspectable !== false;
+  const canTalk = entity.entityType === "npc" && Array.isArray(entity.actionTypes) && entity.actionTypes.includes("talk");
   return `
     <article
       class="solo-entity-card ${selected ? "selected" : ""} ${inspectable ? "inspectable" : ""}"
@@ -279,6 +288,17 @@ export function renderEntityCard(entity = {}, selectedEntityId = "") {
       >
         Inspect
       </button>
+      ${
+        canTalk
+          ? `<button
+              class="ghost"
+              data-solo-action="talk"
+              data-entity-id="${escapeHtml(entity.entityId || "")}"
+            >
+              Talk
+            </button>`
+          : ""
+      }
     </article>
   `;
 }
@@ -311,14 +331,14 @@ export function renderSceneActionBar(scene = {}) {
           actions.length
             ? actions
                 .map((action) => {
-                  const implemented = action.type === "move" || action.type === "inspect" || action.type === "search";
+                  const implemented = action.type === "move" || action.type === "inspect" || action.type === "search" || action.type === "talk";
                   const enabled = action.enabled !== false && implemented;
                   return `
                     <button
                       class="ghost solo-action-button"
                       data-solo-action="${escapeHtml(action.type || "")}"
                       data-location-id="${escapeHtml(action.toLocationId || "")}"
-                      data-entity-id="${escapeHtml(action.entityId || "")}"
+                      data-entity-id="${escapeHtml(action.entityId || action.targetEntityId || "")}"
                       ${enabled ? "" : "disabled"}
                       title="${escapeHtml(enabled ? labelForAction(action) : action.reason || "Action not implemented yet.")}"
                     >
@@ -372,6 +392,52 @@ export function renderSearchResultPanel(searchResult = null, discoveredDetails =
               `)}
             </div>`
           : ""
+      }
+    </section>
+  `;
+}
+
+function renderCheckResult(checkResult = null) {
+  if (!checkResult) {
+    return "";
+  }
+  return `
+    <div class="solo-check-result">
+      <span class="tag ${checkResult.success ? "success" : "danger"}">
+        ${escapeHtml(checkResult.success ? "Check success" : "Check failed")}
+      </span>
+      <span class="small">
+        Total ${escapeHtml(checkResult.total)} vs DC ${escapeHtml(checkResult.dc)}
+      </span>
+    </div>
+  `;
+}
+
+export function renderTalkResultPanel(talkResult = null) {
+  return `
+    <section class="module-card solo-panel solo-talk-panel">
+      <div class="module-header">
+        <h3>Dialogue</h3>
+        <span class="small">Server result</span>
+      </div>
+      ${
+        talkResult
+          ? `
+            <div class="solo-talk-result ${talkResult.found ? "found" : "empty"}">
+              <strong>${escapeHtml(talkResult.speakerName || "NPC")}</strong>
+              <p>${escapeHtml(talkResult.line || "There is not much new to say right now.")}</p>
+              <div class="small">${escapeHtml(talkResult.summary || "")}</div>
+              ${renderCheckResult(talkResult.checkResult)}
+              ${
+                Array.isArray(talkResult.warningCodes) && talkResult.warningCodes.length
+                  ? `<div class="solo-tag-row">${talkResult.warningCodes
+                      .map((warning) => `<span class="tag">${escapeHtml(warning)}</span>`)
+                      .join("")}</div>`
+                  : ""
+              }
+            </div>
+          `
+          : renderEmpty("Talk to a visible NPC to see structured dialogue.")
       }
     </section>
   `;
@@ -548,6 +614,7 @@ export function renderSoloSceneShell(state = {}) {
         <aside class="solo-scene-side">
           ${renderSceneActionBar(scene)}
           ${renderSearchResultPanel(state.searchResult, scene.discoveredDetails)}
+          ${renderTalkResultPanel(state.talkResult)}
           ${renderEntityDetailPanel(state.detail)}
           ${renderSceneTimelinePanel(scene)}
           ${renderSceneMemoryPanel(scene)}
@@ -584,6 +651,16 @@ export function bindSoloSceneShell(root, handlers = {}) {
     button.addEventListener("click", () => handlers.onSearch?.());
   });
 
+  root.querySelectorAll("[data-solo-action='talk']").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      return handlers.onTalk?.({
+        entityId: button.getAttribute("data-entity-id"),
+        targetEntityId: button.getAttribute("data-entity-id")
+      });
+    });
+  });
+
   root.querySelectorAll("[data-solo-gm-mode]").forEach((button) => {
     button.addEventListener("click", () => {
       handlers.onGmMode?.({
@@ -617,6 +694,7 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     scene: null,
     detail: null,
     searchResult: null,
+    talkResult: null,
     gmMode: "placeholder"
   };
 
@@ -627,6 +705,7 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       onMove: handleMove,
       onInspect: handleInspect,
       onSearch: handleSearch,
+      onTalk: handleTalk,
       onGmMode: handleGmMode
     });
   }
@@ -651,6 +730,7 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       }
       state.detail = null;
       state.searchResult = null;
+      state.talkResult = null;
     } catch (error) {
       state.error = String(error?.message || error || "Failed to load solo scene.");
     } finally {
@@ -686,6 +766,7 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     try {
       const response = await postSoloAction(apiClient, runId, createSearchAction());
       state.searchResult = response.searchResult || null;
+      state.talkResult = null;
       const refreshed = await fetchSoloScene(apiClient, runId);
       state.scene = {
         ...refreshed,
@@ -695,6 +776,24 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       render();
     } catch (error) {
       state.error = String(error?.message || error || "Search failed.");
+      render();
+    }
+  }
+
+  async function handleTalk(entity) {
+    try {
+      const response = await postSoloAction(apiClient, runId, createTalkAction(entity));
+      state.talkResult = response.talkResult || null;
+      state.searchResult = null;
+      const refreshed = await fetchSoloScene(apiClient, runId);
+      state.scene = {
+        ...refreshed,
+        gmNarration: state.scene?.gmNarration || null,
+        gmStatus: state.scene?.gmStatus || null
+      };
+      render();
+    } catch (error) {
+      state.error = String(error?.message || error || "Talk failed.");
       render();
     }
   }

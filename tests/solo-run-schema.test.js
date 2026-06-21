@@ -6,6 +6,7 @@ import {
   createDefaultMainlinePolicyProfile,
   createDefaultSoloRun,
   validateEntityAgainstPolicy,
+  validateDialogueBeat,
   validateImageAsset,
   validateInventoryItem,
   validateLocation,
@@ -379,6 +380,51 @@ test("validateNpc accepts optional imageAssetId", () => {
 
   assert.equal(withoutImage.ok, true);
   assert.equal(withImage.ok, true);
+});
+
+test("validateDialogueBeat accepts neutral structured dialogue", () => {
+  const result = validateDialogueBeat({
+    beatId: "quiet_area",
+    label: "Quiet Area",
+    text: "There is not much to say yet, but the area has been quiet.",
+    revealed: false,
+    repeatable: false,
+    contentTags: [],
+    linkedMemoryFactIds: [],
+    linkedQuestIds: []
+  });
+
+  assert.equal(result.ok, true);
+});
+
+test("validateNpc rejects duplicate dialogue beat ids", () => {
+  const result = validateNpc(validNpc({
+    dialogueBeats: [
+      {
+        beatId: "quiet_area",
+        label: "Quiet Area",
+        text: "Neutral dialogue.",
+        revealed: false,
+        repeatable: false,
+        contentTags: [],
+        linkedMemoryFactIds: [],
+        linkedQuestIds: []
+      },
+      {
+        beatId: "quiet_area",
+        label: "Quiet Area Again",
+        text: "Neutral dialogue again.",
+        revealed: false,
+        repeatable: false,
+        contentTags: [],
+        linkedMemoryFactIds: [],
+        linkedQuestIds: []
+      }
+    ]
+  }));
+
+  assert.equal(result.ok, false);
+  assert.ok(errorPaths(result).includes("dialogueBeats.1.beatId"));
 });
 
 test("validateRelationship validates all required meters", () => {
