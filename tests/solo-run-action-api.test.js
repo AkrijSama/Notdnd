@@ -229,6 +229,36 @@ test("POST search action persists search result", async () => {
   assert.equal(fetched.run.memoryFacts.filter((fact) => fact.type === "search_discovery").length, 1);
 });
 
+test("POST checked search action includes checkResult", async () => {
+  const run = await createRun("api_action_checked_search");
+  run.locations.start_location.searchDetails[0].check = {
+    ability: "intelligence",
+    skill: "investigation",
+    dc: 5
+  };
+
+  await request("/api/solo/runs/api_action_checked_search", {
+    method: "PUT",
+    body: run
+  });
+
+  const payload = await request("/api/solo/runs/api_action_checked_search/actions", {
+    method: "POST",
+    body: {
+      action: {
+        type: "search",
+        actorId: "player"
+      }
+    }
+  });
+
+  assert.equal(payload.ok, true);
+  assert.equal(payload.searchResult.found, true);
+  assert.equal(payload.searchResult.checkResult.ok, true);
+  assert.equal(payload.searchResult.checkResult.dc, 5);
+  assert.equal(typeof payload.searchResult.checkResult.keptRoll, "number");
+});
+
 test("ownership rules match existing solo run route behavior", async () => {
   await createRun("api_action_owned");
 

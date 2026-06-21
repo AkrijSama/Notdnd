@@ -940,3 +940,33 @@ What not to build:
 - New NPC/item/exit generation.
 - Freeform search input.
 - Lore authored by Codex.
+
+### 16.5. Ruleset Adapter + Ability Check Contract
+
+Goal:
+
+Add a small server-side rules spine for optional 5e-style checks without building full 5e.
+
+Likely files/modules:
+
+- `server/solo/rules.js`
+- `server/solo/search.js`
+- `server/solo/schema.js`
+- Solo rules/search/action API tests.
+
+Acceptance criteria:
+
+- Solo runs declare a lightweight `rulesetId`.
+- Player state can carry neutral ability and skill stubs.
+- Ability checks support d20 rolls, DCs, modifiers, advantage, and disadvantage.
+- Search details may optionally require checks.
+- AI does not decide rolls, DCs, modifiers, success, or failure.
+
+Proof required:
+
+- Unit/API tests for ability checks and checked Search Area behavior.
+
+What not to build:
+
+- Full 5e.
+- Combat, spells, classes, races, backgrounds, equipment, or inventory rules.

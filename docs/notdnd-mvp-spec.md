@@ -264,6 +264,10 @@ Future AI NPCs must be constrained by structured state, route boundaries, modera
 
 Search Area is the first non-movement, non-inspect gameplay verb. It must resolve through deterministic server code, reveal only pre-existing structured location details, and create timeline/memory records only when a real discovery occurs. It must not call AI, invent lore, create random loot, add exits, or reveal forbidden/blocked content into mainline scenes.
 
+## 11. Ruleset Adapter / Ability Checks
+
+NotDND supports a small ruleset adapter pattern for server-side adjudication. The current implementation is an ability-check contract compatible with 5e-style math, not a full 5e engine. AI GM narration may describe adjudicated results later, but rolls, DCs, modifiers, success, and failure come from server rules code.
+
 ## MVP Acceptance Criteria
 
 - User can start a solo run.

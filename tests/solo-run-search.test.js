@@ -80,6 +80,56 @@ test("search reveals first unrevealed searchable detail", () => {
   assert.equal(resolved.run.locations.start_location.searchDetails[0].revealed, true);
 });
 
+test("search detail without check still reveals deterministically", () => {
+  const run = createDefaultSoloRun({ runId: "search_no_check" });
+
+  const resolved = resolveSearchAction(run, searchAction(), { now: TEST_NOW, idFactory: idFactory(), fixedRoll: 1 });
+
+  assert.equal(resolved.ok, true);
+  assert.equal(resolved.searchResult.found, true);
+  assert.equal(resolved.searchResult.checkResult, null);
+});
+
+test("search detail with check reveals on success", () => {
+  const run = createDefaultSoloRun({ runId: "search_check_success" });
+  run.player.abilities.intelligence = 14;
+  run.player.skills.investigation = 2;
+  run.locations.start_location.searchDetails[0].check = {
+    ability: "intelligence",
+    skill: "investigation",
+    dc: 15
+  };
+
+  const resolved = resolveSearchAction(run, searchAction(), { now: TEST_NOW, idFactory: idFactory(), fixedRoll: 12 });
+
+  assert.equal(resolved.ok, true);
+  assert.equal(resolved.searchResult.found, true);
+  assert.equal(resolved.searchResult.checkResult.success, true);
+  assert.equal(resolved.searchResult.checkResult.total, 16);
+  assert.equal(resolved.run.locations.start_location.searchDetails[0].revealed, true);
+  assert.equal(resolved.memoryFact.type, "search_discovery");
+  assert.equal(validateSoloRun(resolved.run).ok, true);
+});
+
+test("search detail with check does not reveal on failure", () => {
+  const run = createDefaultSoloRun({ runId: "search_check_failure" });
+  run.locations.start_location.searchDetails[0].check = {
+    ability: "intelligence",
+    skill: "investigation",
+    dc: 18
+  };
+
+  const resolved = resolveSearchAction(run, searchAction(), { now: TEST_NOW, idFactory: idFactory(), fixedRoll: 9 });
+
+  assert.equal(resolved.ok, true);
+  assert.equal(resolved.searchResult.found, false);
+  assert.equal(resolved.searchResult.checkResult.success, false);
+  assert.equal(resolved.run.locations.start_location.searchDetails[0].revealed, false);
+  assert.equal(resolved.memoryFact, null);
+  assert.equal(resolved.event.type, "search");
+  assert.ok(resolved.searchResult.warningCodes.includes("SEARCH_CHECK_FAILED"));
+});
+
 test("repeated search reveals next detail if present", () => {
   const run = createDefaultSoloRun({ runId: "search_reveal_next" });
   addSecondDetail(run);
@@ -122,6 +172,21 @@ test("search creates memory fact only for new discovery", () => {
   assert.equal(first.memoryFact.type, "search_discovery");
   assert.equal(second.memoryFact, null);
   assert.equal(second.run.memoryFacts.filter((fact) => fact.type === "search_discovery").length, 1);
+});
+
+test("successful checked search creates memory", () => {
+  const run = createDefaultSoloRun({ runId: "search_checked_memory" });
+  run.locations.start_location.searchDetails[0].check = {
+    ability: "wisdom",
+    skill: "perception",
+    dc: 8
+  };
+
+  const resolved = resolveSearchAction(run, searchAction(), { now: TEST_NOW, idFactory: idFactory(), fixedRoll: 12 });
+
+  assert.equal(resolved.ok, true);
+  assert.equal(resolved.memoryFact.type, "search_discovery");
+  assert.equal(resolved.run.memoryFacts.filter((fact) => fact.type === "search_discovery").length, 1);
 });
 
 test("search respects mainline blocked tags", () => {

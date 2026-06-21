@@ -5,6 +5,7 @@ import {
   validateEntityAgainstPolicy,
   validateSoloRun
 } from "./schema.js";
+import { resolveAbilityCheck } from "./rules.js";
 
 function result(errors) {
   return {
@@ -77,6 +78,7 @@ function normalizeDetail(detail, location, index) {
     contentTags: detail.contentTags || [],
     linkedEntityIds: detail.linkedEntityIds || [],
     linkedMemoryFactIds: detail.linkedMemoryFactIds || [],
+    check: detail.check || null,
     edition: detail.edition ?? location.edition ?? null,
     policyProfileId: detail.policyProfileId ?? location.policyProfileId ?? null,
     index
@@ -210,7 +212,8 @@ export function createSearchTimelineEvent(run, action, searchResult, memoryFact,
       actorId: action.actorId ?? "player",
       locationId,
       found: searchResult.found,
-      revealedDetailIds: searchResult.revealedDetailIds || []
+      revealedDetailIds: searchResult.revealedDetailIds || [],
+      checkResult: searchResult.checkResult || null
     }
   };
 }
@@ -231,8 +234,29 @@ export function resolveSearchAction(run, action, options = {}) {
   const location = updatedRun.locations[targetLocationId];
   const details = getSearchableDetails(updatedRun, { locationId: targetLocationId });
   const reveal = details.find((detail) => detail.revealed !== true);
+  const checkResult = reveal?.check ? resolveAbilityCheck(updatedRun, {
+    checkId: reveal.check.checkId || `check_${reveal.detailId}`,
+    rulesetId: reveal.check.rulesetId || updatedRun.rulesetId || updatedRun.player?.rulesetId || "notdnd_basic",
+    ability: reveal.check.ability,
+    skill: reveal.check.skill ?? null,
+    dc: reveal.check.dc,
+    advantage: reveal.check.advantage === true,
+    disadvantage: reveal.check.disadvantage === true
+  }, options) : null;
+
+  if (checkResult && !checkResult.ok) {
+    return {
+      ok: false,
+      errors: checkResult.errors.map((error) => ({
+        path: `detail.check.${error.path}`,
+        message: error.message
+      }))
+    };
+  }
+
+  const canReveal = Boolean(reveal) && (!checkResult || checkResult.success === true);
   let memoryFact = null;
-  const searchResult = reveal
+  const searchResult = canReveal
     ? {
         locationId: targetLocationId,
         found: true,
@@ -241,20 +265,22 @@ export function resolveSearchAction(run, action, options = {}) {
         linkedEntityIds: reveal.linkedEntityIds || [],
         linkedMemoryFactIds: reveal.linkedMemoryFactIds || [],
         contentTags: reveal.contentTags || [],
+        checkResult,
         warningCodes: []
       }
     : {
         locationId: targetLocationId,
         found: false,
-        summary: "You find nothing new right now.",
+        summary: reveal && checkResult ? "You do not find anything new right now." : "You find nothing new right now.",
         revealedDetailIds: [],
         linkedEntityIds: [],
         linkedMemoryFactIds: [],
         contentTags: [],
-        warningCodes: ["SEARCH_NOTHING_NEW"]
+        checkResult,
+        warningCodes: reveal && checkResult ? ["SEARCH_CHECK_FAILED"] : ["SEARCH_NOTHING_NEW"]
       };
 
-  if (reveal) {
+  if (canReveal) {
     location.searchDetails[reveal.index] = {
       ...location.searchDetails[reveal.index],
       revealed: true

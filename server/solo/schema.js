@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 
 export const SOLO_RUN_VERSION = 1;
 export const EDITIONS = ["mainline", "forbidden"];
+export const RULESET_IDS = ["notdnd_basic", "5e_srd", "custom"];
 export const CONTENT_RATINGS = ["general", "teen", "mature", "adult"];
 export const DISTRIBUTION_CHANNELS = ["web", "direct_apk", "play_store", "app_store", "steam"];
 export const MAINLINE_BLOCKED_TAGS = [
@@ -24,6 +25,7 @@ export const FORBIDDEN_BLOCKED_TAGS = [
 
 const RUN_STATUSES = new Set(["active", "completed", "abandoned"]);
 const EDITION_VALUES = new Set(EDITIONS);
+const RULESET_VALUES = new Set(RULESET_IDS);
 const CONTENT_RATING_VALUES = new Set(CONTENT_RATINGS);
 const DISTRIBUTION_CHANNEL_VALUES = new Set(DISTRIBUTION_CHANNELS);
 const IMAGE_TARGET_TYPES = new Set(["location", "npc", "item", "playerAsset", "scene"]);
@@ -31,6 +33,8 @@ const IMAGE_STATUSES = new Set(["placeholder", "queued", "generated", "failed"])
 const PLAYER_ASSET_TYPES = new Set(["base", "fortress", "lab", "room", "structure", "other"]);
 const QUEST_STATUSES = new Set(["inactive", "active", "completed", "failed"]);
 const REQUIRED_PLAYER_STATS = ["alchemy", "charm", "cunning", "might", "spirit", "luck"];
+const PLAYER_ABILITIES = ["strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma"];
+const PLAYER_SKILLS = ["investigation", "perception", "stealth", "persuasion", "insight"];
 const REQUIRED_RELATIONSHIP_METERS = ["trust", "affection", "fear", "debt", "suspicion", "loyalty", "rivalry"];
 
 function result(errors) {
@@ -164,6 +168,19 @@ function validateContentMetadata(entity, errors) {
   }
 }
 
+function validateNumberRecord(value, path, requiredKeys, errors) {
+  if (value === undefined || value === null) {
+    return;
+  }
+  if (!isPlainObject(value)) {
+    push(errors, path, "Expected object");
+    return;
+  }
+  for (const key of requiredKeys) {
+    validateNumber(value[key], `${path}.${key}`, errors);
+  }
+}
+
 function validateRecord(value, path, errors, validator) {
   if (!isPlainObject(value)) {
     push(errors, path, "Expected object");
@@ -208,6 +225,23 @@ export function validateSearchDetail(detail) {
   if (detail.revealed !== undefined) {
     validateBoolean(detail.revealed, "revealed", errors);
   }
+  if (detail.check !== undefined) {
+    if (!isPlainObject(detail.check)) {
+      push(errors, "check", "Expected object");
+    } else {
+      validateOptionalString(detail.check.checkId, "check.checkId", errors);
+      validateOptionalString(detail.check.rulesetId, "check.rulesetId", errors);
+      validateRequiredString(detail.check.ability, "check.ability", errors);
+      validateOptionalString(detail.check.skill, "check.skill", errors);
+      validateNumber(detail.check.dc, "check.dc", errors);
+      if (detail.check.advantage !== undefined) {
+        validateBoolean(detail.check.advantage, "check.advantage", errors);
+      }
+      if (detail.check.disadvantage !== undefined) {
+        validateBoolean(detail.check.disadvantage, "check.disadvantage", errors);
+      }
+    }
+  }
   validateStringArray(detail.contentTags || [], "contentTags", errors);
   validateStringArray(detail.linkedEntityIds || [], "linkedEntityIds", errors);
   validateStringArray(detail.linkedMemoryFactIds || [], "linkedMemoryFactIds", errors);
@@ -241,6 +275,12 @@ export function validatePlayerState(player) {
 
   validateStringArray(player.tags, "tags", errors);
   validateObject(player.flags, "flags", errors);
+  validateOptionalString(player.rulesetId, "rulesetId", errors);
+  if (player.rulesetId !== undefined && player.rulesetId !== null) {
+    validateEnum(player.rulesetId, RULESET_VALUES, "rulesetId", errors);
+  }
+  validateNumberRecord(player.abilities, "abilities", PLAYER_ABILITIES, errors);
+  validateNumberRecord(player.skills, "skills", PLAYER_SKILLS, errors);
 
   return result(errors);
 }
@@ -624,6 +664,7 @@ export function validateSoloRun(run) {
   validateRequiredString(run.currentLocationId, "currentLocationId", errors);
   validateEnum(run.edition, EDITION_VALUES, "edition", errors);
   validateRequiredString(run.policyProfileId, "policyProfileId", errors);
+  validateEnum(run.rulesetId ?? "notdnd_basic", RULESET_VALUES, "rulesetId", errors);
   validateNumber(run.version, "version", errors);
   if (run.version !== SOLO_RUN_VERSION) {
     push(errors, "version", `Expected version ${SOLO_RUN_VERSION}`);
@@ -789,6 +830,7 @@ export function createDefaultSoloRun(options = {}) {
     status: "active",
     edition: "mainline",
     policyProfileId: "mainline_default",
+    rulesetId: "notdnd_basic",
     createdAt: timestamp,
     updatedAt: timestamp,
     worldSeed,
@@ -808,6 +850,22 @@ export function createDefaultSoloRun(options = {}) {
         might: 0,
         spirit: 0,
         luck: 0
+      },
+      rulesetId: "notdnd_basic",
+      abilities: {
+        strength: 10,
+        dexterity: 10,
+        constitution: 10,
+        intelligence: 10,
+        wisdom: 10,
+        charisma: 10
+      },
+      skills: {
+        investigation: 0,
+        perception: 0,
+        stealth: 0,
+        persuasion: 0,
+        insight: 0
       },
       tags: [],
       flags: {}
