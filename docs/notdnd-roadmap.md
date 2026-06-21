@@ -516,7 +516,42 @@ What not to build:
 - Full talk/search/use/rest actions.
 - Character sheet UI.
 
-### 10. Placeholder GM Scene Generator
+### 10. Solo Scene UX Polish + Character/Entity Detail Panel
+
+Goal:
+
+Improve the mounted solo scene shell so it reads like an early playable RPG/tabletop screen.
+
+Likely files/modules:
+
+- Existing `src/components/soloSceneShell.js`
+- Existing `src/styles.css`
+- Existing `tests/solo-scene-ui.test.js`
+
+Acceptance criteria:
+
+- Location, image placeholder, exits, entities, action bar, timeline, and memory panels are visually organized.
+- Entity cards can be clicked to inspect.
+- Selected entity state is visible.
+- Inspect detail panel reads like a structured tabletop/RPG sheet, not a raw JSON dump.
+- Missing stats, relationships, memories, and images show neutral empty states.
+- Layout remains mobile-friendly and themeable later.
+
+Proof required:
+
+- UI helper tests.
+- Browser screenshot proof.
+- `npm run check`.
+- `npm run unit`.
+
+What not to build:
+
+- AI GM narration.
+- Final character sheet system.
+- Final theme or Akrij lore.
+- New gameplay actions.
+
+### 11. Placeholder GM Scene Generator
 
 Goal:
 

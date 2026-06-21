@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { fetchSoloScene, postSoloAction, requireRunId } from "../src/components/soloSceneApi.js";
-import { createInspectAction, createMoveAction, renderSoloSceneShell } from "../src/components/soloSceneShell.js";
+import {
+  bindSoloSceneShell,
+  createInspectAction,
+  createMoveAction,
+  renderEntityDetailPanel,
+  renderSoloSceneShell
+} from "../src/components/soloSceneShell.js";
 
 function sampleScene() {
   return {
@@ -90,6 +96,7 @@ function sampleScene() {
 
 test("renderSoloSceneShell renders location name and description", () => {
   const html = renderSoloSceneShell({ scene: sampleScene() });
+  assert.match(html, /solo-scene-shell-polished/);
   assert.match(html, /Start Location/);
   assert.match(html, /Neutral placeholder description/);
 });
@@ -108,7 +115,8 @@ test("renderSoloSceneShell renders visible entities", () => {
 
 test("renderSoloSceneShell renders available moves", () => {
   const html = renderSoloSceneShell({ scene: sampleScene() });
-  assert.match(html, /east: Second Location/);
+  assert.match(html, /Second Location/);
+  assert.match(html, />east</);
   assert.match(html, /data-location-id="second_location"/);
 });
 
@@ -116,6 +124,7 @@ test("renderSoloSceneShell renders available actions and disables unimplemented 
   const html = renderSoloSceneShell({ scene: sampleScene() });
   assert.match(html, /Move to Second Location/);
   assert.match(html, /Search area/);
+  assert.match(html, /Not implemented yet/);
   assert.match(html, /disabled/);
 });
 
@@ -129,16 +138,31 @@ test("renderSoloSceneShell renders inspect details", () => {
   const html = renderSoloSceneShell({
     scene: sampleScene(),
     detail: {
-      entity: { displayName: "Placeholder NPC" },
+      entity: {
+        entityId: "npc:placeholder_npc",
+        entityType: "npc",
+        displayName: "Placeholder NPC",
+        imageAssetId: "npc_image"
+      },
       details: {
         title: "Placeholder NPC",
         description: "Structured details only.",
+        stats: { trust: 1, fear: 0 },
+        relationships: [{ label: "Player", summary: "Known entity" }],
+        memoryFacts: [{ type: "meeting", text: "Met in this scene." }],
+        tags: ["placeholder"],
         availableActions: [{ type: "inspect" }]
       }
     }
   });
+  assert.match(html, /Entity Sheet/);
   assert.match(html, /Structured details only/);
-  assert.match(html, /Actions: inspect/);
+  assert.match(html, /npc_image/);
+  assert.match(html, /Stats/);
+  assert.match(html, /Relationships/);
+  assert.match(html, /Linked Memories/);
+  assert.match(html, /Met in this scene/);
+  assert.match(html, /selected/);
 });
 
 test("renderSoloSceneShell renders loading state", () => {
@@ -150,6 +174,74 @@ test("renderSoloSceneShell renders error state", () => {
   const html = renderSoloSceneShell({ error: "Failed to load" });
   assert.match(html, /Solo Scene Unavailable/);
   assert.match(html, /Failed to load/);
+});
+
+test("renderEntityDetailPanel handles missing memories and relationships gracefully", () => {
+  const html = renderEntityDetailPanel({
+    entity: {
+      entityId: "location:start_location",
+      entityType: "location_object",
+      displayName: "Start Location",
+      summary: "Current location"
+    },
+    details: {
+      title: "Start Location",
+      description: "Current location"
+    }
+  });
+  assert.match(html, /No known relationship data yet/);
+  assert.match(html, /No linked memories yet/);
+  assert.match(html, /No image assigned/);
+  assert.doesNotMatch(html, /"entityId"/);
+});
+
+test("renderSoloSceneShell handles empty timeline and memory panels", () => {
+  const scene = {
+    ...sampleScene(),
+    recentTimeline: [],
+    relevantMemoryFacts: []
+  };
+  const html = renderSoloSceneShell({ scene });
+  assert.match(html, /No recent events yet/);
+  assert.match(html, /No linked memories yet/);
+});
+
+test("renderSoloSceneShell includes mobile-friendly layout markers", () => {
+  const html = renderSoloSceneShell({ scene: sampleScene() });
+  assert.match(html, /solo-scene-grid/);
+  assert.match(html, /solo-scene-main/);
+  assert.match(html, /solo-scene-side/);
+});
+
+test("bindSoloSceneShell lets inspectable entity cards trigger inspect", () => {
+  const events = {};
+  const fakeCard = {
+    getAttribute(name) {
+      if (name === "data-entity-id") {
+        return "npc:placeholder_npc";
+      }
+      return null;
+    },
+    addEventListener(name, handler) {
+      events[name] = handler;
+    }
+  };
+  const root = {
+    querySelectorAll(selector) {
+      if (selector === ".solo-entity-card.inspectable") {
+        return [fakeCard];
+      }
+      return [];
+    }
+  };
+  let inspected = null;
+  bindSoloSceneShell(root, {
+    onInspect(entity) {
+      inspected = entity;
+    }
+  });
+  events.click();
+  assert.deepEqual(inspected, { entityId: "npc:placeholder_npc" });
 });
 
 test("createMoveAction builds persisted move action shape", () => {

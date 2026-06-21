@@ -170,6 +170,7 @@ Rules:
 - Character and entity detail panels should be modern, tabletop-readable, mobile-friendly, and Roll20/DND-adjacent in mental model. They should read server entities, relationships, memory facts, status, inventory/equipment, recent timeline, and available actions from structured state.
 - The UI should request one solo scene payload for the current screen: location image reference, location description, visible entities, moves, actions, recent timeline, relevant memory facts, and policy/edition lane. AI GM narration can later be layered onto that payload but must not replace it.
 - The minimal scene shell should render from this payload before final theme work: image placeholder, description, exits, visible entities, action bar, memory/timeline, and inspect detail payloads.
+- Entity detail sheets should stay structured and themeable: image placeholder, title/type, summary, stats, relationships, memories, tags, and server-provided actions. They must not become raw JSON dumps or frontend-authored lore.
 - Do not let the MVP drift into raw AI chat-only gameplay, BitLife-only pacing, VN-only routes, image-generation-first demos, full multiplayer, full fortress building, or human NPC platform work.
 
 ## 6. Premium Social Layer Later

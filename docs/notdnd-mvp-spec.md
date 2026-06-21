@@ -62,6 +62,8 @@ Solo Scene Payload: future UI should render from one server-built scene payload 
 
 Minimal Solo Scene UI Shell: the first UI surface should render that payload directly: location image placeholder, location description, visible inspectable entities, movement exits, structured action bar, recent timeline, relevant memory facts, and inspect details. It should stay spatial and server-truth-first, not raw chat-first, dashboard-first, final VTT clone, image-generation demo, or final IP theme.
 
+Entity Detail Sheet: inspect panels should act like modern tabletop/RPG sheets: readable, familiar, structured, mobile-friendly, and themeable later around Akrij-approved IP. They should show only server-provided identity, summary, image references, stats, relationships, memories, tags, and available actions.
+
 ## 3. AI GM Scene Framing
 
 The AI GM can generate or placeholder-generate scene text from current structured state.

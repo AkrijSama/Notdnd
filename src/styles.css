@@ -541,3 +541,232 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 }
+
+.solo-scene-shell-polished {
+  --scene-bg: rgba(255, 249, 237, 0.94);
+  --scene-panel: #fffdf8;
+  --scene-panel-alt: #f7f2e8;
+  --scene-border: var(--line);
+  --scene-muted: var(--muted);
+  --scene-accent: var(--accent);
+  --scene-selected: rgba(46, 90, 172, 0.12);
+}
+
+.solo-scene-title {
+  display: grid;
+  gap: 4px;
+}
+
+.solo-scene-title h2 {
+  font-size: 28px;
+}
+
+.solo-scene-badges {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: end;
+}
+
+.solo-panel {
+  background: var(--scene-bg);
+}
+
+.solo-section-kicker,
+.solo-image-kicker {
+  color: var(--scene-muted);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.solo-location-image > div {
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+  text-align: center;
+}
+
+.solo-gm-placeholder {
+  display: grid;
+  gap: 4px;
+}
+
+.solo-gm-placeholder span {
+  color: var(--scene-muted);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.solo-gm-placeholder p {
+  margin: 0;
+}
+
+.solo-move-button,
+.solo-action-button {
+  min-height: 44px;
+  display: grid;
+  gap: 2px;
+  align-content: center;
+  justify-items: center;
+}
+
+.solo-move-button small,
+.solo-action-button small {
+  color: var(--scene-muted);
+  font-size: 11px;
+}
+
+.solo-entity-card {
+  min-height: 132px;
+  cursor: pointer;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+}
+
+.solo-entity-card.inspectable:hover,
+.solo-entity-card.inspectable:focus {
+  border-color: rgba(46, 90, 172, 0.38);
+  box-shadow: 0 8px 20px rgba(46, 90, 172, 0.12);
+  outline: none;
+}
+
+.solo-entity-card.selected {
+  border-color: var(--scene-accent);
+  background: var(--scene-selected);
+}
+
+.solo-entity-topline,
+.solo-entity-meta {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.solo-entity-meta {
+  color: var(--scene-muted);
+  font-size: 11px;
+}
+
+.solo-detail-empty {
+  border: 1px dashed var(--scene-border);
+  border-radius: 12px;
+  padding: 12px;
+  background: var(--scene-panel);
+}
+
+.solo-detail-empty p {
+  margin: 4px 0 0;
+  color: var(--scene-muted);
+}
+
+.solo-detail-hero {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.solo-detail-portrait {
+  min-height: 96px;
+  border: 1px dashed rgba(26, 30, 38, 0.22);
+  border-radius: 12px;
+  background: var(--scene-panel);
+  color: var(--scene-muted);
+  display: grid;
+  place-items: center;
+  padding: 10px;
+  text-align: center;
+  font-size: 12px;
+}
+
+.solo-detail-hero h4,
+.solo-detail-hero p {
+  margin: 0;
+}
+
+.solo-sheet-section {
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid var(--scene-border);
+  padding-top: 10px;
+}
+
+.solo-sheet-section h5 {
+  margin: 0;
+  font-size: 13px;
+}
+
+.solo-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.solo-stat,
+.solo-compact-row,
+.solo-empty-state {
+  border: 1px solid var(--scene-border);
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: var(--scene-panel);
+}
+
+.solo-stat {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.solo-stat span,
+.solo-compact-row span,
+.solo-empty-state {
+  color: var(--scene-muted);
+  font-size: 12px;
+}
+
+.solo-compact-list {
+  display: grid;
+  gap: 6px;
+}
+
+.solo-compact-row {
+  display: grid;
+  gap: 2px;
+}
+
+.solo-tag-row {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 780px) {
+  .solo-scene-shell {
+    min-height: auto;
+  }
+
+  .solo-scene-header {
+    align-items: start;
+    flex-direction: column;
+  }
+
+  .solo-scene-badges {
+    justify-content: start;
+  }
+
+  .solo-location-image {
+    min-height: 210px;
+  }
+
+  .solo-detail-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .solo-stat-grid {
+    grid-template-columns: 1fr;
+  }
+}
