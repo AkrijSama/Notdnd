@@ -623,6 +623,39 @@ What not to build:
 - Freeform chat.
 - Lore voice finalization.
 
+### 13. GM Prompt Quality Pass + Narration Evaluation Harness
+
+Goal:
+
+Improve provider prompt instructions and add a deterministic quality harness for GM narration.
+
+Likely files/modules:
+
+- Existing `server/solo/gmProvider.js`
+- Existing `server/solo/gm.js`
+- New `server/solo/gmEval.js`
+- New `tests/fixtures/solo-gm-scenes.js`
+- New `tests/solo-run-gm-eval.test.js`
+- Existing `tests/solo-run-gm-provider.test.js`
+
+Acceptance criteria:
+
+- Provider messages clearly define NotDND's GM role, server scene payload as truth, concise tabletop-GM style, no lore invention, no state mutation, no unavailable actions, and the JSON output contract.
+- Evaluation checks are deterministic and non-AI.
+- Evaluation covers grounding, policy safety, mutation safety, style/readability, blocked mainline content, unsafe markup, unknown focus entities, and unavailable action suggestions.
+- Neutral sample scene fixtures can evaluate placeholder and future provider outputs without Akrij canon.
+
+Proof required:
+
+- Unit tests verify prompt instructions, filtered mainline prompt inputs, no secret/env leakage, valid output scoring, mutation rejection, policy rejection, style failures, and deterministic scores.
+
+What not to build:
+
+- Real provider calls.
+- AI-judged evaluation.
+- Final lore voice.
+- Model-specific prompt tuning.
+
 ### 10. NPC Relationship State
 
 Goal:

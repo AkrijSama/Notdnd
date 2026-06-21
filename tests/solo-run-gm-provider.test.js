@@ -215,8 +215,9 @@ test("buildProviderPromptMessages includes no-mutation and no-canon instructions
   });
   const system = messages[0].content;
 
-  assert.match(system, /Do not mutate state/);
+  assert.match(system, /do not mutate state/i);
   assert.match(system, /do not create durable canon/i);
+  assert.match(system, /do not mention unavailable actions/i);
   assert.match(system, /stateMutations must always be an empty array/);
 });
 

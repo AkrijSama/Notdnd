@@ -84,6 +84,8 @@ AI GM Scene Framing Contract: MVP narration is attached to the server scene payl
 
 Real AI Provider Adapter: provider-backed narration must stay feature-flagged and model-agnostic. The default path remains placeholder narration. When enabled, provider output is parsed, validated, sanitized, and rejected/fallbacked if it attempts state mutation, unsafe markup, policy leakage, or malformed output. Provider integration must not create lore, mutate saves, expose prompts/secrets, or lock NotDND to one vendor.
 
+GM Narration Evaluation Harness: prompt quality and model output should be tested against neutral sample scenes before real provider output is trusted. The first evaluator is deterministic and non-AI: it checks grounding, policy safety, mutation safety, style length/readability, unknown focus entities, unavailable action suggestions, and raw markup/JSON/table leakage. It is a guardrail, not a replacement for Akrij's lore direction or later human review.
+
 Accepted AI output for MVP:
 
 - Scene narration.

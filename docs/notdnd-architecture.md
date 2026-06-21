@@ -93,6 +93,7 @@ Contract boundary:
 - `stateMutations` must be empty; action resolvers and repository saves remain the only durable mutation path.
 - Placeholder narration is allowed for plumbing. Real OpenAI/Anthropic/OpenRouter/Ollama adapters come later behind explicit provider selection and safety checks.
 - Real provider calls are disabled unless `NOTDND_GM_PROVIDER_ENABLED=true`. Provider/model selection uses `NOTDND_GM_PROVIDER` and `NOTDND_GM_MODEL`, validates/sanitizes output, and falls back to placeholder narration on failure without exposing raw prompts, secrets, or provider errors to the client.
+- GM narration quality is evaluated by deterministic checks in `server/solo/gmEval.js`: grounding to the current scene, no state mutation claims, no blocked mainline content, no unsafe markup, reasonable length, no raw JSON/table output, and no unavailable action suggestions.
 
 Prompt contract should include:
 
