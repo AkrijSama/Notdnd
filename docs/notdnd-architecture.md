@@ -80,6 +80,7 @@ AI GM must not:
 Suggested repo area:
 
 - `server/solo/gm.js` defines the solo scene GM contract and deterministic placeholder narration.
+- `server/solo/gmProvider.js` defines the feature-flagged provider adapter and placeholder fallback path.
 - Existing `server/gm/prompting.js` may be revised.
 - Existing `server/ai/providers.js` may be reused.
 - Existing `server/ai/openrouter.js` may be reused.
@@ -91,6 +92,7 @@ Contract boundary:
 - GM output is plain text narration, tone, sensory details, focus entity IDs, optional labels, and warnings.
 - `stateMutations` must be empty; action resolvers and repository saves remain the only durable mutation path.
 - Placeholder narration is allowed for plumbing. Real OpenAI/Anthropic/OpenRouter/Ollama adapters come later behind explicit provider selection and safety checks.
+- Real provider calls are disabled unless `NOTDND_GM_PROVIDER_ENABLED=true`. Provider/model selection uses `NOTDND_GM_PROVIDER` and `NOTDND_GM_MODEL`, validates/sanitizes output, and falls back to placeholder narration on failure without exposing raw prompts, secrets, or provider errors to the client.
 
 Prompt contract should include:
 

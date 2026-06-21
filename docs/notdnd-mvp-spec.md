@@ -82,6 +82,8 @@ AI GM output must not mutate state directly.
 
 AI GM Scene Framing Contract: MVP narration is attached to the server scene payload through a validated, provider-agnostic contract. The GM input is filtered by edition/policy and contains only structured scene data: location, visible entities, moves, actions, recent timeline, and relevant memory facts. The accepted GM output is plain-text narration plus optional action labels and warnings; `stateMutations` must remain empty. A deterministic placeholder GM may be used for plumbing, but real providers and Akrij-approved lore voice come later.
 
+Real AI Provider Adapter: provider-backed narration must stay feature-flagged and model-agnostic. The default path remains placeholder narration. When enabled, provider output is parsed, validated, sanitized, and rejected/fallbacked if it attempts state mutation, unsafe markup, policy leakage, or malformed output. Provider integration must not create lore, mutate saves, expose prompts/secrets, or lock NotDND to one vendor.
+
 Accepted AI output for MVP:
 
 - Scene narration.

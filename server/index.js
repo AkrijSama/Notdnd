@@ -31,7 +31,7 @@ import { parseHomebrewDocuments } from "./homebrew/parser.js";
 import { fetchHomebrewUrl } from "./homebrew/urlImport.js";
 import { createWsHub } from "./realtime/wsHub.js";
 import { resolveSoloAction } from "./solo/actions.js";
-import { buildGmSceneInput, generatePlaceholderGmNarration, validateGmSceneOutput } from "./solo/gm.js";
+import { resolveGmNarration } from "./solo/gmProvider.js";
 import { buildSoloScenePayload } from "./solo/scene.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -463,23 +463,9 @@ async function handleApi(req, res) {
           validationErrors: scene.errors
         });
       }
-      const gmInput = buildGmSceneInput(scene);
-      if (!gmInput.ok) {
-        throw Object.assign(new Error("GM scene input could not be built."), {
-          code: "INVALID_GM_SCENE_INPUT",
-          statusCode: 400,
-          validationErrors: gmInput.errors
-        });
-      }
-      const gmNarration = generatePlaceholderGmNarration(scene);
-      const gmValidation = validateGmSceneOutput(gmNarration);
-      if (!gmValidation.ok) {
-        throw Object.assign(new Error("GM scene narration could not be validated."), {
-          code: "INVALID_GM_SCENE_OUTPUT",
-          statusCode: 400,
-          validationErrors: gmValidation.errors
-        });
-      }
+      const gmNarration = await resolveGmNarration(scene, {
+        mode: url.searchParams.get("mode") || undefined
+      });
       writeJson(res, 200, {
         ok: true,
         scene,

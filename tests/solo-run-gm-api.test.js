@@ -110,6 +110,7 @@ test("GET /api/solo/runs/:runId/gm-scene returns scene and narration", async () 
   assert.equal(payload.scene.runId, "api_gm_scene_run");
   assert.equal(payload.gmNarration.ok, true);
   assert.equal(payload.gmNarration.narration.title, "Start Location");
+  assert.match(payload.gmNarration.narration.body, /Neutral placeholder starting location/);
 });
 
 test("GET missing GM scene run returns 404", async () => {
@@ -147,4 +148,21 @@ test("GM narration has no state mutations", async () => {
 
   const payload = await request("/api/solo/runs/api_gm_scene_no_mutation/gm-scene");
   assert.deepEqual(payload.gmNarration.stateMutations, []);
+});
+
+test("provider mode without feature flag falls back safely", async () => {
+  await createRun("api_gm_scene_provider_disabled");
+
+  const payload = await request("/api/solo/runs/api_gm_scene_provider_disabled/gm-scene?mode=provider");
+  assert.equal(payload.ok, true);
+  assert.match(payload.gmNarration.narration.body, /Neutral placeholder starting location/);
+  assert.ok(payload.gmNarration.warnings.includes("GM_PROVIDER_DISABLED"));
+});
+
+test("GM scene response does not expose raw prompt or provider dumps", async () => {
+  await createRun("api_gm_scene_no_dump");
+
+  const payload = await request("/api/solo/runs/api_gm_scene_no_dump/gm-scene");
+  const encoded = JSON.stringify(payload);
+  assert.doesNotMatch(encoded, /SYSTEM:|USER:|providerOutput|Authorization|apiKey|OPENAI_API_KEY|prompt/i);
 });

@@ -588,6 +588,41 @@ What not to build:
 - AI-owned state mutation.
 - NPC romance runtime.
 
+### 12. Real AI Provider Adapter for GM Narration
+
+Goal:
+
+Route GM narration through a feature-flagged, model-agnostic provider adapter while preserving placeholder fallback.
+
+Likely files/modules:
+
+- New `server/solo/gmProvider.js`
+- Existing `server/solo/gm.js`
+- Existing `server/index.js`
+- New `tests/solo-run-gm-provider.test.js`
+- Existing `tests/solo-run-gm-api.test.js`
+
+Acceptance criteria:
+
+- Real provider calls are disabled by default.
+- `NOTDND_GM_PROVIDER_ENABLED`, `NOTDND_GM_PROVIDER`, and `NOTDND_GM_MODEL` control provider mode.
+- Provider prompts are built from filtered GM scene input, not raw database state.
+- Output is parsed, validated, sanitized, and rejected/fallbacked if malformed, unsafe, or state-mutating.
+- Provider failures return safe placeholder narration with warning codes.
+- Mainline/forbidden policy filters apply before provider calls.
+
+Proof required:
+
+- Unit tests use fake provider functions and no real network calls.
+- API tests verify route default/fallback behavior and no raw prompt/provider dump.
+
+What not to build:
+
+- Provider-specific prompt tuning.
+- Real-provider smoke unless safe local config exists.
+- Freeform chat.
+- Lore voice finalization.
+
 ### 10. NPC Relationship State
 
 Goal:
