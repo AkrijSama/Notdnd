@@ -106,12 +106,12 @@ test("resolveSoloAction rejects unknown action type", () => {
 });
 
 test("resolveSoloAction returns ACTION_NOT_IMPLEMENTED for recognized future action", () => {
-  const run = createDefaultSoloRun({ runId: "run_action_use_item" });
+  const run = createDefaultSoloRun({ runId: "run_action_interact" });
 
-  const result = resolveSoloAction(run, { type: "use_item" });
+  const result = resolveSoloAction(run, { type: "interact" });
   assert.equal(result.ok, false);
   assert.equal(result.code, "ACTION_NOT_IMPLEMENTED");
-  assert.equal(result.actionType, "use_item");
+  assert.equal(result.actionType, "interact");
   assert.ok(errorPaths(result).includes("action.type"));
 });
 
@@ -158,6 +158,7 @@ test("move result returns availableActions", () => {
   assert.ok(result.availableActions.some((action) => action.type === "move" && action.toLocationId === "third_location"));
   assert.ok(result.availableActions.some((action) => action.type === "search" && action.enabled === true));
   assert.ok(result.availableActions.some((action) => action.type === "rest" && action.restType === "short"));
+  assert.ok(result.availableActions.some((action) => action.type === "use_item" && action.itemId === "field_ration"));
 });
 
 test("action dispatcher resolves search", () => {
@@ -218,6 +219,26 @@ test("action dispatcher resolves rest", () => {
   assert.equal(result.event.type, "rest");
   assert.equal(result.memoryFact, null);
   assert.equal(result.run.player.resources.stamina.current, 5);
+});
+
+test("action dispatcher resolves use_item", () => {
+  const run = createDefaultSoloRun({ runId: "run_action_use_item" });
+  run.player.resources.stamina.current = 3;
+
+  const result = resolveSoloAction(run, {
+    type: "use_item",
+    actorId: "player",
+    itemId: "field_ration"
+  }, { now: TEST_NOW, idFactory: idFactory() });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.action.type, "use_item");
+  assert.equal(result.useItemResult.used, true);
+  assert.equal(result.useItemResult.effectType, "recover_resource");
+  assert.equal(result.event.type, "use_item");
+  assert.equal(result.memoryFact, null);
+  assert.equal(result.run.player.resources.stamina.current, 4);
+  assert.ok(result.availableActions.some((action) => action.type === "search" && action.enabled === true));
 });
 
 test("invalid move returns useful path errors", () => {

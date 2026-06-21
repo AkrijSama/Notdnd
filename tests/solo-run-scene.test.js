@@ -123,6 +123,7 @@ test("payload includes available actions", () => {
   assert.ok(payload.availableActions.some((action) => action.type === "search" && action.enabled === true));
   assert.ok(payload.availableActions.some((action) => action.type === "talk" && action.targetEntityId === "npc:placeholder_npc"));
   assert.ok(payload.availableActions.some((action) => action.type === "rest" && action.restType === "short"));
+  assert.ok(payload.availableActions.some((action) => action.type === "use_item" && action.itemId === "field_ration"));
 });
 
 test("scene payload exposes rest availability", () => {
@@ -134,6 +135,26 @@ test("scene payload exposes rest availability", () => {
   assert.equal(payload.rest.allowed, true);
   assert.equal(payload.rest.safety, "safe");
   assert.deepEqual(payload.rest.availableTypes, ["short", "long"]);
+});
+
+test("scene payload exposes usable inventory", () => {
+  const run = createDefaultSoloRun({ runId: "run_scene_inventory" });
+
+  const payload = buildSoloScenePayload(run);
+
+  assert.ok(payload.playerInventory.some((item) => item.itemId === "field_ration"));
+  assert.equal(payload.playerInventory[0].usable, true);
+  assert.deepEqual(payload.playerInventory[0].availableActions, ["use_item"]);
+});
+
+test("scene payload hides blocked inventory from mainline", () => {
+  const run = createDefaultSoloRun({ runId: "run_scene_inventory_blocked" });
+  run.inventory.field_ration.contentTags = ["explicit_sexual_content"];
+
+  const payload = buildSoloScenePayload(run);
+
+  assert.deepEqual(payload.playerInventory, []);
+  assert.equal(payload.availableActions.some((action) => action.type === "use_item"), false);
 });
 
 test("scene payload hides blocked rest metadata from mainline", () => {

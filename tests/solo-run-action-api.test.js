@@ -212,13 +212,13 @@ test("POST unknown action returns 400", async () => {
 });
 
 test("POST recognized but unimplemented action returns ACTION_NOT_IMPLEMENTED", async () => {
-  await createRun("api_action_use_item");
+  await createRun("api_action_interact");
 
-  const payload = await request("/api/solo/runs/api_action_use_item/actions", {
+  const payload = await request("/api/solo/runs/api_action_interact/actions", {
     method: "POST",
     body: {
       action: {
-        type: "use_item"
+        type: "interact"
       }
     },
     expectedStatus: 400
@@ -226,7 +226,7 @@ test("POST recognized but unimplemented action returns ACTION_NOT_IMPLEMENTED", 
 
   assert.equal(payload.ok, false);
   assert.equal(payload.code, "ACTION_NOT_IMPLEMENTED");
-  assert.equal(payload.actionType, "use_item");
+  assert.equal(payload.actionType, "interact");
 });
 
 test("POST search action persists search result", async () => {
@@ -259,7 +259,7 @@ test("POST checked search action includes checkResult", async () => {
   run.locations.start_location.searchDetails[0].check = {
     ability: "intelligence",
     skill: "investigation",
-    dc: 5
+    dc: 1
   };
 
   await request("/api/solo/runs/api_action_checked_search", {
@@ -280,7 +280,7 @@ test("POST checked search action includes checkResult", async () => {
   assert.equal(payload.ok, true);
   assert.equal(payload.searchResult.found, true);
   assert.equal(payload.searchResult.checkResult.ok, true);
-  assert.equal(payload.searchResult.checkResult.dc, 5);
+  assert.equal(payload.searchResult.checkResult.dc, 1);
   assert.equal(typeof payload.searchResult.checkResult.keptRoll, "number");
 });
 
@@ -347,6 +347,40 @@ test("POST rest action persists rest result", async () => {
   const fetched = await request("/api/solo/runs/api_action_rest");
   assert.equal(fetched.run.world.time.tick, 1);
   assert.equal(fetched.run.player.resources.stamina.current, 5);
+});
+
+test("POST use_item action persists use item result", async () => {
+  const run = await createRun("api_action_use_item");
+  run.player.resources.stamina.current = 3;
+
+  await request("/api/solo/runs/api_action_use_item", {
+    method: "PUT",
+    body: run
+  });
+
+  const payload = await request("/api/solo/runs/api_action_use_item/actions", {
+    method: "POST",
+    body: {
+      action: {
+        type: "use_item",
+        actorId: "player",
+        itemId: "field_ration"
+      }
+    }
+  });
+
+  assert.equal(payload.ok, true);
+  assert.equal(payload.useItemResult.used, true);
+  assert.equal(payload.useItemResult.effectType, "recover_resource");
+  assert.equal(payload.useItemResult.quantityRemaining, 0);
+  assert.equal(payload.event.type, "use_item");
+  assert.equal(payload.memoryFact, null);
+  assert.equal(payload.run.player.resources.stamina.current, 4);
+  assert.equal(payload.run.inventory.field_ration.quantity, 0);
+
+  const fetched = await request("/api/solo/runs/api_action_use_item");
+  assert.equal(fetched.run.player.resources.stamina.current, 4);
+  assert.equal(fetched.run.inventory.field_ration.quantity, 0);
 });
 
 test("ownership rules match existing solo run route behavior", async () => {

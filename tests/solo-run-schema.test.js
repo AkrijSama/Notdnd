@@ -620,6 +620,35 @@ test("validateInventoryItem validates quantity", () => {
   assert.ok(errorPaths(result).includes("quantity"));
 });
 
+test("validateInventoryItem accepts minimal usable item effect", () => {
+  const item = {
+    itemId: "field_ration",
+    templateId: "placeholder_field_ration",
+    name: "Field Ration",
+    description: "Neutral placeholder ration.",
+    quantity: 1,
+    usable: true,
+    consumable: true,
+    use: {
+      effectType: "recover_resource",
+      label: "Use ration",
+      summary: "Recover a little stamina.",
+      resource: "stamina",
+      amount: 1,
+      note: null,
+      requiresTarget: false
+    },
+    tags: [],
+    flags: {},
+    imageAssetId: null,
+    edition: "mainline",
+    policyProfileId: "mainline_default",
+    contentTags: []
+  };
+
+  assert.equal(validateInventoryItem(item).ok, true);
+});
+
 test("validation errors include useful path values", () => {
   const run = createDefaultSoloRun({ runId: "run_test" });
   run.player.stats.alchemy = "high";

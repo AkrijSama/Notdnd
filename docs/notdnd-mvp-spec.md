@@ -276,6 +276,10 @@ Talk is a structured server action for visible NPCs. It reveals only pre-existin
 
 Rest is a structured server action for advancing world time and recovering simple resources. The current contract supports short and long rest hooks, location-level rest availability, timeline events, and simple HP/stamina recovery if those resources exist. It is not a full 5e rest engine, survival system, random encounter system, spell recovery system, or AI narration path.
 
+## 14. Use Item Action + Inventory Hook
+
+Use Item is a structured server action for player-held inventory. The current contract validates an existing item, applies only predefined item effects, can recover simple resources, can reveal a predefined note, can consume/decrement quantity, and creates a timeline event. It is not loot generation, crafting, equipment, combat item use, or AI narration.
+
 ## MVP Acceptance Criteria
 
 - User can start a solo run.

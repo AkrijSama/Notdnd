@@ -2,6 +2,7 @@ import { getAvailableSoloActions } from "./actions.js";
 import { getVisibleEntities, validateVisibleEntity } from "./entities.js";
 import { generatePlaceholderGmNarration, validateGmSceneOutput } from "./gm.js";
 import { getAvailableMoves } from "./movement.js";
+import { getUsableInventoryItems } from "./useItem.js";
 import {
   createDefaultForbiddenPolicyProfile,
   createDefaultMainlinePolicyProfile,
@@ -104,6 +105,22 @@ function revealedSearchDetails(location, policyProfile) {
       edition: detail.edition ?? location.edition ?? null,
       policyProfileId: detail.policyProfileId ?? location.policyProfileId ?? null
     }));
+}
+
+function inventoryPayload(run, policyProfile) {
+  return getUsableInventoryItems(run, { policyProfile }).map((item) => ({
+    itemId: item.itemId,
+    name: item.name,
+    description: item.description,
+    quantity: item.quantity,
+    usable: item.usable,
+    consumable: item.consumable,
+    imageAssetId: item.imageAssetId,
+    availableActions: item.availableActions,
+    contentTags: item.contentTags || [],
+    edition: item.edition ?? null,
+    policyProfileId: item.policyProfileId ?? null
+  }));
 }
 
 function entityFactIds(entities) {
@@ -262,6 +279,32 @@ export function validateSoloScenePayload(payload) {
       validateStringArray(payload.rest.contentTags || [], "rest.contentTags", errors);
     }
   }
+  if (payload.playerInventory !== undefined) {
+    if (!Array.isArray(payload.playerInventory)) {
+      push(errors, "playerInventory", "Expected array");
+    } else {
+      payload.playerInventory.forEach((item, index) => {
+        if (!isPlainObject(item)) {
+          push(errors, `playerInventory.${index}`, "Expected object");
+          return;
+        }
+        if (!isString(item.itemId)) {
+          push(errors, `playerInventory.${index}.itemId`, "Expected non-empty string");
+        }
+        if (!isString(item.name)) {
+          push(errors, `playerInventory.${index}.name`, "Expected non-empty string");
+        }
+        if (typeof item.quantity !== "number") {
+          push(errors, `playerInventory.${index}.quantity`, "Expected number");
+        }
+        if (typeof item.usable !== "boolean") {
+          push(errors, `playerInventory.${index}.usable`, "Expected boolean");
+        }
+        validateStringArray(item.availableActions || [], `playerInventory.${index}.availableActions`, errors);
+        validateStringArray(item.contentTags || [], `playerInventory.${index}.contentTags`, errors);
+      });
+    }
+  }
   if (!Array.isArray(payload.recentTimeline)) {
     push(errors, "recentTimeline", "Expected array");
   }
@@ -357,6 +400,7 @@ export function buildSoloScenePayload(run, options = {}) {
       }
       return true;
     }),
+    playerInventory: inventoryPayload(run, policyProfile),
     discoveredDetails: revealedSearchDetails(currentLocation, policyProfile),
     recentTimeline: getRecentTimelineEvents(run, { policyProfile, limit: options.timelineLimit }),
     relevantMemoryFacts: getRelevantMemoryFacts(run, {

@@ -32,6 +32,7 @@ const IMAGE_TARGET_TYPES = new Set(["location", "npc", "item", "playerAsset", "s
 const IMAGE_STATUSES = new Set(["placeholder", "queued", "generated", "failed"]);
 const PLAYER_ASSET_TYPES = new Set(["base", "fortress", "lab", "room", "structure", "other"]);
 const QUEST_STATUSES = new Set(["inactive", "active", "completed", "failed"]);
+const ITEM_EFFECT_TYPES = new Set(["message", "recover_resource", "reveal_note"]);
 const REQUIRED_PLAYER_STATS = ["alchemy", "charm", "cunning", "might", "spirit", "luck"];
 const PLAYER_ABILITIES = ["strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma"];
 const PLAYER_SKILLS = ["investigation", "perception", "stealth", "persuasion", "insight"];
@@ -687,7 +688,31 @@ export function validateInventoryItem(item) {
   validateRequiredString(item.itemId, "itemId", errors);
   validateOptionalString(item.templateId, "templateId", errors);
   validateRequiredString(item.name, "name", errors);
+  validateOptionalString(item.description, "description", errors);
   validateNumber(item.quantity, "quantity", errors);
+  if (item.usable !== undefined) {
+    validateBoolean(item.usable, "usable", errors);
+  }
+  if (item.consumable !== undefined) {
+    validateBoolean(item.consumable, "consumable", errors);
+  }
+  if (item.use !== undefined && item.use !== null) {
+    if (!isPlainObject(item.use)) {
+      push(errors, "use", "Expected object");
+    } else {
+      validateEnum(item.use.effectType, ITEM_EFFECT_TYPES, "use.effectType", errors);
+      validateOptionalString(item.use.label, "use.label", errors);
+      validateOptionalString(item.use.summary, "use.summary", errors);
+      validateOptionalString(item.use.resource, "use.resource", errors);
+      if (item.use.amount !== undefined) {
+        validateNumber(item.use.amount, "use.amount", errors);
+      }
+      validateOptionalString(item.use.note, "use.note", errors);
+      if (item.use.requiresTarget !== undefined) {
+        validateBoolean(item.use.requiresTarget, "use.requiresTarget", errors);
+      }
+    }
+  }
   validateStringArray(item.tags, "tags", errors);
   validateObject(item.flags, "flags", errors);
   validateOptionalString(item.imageAssetId, "imageAssetId", errors);
@@ -1041,7 +1066,32 @@ export function createDefaultSoloRun(options = {}) {
     locations: createDefaultLocationGraph({ creationFactId }),
     npcs: {},
     relationships: {},
-    inventory: {},
+    inventory: {
+      field_ration: {
+        itemId: "field_ration",
+        templateId: "placeholder_field_ration",
+        name: "Field Ration",
+        description: "A neutral placeholder ration for simple recovery tests.",
+        quantity: 1,
+        usable: true,
+        consumable: true,
+        use: {
+          effectType: "recover_resource",
+          label: "Use ration",
+          summary: "You use the field ration and recover a little stamina.",
+          resource: "stamina",
+          amount: 1,
+          note: null,
+          requiresTarget: false
+        },
+        tags: ["placeholder"],
+        flags: {},
+        imageAssetId: null,
+        edition: "mainline",
+        policyProfileId: "mainline_default",
+        contentTags: []
+      }
+    },
     quests: {},
     playerAssets: {},
     imageAssets: {},

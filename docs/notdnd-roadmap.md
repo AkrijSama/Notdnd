@@ -1046,3 +1046,42 @@ What not to build:
 - Survival/camp systems.
 - Random encounters.
 - AI narration.
+
+### 19. Use Item Action + Inventory Hook
+
+Goal:
+
+Add deterministic item use as a small server-side inventory action.
+
+Likely files/modules:
+
+- `server/solo/useItem.js`
+- `server/solo/actions.js`
+- `server/solo/schema.js`
+- `server/solo/scene.js`
+- `src/components/soloSceneShell.js`
+- Solo use-item/action/API/UI tests.
+
+Acceptance criteria:
+
+- Use Item validates that a player-held inventory item exists, has quantity, is usable, and is policy-allowed.
+- Supported effects are limited to message, simple resource recovery, and predefined note reveal.
+- Consumable items decrement quantity.
+- Note reveals may create a memory fact once.
+- Successful use creates a timeline event.
+- Mainline cannot expose or use blocked-tag items.
+- The UI posts a structured `use_item` action and displays result, recovered resources, notes, and remaining quantity without raw JSON.
+
+Proof required:
+
+- Unit/API/UI tests for resolver, persistence, scene inventory payload, action availability, and click handling.
+- Browser screenshot after using an item.
+
+What not to build:
+
+- Loot tables.
+- Shops.
+- Crafting.
+- Equipment slots.
+- Weapon damage or combat item rules.
+- AI item narration.

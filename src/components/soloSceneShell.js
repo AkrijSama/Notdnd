@@ -111,6 +111,16 @@ export function createRestAction(action = {}) {
   };
 }
 
+export function createUseItemAction(itemOrAction = {}) {
+  return {
+    type: "use_item",
+    actorId: "player",
+    itemId: itemOrAction.itemId || null,
+    targetEntityId: itemOrAction.targetEntityId || null,
+    targetLocationId: itemOrAction.targetLocationId || null
+  };
+}
+
 export function renderSceneHeader(scene = {}, state = {}) {
   const location = scene.location || {};
   const time = scene.world?.time || scene.time || {};
@@ -339,7 +349,13 @@ export function renderSceneActionBar(scene = {}) {
           actions.length
             ? actions
                 .map((action) => {
-                  const implemented = action.type === "move" || action.type === "inspect" || action.type === "search" || action.type === "talk" || action.type === "rest";
+                  const implemented =
+                    action.type === "move" ||
+                    action.type === "inspect" ||
+                    action.type === "search" ||
+                    action.type === "talk" ||
+                    action.type === "rest" ||
+                    action.type === "use_item";
                   const enabled = action.enabled !== false && implemented;
                   return `
                     <button
@@ -348,6 +364,7 @@ export function renderSceneActionBar(scene = {}) {
                       data-location-id="${escapeHtml(action.toLocationId || "")}"
                       data-entity-id="${escapeHtml(action.entityId || action.targetEntityId || "")}"
                       data-rest-type="${escapeHtml(action.restType || "")}"
+                      data-item-id="${escapeHtml(action.itemId || "")}"
                       ${enabled ? "" : "disabled"}
                       title="${escapeHtml(enabled ? labelForAction(action) : action.reason || "Action not implemented yet.")}"
                     >
@@ -360,6 +377,41 @@ export function renderSceneActionBar(scene = {}) {
             : renderEmpty("No actions available.")
         }
       </div>
+    </section>
+  `;
+}
+
+export function renderInventoryPanel(scene = {}) {
+  const items = Array.isArray(scene.playerInventory) ? scene.playerInventory : [];
+  return `
+    <section class="module-card solo-panel solo-inventory-panel">
+      <div class="module-header">
+        <h3>Inventory</h3>
+        <span class="small">${items.length} usable</span>
+      </div>
+      ${
+        items.length
+          ? `<div class="solo-compact-list">${items
+              .map((item) => `
+                <div class="solo-compact-row solo-inventory-row">
+                  <div>
+                    <strong>${escapeHtml(item.name || item.itemId || "Item")}</strong>
+                    <span>${escapeHtml(item.description || "Usable item.")}</span>
+                    <div class="small">Quantity: ${escapeHtml(item.quantity ?? 0)}${item.consumable ? " / Consumable" : ""}</div>
+                  </div>
+                  <button
+                    class="ghost"
+                    data-solo-action="use_item"
+                    data-item-id="${escapeHtml(item.itemId || "")}"
+                    ${item.usable ? "" : "disabled"}
+                  >
+                    Use
+                  </button>
+                </div>
+              `)
+              .join("")}</div>`
+          : renderEmpty("No usable items available yet.")
+      }
     </section>
   `;
 }
@@ -489,6 +541,59 @@ export function renderRestResultPanel(restResult = null) {
             </div>
           `
           : renderEmpty("Rest here to advance time and recover simple resources.")
+      }
+    </section>
+  `;
+}
+
+export function renderUseItemResultPanel(useItemResult = null) {
+  return `
+    <section class="module-card solo-panel solo-use-item-panel">
+      <div class="module-header">
+        <h3>Use Item</h3>
+        <span class="small">Server result</span>
+      </div>
+      ${
+        useItemResult
+          ? `
+            <div class="solo-use-item-result ${useItemResult.used ? "found" : "empty"}">
+              <strong>${escapeHtml(useItemResult.used ? useItemResult.itemName || "Item used" : "Item use denied")}</strong>
+              <p>${escapeHtml(useItemResult.summary || "That item cannot be used right now.")}</p>
+              <div class="small">
+                Effect: ${escapeHtml(typeLabel(useItemResult.effectType || "none"))}
+                ${Number.isFinite(useItemResult.quantityRemaining) ? ` / Quantity remaining: ${escapeHtml(useItemResult.quantityRemaining)}` : ""}
+              </div>
+              ${
+                Array.isArray(useItemResult.resourcesRecovered) && useItemResult.resourcesRecovered.length
+                  ? `<div class="solo-sheet-section">
+                      <h5>Recovered Resources</h5>
+                      ${renderCompactList(useItemResult.resourcesRecovered, "No resources recovered.", (resource) => `
+                        <div class="solo-compact-row">
+                          <strong>${escapeHtml(typeLabel(resource.resourceId || "resource"))}</strong>
+                          <span>${escapeHtml(resource.before)} -> ${escapeHtml(resource.after)} (+${escapeHtml(resource.amount)})</span>
+                        </div>
+                      `)}
+                    </div>`
+                  : ""
+              }
+              ${
+                useItemResult.revealedNote
+                  ? `<div class="solo-sheet-section">
+                      <h5>Revealed Note</h5>
+                      <p>${escapeHtml(useItemResult.revealedNote)}</p>
+                    </div>`
+                  : ""
+              }
+              ${
+                Array.isArray(useItemResult.warningCodes) && useItemResult.warningCodes.length
+                  ? `<div class="solo-tag-row">${useItemResult.warningCodes
+                      .map((warning) => `<span class="tag">${escapeHtml(warning)}</span>`)
+                      .join("")}</div>`
+                  : ""
+              }
+            </div>
+          `
+          : renderEmpty("Use a usable inventory item to apply a predefined effect.")
       }
     </section>
   `;
@@ -664,9 +769,11 @@ export function renderSoloSceneShell(state = {}) {
         </main>
         <aside class="solo-scene-side">
           ${renderSceneActionBar(scene)}
+          ${renderInventoryPanel(scene)}
           ${renderSearchResultPanel(state.searchResult, scene.discoveredDetails)}
           ${renderTalkResultPanel(state.talkResult)}
           ${renderRestResultPanel(state.restResult)}
+          ${renderUseItemResultPanel(state.useItemResult)}
           ${renderEntityDetailPanel(state.detail)}
           ${renderSceneTimelinePanel(scene)}
           ${renderSceneMemoryPanel(scene)}
@@ -721,6 +828,14 @@ export function bindSoloSceneShell(root, handlers = {}) {
     });
   });
 
+  root.querySelectorAll("[data-solo-action='use_item']").forEach((button) => {
+    button.addEventListener("click", () => {
+      return handlers.onUseItem?.({
+        itemId: button.getAttribute("data-item-id")
+      });
+    });
+  });
+
   root.querySelectorAll("[data-solo-gm-mode]").forEach((button) => {
     button.addEventListener("click", () => {
       handlers.onGmMode?.({
@@ -756,6 +871,7 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     searchResult: null,
     talkResult: null,
     restResult: null,
+    useItemResult: null,
     gmMode: "placeholder"
   };
 
@@ -768,6 +884,7 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       onSearch: handleSearch,
       onTalk: handleTalk,
       onRest: handleRest,
+      onUseItem: handleUseItem,
       onGmMode: handleGmMode
     });
   }
@@ -794,6 +911,7 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       state.searchResult = null;
       state.talkResult = null;
       state.restResult = null;
+      state.useItemResult = null;
     } catch (error) {
       state.error = String(error?.message || error || "Failed to load solo scene.");
     } finally {
@@ -831,6 +949,7 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       state.searchResult = response.searchResult || null;
       state.talkResult = null;
       state.restResult = null;
+      state.useItemResult = null;
       const refreshed = await fetchSoloScene(apiClient, runId);
       state.scene = {
         ...refreshed,
@@ -850,6 +969,7 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       state.talkResult = response.talkResult || null;
       state.searchResult = null;
       state.restResult = null;
+      state.useItemResult = null;
       const refreshed = await fetchSoloScene(apiClient, runId);
       state.scene = {
         ...refreshed,
@@ -869,6 +989,7 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       state.restResult = response.restResult || null;
       state.searchResult = null;
       state.talkResult = null;
+      state.useItemResult = null;
       const refreshed = await fetchSoloScene(apiClient, runId);
       state.scene = {
         ...refreshed,
@@ -878,6 +999,26 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       render();
     } catch (error) {
       state.error = String(error?.message || error || "Rest failed.");
+      render();
+    }
+  }
+
+  async function handleUseItem(item) {
+    try {
+      const response = await postSoloAction(apiClient, runId, createUseItemAction(item));
+      state.useItemResult = response.useItemResult || null;
+      state.searchResult = null;
+      state.talkResult = null;
+      state.restResult = null;
+      const refreshed = await fetchSoloScene(apiClient, runId);
+      state.scene = {
+        ...refreshed,
+        gmNarration: state.scene?.gmNarration || null,
+        gmStatus: state.scene?.gmStatus || null
+      };
+      render();
+    } catch (error) {
+      state.error = String(error?.message || error || "Use item failed.");
       render();
     }
   }

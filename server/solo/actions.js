@@ -21,9 +21,14 @@ import {
   resolveRestAction,
   validateRestAction
 } from "./rest.js";
+import {
+  getUsableInventoryItems,
+  resolveUseItemAction,
+  validateUseItemAction
+} from "./useItem.js";
 
-const IMPLEMENTED_ACTION_TYPES = new Set(["move", "inspect", "search", "talk", "rest"]);
-const FUTURE_ACTION_TYPES = new Set(["interact", "use_item", "enter", "exit"]);
+const IMPLEMENTED_ACTION_TYPES = new Set(["move", "inspect", "search", "talk", "rest", "use_item"]);
+const FUTURE_ACTION_TYPES = new Set(["interact", "enter", "exit"]);
 const RECOGNIZED_ACTION_TYPES = new Set([...IMPLEMENTED_ACTION_TYPES, ...FUTURE_ACTION_TYPES]);
 
 function result(errors) {
@@ -119,6 +124,9 @@ export function validateSoloAction(run, action) {
   if (normalized.type === "rest") {
     return validateRestAction(run, normalized);
   }
+  if (normalized.type === "use_item") {
+    return validateUseItemAction(run, normalized);
+  }
 
   return notImplemented(normalized.type);
 }
@@ -159,9 +167,18 @@ export function getAvailableSoloActions(run, options = {}) {
     restType,
     enabled: true
   }));
+  const itemActions = getUsableInventoryItems(run).map((item) => ({
+    type: "use_item",
+    label: `Use ${item.name}`,
+    itemId: item.itemId,
+    itemName: item.name,
+    consumable: item.consumable,
+    quantity: item.quantity,
+    enabled: true
+  }));
 
   if (!includePlaceholders) {
-    return [...movementActions, ...inspectActions, ...talkActions, ...restActions];
+    return [...movementActions, ...inspectActions, ...talkActions, ...restActions, ...itemActions];
   }
 
   return [
@@ -169,6 +186,7 @@ export function getAvailableSoloActions(run, options = {}) {
     ...inspectActions,
     ...talkActions,
     ...restActions,
+    ...itemActions,
     {
       type: "search",
       label: "Search area",
@@ -304,6 +322,31 @@ export function resolveSoloAction(run, action, options = {}) {
       event: rest.event,
       memoryFact: rest.memoryFact,
       restResult: rest.restResult,
+      availableMoves: getAvailableMoves(actionRun),
+      availableActions: getAvailableSoloActions(actionRun),
+      errors: []
+    };
+  }
+
+  if (normalized.type === "use_item") {
+    const useItem = resolveUseItemAction(run, normalized, options);
+    if (!useItem.ok) {
+      return {
+        ok: false,
+        code: "ACTION_INVALID",
+        actionType: "use_item",
+        errors: useItem.errors
+      };
+    }
+
+    const actionRun = useItem.run || run;
+    return {
+      ok: true,
+      action: normalized,
+      run: useItem.run,
+      event: useItem.event,
+      memoryFact: useItem.memoryFact,
+      useItemResult: useItem.useItemResult,
       availableMoves: getAvailableMoves(actionRun),
       availableActions: getAvailableSoloActions(actionRun),
       errors: []

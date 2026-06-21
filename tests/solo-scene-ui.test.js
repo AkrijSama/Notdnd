@@ -8,6 +8,7 @@ import {
   createRestAction,
   createSearchAction,
   createTalkAction,
+  createUseItemAction,
   mountSoloSceneShell,
   renderEntityDetailPanel,
   renderSoloSceneShell
@@ -82,6 +83,23 @@ function sampleScene() {
         label: "Short Rest",
         restType: "short",
         enabled: true
+      },
+      {
+        type: "use_item",
+        label: "Use Field Ration",
+        itemId: "field_ration",
+        enabled: true
+      }
+    ],
+    playerInventory: [
+      {
+        itemId: "field_ration",
+        name: "Field Ration",
+        description: "A neutral placeholder ration.",
+        quantity: 1,
+        usable: true,
+        consumable: true,
+        availableActions: ["use_item"]
       }
     ],
     recentTimeline: [
@@ -143,8 +161,8 @@ test("renderSoloSceneShell renders available actions and disables unimplemented 
     availableActions: [
       ...sampleScene().availableActions,
       {
-        type: "use_item",
-        label: "Use item",
+        type: "interact",
+        label: "Interact",
         enabled: false,
         reason: "Not implemented yet"
       }
@@ -157,9 +175,20 @@ test("renderSoloSceneShell renders available actions and disables unimplemented 
   assert.match(html, /data-solo-action="talk"/);
   assert.match(html, /Short Rest/);
   assert.match(html, /data-solo-action="rest"/);
+  assert.match(html, /Use Field Ration/);
+  assert.match(html, /data-solo-action="use_item"/);
   assert.match(html, /data-solo-action="search"/);
   assert.match(html, /Not implemented yet/);
   assert.match(html, /disabled/);
+});
+
+test("renderSoloSceneShell renders inventory panel", () => {
+  const html = renderSoloSceneShell({ scene: sampleScene() });
+
+  assert.match(html, /Inventory/);
+  assert.match(html, /Field Ration/);
+  assert.match(html, /Quantity: 1/);
+  assert.match(html, /data-item-id="field_ration"/);
 });
 
 test("renderSoloSceneShell renders search result and discovered details", () => {
@@ -302,6 +331,80 @@ test("renderSoloSceneShell renders denied rest result", () => {
   assert.match(html, /Rest denied/);
   assert.match(html, /You cannot rest here right now/);
   assert.match(html, /REST_NOT_ALLOWED/);
+});
+
+test("renderSoloSceneShell renders use item recovered resource result", () => {
+  const html = renderSoloSceneShell({
+    scene: sampleScene(),
+    useItemResult: {
+      itemId: "field_ration",
+      itemName: "Field Ration",
+      effectType: "recover_resource",
+      used: true,
+      consumed: true,
+      quantityRemaining: 0,
+      resourcesRecovered: [
+        {
+          resourceId: "stamina",
+          before: 3,
+          after: 4,
+          amount: 1
+        }
+      ],
+      summary: "You use the field ration and recover a little stamina.",
+      revealedNote: null,
+      warningCodes: []
+    }
+  });
+
+  assert.match(html, /Use Item/);
+  assert.match(html, /Field Ration/);
+  assert.match(html, /Quantity remaining: 0/);
+  assert.match(html, /Recovered Resources/);
+  assert.match(html, /3 -> 4/);
+  assert.doesNotMatch(html, /"useItemResult"/);
+});
+
+test("renderSoloSceneShell renders use item revealed note result", () => {
+  const html = renderSoloSceneShell({
+    scene: sampleScene(),
+    useItemResult: {
+      itemId: "plain_note",
+      itemName: "Plain Note",
+      effectType: "reveal_note",
+      used: true,
+      consumed: false,
+      quantityRemaining: 1,
+      resourcesRecovered: [],
+      summary: "You read the plain note.",
+      revealedNote: "The note contains a simple reminder to stay aware of the surroundings.",
+      warningCodes: []
+    }
+  });
+
+  assert.match(html, /Revealed Note/);
+  assert.match(html, /simple reminder/);
+});
+
+test("renderSoloSceneShell renders denied item use", () => {
+  const html = renderSoloSceneShell({
+    scene: sampleScene(),
+    useItemResult: {
+      itemId: "field_ration",
+      itemName: null,
+      effectType: null,
+      used: false,
+      consumed: false,
+      quantityRemaining: null,
+      resourcesRecovered: [],
+      summary: "You cannot use that item here.",
+      revealedNote: null,
+      warningCodes: ["ITEM_BLOCKED_BY_POLICY"]
+    }
+  });
+
+  assert.match(html, /Item use denied/);
+  assert.match(html, /ITEM_BLOCKED_BY_POLICY/);
 });
 
 test("renderSoloSceneShell renders timeline and memory panels", () => {
@@ -647,6 +750,73 @@ test("mountSoloSceneShell posts rest action and shows rest result", async () => 
   assert.match(root.innerHTML, /stamina/);
 });
 
+test("mountSoloSceneShell posts use_item action and shows item result", async () => {
+  const useButton = {
+    handler: null,
+    addEventListener(_event, handler) {
+      this.handler = handler;
+    },
+    getAttribute(name) {
+      return name === "data-item-id" ? "field_ration" : "";
+    }
+  };
+  const root = {
+    innerHTML: "",
+    querySelectorAll(selector) {
+      return selector === "[data-solo-action='use_item']" ? [useButton] : [];
+    }
+  };
+  const calls = [];
+  const apiClient = {
+    async fetchSoloScene() {
+      return sampleScene();
+    },
+    async fetchSoloGmScene() {
+      return { ok: true, gmNarration: null, gmStatus: null };
+    },
+    async postSoloAction(runId, action) {
+      calls.push(["action", runId, action]);
+      return {
+        ok: true,
+        useItemResult: {
+          itemId: "field_ration",
+          itemName: "Field Ration",
+          effectType: "recover_resource",
+          used: true,
+          consumed: true,
+          quantityRemaining: 0,
+          resourcesRecovered: [
+            {
+              resourceId: "stamina",
+              before: 3,
+              after: 4,
+              amount: 1
+            }
+          ],
+          summary: "You use the field ration and recover a little stamina.",
+          revealedNote: null,
+          warningCodes: []
+        }
+      };
+    }
+  };
+
+  const mounted = mountSoloSceneShell(root, { apiClient, runId: "run_test" });
+  await mounted.reload();
+  await useButton.handler();
+
+  assert.deepEqual(calls, [["action", "run_test", {
+    type: "use_item",
+    actorId: "player",
+    itemId: "field_ration",
+    targetEntityId: null,
+    targetLocationId: null
+  }]]);
+  assert.match(root.innerHTML, /Use Item/);
+  assert.match(root.innerHTML, /Field Ration/);
+  assert.match(root.innerHTML, /Quantity remaining: 0/);
+});
+
 test("renderSoloSceneShell renders inspect details", () => {
   const html = renderSoloSceneShell({
     scene: sampleScene(),
@@ -871,6 +1041,32 @@ test("bindSoloSceneShell lets Rest trigger rest action", () => {
   assert.deepEqual(rested, { restType: "long" });
 });
 
+test("bindSoloSceneShell lets Use trigger use item action", () => {
+  const fakeButton = {
+    addEventListener(_event, handler) {
+      this.handler = handler;
+    },
+    getAttribute(name) {
+      return name === "data-item-id" ? "field_ration" : "";
+    }
+  };
+  const root = {
+    querySelectorAll(selector) {
+      return selector === "[data-solo-action='use_item']" ? [fakeButton] : [];
+    }
+  };
+  let used = null;
+  bindSoloSceneShell(root, {
+    onUseItem(action) {
+      used = action;
+    }
+  });
+
+  fakeButton.handler();
+
+  assert.deepEqual(used, { itemId: "field_ration" });
+});
+
 test("createMoveAction builds persisted move action shape", () => {
   assert.deepEqual(createMoveAction(sampleScene(), { locationId: "second_location", direction: "east" }), {
     type: "move",
@@ -901,6 +1097,16 @@ test("createRestAction builds rest action shape", () => {
     type: "rest",
     actorId: "player",
     restType: "long"
+  });
+});
+
+test("createUseItemAction builds use item action shape", () => {
+  assert.deepEqual(createUseItemAction({ itemId: "field_ration" }), {
+    type: "use_item",
+    actorId: "player",
+    itemId: "field_ration",
+    targetEntityId: null,
+    targetLocationId: null
   });
 });
 
