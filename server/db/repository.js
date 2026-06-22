@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { buildQuickstartBlueprint } from "../campaign/quickstart.js";
-import { ensureCampaignMemoryDocs } from "../gm/memoryStore.js";
+import { ensureCampaignMemoryDocs, ensureCampaignMemoryDocsAsync } from "../gm/memoryStore.js";
 import { formatRollSummary, resolveAttack, resolveSkillCheck, rollDiceExpression } from "../rules/engine.js";
 import { createDefaultSoloRun, validateSoloRun } from "../solo/schema.js";
 import { uid } from "../utils/ids.js";
@@ -119,7 +119,13 @@ function ensureDefaults(target) {
     target.campaignPackagesByCampaign && typeof target.campaignPackagesByCampaign === "object"
       ? target.campaignPackagesByCampaign
       : {};
-  target.soloRuns = target.soloRuns && typeof target.soloRuns === "object" ? target.soloRuns : {};
+  target.campaignRuntimeByCampaign =
+    target.campaignRuntimeByCampaign && typeof target.campaignRuntimeByCampaign === "object"
+      ? target.campaignRuntimeByCampaign
+      : {};
+  target.soloRuns = target.soloRuns && typeof target.soloRuns === "object" && !Array.isArray(target.soloRuns)
+    ? target.soloRuns
+    : {};
 
   target.selectedCampaignId = target.selectedCampaignId || target.campaigns?.[0]?.id || null;
 
@@ -134,6 +140,17 @@ function ensureDefaults(target) {
   target.aiJobs = Array.isArray(target.aiJobs) ? target.aiJobs : [];
   target.gmSettingsByCampaign =
     target.gmSettingsByCampaign && typeof target.gmSettingsByCampaign === "object" ? target.gmSettingsByCampaign : {};
+}
+
+function defaultCampaignRuntimeState() {
+  return {
+    mode: "freeform",
+    initiativeOrder: [],
+    turnPointer: 0,
+    waitingForGm: false,
+    typingByUser: {},
+    updatedAt: nowEpochSec()
+  };
 }
 
 function loadFromDisk() {
@@ -252,6 +269,12 @@ function bumpStateVersion(campaignId = null) {
 function ensureCampaignVersionSlot(campaignId) {
   if (!db.campaignVersions[campaignId]) {
     db.campaignVersions[campaignId] = 0;
+  }
+}
+
+function ensureCampaignRuntimeSlot(campaignId) {
+  if (!db.campaignRuntimeByCampaign[campaignId]) {
+    db.campaignRuntimeByCampaign[campaignId] = defaultCampaignRuntimeState();
   }
 }
 
@@ -485,6 +508,7 @@ function stateForUser(userId = null) {
 
   const campaignVersions = {};
   const campaignPackagesByCampaign = {};
+  const campaignRuntimeByCampaign = {};
   for (const campaignId of visibleCampaignIds) {
     campaignVersions[campaignId] = Number(db.campaignVersions[campaignId] || 0);
     campaignPackagesByCampaign[campaignId] = db.campaignPackagesByCampaign?.[campaignId] || {
@@ -497,6 +521,7 @@ function stateForUser(userId = null) {
       rules: [],
       starterOptions: []
     };
+    campaignRuntimeByCampaign[campaignId] = db.campaignRuntimeByCampaign?.[campaignId] || defaultCampaignRuntimeState();
   }
 
   return {
@@ -514,6 +539,7 @@ function stateForUser(userId = null) {
     journalsByCampaign: deepClone(journalsByCampaign),
     recentRollsByCampaign: deepClone(recentRollsByCampaign),
     campaignPackagesByCampaign: deepClone(campaignPackagesByCampaign),
+    campaignRuntimeByCampaign: deepClone(campaignRuntimeByCampaign),
     gmSettings: deepClone(gmSettings),
     stateVersion: Number(db.stateVersion || 0),
     campaignVersions,
@@ -561,6 +587,7 @@ export function resetDatabase() {
   db.userPrefsByUser = {};
   db.campaignMembersByCampaign = {};
   db.campaignVersions = {};
+  db.campaignRuntimeByCampaign = {};
   db.soloRuns = {};
   db.stateVersion = 0;
 
@@ -770,6 +797,70 @@ export function getUserBySessionToken(token) {
   return sanitizeUser(user);
 }
 
+export function getCampaignRole(campaignId, context = {}) {
+  ensureDb();
+  assertActor(context);
+  return userRoleForCampaign(context.actorUserId, campaignId);
+}
+
+export function assertCampaignReadAccess(campaignId, context = {}) {
+  ensureDb();
+  assertActor(context);
+  assertCanReadCampaign(context.actorUserId, campaignId);
+}
+
+export function assertCampaignWriteAccess(campaignId, context = {}) {
+  ensureDb();
+  assertActor(context);
+  assertCanWriteCampaign(context.actorUserId, campaignId);
+}
+
+export function assertCampaignPlayAccess(campaignId, context = {}) {
+  ensureDb();
+  assertActor(context);
+  assertCanPlayCampaign(context.actorUserId, campaignId);
+}
+
+export function getCampaignRuntimeState(campaignId, context = {}) {
+  ensureDb();
+  if (!context.internal) {
+    assertActor(context);
+    assertCanReadCampaign(context.actorUserId, campaignId);
+  }
+  ensureCampaignRuntimeSlot(campaignId);
+  return deepClone(db.campaignRuntimeByCampaign[campaignId]);
+}
+
+export function setCampaignRuntimeState(campaignId, patch = {}, context = {}) {
+  ensureDb();
+  if (!context.internal) {
+    assertActor(context);
+    assertCanPlayCampaign(context.actorUserId, campaignId);
+  }
+  ensureCampaignRuntimeSlot(campaignId);
+
+  const prev = db.campaignRuntimeByCampaign[campaignId] || defaultCampaignRuntimeState();
+  const nextMode = patch.mode === "combat" ? "combat" : patch.mode === "freeform" ? "freeform" : prev.mode;
+  const nextInitiativeOrder = Array.isArray(patch.initiativeOrder) ? patch.initiativeOrder : prev.initiativeOrder;
+  const nextPointer = Number.isFinite(Number(patch.turnPointer)) ? Number(patch.turnPointer) : prev.turnPointer;
+  const nextTyping = patch.typingByUser && typeof patch.typingByUser === "object" ? patch.typingByUser : prev.typingByUser;
+
+  db.campaignRuntimeByCampaign[campaignId] = {
+    ...prev,
+    ...patch,
+    mode: nextMode,
+    initiativeOrder: nextInitiativeOrder,
+    turnPointer: Math.max(0, nextPointer),
+    waitingForGm: patch.waitingForGm !== undefined ? Boolean(patch.waitingForGm) : Boolean(prev.waitingForGm),
+    typingByUser: nextTyping,
+    updatedAt: nowEpochSec()
+  };
+
+  bumpStateVersion(campaignId);
+  writeToDisk();
+  return deepClone(db.campaignRuntimeByCampaign[campaignId]);
+}
+
 export function listCampaignMembers(campaignId, context = {}) {
   ensureDb();
   assertActor(context);
@@ -811,7 +902,7 @@ export function addCampaignMember({ campaignId, email, role }, context = {}) {
   };
 }
 
-export function createQuickstartCampaignFromParsed({
+export async function createQuickstartCampaignFromParsed({
   campaignName,
   setting,
   players,
@@ -845,7 +936,8 @@ export function createQuickstartCampaignFromParsed({
   db.campaigns.unshift(campaign);
   db.selectedCampaignId = campaign.id;
   ensureCampaignVersionSlot(campaign.id);
-  ensureCampaignMemoryDocs(campaign.id, blueprint.memoryDocs || {});
+  ensureCampaignRuntimeSlot(campaign.id);
+  await ensureCampaignMemoryDocsAsync(campaign.id, blueprint.memoryDocs || {});
 
   if (actorUserId) {
     applyCampaignMembership(campaign.id, actorUserId, "owner");
@@ -973,6 +1065,7 @@ export function applyOperation(op, payload = {}, context = {}) {
       db.campaigns.unshift(campaign);
       db.selectedCampaignId = id;
       ensureCampaignVersionSlot(id);
+      ensureCampaignRuntimeSlot(id);
       applyCampaignMembership(id, actorUserId, "owner");
       db.userPrefsByUser[actorUserId] = { selectedCampaignId: id };
 
@@ -1365,6 +1458,26 @@ export function applyOperation(op, payload = {}, context = {}) {
       bumpStateVersion(campaignId);
       writeToDisk();
       return { campaignId };
+    }
+
+    case "set_campaign_runtime_state": {
+      const campaignId = selectedCampaignId(payload, actorUserId, context);
+      if (!campaignId) {
+        throw makeError("BAD_REQUEST", "No campaign selected.", 400);
+      }
+      assertCanPlayCampaign(actorUserId, campaignId);
+      const runtime = setCampaignRuntimeState(
+        campaignId,
+        {
+          mode: payload.mode,
+          initiativeOrder: payload.initiativeOrder,
+          turnPointer: payload.turnPointer,
+          waitingForGm: payload.waitingForGm,
+          typingByUser: payload.typingByUser
+        },
+        { internal: true }
+      );
+      return { campaignId, runtime };
     }
 
     case "upsert_map": {

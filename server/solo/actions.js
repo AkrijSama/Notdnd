@@ -26,8 +26,12 @@ import {
   resolveUseItemAction,
   validateUseItemAction
 } from "./useItem.js";
+import {
+  resolveAttemptAction,
+  validateAttemptAction
+} from "./attempt.js";
 
-const IMPLEMENTED_ACTION_TYPES = new Set(["move", "inspect", "search", "talk", "rest", "use_item"]);
+const IMPLEMENTED_ACTION_TYPES = new Set(["move", "inspect", "search", "talk", "rest", "use_item", "attempt"]);
 const FUTURE_ACTION_TYPES = new Set(["interact", "enter", "exit"]);
 const RECOGNIZED_ACTION_TYPES = new Set([...IMPLEMENTED_ACTION_TYPES, ...FUTURE_ACTION_TYPES]);
 
@@ -127,6 +131,9 @@ export function validateSoloAction(run, action) {
   if (normalized.type === "use_item") {
     return validateUseItemAction(run, normalized);
   }
+  if (normalized.type === "attempt") {
+    return validateAttemptAction(run, normalized);
+  }
 
   return notImplemented(normalized.type);
 }
@@ -190,6 +197,11 @@ export function getAvailableSoloActions(run, options = {}) {
     {
       type: "search",
       label: "Search area",
+      enabled: true
+    },
+    {
+      type: "attempt",
+      label: "Attempt",
       enabled: true
     }
   ];
@@ -349,6 +361,30 @@ export function resolveSoloAction(run, action, options = {}) {
       useItemResult: useItem.useItemResult,
       availableMoves: getAvailableMoves(actionRun),
       availableActions: getAvailableSoloActions(actionRun),
+      errors: []
+    };
+  }
+
+  if (normalized.type === "attempt") {
+    const attempt = resolveAttemptAction(run, normalized, options);
+    if (!attempt.ok) {
+      return {
+        ok: false,
+        code: "ACTION_INVALID",
+        actionType: "attempt",
+        errors: attempt.errors
+      };
+    }
+
+    return {
+      ok: true,
+      action: normalized,
+      run: attempt.run,
+      event: attempt.event,
+      memoryFact: attempt.memoryFact,
+      attemptResult: attempt.attemptResult,
+      availableMoves: getAvailableMoves(attempt.run),
+      availableActions: getAvailableSoloActions(attempt.run),
       errors: []
     };
   }

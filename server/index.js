@@ -1,16 +1,24 @@
 import http from "node:http";
+import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createAiJobProcessor } from "./ai/processor.js";
+import { generateNarrative, generateRaw, getCampaignUsage, getModelTiers } from "./ai/openrouter.js";
 import { generateWithProvider, listAiProviders } from "./ai/providers.js";
 import { readJsonBody, serveStatic, writeJson, writeText } from "./api/http.js";
 import { handleQuickstartBuildPayload, handleQuickstartParsePayload } from "./api/quickstartRoutes.js";
 import { tokenFromRequest } from "./auth/httpAuth.js";
+import { createOnboardingCampaign } from "./campaign/onboarding.js";
 import {
   addCampaignMember,
   applyOperation,
-  createSoloRun,
+  assertCampaignPlayAccess,
+  assertCampaignReadAccess,
+  assertCampaignWriteAccess,
   createQuickstartCampaignFromParsed,
+  createSoloRun,
+  getCampaignRole,
+  getCampaignRuntimeState,
   getCurrentStateVersion,
   getMetrics,
   getSoloRun,
@@ -23,10 +31,22 @@ import {
   logoutSessionToken,
   registerUser,
   resolveStorePath,
-  saveSoloRun
+  saveSoloRun,
+  setCampaignRuntimeState
 } from "./db/repository.js";
-import { listCampaignMemoryDocs, searchCampaignMemory, writeCampaignMemoryDoc } from "./gm/memoryStore.js";
-import { buildAgentGmPrompt, buildFallbackHumanAdvice, buildHumanGmAssistPrompt } from "./gm/prompting.js";
+import {
+  buildContextWindow,
+  archiveEntity,
+  getEntity,
+  listEntities,
+  rebuildCampaignIndex,
+  search,
+  upsertEntity
+} from "./gm/memoryStore.js";
+import { buildSessionSystemPrompt, runGmPipeline } from "./gm/prompting.js";
+import { getProfile } from "./gm/promptProfiles.js";
+import { applyPreset, getPresets } from "./gm/stylePresets.js";
+import { buildStylePromptBlock, getStyleConfig, updateStyleConfig, validateStyleUpdate } from "./gm/styleConfig.js";
 import { parseHomebrewDocuments } from "./homebrew/parser.js";
 import { fetchHomebrewUrl } from "./homebrew/urlImport.js";
 import { createWsHub } from "./realtime/wsHub.js";
@@ -38,8 +58,54 @@ import { buildSoloScenePayload } from "./solo/scene.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "..");
+const waitlistFilePath = process.env.NOTDND_WAITLIST_PATH
+  ? path.resolve(process.env.NOTDND_WAITLIST_PATH)
+  : path.join(__dirname, "db", "waitlist.json");
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
+const waitlistInterests = new Set([
+  "AI Game Master",
+  "Never-Forget Memory",
+  "Uncensored Content",
+  "Multiplayer",
+  "Homebrew Support",
+  "All of it"
+]);
+const previewRateByUser = new Map();
 
 initializeDatabase();
+
+async function readWaitlistEntries() {
+  try {
+    const raw = await fs.readFile(waitlistFilePath, "utf8");
+    const parsed = raw.trim() ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      return [];
+    }
+    throw error;
+  }
+}
+
+async function writeWaitlistEntries(entries) {
+  await fs.mkdir(path.dirname(waitlistFilePath), { recursive: true });
+  await fs.writeFile(waitlistFilePath, `${JSON.stringify(entries, null, 2)}\n`, "utf8");
+}
+
+function normalizeWaitlistInterest(rawInterest) {
+  const value = String(rawInterest || "").trim();
+  if (!value) {
+    return "All of it";
+  }
+
+  for (const option of waitlistInterests) {
+    if (option.toLowerCase() === value.toLowerCase()) {
+      return option;
+    }
+  }
+
+  return value.slice(0, 120);
+}
 
 function routeError(res, error) {
   const statusCode = Number(error?.statusCode) || 400;
@@ -63,6 +129,33 @@ function routeError(res, error) {
   writeJson(res, statusCode, payload);
 }
 
+function assertGmOrOwner(user, campaignId) {
+  const role = getCampaignRole(campaignId, { actorUserId: user.id });
+  if (user.isAdmin || role === "owner" || role === "gm") {
+    return role;
+  }
+  throw Object.assign(new Error("GM or owner access required."), {
+    code: "FORBIDDEN",
+    statusCode: 403
+  });
+}
+
+function enforcePreviewRateLimit(userId) {
+  const key = String(userId || "");
+  const now = Date.now();
+  const windowMs = 60_000;
+  const maxRequests = 3;
+  const bucket = (previewRateByUser.get(key) || []).filter((ts) => now - ts < windowMs);
+  if (bucket.length >= maxRequests) {
+    throw Object.assign(new Error("Preview rate limit exceeded. Max 3 previews per minute."), {
+      code: "RATE_LIMITED",
+      statusCode: 429
+    });
+  }
+  bucket.push(now);
+  previewRateByUser.set(key, bucket);
+}
+
 function resolveAuthUser(req) {
   const token = tokenFromRequest(req);
   if (!token) {
@@ -83,11 +176,12 @@ function requireAuth(req) {
 }
 
 function userCanAccessCampaign(userId, campaignId) {
-  if (!campaignId || !userId) {
+  try {
+    assertCampaignReadAccess(campaignId, { actorUserId: userId });
+    return true;
+  } catch {
     return false;
   }
-  const state = getState({ userId });
-  return state.campaigns.some((campaign) => campaign.id === campaignId);
 }
 
 function inferCampaignIdForPayload(userId, payload = {}) {
@@ -159,12 +253,68 @@ function broadcastAuthoritativeState(campaignId, reason, op) {
   }
 }
 
+function pushChatLine(campaignId, speaker, text, context = {}) {
+  applyOperation(
+    "push_chat_line",
+    {
+      campaignId,
+      speaker,
+      text
+    },
+    context
+  );
+}
+
+async function runAndPersistGmResponse({
+  campaignId,
+  message,
+  mode,
+  actorUserId,
+  playerName,
+  activePlayers = [],
+  stream = false,
+  onStream
+}) {
+  const response = await runGmPipeline({
+    campaignId,
+    message,
+    mode,
+    actorUserId,
+    playerName,
+    activePlayers,
+    stream,
+    onStream
+  });
+
+  const userState = getState({ userId: actorUserId });
+  const userName = userState.auth?.user?.displayName || playerName || "Player";
+
+  pushChatLine(campaignId, playerName || userName, message, { actorUserId });
+  pushChatLine(campaignId, mode === "companion" ? "Companion GM" : "Agent GM", response.narrative, { internal: true });
+
+  return response;
+}
+
 const wsHub = createWsHub({
   authenticateToken(token) {
     return getUserBySessionToken(token);
   },
   canJoinCampaign(user, campaignId) {
     return Boolean(user && userCanAccessCampaign(user.id, campaignId));
+  },
+  getCampaignRuntime(campaignId) {
+    return getCampaignRuntimeState(campaignId, { internal: true });
+  },
+  setCampaignRuntime(campaignId, patch) {
+    const runtime = setCampaignRuntimeState(campaignId, patch, { internal: true });
+    broadcastAuthoritativeState(campaignId, "runtime-update", "set_campaign_runtime_state");
+    return runtime;
+  },
+  async onGmPlayerMessage(payload) {
+    assertCampaignPlayAccess(payload.campaignId, { actorUserId: payload.actorUserId });
+    const result = await runAndPersistGmResponse(payload);
+    broadcastAuthoritativeState(payload.campaignId, "gm-response", "push_chat_line");
+    return result;
   },
   onClientMessage(message, client, { sendToClient }) {
     if (message?.type !== "op" || !message?.op) {
@@ -217,6 +367,18 @@ const aiProcessor = createAiJobProcessor({
     }
   }
 });
+
+function parseMemoryEntityFromPath(pathname) {
+  const prefix = "/api/gm/memory/";
+  if (!pathname.startsWith(prefix)) {
+    return null;
+  }
+  const raw = pathname.slice(prefix.length).trim();
+  if (!raw || raw === "search" || raw === "rebuild") {
+    return null;
+  }
+  return decodeURIComponent(raw);
+}
 
 function parseSoloRunIdFromPath(pathname) {
   const prefix = "/api/solo/runs/";
@@ -374,7 +536,6 @@ async function handleApi(req, res) {
     return true;
   }
 
-
   if (req.method === "POST" && url.pathname === "/api/solo/runs") {
     try {
       const user = requireAuth(req);
@@ -437,6 +598,7 @@ async function handleApi(req, res) {
         talkResult: resolved.talkResult,
         restResult: resolved.restResult,
         useItemResult: resolved.useItemResult,
+        attemptResult: resolved.attemptResult,
         entity: resolved.entity,
         details: resolved.details,
         availableMoves: resolved.availableMoves,
@@ -558,6 +720,282 @@ async function handleApi(req, res) {
     return true;
   }
 
+  if (req.method === "POST" && url.pathname === "/api/onboarding/start") {
+    try {
+      const user = requireAuth(req);
+      const payload = await readJsonBody(req);
+      const characterName = String(payload.characterName || "").trim();
+      const archetype = String(payload.archetype || "").trim();
+      const backstorySnippet = String(payload.backstorySnippet || "").trim();
+
+      if (!characterName) {
+        throw Object.assign(new Error("characterName is required."), {
+          code: "BAD_REQUEST",
+          statusCode: 400
+        });
+      }
+
+      const campaignId = await createOnboardingCampaign(user.id, {
+        characterName,
+        archetype,
+        backstorySnippet
+      });
+
+      const normalizedArchetype = archetype || "weathered wanderer";
+      const normalizedBackstory =
+        backstorySnippet || "They crossed too many roads to turn back now.";
+      const openingPrompt =
+        `The player has just arrived at The Shattered Flagon tavern in Ashenmoor. Their character is ${characterName}, a ${normalizedArchetype}. ${normalizedBackstory}. ` +
+        "Narrate their arrival. Describe the tavern atmosphere. Introduce Mira the tavern keeper naturally. End with Mira addressing the player character directly, asking them a question that invites roleplay.";
+
+      const opening = await runGmPipeline({
+        campaignId,
+        message: openingPrompt,
+        mode: "companion",
+        playerName: characterName,
+        actorUserId: user.id,
+        stream: true
+      });
+
+      if (opening?.narrative) {
+        pushChatLine(campaignId, "Mira", opening.narrative, { internal: true });
+      }
+
+      broadcastAuthoritativeState(campaignId, "onboarding-start", "push_chat_line");
+
+      writeJson(res, 200, {
+        ok: true,
+        campaignId,
+        firstMessage: String(opening?.narrative || "").trim()
+      });
+    } catch (error) {
+      routeError(res, error);
+    }
+    return true;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/waitlist") {
+    try {
+      const payload = await readJsonBody(req);
+      const email = String(payload?.email || "")
+        .trim()
+        .toLowerCase();
+      if (!emailPattern.test(email)) {
+        throw Object.assign(new Error("A valid email is required."), {
+          code: "BAD_REQUEST",
+          statusCode: 400
+        });
+      }
+
+      const interest = normalizeWaitlistInterest(payload?.interest);
+      const entries = await readWaitlistEntries();
+      entries.push({
+        email,
+        interest,
+        timestamp: new Date().toISOString()
+      });
+      await writeWaitlistEntries(entries);
+
+      writeJson(res, 200, { ok: true, success: true });
+    } catch (error) {
+      routeError(res, error);
+    }
+    return true;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/waitlist") {
+    try {
+      const user = requireAuth(req);
+      if (!user.isAdmin) {
+        throw Object.assign(new Error("Admin access required."), {
+          code: "FORBIDDEN",
+          statusCode: 403
+        });
+      }
+
+      const entries = await readWaitlistEntries();
+      writeJson(res, 200, {
+        ok: true,
+        success: true,
+        entries
+      });
+    } catch (error) {
+      routeError(res, error);
+    }
+    return true;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/campaign/style/presets") {
+    try {
+      requireAuth(req);
+      writeJson(res, 200, {
+        ok: true,
+        presets: getPresets()
+      });
+    } catch (error) {
+      routeError(res, error);
+    }
+    return true;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/campaign/style/presets/apply") {
+    try {
+      const user = requireAuth(req);
+      const payload = await readJsonBody(req);
+      const campaignId = String(payload.campaignId || "");
+      const presetName = String(payload.presetName || "").trim();
+      if (!campaignId || !presetName) {
+        throw Object.assign(new Error("campaignId and presetName are required."), {
+          code: "BAD_REQUEST",
+          statusCode: 400
+        });
+      }
+
+      assertGmOrOwner(user, campaignId);
+      const config = await applyPreset(campaignId, presetName);
+      writeJson(res, 200, { ok: true, config });
+    } catch (error) {
+      routeError(res, error);
+    }
+    return true;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/campaign/style") {
+    try {
+      const user = requireAuth(req);
+      const campaignId = String(url.searchParams.get("campaignId") || "");
+      if (!campaignId) {
+        throw Object.assign(new Error("campaignId query param is required."), {
+          code: "BAD_REQUEST",
+          statusCode: 400
+        });
+      }
+
+      assertGmOrOwner(user, campaignId);
+      const config = await getStyleConfig(campaignId);
+      writeJson(res, 200, { ok: true, config });
+    } catch (error) {
+      routeError(res, error);
+    }
+    return true;
+  }
+
+  if (req.method === "PUT" && url.pathname === "/api/campaign/style") {
+    try {
+      const user = requireAuth(req);
+      const payload = await readJsonBody(req);
+      const campaignId = String(payload.campaignId || "");
+      if (!campaignId) {
+        throw Object.assign(new Error("campaignId is required."), {
+          code: "BAD_REQUEST",
+          statusCode: 400
+        });
+      }
+      assertGmOrOwner(user, campaignId);
+
+      const partialUpdate = {
+        ...payload
+      };
+      delete partialUpdate.campaignId;
+      validateStyleUpdate(partialUpdate);
+
+      const config = await updateStyleConfig(campaignId, partialUpdate);
+      writeJson(res, 200, { ok: true, config });
+    } catch (error) {
+      routeError(res, error);
+    }
+    return true;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/campaign/style/preview") {
+    try {
+      const user = requireAuth(req);
+      enforcePreviewRateLimit(user.id);
+
+      const payload = await readJsonBody(req);
+      const campaignId = String(payload.campaignId || "");
+      const testMessage = String(payload.testMessage || "").trim();
+      if (!campaignId || !testMessage) {
+        throw Object.assign(new Error("campaignId and testMessage are required."), {
+          code: "BAD_REQUEST",
+          statusCode: 400
+        });
+      }
+
+      assertGmOrOwner(user, campaignId);
+
+      const config = await getStyleConfig(campaignId);
+      const styleBlock = buildStylePromptBlock(config);
+      const tiers = getModelTiers();
+      const resolvedModel = String(config?.model?.preferredNarrativeModel || "").trim() || tiers.narrative;
+      const profile = getProfile(resolvedModel);
+      const runtime = getCampaignRuntimeState(campaignId, { internal: true });
+      const state = getState({ userId: user.id });
+      const campaign = (state.campaigns || []).find((entry) => entry.id === campaignId);
+
+      const worldContext = await buildContextWindow(
+        campaignId,
+        testMessage,
+        Number(process.env.NOTDND_CONTEXT_BUDGET || 1500),
+        config
+      );
+
+      const activePlayersSummary = (state.characters || [])
+        .filter((character) => character.campaignId === campaignId)
+        .slice(0, 4)
+        .map((character) => `${character.name} (${character.className} ${character.level})`)
+        .join("\n");
+      const currentStateSummary = `Scene: ${campaign?.activeScene || campaign?.status || "Current Scene"}, Initiative: ${
+        runtime.initiativeOrder?.length
+          ? runtime.initiativeOrder.map((entry) => `${entry.name}:${entry.initiative}`).join(", ")
+          : "none"
+      }, Active conditions: none`;
+
+      const systemPrompt = buildSessionSystemPrompt({
+        campaignName: campaign?.name || campaignId,
+        currentScene: campaign?.activeScene || campaign?.status || "Current Scene",
+        tone: campaign?.setting || "Cinematic",
+        styleBlock,
+        worldContext,
+        activePlayersSummary,
+        sessionHistory: "Preview mode: summarize response style only.",
+        currentStateSummary,
+        profile
+      });
+
+      const options = {
+        temperature: profile.temperature,
+        maxResponseTokens:
+          config?.model?.maxTokensPerResponse !== null && config?.model?.maxTokensPerResponse !== undefined
+            ? Number(config.model.maxTokensPerResponse)
+            : profile.maxResponseTokens,
+        stopSequences: profile.stopSequences || []
+      };
+
+      const messages = [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: testMessage }
+      ];
+
+      const result = resolvedModel === tiers.narrative
+        ? await generateNarrative(messages, campaignId, options)
+        : await generateRaw(messages, resolvedModel, campaignId, options);
+
+      writeJson(res, 200, {
+        ok: true,
+        response: result.content,
+        meta: {
+          model: result.model,
+          tokensUsed: result.tokensUsed,
+          cost: result.cost
+        }
+      });
+    } catch (error) {
+      routeError(res, error);
+    }
+    return true;
+  }
+
   if (req.method === "GET" && url.pathname === "/api/campaign/members") {
     try {
       const user = requireAuth(req);
@@ -595,9 +1033,48 @@ async function handleApi(req, res) {
   if (req.method === "GET" && url.pathname === "/api/ai/providers") {
     try {
       requireAuth(req);
+      const tiers = getModelTiers();
       writeJson(res, 200, {
         ok: true,
-        providers: listAiProviders()
+        providers: [
+          {
+            key: "openrouter",
+            label: "OpenRouter Unified",
+            type: "openai-chat-completions",
+            status: process.env.OPENROUTER_API_KEY ? "configured" : "missing-api-key",
+            models: {
+              gm: tiers.narrative,
+              utility: tiers.utility,
+              fallback: tiers.fallback
+            },
+            endpoint: "https://openrouter.ai/api/v1/chat/completions",
+            supports: ["gm"]
+          },
+          ...listAiProviders()
+        ]
+      });
+    } catch (error) {
+      routeError(res, error);
+    }
+    return true;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/ai/usage") {
+    try {
+      const user = requireAuth(req);
+      const campaignId = String(url.searchParams.get("campaignId") || "");
+      if (!campaignId) {
+        throw Object.assign(new Error("campaignId query param is required."), {
+          code: "BAD_REQUEST",
+          statusCode: 400
+        });
+      }
+      assertCampaignReadAccess(campaignId, { actorUserId: user.id });
+      writeJson(res, 200, {
+        ok: true,
+        campaignId,
+        usage: getCampaignUsage(campaignId),
+        modelTiers: getModelTiers()
       });
     } catch (error) {
       routeError(res, error);
@@ -622,6 +1099,34 @@ async function handleApi(req, res) {
     return true;
   }
 
+  if (req.method === "POST" && url.pathname === "/api/gm/memory/rebuild") {
+    try {
+      const user = requireAuth(req);
+      const campaignId = String(url.searchParams.get("campaignId") || "");
+      if (!campaignId) {
+        throw Object.assign(new Error("campaignId query param is required."), {
+          code: "BAD_REQUEST",
+          statusCode: 400
+        });
+      }
+
+      const role = getCampaignRole(campaignId, { actorUserId: user.id });
+      const canRebuild = user.isAdmin || role === "owner" || role === "gm";
+      if (!canRebuild) {
+        throw Object.assign(new Error("GM or admin access required."), {
+          code: "FORBIDDEN",
+          statusCode: 403
+        });
+      }
+
+      const rebuilt = await rebuildCampaignIndex(campaignId);
+      writeJson(res, 200, { ok: true, rebuilt });
+    } catch (error) {
+      routeError(res, error);
+    }
+    return true;
+  }
+
   if (req.method === "GET" && url.pathname === "/api/gm/memory") {
     try {
       const user = requireAuth(req);
@@ -632,43 +1137,10 @@ async function handleApi(req, res) {
           statusCode: 400
         });
       }
-      if (!userCanAccessCampaign(user.id, campaignId)) {
-        throw Object.assign(new Error("Campaign access denied."), {
-          code: "FORBIDDEN",
-          statusCode: 403
-        });
-      }
+      assertCampaignReadAccess(campaignId, { actorUserId: user.id });
       writeJson(res, 200, {
         ok: true,
-        docs: listCampaignMemoryDocs(campaignId)
-      });
-    } catch (error) {
-      routeError(res, error);
-    }
-    return true;
-  }
-
-  if (req.method === "POST" && url.pathname === "/api/gm/memory") {
-    try {
-      const user = requireAuth(req);
-      const payload = await readJsonBody(req);
-      const campaignId = String(payload.campaignId || "");
-      const docKey = String(payload.docKey || "");
-      if (!campaignId || !docKey) {
-        throw Object.assign(new Error("campaignId and docKey are required."), {
-          code: "BAD_REQUEST",
-          statusCode: 400
-        });
-      }
-      if (!userCanAccessCampaign(user.id, campaignId)) {
-        throw Object.assign(new Error("Campaign access denied."), {
-          code: "FORBIDDEN",
-          statusCode: 403
-        });
-      }
-      writeJson(res, 200, {
-        ok: true,
-        doc: writeCampaignMemoryDoc(campaignId, docKey, payload.content || "")
+        entities: await listEntities(campaignId)
       });
     } catch (error) {
       routeError(res, error);
@@ -688,19 +1160,90 @@ async function handleApi(req, res) {
           statusCode: 400
         });
       }
-      if (!userCanAccessCampaign(user.id, campaignId)) {
-        throw Object.assign(new Error("Campaign access denied."), {
-          code: "FORBIDDEN",
-          statusCode: 403
-        });
-      }
+      assertCampaignReadAccess(campaignId, { actorUserId: user.id });
       writeJson(res, 200, {
         ok: true,
-        results: searchCampaignMemory(campaignId, query, {
-          docKey: payload.docKey || null,
-          limit: payload.limit || 5
+        results: await search(campaignId, query, {
+          type: payload.type,
+          limit: payload.limit,
+          minConfidence: payload.minConfidence
         })
       });
+    } catch (error) {
+      routeError(res, error);
+    }
+    return true;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/gm/memory") {
+    try {
+      const user = requireAuth(req);
+      const payload = await readJsonBody(req);
+      const campaignId = String(payload.campaignId || "");
+      if (!campaignId) {
+        throw Object.assign(new Error("campaignId is required."), {
+          code: "BAD_REQUEST",
+          statusCode: 400
+        });
+      }
+      assertCampaignWriteAccess(campaignId, { actorUserId: user.id });
+
+      const entity = payload.entity
+        ? payload.entity
+        : {
+            name: String(payload.docKey || "Untitled"),
+            type: "lore",
+            tags: [String(payload.docKey || "legacy")],
+            body: String(payload.content || "")
+          };
+
+      const saved = await upsertEntity(campaignId, entity);
+      writeJson(res, 200, { ok: true, entity: saved });
+    } catch (error) {
+      routeError(res, error);
+    }
+    return true;
+  }
+
+  const memoryEntityName = parseMemoryEntityFromPath(url.pathname);
+  if (memoryEntityName && req.method === "GET") {
+    try {
+      const user = requireAuth(req);
+      const campaignId = String(url.searchParams.get("campaignId") || "");
+      if (!campaignId) {
+        throw Object.assign(new Error("campaignId query param is required."), {
+          code: "BAD_REQUEST",
+          statusCode: 400
+        });
+      }
+      assertCampaignReadAccess(campaignId, { actorUserId: user.id });
+      const entity = await getEntity(campaignId, memoryEntityName);
+      if (!entity) {
+        throw Object.assign(new Error("Entity not found."), {
+          code: "NOT_FOUND",
+          statusCode: 404
+        });
+      }
+      writeJson(res, 200, { ok: true, entity });
+    } catch (error) {
+      routeError(res, error);
+    }
+    return true;
+  }
+
+  if (memoryEntityName && req.method === "DELETE") {
+    try {
+      const user = requireAuth(req);
+      const campaignId = String(url.searchParams.get("campaignId") || "");
+      if (!campaignId) {
+        throw Object.assign(new Error("campaignId query param is required."), {
+          code: "BAD_REQUEST",
+          statusCode: 400
+        });
+      }
+      assertCampaignWriteAccess(campaignId, { actorUserId: user.id });
+      const result = await archiveEntity(campaignId, memoryEntityName);
+      writeJson(res, 200, { ok: true, ...result });
     } catch (error) {
       routeError(res, error);
     }
@@ -713,67 +1256,54 @@ async function handleApi(req, res) {
       const payload = await readJsonBody(req);
       const campaignId = String(payload.campaignId || "");
       const message = String(payload.message || "").trim();
+      const mode = payload.mode === "companion" ? "companion" : "session";
+
       if (!campaignId || !message) {
         throw Object.assign(new Error("campaignId and message are required."), {
           code: "BAD_REQUEST",
           statusCode: 400
         });
       }
-      if (!userCanAccessCampaign(user.id, campaignId)) {
-        throw Object.assign(new Error("Campaign access denied."), {
-          code: "FORBIDDEN",
-          statusCode: 403
+
+      if (mode === "session") {
+        assertCampaignPlayAccess(campaignId, { actorUserId: user.id });
+      } else {
+        assertCampaignReadAccess(campaignId, { actorUserId: user.id });
+      }
+
+      const response = await runAndPersistGmResponse({
+        campaignId,
+        message,
+        mode,
+        actorUserId: user.id,
+        playerName: String(payload.playerName || user.displayName || "Player"),
+        activePlayers: Array.isArray(payload.activePlayers) ? payload.activePlayers : [],
+        stream: Boolean(payload.stream)
+      });
+
+      if (mode === "session") {
+        wsHub.broadcastCampaign(campaignId, {
+          type: "ai_response",
+          campaignId,
+          narrative: response.narrative,
+          memoryUpdates: response.memoryUpdates,
+          timestamp: Date.now()
+        });
+        wsHub.broadcastCampaign(campaignId, {
+          type: "ai_mechanical",
+          campaignId,
+          mechanical: response.mechanical,
+          timestamp: Date.now()
         });
       }
 
-      const state = getState({ userId: user.id });
-      const gmSettings = state.gmSettings || {};
-      const mode = payload.mode === "agent" ? "agent" : payload.mode === "human" ? "human" : (gmSettings.gmMode === "agent" ? "agent" : "human");
-      const provider = String(payload.provider || gmSettings.agentProvider || "local");
-      const model = String(payload.model || gmSettings.agentModel || "");
-      const memorySnippets = searchCampaignMemory(campaignId, message, { limit: 5 });
-      const prompt = mode === "agent"
-        ? buildAgentGmPrompt({ state, campaignId, message, memorySnippets })
-        : buildHumanGmAssistPrompt({ state, campaignId, message, memorySnippets });
-
-      const result = provider === "placeholder" && mode === "human"
-        ? {
-            provider,
-            model: model || "AI_GM_MODEL_VALUE",
-            text: buildFallbackHumanAdvice({ state, campaignId, message, memorySnippets })
-          }
-        : await generateWithProvider({
-            provider,
-            type: "gm",
-            prompt,
-            model
-          });
-
-      applyOperation(
-        "push_chat_line",
-        {
-          campaignId,
-          speaker: user.displayName || "User",
-          text: message
-        },
-        { actorUserId: user.id }
-      );
-      applyOperation(
-        "push_chat_line",
-        {
-          campaignId,
-          speaker: mode === "agent" ? "Agent GM" : "GM Copilot",
-          text: result.text || "No response text returned."
-        },
-        { internal: true }
-      );
       broadcastAuthoritativeState(campaignId, "gm-response", "push_chat_line");
 
       writeJson(res, 200, {
         ok: true,
-        mode,
-        result,
-        memorySnippets
+        narrative: response.narrative,
+        mechanical: response.mechanical,
+        memoryUpdates: response.memoryUpdates
       });
     } catch (error) {
       routeError(res, error);
@@ -840,7 +1370,7 @@ async function handleApi(req, res) {
           });
         }
       }
-      const response = handleQuickstartBuildPayload(payload, {
+      const response = await handleQuickstartBuildPayload(payload, {
         createQuickstartCampaignFromParsed(request) {
           return createQuickstartCampaignFromParsed({
             ...request,
@@ -920,7 +1450,7 @@ server.on("upgrade", (req, socket, head) => {
 });
 
 const port = Number(process.env.PORT || 4173);
-const host = process.env.NOTDND_HOST || process.env.HOST || "127.0.0.1";
+const host = process.env.NOTDND_HOST || process.env.HOST || "0.0.0.0";
 server.on("error", (error) => {
   // eslint-disable-next-line no-console
   console.error(`Failed to start Notdnd server on ${host}:${port}:`, error.message || error);
@@ -929,5 +1459,5 @@ server.on("error", (error) => {
 
 server.listen(port, host, () => {
   // eslint-disable-next-line no-console
-  console.log(`Notdnd server listening on http://${host}:${port}`);
+  // Removed noisy debug output for production.
 });

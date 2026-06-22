@@ -123,6 +123,27 @@ function inventoryPayload(run, policyProfile) {
   }));
 }
 
+function attemptHistoryPayload(run, policyProfile, limit = 5) {
+  if (!Array.isArray(run?.timeline)) {
+    return [];
+  }
+  return run.timeline
+    .filter((event) => event?.type === "attempt" && policyAllows(event, policyProfile))
+    .slice(-limit)
+    .map((event) => ({
+      eventId: event.eventId,
+      createdAt: event.createdAt,
+      locationId: event.locationId || null,
+      summary: event.summary || "",
+      intent: event.payload?.intent || "",
+      targetId: event.payload?.targetId || null,
+      success: event.payload?.success === true,
+      checkResult: event.payload?.checkResult || null,
+      narration: event.payload?.narration || "",
+      warnings: event.payload?.warnings || []
+    }));
+}
+
 function entityFactIds(entities) {
   const ids = new Set();
   for (const entity of entities) {
@@ -305,6 +326,28 @@ export function validateSoloScenePayload(payload) {
       });
     }
   }
+  if (payload.attemptHistory !== undefined) {
+    if (!Array.isArray(payload.attemptHistory)) {
+      push(errors, "attemptHistory", "Expected array");
+    } else {
+      payload.attemptHistory.forEach((entry, index) => {
+        if (!isPlainObject(entry)) {
+          push(errors, `attemptHistory.${index}`, "Expected object");
+          return;
+        }
+        if (!isString(entry.eventId)) {
+          push(errors, `attemptHistory.${index}.eventId`, "Expected non-empty string");
+        }
+        if (!isString(entry.intent)) {
+          push(errors, `attemptHistory.${index}.intent`, "Expected non-empty string");
+        }
+        if (typeof entry.success !== "boolean") {
+          push(errors, `attemptHistory.${index}.success`, "Expected boolean");
+        }
+        validateStringArray(entry.warnings || [], `attemptHistory.${index}.warnings`, errors);
+      });
+    }
+  }
   if (!Array.isArray(payload.recentTimeline)) {
     push(errors, "recentTimeline", "Expected array");
   }
@@ -381,6 +424,7 @@ export function buildSoloScenePayload(run, options = {}) {
   }
 
   const visibleEntities = getVisibleEntities(run, { policyProfile });
+  const attemptHistory = attemptHistoryPayload(run, policyProfile, options.attemptHistoryLimit);
   const payload = {
     ok: true,
     runId: run.runId,
@@ -401,6 +445,8 @@ export function buildSoloScenePayload(run, options = {}) {
       return true;
     }),
     playerInventory: inventoryPayload(run, policyProfile),
+    latestAttemptResult: attemptHistory.length ? attemptHistory.at(-1) : null,
+    attemptHistory,
     discoveredDetails: revealedSearchDetails(currentLocation, policyProfile),
     recentTimeline: getRecentTimelineEvents(run, { policyProfile, limit: options.timelineLimit }),
     relevantMemoryFacts: getRelevantMemoryFacts(run, {

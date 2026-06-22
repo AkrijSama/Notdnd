@@ -117,6 +117,9 @@ export function createApiClient(baseUrl = "") {
     async listAiProviders() {
       return request("/api/ai/providers");
     },
+    async getAiUsage(campaignId) {
+      return request(`/api/ai/usage?campaignId=${encodeURIComponent(campaignId)}`);
+    },
     async generateAi(payload) {
       return request("/api/ai/generate", {
         method: "POST",
@@ -129,19 +132,52 @@ export function createApiClient(baseUrl = "") {
         body: JSON.stringify(payload)
       });
     },
+    async startOnboarding(payload) {
+      return request("/api/onboarding/start", {
+        method: "POST",
+        body: JSON.stringify(payload)
+      });
+    },
     async getGmMemory(campaignId) {
       return request(`/api/gm/memory?campaignId=${encodeURIComponent(campaignId)}`);
     },
+    async getGmMemoryEntity(campaignId, entityName) {
+      return request(`/api/gm/memory/${encodeURIComponent(entityName)}?campaignId=${encodeURIComponent(campaignId)}`);
+    },
     async saveGmMemory(payload) {
+      const campaignId = payload?.campaignId;
+      const entity = payload?.entity || {
+        name: payload?.docKey || "Untitled",
+        type: "lore",
+        tags: payload?.docKey ? [payload.docKey] : [],
+        body: payload?.content || ""
+      };
       return request("/api/gm/memory", {
         method: "POST",
-        body: JSON.stringify(payload)
+        body: JSON.stringify({ campaignId, entity })
+      });
+    },
+    async upsertGmMemoryEntity(campaignId, entity) {
+      return request("/api/gm/memory", {
+        method: "POST",
+        body: JSON.stringify({ campaignId, entity })
+      });
+    },
+    async deleteGmMemoryEntity(campaignId, entityName) {
+      return request(`/api/gm/memory/${encodeURIComponent(entityName)}?campaignId=${encodeURIComponent(campaignId)}`, {
+        method: "DELETE"
       });
     },
     async searchGmMemory(payload) {
       return request("/api/gm/memory/search", {
         method: "POST",
         body: JSON.stringify(payload)
+      });
+    },
+    async rebuildGmMemory(campaignId) {
+      return request(`/api/gm/memory/rebuild?campaignId=${encodeURIComponent(campaignId)}`, {
+        method: "POST",
+        body: JSON.stringify({})
       });
     },
     async buildQuickstartCampaign(payload) {

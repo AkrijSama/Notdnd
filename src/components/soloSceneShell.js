@@ -121,6 +121,15 @@ export function createUseItemAction(itemOrAction = {}) {
   };
 }
 
+export function createAttemptAction(attempt = {}) {
+  return {
+    type: "attempt",
+    actorId: "player",
+    intent: attempt.intent || "",
+    targetId: attempt.targetId || null
+  };
+}
+
 export function renderSceneHeader(scene = {}, state = {}) {
   const location = scene.location || {};
   const time = scene.world?.time || scene.time || {};
@@ -355,7 +364,8 @@ export function renderSceneActionBar(scene = {}) {
                     action.type === "search" ||
                     action.type === "talk" ||
                     action.type === "rest" ||
-                    action.type === "use_item";
+                    action.type === "use_item" ||
+                    action.type === "attempt";
                   const enabled = action.enabled !== false && implemented;
                   return `
                     <button
@@ -599,6 +609,65 @@ export function renderUseItemResultPanel(useItemResult = null) {
   `;
 }
 
+export function renderAttemptPanel(scene = {}, attemptResult = null) {
+  const entities = Array.isArray(scene.visibleEntities) ? scene.visibleEntities.filter((entity) => entity.entityId) : [];
+  const history = Array.isArray(scene.attemptHistory) ? scene.attemptHistory : [];
+  return `
+    <section class="module-card solo-panel solo-attempt-panel">
+      <div class="module-header">
+        <h3>Attempt</h3>
+        <span class="small">Freeform server action</span>
+      </div>
+      <form class="solo-attempt-form" data-solo-attempt-form>
+        <label class="field">
+          <span class="small">What do you attempt?</span>
+          <textarea name="intent" rows="3" placeholder="Describe your intent..." required></textarea>
+        </label>
+        <label class="field">
+          <span class="small">Optional target</span>
+          <select name="targetId">
+            <option value="">No specific target</option>
+            ${entities
+              .map((entity) => `<option value="${escapeHtml(entity.entityId)}">${escapeHtml(entity.displayName || entity.entityId)}</option>`)
+              .join("")}
+          </select>
+        </label>
+        <button class="ghost" type="submit" data-solo-action="attempt">Attempt</button>
+      </form>
+      ${
+        attemptResult
+          ? `
+            <div class="solo-attempt-result ${attemptResult.success ? "found" : "empty"}">
+              <strong>${escapeHtml(attemptResult.success ? "Attempt succeeded" : "Attempt failed")}</strong>
+              <p>${escapeHtml(attemptResult.narration || attemptResult.summary || "The attempt resolves without further effect.")}</p>
+              <div class="small">Intent: ${escapeHtml(attemptResult.intent || "")}</div>
+              ${renderCheckResult(attemptResult.checkResult)}
+              ${
+                Array.isArray(attemptResult.warnings) && attemptResult.warnings.length
+                  ? `<div class="solo-tag-row">${attemptResult.warnings.map((warning) => `<span class="tag">${escapeHtml(warning)}</span>`).join("")}</div>`
+                  : ""
+              }
+            </div>
+          `
+          : renderEmpty("Type a custom intent. The server validates and adjudicates the result.")
+      }
+      ${
+        history.length
+          ? `<div class="solo-sheet-section">
+              <h5>Recent Attempts</h5>
+              ${renderCompactList(history.slice(-3), "No recent attempts.", (entry) => `
+                <div class="solo-compact-row">
+                  <strong>${escapeHtml(entry.success ? "Success" : "Failure")}</strong>
+                  <span>${escapeHtml(entry.intent || entry.summary || "")}</span>
+                </div>
+              `)}
+            </div>`
+          : ""
+      }
+    </section>
+  `;
+}
+
 export function renderEntityDetailPanel(detail = null) {
   if (!detail) {
     return `
@@ -774,6 +843,7 @@ export function renderSoloSceneShell(state = {}) {
           ${renderTalkResultPanel(state.talkResult)}
           ${renderRestResultPanel(state.restResult)}
           ${renderUseItemResultPanel(state.useItemResult)}
+          ${renderAttemptPanel(scene, state.attemptResult)}
           ${renderEntityDetailPanel(state.detail)}
           ${renderSceneTimelinePanel(scene)}
           ${renderSceneMemoryPanel(scene)}

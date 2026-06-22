@@ -5,6 +5,7 @@ import { renderCharacterVault, bindCharacterVault } from "./components/character
 import { renderCommandCenter, bindCommandCenter } from "./components/commandCenter.js";
 import { renderCompendium, bindCompendium } from "./components/compendium.js";
 import { renderHomebrewStudio, bindHomebrewStudio } from "./components/homebrewStudio.js";
+import { renderOnboardingFlow, bindOnboardingFlow } from "./components/onboardingFlow.js";
 import { renderSidebar } from "./components/sidebar.js";
 import { mountSoloSceneShell } from "./components/soloSceneShell.js";
 import { renderTopbar } from "./components/topbar.js";
@@ -27,7 +28,19 @@ const uiState = {
   campaignMembers: [],
   presenceUsers: [],
   cursorState: [],
-  lockState: []
+  lockState: [],
+  onboarding: {
+    step: "inactive",
+    loading: false,
+    thinking: false,
+    error: "",
+    campaignId: "",
+    characterName: "",
+    archetype: "",
+    backstorySnippet: "",
+    messages: [],
+    exchanges: 0
+  }
 };
 
 const appRoot = document.querySelector("#app");
@@ -170,6 +183,122 @@ async function loadCampaignMembers() {
   }
 }
 
+function shouldShowOnboarding(state) {
+  const user = state.auth?.user;
+  if (!user) {
+    return false;
+  }
+  if (uiState.onboarding.step === "arrival") {
+    return true;
+  }
+  if (uiState.onboarding.step === "completed") {
+    return false;
+  }
+  if (uiState.onboarding.step === "character") {
+    return true;
+  }
+  return (state.campaigns || []).length === 0;
+}
+
+async function startOnboarding(payload) {
+  uiState.onboarding = {
+    ...uiState.onboarding,
+    step: "character",
+    loading: true,
+    error: "",
+    characterName: payload.characterName,
+    archetype: payload.archetype,
+    backstorySnippet: payload.backstorySnippet
+  };
+  renderApp();
+
+  try {
+    const response = await store.startOnboarding(payload);
+    const firstMessage = String(response.firstMessage || "").trim();
+    uiState.onboarding = {
+      ...uiState.onboarding,
+      step: "arrival",
+      loading: false,
+      thinking: false,
+      error: "",
+      campaignId: response.campaignId,
+      messages: firstMessage ? [{ role: "assistant", text: firstMessage }] : [],
+      exchanges: 0
+    };
+    uiState.activeTab = "command";
+    await loadCampaignMembers();
+  } catch (error) {
+    uiState.onboarding = {
+      ...uiState.onboarding,
+      loading: false,
+      error: String(error?.message || error || "Failed to start onboarding.")
+    };
+  }
+
+  renderApp();
+}
+
+async function sendOnboardingMessage(message) {
+  const campaignId = uiState.onboarding.campaignId || store.getState().selectedCampaignId;
+  if (!campaignId) {
+    uiState.onboarding = {
+      ...uiState.onboarding,
+      error: "No onboarding campaign is active."
+    };
+    renderApp();
+    return;
+  }
+
+  const nextMessages = [...uiState.onboarding.messages, { role: "user", text: message }];
+  uiState.onboarding = {
+    ...uiState.onboarding,
+    messages: nextMessages,
+    thinking: true,
+    error: "",
+    exchanges: Number(uiState.onboarding.exchanges || 0) + 1
+  };
+  renderApp();
+
+  try {
+    const response = await store.requestGmResponse({
+      campaignId,
+      message,
+      mode: "companion",
+      stream: true
+    });
+
+    const narrative = String(response.narrative || "").trim();
+    uiState.onboarding = {
+      ...uiState.onboarding,
+      thinking: false,
+      messages: narrative
+        ? [...uiState.onboarding.messages, { role: "assistant", text: narrative }]
+        : uiState.onboarding.messages
+    };
+
+    await store.loadGmMemoryDocs(campaignId);
+  } catch (error) {
+    uiState.onboarding = {
+      ...uiState.onboarding,
+      thinking: false,
+      error: String(error?.message || error || "Companion response failed.")
+    };
+  }
+
+  renderApp();
+}
+
+function openOnboardingCampaignDashboard() {
+  uiState.onboarding = {
+    ...uiState.onboarding,
+    step: "completed",
+    thinking: false,
+    loading: false
+  };
+  uiState.activeTab = "command";
+  renderApp();
+}
+
 async function handleAuthSubmit(form) {
   const payload = new FormData(form);
   const email = String(payload.get("email") || "").trim();
@@ -186,6 +315,22 @@ async function handleAuthSubmit(form) {
     const me = await apiClient.me();
     realtimeClient.setToken(apiClient.getAuthToken());
     await store.bootstrapRemote();
+    const nextState = store.getState();
+    if ((nextState.campaigns || []).length === 0) {
+      uiState.onboarding = {
+        ...uiState.onboarding,
+        step: "character",
+        error: ""
+      };
+    } else {
+      uiState.onboarding = {
+        ...uiState.onboarding,
+        step: "completed",
+        loading: false,
+        thinking: false,
+        error: ""
+      };
+    }
     await loadCampaignMembers();
     uiState.authMessage = `Signed in as ${me.user.displayName}`;
     uiState.showAuthPanel = false;
@@ -246,6 +391,16 @@ function bindAppEvents() {
       }
       realtimeClient.setToken("");
       uiState.campaignMembers = [];
+      uiState.onboarding = {
+        ...uiState.onboarding,
+        step: "inactive",
+        loading: false,
+        thinking: false,
+        error: "",
+        messages: [],
+        exchanges: 0,
+        campaignId: ""
+      };
       store.clearAuth();
       uiState.authMessage = "Logged out.";
       renderApp();
@@ -337,37 +492,67 @@ function renderApp() {
 
   const state = store.getState();
   const user = state.auth?.user;
+  const onboardingVisible = shouldShowOnboarding(state);
+  if (onboardingVisible && uiState.onboarding.step === "inactive") {
+    uiState.onboarding.step = "character";
+  }
 
   if (user && state.selectedCampaignId && state.selectedCampaignId !== uiState.activeRealtimeCampaignId) {
     uiState.activeRealtimeCampaignId = state.selectedCampaignId;
     realtimeClient.joinCampaign(state.selectedCampaignId);
   }
 
-  appRoot.innerHTML = `
-    <div class="app-shell">
-      ${renderTopbar(uiState.activeTab, user)}
-      ${uiState.authMessage ? `<section class="module-card"><div class="small">${uiState.authMessage}</div></section>` : ""}
-      ${renderAuthPanel(state)}
-      <div class="layout">
-        ${renderSidebar(state)}
-        <main class="panel main">
-          <section id="active-module">
-            ${renderActiveTab(state)}
-          </section>
-          <section class="module-card">
-            <div class="module-header">
-              <h3>Scaffold Status</h3>
-              <button class="ghost" data-action="reset-state">Reset Demo Data</button>
-            </div>
-            <div class="small">Secure auth + permissions + versioned sync + realtime collaboration + AI adapters are active.</div>
-            <div class="footer-note">API: ${uiState.apiHealthy ? "Connected" : "Offline"} | Realtime: ${uiState.realtimeConnected ? "Connected" : "Disconnected"} | Presence: ${uiState.presenceUsers.length} | State v${state.stateVersion ?? 0}</div>
+  if (onboardingVisible) {
+    appRoot.innerHTML = `
+      <div class="app-shell">
+        ${renderTopbar(uiState.activeTab, user)}
+        ${uiState.authMessage ? `<section class="module-card"><div class="small">${uiState.authMessage}</div></section>` : ""}
+        ${renderAuthPanel(state)}
+        <main class="panel main onboarding-main">
+          <section id="onboarding-root">
+            ${renderOnboardingFlow(uiState.onboarding)}
           </section>
         </main>
       </div>
-    </div>
-  `;
+    `;
+  } else {
+    appRoot.innerHTML = `
+      <div class="app-shell">
+        ${renderTopbar(uiState.activeTab, user)}
+        ${uiState.authMessage ? `<section class="module-card"><div class="small">${uiState.authMessage}</div></section>` : ""}
+        ${renderAuthPanel(state)}
+        <div class="layout">
+          ${renderSidebar(state)}
+          <main class="panel main">
+            <section id="active-module">
+              ${renderActiveTab(state)}
+            </section>
+            <section class="module-card">
+              <div class="module-header">
+                <h3>Scaffold Status</h3>
+                <button class="ghost" data-action="reset-state">Reset Demo Data</button>
+              </div>
+              <div class="small">Secure auth + permissions + versioned sync + realtime collaboration + AI adapters are active.</div>
+              <div class="footer-note">API: ${uiState.apiHealthy ? "Connected" : "Offline"} | Realtime: ${uiState.realtimeConnected ? "Connected" : "Disconnected"} | Presence: ${uiState.presenceUsers.length} | State v${state.stateVersion ?? 0}</div>
+            </section>
+          </main>
+        </div>
+      </div>
+    `;
+  }
 
   bindAppEvents();
+
+  if (onboardingVisible) {
+    const onboardingRoot = appRoot.querySelector("#onboarding-root");
+    if (onboardingRoot) {
+      bindOnboardingFlow(onboardingRoot, {
+        onStart: startOnboarding,
+        onSendMessage: sendOnboardingMessage,
+        onOpenDashboard: openOnboardingCampaignDashboard
+      });
+    }
+  }
 }
 
 store.subscribe(() => {
@@ -390,20 +575,13 @@ async function bootstrap() {
     authenticated = false;
   }
 
-  if (!authenticated) {
-    try {
-      await apiClient.login({ email: "demo@notdnd.local", password: "demo1234" });
-      authenticated = true;
-      uiState.authMessage = "Signed in with bootstrap demo account.";
-    } catch {
-      authenticated = false;
-    }
-  }
-
   realtimeClient.setToken(authenticated ? apiClient.getAuthToken() : "");
   await store.bootstrapRemote();
   if (authenticated) {
     await loadCampaignMembers();
+    if ((store.getState().campaigns || []).length === 0) {
+      uiState.onboarding.step = "character";
+    }
   }
 
   renderApp();

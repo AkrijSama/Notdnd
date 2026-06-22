@@ -49,15 +49,39 @@ export function writeText(res, statusCode, text) {
 export function serveStatic(req, res, rootDir) {
   const requestPath = req.url === "/" ? "/index.html" : req.url;
   const pathname = decodeURIComponent((requestPath || "/").split("?")[0]);
-  const safePath = path.normalize(pathname).replace(/^\.\.(\/|\\|$)/, "");
-  const absolutePath = path.join(rootDir, safePath);
+  const safePath = path.normalize(pathname).replace(/^(\.\.(\/|\\|$))+/, "");
+  const normalized = safePath.replace(/^[/\\]+/, "");
 
-  if (!absolutePath.startsWith(rootDir)) {
-    writeText(res, 403, "Forbidden");
-    return;
+  const candidates = [path.join(rootDir, normalized)];
+  if (!path.extname(normalized)) {
+    candidates.push(path.join(rootDir, `${normalized}.html`));
   }
 
-  if (!fs.existsSync(absolutePath) || fs.statSync(absolutePath).isDirectory()) {
+  let absolutePath = null;
+  for (const candidate of candidates) {
+    if (!candidate.startsWith(rootDir)) {
+      continue;
+    }
+    if (!fs.existsSync(candidate)) {
+      continue;
+    }
+
+    const stat = fs.statSync(candidate);
+    if (stat.isFile()) {
+      absolutePath = candidate;
+      break;
+    }
+
+    if (stat.isDirectory()) {
+      const indexPath = path.join(candidate, "index.html");
+      if (indexPath.startsWith(rootDir) && fs.existsSync(indexPath) && fs.statSync(indexPath).isFile()) {
+        absolutePath = indexPath;
+        break;
+      }
+    }
+  }
+
+  if (!absolutePath) {
     writeText(res, 404, "Not found");
     return;
   }

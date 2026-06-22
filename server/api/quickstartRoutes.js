@@ -8,7 +8,7 @@ export function handleQuickstartParsePayload(payload = {}, deps = {}) {
   return { parsed };
 }
 
-export function handleQuickstartBuildPayload(payload = {}, deps = {}) {
+export async function handleQuickstartBuildPayload(payload = {}, deps = {}) {
   const parseFn = deps.parseHomebrewDocuments || parseHomebrewDocuments;
   const buildFn = deps.createQuickstartCampaignFromParsed || createQuickstartCampaignFromParsed;
   const stateFn = deps.getState || getState;
@@ -17,7 +17,7 @@ export function handleQuickstartBuildPayload(payload = {}, deps = {}) {
   const parsed = payload.parsed && typeof payload.parsed === "object" ? payload.parsed : parseFn(files);
   const players = Array.isArray(payload.players) ? payload.players : [];
 
-  const launch = buildFn({
+  const launch = await buildFn({
     campaignName: payload.campaignName,
     setting: payload.setting,
     players,

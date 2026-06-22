@@ -21,11 +21,11 @@ process.env.NOTDND_MEMORY_ROOT = path.join(tmpDir, "memory");
 const manifest = loadFixtureManifest().filter((entry) => entry.shouldParse);
 
 for (const entry of manifest) {
-  test(`quickstart build route fixture: ${entry.file}`, () => {
+  test(`quickstart build route fixture: ${entry.file}`, async () => {
     initializeDatabase();
     resetDatabase();
 
-    const response = handleQuickstartBuildPayload(
+    const response = await handleQuickstartBuildPayload(
       {
         campaignName: `Fixture ${entry.file}`,
         setting: "Fixture Setting",

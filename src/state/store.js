@@ -168,15 +168,16 @@ export function createStore({ apiClient = null } = {}) {
       return [];
     }
     const response = await apiClient.getGmMemory(campaignId);
+    const docs = response.entities || response.docs || [];
     state = {
       ...state,
       gmMemoryDocsByCampaign: {
         ...state.gmMemoryDocsByCampaign,
-        [campaignId]: response.docs || []
+        [campaignId]: docs
       }
     };
     notify();
-    return response.docs || [];
+    return docs;
   }
 
   async function saveGmMemoryDoc({ campaignId = state.selectedCampaignId, docKey, content }) {
@@ -184,16 +185,19 @@ export function createStore({ apiClient = null } = {}) {
       throw new Error("API client is required for GM memory");
     }
     const response = await apiClient.saveGmMemory({ campaignId, docKey, content });
-    const docs = (state.gmMemoryDocsByCampaign[campaignId] || []).filter((entry) => entry.key !== docKey);
+    const saved = response.entity || response.doc;
+    const docs = (state.gmMemoryDocsByCampaign[campaignId] || []).filter((entry) => entry.name !== saved?.name);
     state = {
       ...state,
       gmMemoryDocsByCampaign: {
         ...state.gmMemoryDocsByCampaign,
-        [campaignId]: [response.doc, ...docs].sort((left, right) => left.title.localeCompare(right.title))
+        [campaignId]: [saved, ...docs].sort((left, right) =>
+          String(left.name || left.title || "").localeCompare(String(right.name || right.title || ""))
+        )
       }
     };
     notify();
-    return response.doc;
+    return saved;
   }
 
   async function searchGmMemory({ campaignId = state.selectedCampaignId, query, docKey = null, limit = 5 }) {
@@ -209,24 +213,46 @@ export function createStore({ apiClient = null } = {}) {
     return response.results || [];
   }
 
-  async function requestGmResponse({ campaignId = state.selectedCampaignId, message, mode, provider, model }) {
+  async function requestGmResponse({ campaignId = state.selectedCampaignId, message, mode, provider, model, stream }) {
     if (!apiClient || !campaignId) {
       throw new Error("API client is required for GM responses");
     }
-    const response = await apiClient.respondAsGm({ campaignId, message, mode, provider, model });
-    if (response.memorySnippets) {
+    const response = await apiClient.respondAsGm({ campaignId, message, mode, provider, model, stream });
+    state = {
+      ...state,
+      gmLastResponseMeta: {
+        mode: mode || "session",
+        memoryUpdates: response.memoryUpdates || [],
+        rolls: response.mechanical?.rolls || []
+      }
+    };
+    notify();
+    await hydrateFromServer();
+    return response;
+  }
+
+  async function startOnboarding({ characterName, archetype, backstorySnippet }) {
+    if (!apiClient) {
+      throw new Error("API client is required for onboarding.");
+    }
+
+    const response = await apiClient.startOnboarding({
+      characterName,
+      archetype,
+      backstorySnippet
+    });
+
+    await hydrateFromServer();
+
+    if (response?.campaignId) {
       state = {
         ...state,
-        gmMemorySearchResults: response.memorySnippets,
-        gmLastResponseMeta: {
-          mode: response.mode,
-          provider: response.result?.provider,
-          model: response.result?.model
-        }
+        selectedCampaignId: response.campaignId
       };
       notify();
+      await loadGmMemoryDocs(response.campaignId);
     }
-    await hydrateFromServer();
+
     return response;
   }
 
@@ -516,8 +542,11 @@ export function createStore({ apiClient = null } = {}) {
     async searchGmMemory({ campaignId = state.selectedCampaignId, query, docKey = null, limit = 5 }) {
       return searchGmMemory({ campaignId, query, docKey, limit });
     },
-    async requestGmResponse({ campaignId = state.selectedCampaignId, message, mode, provider, model }) {
-      return requestGmResponse({ campaignId, message, mode, provider, model });
+    async requestGmResponse({ campaignId = state.selectedCampaignId, message, mode, provider, model, stream }) {
+      return requestGmResponse({ campaignId, message, mode, provider, model, stream });
+    },
+    async startOnboarding({ characterName, archetype, backstorySnippet }) {
+      return startOnboarding({ characterName, archetype, backstorySnippet });
     },
     async rollDice({ expression, label, actor }) {
       return syncOperationWithResult("roll_dice", {

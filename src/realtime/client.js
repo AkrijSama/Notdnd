@@ -8,7 +8,13 @@ export function createRealtimeClient({
   onError,
   onPresence,
   onCursors,
-  onLocks
+  onLocks,
+  onAiThinking,
+  onAiStream,
+  onAiResponse,
+  onAiMechanical,
+  onTurnChange,
+  onPlayerMessage
 } = {}) {
   let socket = null;
   let reconnectTimer = null;
@@ -61,6 +67,24 @@ export function createRealtimeClient({
         }
         if (message.type === "op_error") {
           onError?.(message);
+        }
+        if (message.type === "ai_thinking") {
+          onAiThinking?.(message);
+        }
+        if (message.type === "ai_stream") {
+          onAiStream?.(message);
+        }
+        if (message.type === "ai_response") {
+          onAiResponse?.(message);
+        }
+        if (message.type === "ai_mechanical") {
+          onAiMechanical?.(message);
+        }
+        if (message.type === "turn_change") {
+          onTurnChange?.(message);
+        }
+        if (message.type === "player_message") {
+          onPlayerMessage?.(message);
         }
       } catch {
         // Ignore malformed frames.
@@ -130,6 +154,19 @@ export function createRealtimeClient({
     return sendMessage({ type: "lock_release", resource });
   }
 
+  function sendTyping(typing = true) {
+    return sendMessage({ type: "typing", typing: Boolean(typing) });
+  }
+
+  function sendGmPlayerMessage({ text, playerName = "", ooc = false }) {
+    return sendMessage({
+      type: "gm_player_message",
+      text,
+      playerName,
+      ooc: Boolean(ooc)
+    });
+  }
+
   connect(campaignId);
 
   return {
@@ -139,6 +176,8 @@ export function createRealtimeClient({
     setToken,
     sendCursor,
     acquireLock,
-    releaseLock
+    releaseLock,
+    sendTyping,
+    sendGmPlayerMessage
   };
 }
