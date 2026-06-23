@@ -1,7 +1,33 @@
 import http from "node:http";
+import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+
+function loadDotenv() {
+  const envPath = path.resolve(process.cwd(), ".env");
+  let raw;
+  try {
+    raw = fsSync.readFileSync(envPath, "utf8");
+  } catch {
+    return;
+  }
+  for (const line of raw.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const eq = trimmed.indexOf("=");
+    if (eq <= 0) continue;
+    const key = trimmed.slice(0, eq).trim();
+    if (!key || key in process.env) continue;
+    let value = trimmed.slice(eq + 1).trim();
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    process.env[key] = value;
+  }
+}
+loadDotenv();
+
 import { createAiJobProcessor } from "./ai/processor.js";
 import { generateNarrative, generateRaw, getCampaignUsage, getModelTiers } from "./ai/openrouter.js";
 import { generateWithProvider, listAiProviders } from "./ai/providers.js";
@@ -735,7 +761,7 @@ async function handleApi(req, res) {
         });
       }
 
-      const campaignId = await createOnboardingCampaign(user.id, {
+      const { campaignId, runId } = await createOnboardingCampaign(user.id, {
         characterName,
         archetype,
         backstorySnippet
@@ -766,6 +792,7 @@ async function handleApi(req, res) {
       writeJson(res, 200, {
         ok: true,
         campaignId,
+        runId,
         firstMessage: String(opening?.narrative || "").trim()
       });
     } catch (error) {
@@ -990,6 +1017,37 @@ async function handleApi(req, res) {
           cost: result.cost
         }
       });
+    } catch (error) {
+      routeError(res, error);
+    }
+    return true;
+  }
+
+  if (req.method === "DELETE" && url.pathname.startsWith("/api/campaigns/")) {
+    try {
+      const user = requireAuth(req);
+      const campaignId = decodeURIComponent(url.pathname.slice("/api/campaigns/".length));
+      if (!campaignId) {
+        throw Object.assign(new Error("campaignId is required."), {
+          code: "BAD_REQUEST",
+          statusCode: 400
+        });
+      }
+
+      applyOperation("delete_campaign", { campaignId }, { actorUserId: user.id });
+
+      try {
+        const memoryDir = process.env.NOTDND_MEMORY_ROOT
+          ? path.resolve(process.env.NOTDND_MEMORY_ROOT, campaignId)
+          : path.resolve(process.cwd(), "data/campaigns", campaignId);
+        await fs.rm(memoryDir, { recursive: true, force: true });
+      } catch {
+        // Memory dir cleanup is best-effort; state has already been removed.
+      }
+
+      broadcastAuthoritativeState(campaignId, "campaign-delete", "delete_campaign");
+      const state = getState({ userId: user.id });
+      writeJson(res, 200, { ok: true, campaignId, state });
     } catch (error) {
       routeError(res, error);
     }

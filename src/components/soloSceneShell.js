@@ -235,6 +235,11 @@ export function renderGmNarrationPanel(gmNarration = null, gmStatus = null, sele
 
 export function renderLocationPanel(location = {}, gmNarration = null, gmStatus = null, selectedMode = "placeholder") {
   const imageLabel = location.imageAssetId ? `Image asset: ${location.imageAssetId}` : "No image assigned yet.";
+  // Display-only: never surface the internal "placeholder" tag to the player.
+  // The underlying location.tags data is left untouched.
+  const visibleTags = Array.isArray(location.tags)
+    ? location.tags.filter((tag) => String(tag).trim().toLowerCase() !== "placeholder")
+    : location.tags;
   return `
     <section class="solo-location-card">
       <div class="solo-location-image" data-image-asset-id="${escapeHtml(location.imageAssetId || "")}">
@@ -247,7 +252,7 @@ export function renderLocationPanel(location = {}, gmNarration = null, gmStatus 
         <div class="solo-section-kicker">Current Location</div>
         <h3>${escapeHtml(location.name || "Current Location")}</h3>
         <p>${escapeHtml(location.description || "No location description is available.")}</p>
-        ${renderTags(location.tags)}
+        ${renderTags(visibleTags)}
         ${renderGmNarrationPanel(gmNarration, gmStatus, selectedMode)}
       </div>
     </section>

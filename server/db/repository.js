@@ -1098,6 +1098,55 @@ export function applyOperation(op, payload = {}, context = {}) {
       return { id };
     }
 
+    case "delete_campaign": {
+      const campaignId = String(payload.campaignId || "").trim();
+      if (!campaignId) {
+        throw makeError("BAD_REQUEST", "campaignId is required", 400);
+      }
+      const role = userRoleForCampaign(actorUserId, campaignId);
+      if (role !== "owner") {
+        throw makeError("FORBIDDEN", "Only the campaign owner can delete it.", 403);
+      }
+      const exists = db.campaigns.some((entry) => entry.id === campaignId);
+      if (!exists) {
+        throw makeError("NOT_FOUND", "Campaign not found.", 404);
+      }
+
+      db.campaigns = db.campaigns.filter((entry) => entry.id !== campaignId);
+      db.characters = (db.characters || []).filter((entry) => entry.campaignId !== campaignId);
+      db.encounters = (db.encounters || []).filter((entry) => entry.campaignId !== campaignId);
+      const removedMapIds = new Set(
+        (db.maps || []).filter((entry) => entry.campaignId === campaignId).map((entry) => entry.id)
+      );
+      db.maps = (db.maps || []).filter((entry) => entry.campaignId !== campaignId);
+      if (db.tokensByMap && typeof db.tokensByMap === "object") {
+        for (const mapId of removedMapIds) {
+          delete db.tokensByMap[mapId];
+        }
+      }
+      db.chatLog = (db.chatLog || []).filter((entry) => entry.campaignId !== campaignId);
+      db.aiJobs = (db.aiJobs || []).filter((entry) => entry.campaignId !== campaignId);
+      delete db.campaignMembersByCampaign[campaignId];
+      delete db.gmSettingsByCampaign[campaignId];
+      delete db.journalsByCampaign[campaignId];
+      delete db.recentRollsByCampaign[campaignId];
+      delete db.campaignPackagesByCampaign[campaignId];
+      delete db.campaignRuntimeByCampaign[campaignId];
+      delete db.campaignVersions[campaignId];
+
+      for (const [userId, prefs] of Object.entries(db.userPrefsByUser || {})) {
+        if (prefs?.selectedCampaignId === campaignId) {
+          db.userPrefsByUser[userId] = { selectedCampaignId: null };
+        }
+      }
+      if (db.selectedCampaignId === campaignId) {
+        db.selectedCampaignId = db.campaigns[0]?.id || null;
+      }
+
+      writeToDisk();
+      return { ok: true, campaignId };
+    }
+
     case "increment_campaign_readiness": {
       const campaignId = selectedCampaignId(payload, actorUserId, context);
       if (!campaignId) {

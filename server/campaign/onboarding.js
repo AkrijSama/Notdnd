@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { applyOperation } from "../db/repository.js";
+import { applyOperation, createSoloRun, getSoloRun, saveSoloRun } from "../db/repository.js";
 import { ensureCampaignMemoryDocsAsync, rebuildCampaignIndex } from "../gm/memoryStore.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -154,5 +154,45 @@ export async function createOnboardingCampaign(userId, characterInfo = {}) {
     backstorySnippet
   });
 
-  return campaignId;
+  const createdRun = createSoloRun({ userId: actorUserId });
+  const run = getSoloRun(createdRun.runId);
+  const startLocation = run.locations.start_location;
+  startLocation.name = "The Shattered Flagon";
+  startLocation.description =
+    "A rain-soaked tavern in Ashenmoor. Lamp oil, wet wool, and iron-rich blood. Mira watches the door from behind the bar.";
+  startLocation.tags = Array.from(new Set([...(startLocation.tags || []), "ashenmoor", "tavern"]));
+
+  run.npcs = run.npcs || {};
+  run.npcs.mira = {
+    npcId: "mira",
+    displayName: "Mira",
+    role: "Tavern Keeper",
+    currentLocationId: "start_location",
+    known: true,
+    status: "present",
+    memoryFactIds: [],
+    tags: ["tavern-keeper", "quest-giver"],
+    flags: {},
+    edition: "mainline",
+    policyProfileId: "mainline_default",
+    contentTags: [],
+    dialogueBeats: [
+      {
+        beatId: "mira_greeting",
+        label: "Greet Mira",
+        text: `Mira sets down a clean glass. "You're soaked through, ${characterName}. Sit by the fire. You look like someone who's heard the rumors about the missing shipment — and someone who might be fool enough to ask about them."`,
+        revealed: false,
+        repeatable: true,
+        contentTags: [],
+        linkedMemoryFactIds: [],
+        linkedQuestIds: [],
+        edition: "mainline",
+        policyProfileId: "mainline_default"
+      }
+    ]
+  };
+
+  const savedRun = saveSoloRun(run);
+
+  return { campaignId, runId: savedRun.runId };
 }

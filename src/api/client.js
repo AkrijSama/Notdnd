@@ -86,6 +86,14 @@ export function createApiClient(baseUrl = "") {
     async getState() {
       return request("/api/state");
     },
+    async listSoloRuns() {
+      return request("/api/solo/runs");
+    },
+    async deleteCampaign(campaignId) {
+      return request(`/api/campaigns/${encodeURIComponent(campaignId)}`, {
+        method: "DELETE"
+      });
+    },
     async fetchSoloScene(runId) {
       return request(`/api/solo/runs/${encodeURIComponent(runId)}/scene`);
     },

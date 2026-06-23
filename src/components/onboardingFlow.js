@@ -130,6 +130,17 @@ export function bindOnboardingFlow(root, handlers = {}) {
         backstorySnippet: String(formData.get("backstorySnippet") || "").trim()
       });
     });
+
+    if (typeof handlers.onFieldChange === "function") {
+      for (const fieldName of ["characterName", "archetype", "backstorySnippet"]) {
+        const field = startForm.querySelector(`[name="${fieldName}"]`);
+        if (field) {
+          field.addEventListener("input", () => {
+            handlers.onFieldChange(fieldName, field.value);
+          });
+        }
+      }
+    }
   }
 
   const chatForm = root.querySelector("#onboarding-chat-form");

@@ -3,8 +3,8 @@ type: lore
 name: "Human GM Guide"
 tags: ["seed"]
 relations:
-lastAccessed: 2026-03-05T03:08:37.430Z
-lastUpdated: 2026-03-05T03:08:37.430Z
+lastAccessed: 2026-06-23T17:03:47.843Z
+lastUpdated: 2026-06-23T17:03:47.843Z
 accessCount: 0
 confidence: 1
 ---

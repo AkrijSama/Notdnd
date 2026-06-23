@@ -570,7 +570,7 @@ async function main() {
   await runTest("22) createOnboardingCampaign seeds campaign and memory graph", async () => {
     repository.resetDatabase();
     const login = repository.loginUser({ email: "demo@notdnd.local", password: "demo1234" });
-    const campaignId = await onboarding.createOnboardingCampaign(login.user.id, {
+    const { campaignId } = await onboarding.createOnboardingCampaign(login.user.id, {
       characterName: "Nyx",
       archetype: "a disgraced knight",
       backstorySnippet: "I fled the capital after betraying my order."

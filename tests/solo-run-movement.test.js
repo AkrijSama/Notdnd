@@ -47,7 +47,7 @@ test("getAvailableMoves returns connected locations from currentLocationId", () 
   assert.deepEqual(moves, [
     {
       locationId: "second_location",
-      name: "Second Location",
+      name: "Ashenmoor Market Square",
       direction: null,
       imageAssetId: "image_second_location",
       edition: "mainline",

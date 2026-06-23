@@ -23,12 +23,14 @@ const uiState = {
   realtimeConnected: false,
   activeRealtimeCampaignId: null,
   showAuthPanel: false,
+  showAccountMenu: false,
   authMode: "login",
   authMessage: "",
   campaignMembers: [],
   presenceUsers: [],
   cursorState: [],
   lockState: [],
+  pendingDeleteCampaignId: null,
   onboarding: {
     step: "inactive",
     loading: false,
@@ -51,40 +53,39 @@ const realtimeClient = createRealtimeClient({
   token: apiClient.getAuthToken(),
   onOpen() {
     uiState.realtimeConnected = true;
-    renderApp();
+    scheduleRender();
   },
   onClose() {
     uiState.realtimeConnected = false;
-    renderApp();
-  },
-  onStateChanged() {
-    store.refreshFromServer();
+    scheduleRender();
   },
   onStateSync(message) {
     store.applyAuthoritativeState(message.state);
   },
   onPresence(message) {
     uiState.presenceUsers = message.users || [];
-    renderApp();
+    scheduleRender();
   },
   onCursors(message) {
     uiState.cursorState = message.cursors || [];
-    renderApp();
+    scheduleRender();
   },
   onLocks(message) {
     uiState.lockState = message.locks || [];
-    renderApp();
+    scheduleRender();
   },
   onError(message) {
     uiState.authMessage = message?.error || "Realtime error";
-    renderApp();
+    scheduleRender();
   }
 });
 
 function renderActiveTab(state) {
   switch (uiState.activeTab) {
     case "command":
-      return renderCommandCenter(state);
+      return renderCommandCenter(state, {
+        pendingDeleteCampaignId: uiState.pendingDeleteCampaignId
+      });
     case "forge":
       return renderCampaignForge(state);
     case "vtt":
@@ -102,7 +103,9 @@ function renderActiveTab(state) {
     case "ai":
       return renderAiGmConsole(state);
     default:
-      return renderCommandCenter(state);
+      return renderCommandCenter(state, {
+        pendingDeleteCampaignId: uiState.pendingDeleteCampaignId
+      });
   }
 }
 
@@ -210,10 +213,14 @@ async function startOnboarding(payload) {
     archetype: payload.archetype,
     backstorySnippet: payload.backstorySnippet
   };
-  renderApp();
+  scheduleRender();
 
   try {
     const response = await store.startOnboarding(payload);
+    if (response?.runId) {
+      window.location.search = `?soloRunId=${encodeURIComponent(response.runId)}`;
+      return;
+    }
     const firstMessage = String(response.firstMessage || "").trim();
     uiState.onboarding = {
       ...uiState.onboarding,
@@ -235,7 +242,7 @@ async function startOnboarding(payload) {
     };
   }
 
-  renderApp();
+  scheduleRender();
 }
 
 async function sendOnboardingMessage(message) {
@@ -245,7 +252,7 @@ async function sendOnboardingMessage(message) {
       ...uiState.onboarding,
       error: "No onboarding campaign is active."
     };
-    renderApp();
+    scheduleRender();
     return;
   }
 
@@ -257,7 +264,7 @@ async function sendOnboardingMessage(message) {
     error: "",
     exchanges: Number(uiState.onboarding.exchanges || 0) + 1
   };
-  renderApp();
+  scheduleRender();
 
   try {
     const response = await store.requestGmResponse({
@@ -285,7 +292,7 @@ async function sendOnboardingMessage(message) {
     };
   }
 
-  renderApp();
+  scheduleRender();
 }
 
 function openOnboardingCampaignDashboard() {
@@ -296,7 +303,7 @@ function openOnboardingCampaignDashboard() {
     loading: false
   };
   uiState.activeTab = "command";
-  renderApp();
+  scheduleRender();
 }
 
 async function handleAuthSubmit(form) {
@@ -334,10 +341,10 @@ async function handleAuthSubmit(form) {
     await loadCampaignMembers();
     uiState.authMessage = `Signed in as ${me.user.displayName}`;
     uiState.showAuthPanel = false;
-    renderApp();
+    scheduleRender();
   } catch (error) {
     uiState.authMessage = String(error.message || error);
-    renderApp();
+    scheduleRender();
   }
 }
 
@@ -345,7 +352,7 @@ function bindAppEvents() {
   appRoot.querySelectorAll("[data-tab]").forEach((button) => {
     button.addEventListener("click", () => {
       uiState.activeTab = String(button.getAttribute("data-tab"));
-      renderApp();
+      scheduleRender();
     });
   });
 
@@ -353,7 +360,24 @@ function bindAppEvents() {
   if (toggleAuth) {
     toggleAuth.addEventListener("click", () => {
       uiState.showAuthPanel = !uiState.showAuthPanel;
-      renderApp();
+      scheduleRender();
+    });
+  }
+
+  const toggleAccountMenu = appRoot.querySelector("[data-action='toggle-account-menu']");
+  if (toggleAccountMenu) {
+    toggleAccountMenu.addEventListener("click", () => {
+      uiState.showAccountMenu = !uiState.showAccountMenu;
+      scheduleRender();
+    });
+  }
+
+  const openAccountBtn = appRoot.querySelector("[data-action='open-account']");
+  if (openAccountBtn) {
+    openAccountBtn.addEventListener("click", () => {
+      uiState.showAccountMenu = false;
+      uiState.showAuthPanel = true;
+      scheduleRender();
     });
   }
 
@@ -361,7 +385,7 @@ function bindAppEvents() {
   if (authLoginBtn) {
     authLoginBtn.addEventListener("click", () => {
       uiState.authMode = "login";
-      renderApp();
+      scheduleRender();
     });
   }
 
@@ -369,7 +393,7 @@ function bindAppEvents() {
   if (authRegisterBtn) {
     authRegisterBtn.addEventListener("click", () => {
       uiState.authMode = "register";
-      renderApp();
+      scheduleRender();
     });
   }
 
@@ -387,10 +411,14 @@ function bindAppEvents() {
       try {
         await apiClient.logout();
       } catch {
-        // ignore
+        // ignore network/server errors; we still clear local auth below
       }
+      // Guarantee the auth token is removed from localStorage even if the
+      // server logout call failed before clearing it.
+      apiClient.setAuthToken(null);
       realtimeClient.setToken("");
       uiState.campaignMembers = [];
+      uiState.showAccountMenu = false;
       uiState.onboarding = {
         ...uiState.onboarding,
         step: "inactive",
@@ -402,8 +430,12 @@ function bindAppEvents() {
         campaignId: ""
       };
       store.clearAuth();
-      uiState.authMessage = "Logged out.";
-      renderApp();
+      // Redirect to the login screen.
+      uiState.activeTab = "command";
+      uiState.showAuthPanel = true;
+      uiState.authMode = "login";
+      uiState.authMessage = "Signed out.";
+      scheduleRender();
     });
   }
 
@@ -411,7 +443,7 @@ function bindAppEvents() {
   if (refreshMembersBtn) {
     refreshMembersBtn.addEventListener("click", async () => {
       await loadCampaignMembers();
-      renderApp();
+      scheduleRender();
     });
   }
 
@@ -433,7 +465,7 @@ function bindAppEvents() {
       } catch (error) {
         uiState.authMessage = `Invite failed: ${String(error.message || error)}`;
       }
-      renderApp();
+      scheduleRender();
     });
   }
 
@@ -444,13 +476,21 @@ function bindAppEvents() {
 
   switch (uiState.activeTab) {
     case "command":
-      bindCommandCenter(activeModule, store);
+      bindCommandCenter(activeModule, store, {
+        onSetPendingDelete(campaignId) {
+          uiState.pendingDeleteCampaignId = campaignId;
+          if (campaignId === null) {
+            uiState.onboarding.step = "completed";
+          }
+          scheduleRender();
+        }
+      });
       break;
     case "forge":
       bindCampaignForge(activeModule, store, {
         onLaunchToVtt() {
           uiState.activeTab = "vtt";
-          renderApp();
+          scheduleRender();
         }
       });
       break;
@@ -466,7 +506,7 @@ function bindAppEvents() {
     case "compendium":
       bindCompendium(activeModule, (query) => {
         uiState.compendiumQuery = query;
-        renderApp();
+        scheduleRender();
       });
       break;
     case "homebrew":
@@ -502,10 +542,12 @@ function renderApp() {
     realtimeClient.joinCampaign(state.selectedCampaignId);
   }
 
-  if (onboardingVisible) {
-    appRoot.innerHTML = `
+  const focusSnapshot = captureFocusSnapshot();
+
+  const html = onboardingVisible
+    ? `
       <div class="app-shell">
-        ${renderTopbar(uiState.activeTab, user)}
+        ${renderTopbar(uiState.activeTab, user, uiState.showAccountMenu)}
         ${uiState.authMessage ? `<section class="module-card"><div class="small">${uiState.authMessage}</div></section>` : ""}
         ${renderAuthPanel(state)}
         <main class="panel main onboarding-main">
@@ -514,11 +556,10 @@ function renderApp() {
           </section>
         </main>
       </div>
-    `;
-  } else {
-    appRoot.innerHTML = `
+    `
+    : `
       <div class="app-shell">
-        ${renderTopbar(uiState.activeTab, user)}
+        ${renderTopbar(uiState.activeTab, user, uiState.showAccountMenu)}
         ${uiState.authMessage ? `<section class="module-card"><div class="small">${uiState.authMessage}</div></section>` : ""}
         ${renderAuthPanel(state)}
         <div class="layout">
@@ -539,7 +580,12 @@ function renderApp() {
         </div>
       </div>
     `;
+
+  if (html === lastRenderedHtml) {
+    return;
   }
+  lastRenderedHtml = html;
+  appRoot.innerHTML = html;
 
   bindAppEvents();
 
@@ -549,15 +595,79 @@ function renderApp() {
       bindOnboardingFlow(onboardingRoot, {
         onStart: startOnboarding,
         onSendMessage: sendOnboardingMessage,
-        onOpenDashboard: openOnboardingCampaignDashboard
+        onOpenDashboard: openOnboardingCampaignDashboard,
+        onFieldChange(field, value) {
+          uiState.onboarding[field] = value;
+        }
       });
     }
   }
+
+  restoreFocusSnapshot(focusSnapshot);
 }
 
-store.subscribe(() => {
-  renderApp();
-});
+function captureFocusSnapshot() {
+  const active = document.activeElement;
+  if (!active || active === document.body || !appRoot.contains(active)) {
+    return null;
+  }
+  const name = active.getAttribute("name");
+  const id = active.id || null;
+  if (!name && !id) {
+    return null;
+  }
+  const isTextLike =
+    active.tagName === "INPUT" || active.tagName === "TEXTAREA";
+  return {
+    name,
+    id,
+    selectionStart: isTextLike ? active.selectionStart : null,
+    selectionEnd: isTextLike ? active.selectionEnd : null
+  };
+}
+
+function restoreFocusSnapshot(snapshot) {
+  if (!snapshot) {
+    return;
+  }
+  let target = null;
+  if (snapshot.name) {
+    target = appRoot.querySelector(`[name="${snapshot.name}"]`);
+  }
+  if (!target && snapshot.id) {
+    target = appRoot.querySelector(`#${snapshot.id}`);
+  }
+  if (!target) {
+    return;
+  }
+  try {
+    target.focus({ preventScroll: true });
+    if (
+      snapshot.selectionStart !== null &&
+      snapshot.selectionEnd !== null &&
+      typeof target.setSelectionRange === "function"
+    ) {
+      target.setSelectionRange(snapshot.selectionStart, snapshot.selectionEnd);
+    }
+  } catch {
+    // ignore focus restoration errors on detached or non-focusable nodes
+  }
+}
+
+let lastRenderedHtml = "";
+let renderScheduled = false;
+function scheduleRender() {
+  if (renderScheduled) {
+    return;
+  }
+  renderScheduled = true;
+  requestAnimationFrame(() => {
+    renderScheduled = false;
+    renderApp();
+  });
+}
+
+store.subscribe(scheduleRender);
 
 async function bootstrap() {
   try {
@@ -579,12 +689,25 @@ async function bootstrap() {
   await store.bootstrapRemote();
   if (authenticated) {
     await loadCampaignMembers();
-    if ((store.getState().campaigns || []).length === 0) {
+    const campaigns = store.getState().campaigns || [];
+    if (campaigns.length === 0) {
       uiState.onboarding.step = "character";
+    } else {
+      try {
+        const soloResponse = await apiClient.listSoloRuns();
+        const runs = (soloResponse?.runs || []).filter((run) => run?.status === "active");
+        if (runs.length > 0) {
+          const mostRecent = runs[0];
+          window.location.search = `?soloRunId=${encodeURIComponent(mostRecent.runId)}`;
+          return;
+        }
+      } catch {
+        // fall through to Command Center if solo-run listing fails
+      }
     }
   }
 
-  renderApp();
+  scheduleRender();
 }
 
 if (soloRunIdFromUrl) {

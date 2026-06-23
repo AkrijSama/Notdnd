@@ -939,15 +939,16 @@ export function createDefaultLocationGraph(options = {}) {
     },
     second_location: {
       locationId: "second_location",
-      name: "Second Location",
-      description: "Neutral placeholder connected location.",
+      name: "Ashenmoor Market Square",
+      description:
+        "The square sits half-empty under curfew. Stalls are shuttered, the bell tower watches from above, and Ashen Watch patrols cut through the rain in pairs.",
       connectedLocationIds: ["start_location", "third_location"],
       state: {
         visited: false,
         discovered: true
       },
       memoryFactIds: [],
-      tags: ["placeholder"],
+      tags: ["ashenmoor", "market", "curfew"],
       edition: "mainline",
       policyProfileId: "mainline_default",
       contentTags: [],
@@ -963,15 +964,16 @@ export function createDefaultLocationGraph(options = {}) {
     },
     third_location: {
       locationId: "third_location",
-      name: "Third Location",
-      description: "Neutral placeholder distant location.",
+      name: "The Ashen Watch Gatehouse",
+      description:
+        "The town gate stands shut. Gate logs are locked away, and the Ashen Watch turns travelers back with practiced indifference. The road beyond is where the missing shipment vanished.",
       connectedLocationIds: ["second_location"],
       state: {
         visited: false,
         discovered: false
       },
       memoryFactIds: [],
-      tags: ["placeholder"],
+      tags: ["ashenmoor", "ashen-watch", "gatehouse"],
       edition: "mainline",
       policyProfileId: "mainline_default",
       contentTags: [],
@@ -1070,8 +1072,8 @@ export function createDefaultSoloRun(options = {}) {
       field_ration: {
         itemId: "field_ration",
         templateId: "placeholder_field_ration",
-        name: "Field Ration",
-        description: "A neutral placeholder ration for simple recovery tests.",
+        name: "Mira's Trail Loaf",
+        description: "Hardtack and salted root wrapped in oilcloth, pressed into your hand by Mira before you left the Shattered Flagon.",
         quantity: 1,
         usable: true,
         consumable: true,

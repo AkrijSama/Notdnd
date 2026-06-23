@@ -341,6 +341,22 @@ export function createStore({ apiClient = null } = {}) {
       };
       notify();
     },
+    async deleteCampaign(campaignId) {
+      if (!apiClient) {
+        throw new Error("API client is required to delete a campaign.");
+      }
+      const response = await apiClient.deleteCampaign(campaignId);
+      if (response?.state) {
+        state = {
+          ...state,
+          ...response.state
+        };
+      } else {
+        await hydrateFromServer();
+      }
+      notify();
+      return response;
+    },
     setSelectedCampaign(campaignId) {
       state = { ...state, selectedCampaignId: campaignId };
       notify();
