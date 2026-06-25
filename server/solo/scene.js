@@ -4,6 +4,7 @@ import { generatePlaceholderGmNarration, validateGmSceneOutput } from "./gm.js";
 import { getAvailableMoves } from "./movement.js";
 import { getUsableInventoryItems } from "./useItem.js";
 import {
+  NPC_EXPRESSIONS,
   createDefaultForbiddenPolicyProfile,
   createDefaultMainlinePolicyProfile,
   validateEntityAgainstPolicy,
@@ -388,6 +389,102 @@ export function summarizeSceneForUi(payload) {
   };
 }
 
+// Pure. Returns the raw ids of visible NPCs whose portrait art is incomplete
+// (base or any expression variant missing / not yet generated). Used by the
+// scene route to decide which image jobs to enqueue.
+export function collectNpcsNeedingArt(run, visibleEntities = null) {
+  if (!isPlainObject(run) || !isPlainObject(run.npcs)) {
+    return [];
+  }
+  const entities = Array.isArray(visibleEntities) ? visibleEntities : getVisibleEntities(run);
+  const assets = isPlainObject(run.imageAssets) ? run.imageAssets : {};
+  const needing = [];
+
+  for (const entity of entities) {
+    if (entity?.entityType !== "npc" || !isString(entity.entityId)) {
+      continue;
+    }
+    const npcId = entity.entityId.split(":").slice(1).join(":") || entity.entityId;
+    const npc = run.npcs[npcId];
+    if (!npc) {
+      continue;
+    }
+
+    const variants = isPlainObject(npc.expressionVariants) ? npc.expressionVariants : {};
+    const generated = (assetId) => isString(assetId) && assets[assetId]?.status === "generated";
+    const baseReady = generated(npc.imageAssetId);
+    const variantsReady = NPC_EXPRESSIONS.every((expression) => generated(variants[expression]));
+
+    if (!baseReady || !variantsReady) {
+      needing.push(npcId);
+    }
+  }
+
+  return needing;
+}
+
+// Pure. Returns the raw ids of visible NPCs that still lack a generated
+// identity (generatedName missing). Used by the scene route to enqueue async
+// identity generation on first encounter.
+export function collectNpcsNeedingIdentity(run, visibleEntities = null) {
+  if (!isPlainObject(run) || !isPlainObject(run.npcs)) {
+    return [];
+  }
+  const entities = Array.isArray(visibleEntities) ? visibleEntities : getVisibleEntities(run);
+  const needing = [];
+
+  for (const entity of entities) {
+    if (entity?.entityType !== "npc" || !isString(entity.entityId)) {
+      continue;
+    }
+    const npcId = entity.entityId.split(":").slice(1).join(":") || entity.entityId;
+    const npc = run.npcs[npcId];
+    if (!npc) {
+      continue;
+    }
+    if (!isString(npc.generatedName)) {
+      needing.push(npcId);
+    }
+  }
+
+  return needing;
+}
+
+// Pure. Returns the npcIds of NPCs that still have unconsumed intro
+// instructions (a user directive on how the GM should introduce them).
+export function collectNpcsWithPendingIntro(run) {
+  if (!isPlainObject(run) || !isPlainObject(run.npcs)) {
+    return [];
+  }
+  return Object.values(run.npcs)
+    .filter((npc) => isPlainObject(npc) && isString(npc.introInstructions))
+    .map((npc) => npc.npcId)
+    .filter((npcId) => isString(npcId));
+}
+
+// Pure. Builds a one-time GM directive describing how to introduce any NPCs
+// that carry user-supplied intro instructions. Returns "" when there are none.
+export function buildNpcIntroDirective(run) {
+  if (!isPlainObject(run) || !isPlainObject(run.npcs)) {
+    return "";
+  }
+  const pending = Object.values(run.npcs).filter(
+    (npc) => isPlainObject(npc) && isString(npc.introInstructions)
+  );
+  if (pending.length === 0) {
+    return "";
+  }
+  const lines = pending.map((npc) => {
+    const name = isString(npc.generatedName)
+      ? npc.generatedName
+      : isString(npc.displayName)
+        ? npc.displayName
+        : npc.role;
+    return `- ${name} (${npc.role}): ${String(npc.introInstructions).trim()}`;
+  });
+  return `Introduce the following custom NPC(s) naturally into the scene, following each directive:\n${lines.join("\n")}`;
+}
+
 export function buildSoloScenePayload(run, options = {}) {
   const runValidation = validateSoloRun(run);
   if (!runValidation.ok) {
@@ -466,6 +563,33 @@ export function buildSoloScenePayload(run, options = {}) {
 
   if (options.includePlaceholderGm === true) {
     payload.gmNarration = generatePlaceholderGmNarration(payload, options.gmOptions || {});
+  }
+
+  // Opt-in, fire-and-forget image generation trigger. Off by default so the
+  // builder stays pure for tests; the live scene route injects the enqueuer.
+  // Must never block scene delivery or throw.
+  if (typeof options.enqueueImages === "function") {
+    try {
+      const npcIds = collectNpcsNeedingArt(run, visibleEntities);
+      if (npcIds.length > 0) {
+        options.enqueueImages(npcIds);
+      }
+    } catch {
+      // Best-effort only.
+    }
+  }
+
+  // Opt-in, fire-and-forget identity generation for any visible NPC that still
+  // lacks a generated name (first-encounter path). Never blocks scene delivery.
+  if (typeof options.enqueueIdentities === "function") {
+    try {
+      const npcIds = collectNpcsNeedingIdentity(run, visibleEntities);
+      if (npcIds.length > 0) {
+        options.enqueueIdentities(npcIds);
+      }
+    } catch {
+      // Best-effort only.
+    }
   }
 
   const payloadValidation = validateSoloScenePayload(payload);

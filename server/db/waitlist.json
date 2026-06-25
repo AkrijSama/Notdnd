@@ -298,5 +298,185 @@
     "email": "smoke.duplicate@example.com",
     "interest": "Never-Forget Memory",
     "timestamp": "2026-06-23T18:41:31.356Z"
+  },
+  {
+    "email": "smoke.waitlist@example.com",
+    "interest": "All of it",
+    "timestamp": "2026-06-23T19:32:03.188Z"
+  },
+  {
+    "email": "smoke.duplicate@example.com",
+    "interest": "Multiplayer",
+    "timestamp": "2026-06-23T19:32:03.193Z"
+  },
+  {
+    "email": "smoke.duplicate@example.com",
+    "interest": "Never-Forget Memory",
+    "timestamp": "2026-06-23T19:32:03.195Z"
+  },
+  {
+    "email": "smoke.waitlist@example.com",
+    "interest": "All of it",
+    "timestamp": "2026-06-23T22:58:01.713Z"
+  },
+  {
+    "email": "smoke.duplicate@example.com",
+    "interest": "Multiplayer",
+    "timestamp": "2026-06-23T22:58:01.717Z"
+  },
+  {
+    "email": "smoke.duplicate@example.com",
+    "interest": "Never-Forget Memory",
+    "timestamp": "2026-06-23T22:58:01.719Z"
+  },
+  {
+    "email": "smoke.waitlist@example.com",
+    "interest": "All of it",
+    "timestamp": "2026-06-24T00:27:28.849Z"
+  },
+  {
+    "email": "smoke.duplicate@example.com",
+    "interest": "Multiplayer",
+    "timestamp": "2026-06-24T00:27:28.854Z"
+  },
+  {
+    "email": "smoke.duplicate@example.com",
+    "interest": "Never-Forget Memory",
+    "timestamp": "2026-06-24T00:27:28.856Z"
+  },
+  {
+    "email": "smoke.waitlist@example.com",
+    "interest": "All of it",
+    "timestamp": "2026-06-24T00:39:44.590Z"
+  },
+  {
+    "email": "smoke.duplicate@example.com",
+    "interest": "Multiplayer",
+    "timestamp": "2026-06-24T00:39:44.595Z"
+  },
+  {
+    "email": "smoke.duplicate@example.com",
+    "interest": "Never-Forget Memory",
+    "timestamp": "2026-06-24T00:39:44.597Z"
+  },
+  {
+    "email": "smoke.waitlist@example.com",
+    "interest": "All of it",
+    "timestamp": "2026-06-24T00:39:57.155Z"
+  },
+  {
+    "email": "smoke.duplicate@example.com",
+    "interest": "Multiplayer",
+    "timestamp": "2026-06-24T00:39:57.160Z"
+  },
+  {
+    "email": "smoke.duplicate@example.com",
+    "interest": "Never-Forget Memory",
+    "timestamp": "2026-06-24T00:39:57.162Z"
+  },
+  {
+    "email": "smoke.waitlist@example.com",
+    "interest": "All of it",
+    "timestamp": "2026-06-24T00:52:33.850Z"
+  },
+  {
+    "email": "smoke.duplicate@example.com",
+    "interest": "Multiplayer",
+    "timestamp": "2026-06-24T00:52:33.854Z"
+  },
+  {
+    "email": "smoke.duplicate@example.com",
+    "interest": "Never-Forget Memory",
+    "timestamp": "2026-06-24T00:52:33.856Z"
+  },
+  {
+    "email": "smoke.waitlist@example.com",
+    "interest": "All of it",
+    "timestamp": "2026-06-24T22:48:20.130Z"
+  },
+  {
+    "email": "smoke.duplicate@example.com",
+    "interest": "Multiplayer",
+    "timestamp": "2026-06-24T22:48:20.135Z"
+  },
+  {
+    "email": "smoke.duplicate@example.com",
+    "interest": "Never-Forget Memory",
+    "timestamp": "2026-06-24T22:48:20.138Z"
+  },
+  {
+    "email": "smoke.waitlist@example.com",
+    "interest": "All of it",
+    "timestamp": "2026-06-25T01:11:06.747Z"
+  },
+  {
+    "email": "smoke.duplicate@example.com",
+    "interest": "Multiplayer",
+    "timestamp": "2026-06-25T01:11:06.751Z"
+  },
+  {
+    "email": "smoke.duplicate@example.com",
+    "interest": "Never-Forget Memory",
+    "timestamp": "2026-06-25T01:11:06.753Z"
+  },
+  {
+    "email": "smoke.waitlist@example.com",
+    "interest": "All of it",
+    "timestamp": "2026-06-25T01:41:36.626Z"
+  },
+  {
+    "email": "smoke.duplicate@example.com",
+    "interest": "Multiplayer",
+    "timestamp": "2026-06-25T01:41:36.631Z"
+  },
+  {
+    "email": "smoke.duplicate@example.com",
+    "interest": "Never-Forget Memory",
+    "timestamp": "2026-06-25T01:41:36.633Z"
+  },
+  {
+    "email": "smoke.waitlist@example.com",
+    "interest": "All of it",
+    "timestamp": "2026-06-25T01:41:40.687Z"
+  },
+  {
+    "email": "smoke.duplicate@example.com",
+    "interest": "Multiplayer",
+    "timestamp": "2026-06-25T01:41:40.692Z"
+  },
+  {
+    "email": "smoke.duplicate@example.com",
+    "interest": "Never-Forget Memory",
+    "timestamp": "2026-06-25T01:41:40.694Z"
+  },
+  {
+    "email": "smoke.waitlist@example.com",
+    "interest": "All of it",
+    "timestamp": "2026-06-25T01:52:57.985Z"
+  },
+  {
+    "email": "smoke.duplicate@example.com",
+    "interest": "Multiplayer",
+    "timestamp": "2026-06-25T01:52:57.989Z"
+  },
+  {
+    "email": "smoke.duplicate@example.com",
+    "interest": "Never-Forget Memory",
+    "timestamp": "2026-06-25T01:52:57.992Z"
+  },
+  {
+    "email": "smoke.waitlist@example.com",
+    "interest": "All of it",
+    "timestamp": "2026-06-25T02:24:05.116Z"
+  },
+  {
+    "email": "smoke.duplicate@example.com",
+    "interest": "Multiplayer",
+    "timestamp": "2026-06-25T02:24:05.121Z"
+  },
+  {
+    "email": "smoke.duplicate@example.com",
+    "interest": "Never-Forget Memory",
+    "timestamp": "2026-06-25T02:24:05.125Z"
   }
 ]

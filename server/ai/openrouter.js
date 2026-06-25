@@ -221,13 +221,13 @@ async function requestOpenRouter(messages, model, options = {}) {
           .join("\n")
       : "";
 
-    let content = "The tavern breathes with rain and smoke as Mira studies you with careful eyes.";
+    let content = "The tavern breathes with rain and smoke as the keeper studies you with careful eyes.";
     if (/pick the lock|lock/i.test(userText)) {
-      content = "Mira lowers her voice and points to a rusted lock on an old ledger box.\n\n[CHECK: Dexterity DC 14]\n\n\"Show me how steady your hands are,\" she says.";
+      content = "The keeper lowers their voice and points to a rusted lock on an old ledger box.\n\n[CHECK: Dexterity DC 14]\n\n\"Show me how steady your hands are.\"";
     } else if (/initiative|combat|fight/i.test(userText)) {
       content = "Steel rings from the doorway as a brute shoves through the crowd.\n\n[INITIATIVE]\n\nThe room erupts into motion.";
-    } else if (/tavern|flagon|mira/i.test(userText)) {
-      content = "The Shattered Flagon smells of wet wool and lamp oil. Mira dries a glass without looking away from you.";
+    } else if (/tavern|flagon|keeper/i.test(userText)) {
+      content = "The Shattered Flagon smells of wet wool and lamp oil. The keeper dries a glass without looking away from you.";
     }
 
     if (options.stream && typeof options.onStream === "function") {

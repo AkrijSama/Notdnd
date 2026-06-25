@@ -16,7 +16,7 @@ const STRUCTURED_HINTS = [
   "If no mechanics are required, output no trigger tags."
 ].join(" ");
 
-const GROK_TRIGGER_FORMAT = "CRITICAL: When the narrative requires a mechanical game action, you MUST place the trigger tag on its own line, separated from prose by a blank line before and after. Never embed a trigger inside a sentence. Format exactly as shown:\n\n[CHECK: Strength DC 14]\n\n[INITIATIVE]\n\n[DAMAGE: 2d6+3 slashing]\n\n[LOOT: standard]\n\n[NEW_ENTITY: name=\"Garrick\" type=\"npc\"]\n\n[UPDATE_ENTITY: name=\"Mira\" facts=\"Now suspicious of the party\"]";
+const GROK_TRIGGER_FORMAT = "CRITICAL: When the narrative requires a mechanical game action, you MUST place the trigger tag on its own line, separated from prose by a blank line before and after. Never embed a trigger inside a sentence. Format exactly as shown:\n\n[CHECK: Strength DC 14]\n\n[INITIATIVE]\n\n[DAMAGE: 2d6+3 slashing]\n\n[LOOT: standard]\n\n[NEW_ENTITY: name=\"Garrick\" type=\"npc\"]\n\n[UPDATE_ENTITY: name=\"Garrick\" facts=\"Now suspicious of the party\"]";
 
 const VENICE_TRIGGER_FORMAT = "You must use EXACT trigger syntax. Do not paraphrase or modify the trigger format. Put each trigger on its own line.\nTrigger types:\n[CHECK: {ability} DC {number}]\n[INITIATIVE]\n[DAMAGE: {dice_expression} {damage_type}]\n[LOOT: {tier}]\n[NEW_ENTITY: name=\"{name}\" type=\"{type}\"]\n[UPDATE_ENTITY: name=\"{name}\" facts=\"{facts}\"]\nAlways use double quotes inside triggers. Always include the colon after the trigger keyword.";
 

@@ -583,9 +583,10 @@ async function main() {
     const seedFiles = (await fs.readdir(onboardingMemoryDir)).filter((entry) => entry.endsWith(".md"));
     assert(seedFiles.length >= 9, `expected >=9 seed docs, got ${seedFiles.length}`);
 
-    const miraSeed = await fs.readFile(path.join(onboardingMemoryDir, "03-npc-mira.md"), "utf8");
-    assert(miraSeed.includes("type: npc"), "Mira seed frontmatter missing type");
-    assert(miraSeed.includes("[[The Shattered Flagon]]"), "Mira seed missing wiki links");
+    const roleSeed = await fs.readFile(path.join(onboardingMemoryDir, "03-npc-the-tavern-keeper.md"), "utf8");
+    assert(roleSeed.includes("type: npc"), "tavern keeper role seed frontmatter missing type");
+    assert(roleSeed.includes('name: "The Tavern Keeper"'), "tavern keeper role seed missing role name");
+    assert(roleSeed.includes("[[The Shattered Flagon]]"), "tavern keeper role seed missing wiki links");
 
     const playerEntity = await memoryStore.getEntity(campaignId, "Nyx");
     assert(playerEntity, "player_character entity missing");

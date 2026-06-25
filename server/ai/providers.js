@@ -64,6 +64,18 @@ const PROVIDER_SPECS = {
       image: process.env.NOTDND_GEMINI_IMAGE_MODEL || "imagen-3.0-generate-002",
       voice: process.env.NOTDND_GEMINI_VOICE_MODEL || "gemini-2.5-flash-preview-tts"
     }
+  },
+  fal: {
+    key: "fal",
+    label: "fal.ai",
+    type: "fal-image",
+    apiKeyEnv: "FAL_API_KEY",
+    endpointEnv: "NOTDND_FAL_ENDPOINT",
+    defaultEndpoint: "https://fal.run/fal-ai/flux/dev",
+    supports: ["image"],
+    models: {
+      image: process.env.NOTDND_FAL_IMAGE_MODEL || "fal-ai/flux/dev"
+    }
   }
 };
 
@@ -112,7 +124,7 @@ export function listAiProviders() {
       apiKeyEnv: config.apiKeyEnv || null,
       endpointEnv: config.endpointEnv || null,
       endpoint: config.type === "mock" ? null : config.endpoint,
-      supports: ["gm", "image", "voice"]
+      supports: config.supports || ["gm", "image", "voice"]
     };
   });
 }
@@ -335,4 +347,118 @@ export async function generateWithProvider({ provider = "placeholder", type = "g
     fetchImpl,
     configOverride
   });
+}
+
+// ---------------------------------------------------------------------------
+// Image generation path.
+//
+// Unlike generateWithProvider() (which returns text/url stubs for the GM/voice
+// flows), this returns real image *bytes* so callers can persist them to disk.
+// The image worker uses this exclusively — no provider endpoints are hardcoded
+// outside this module. Mock mode returns a tiny valid PNG so the pipeline is
+// exercisable offline and in tests without network or cost.
+// ---------------------------------------------------------------------------
+
+// 1x1 transparent PNG — a valid placeholder for mock/offline image generation.
+const MOCK_IMAGE_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+  "base64"
+);
+
+// fal.ai routes: base portraits use text-to-image; expression/reference variants
+// use the IP-Adapter face endpoint (image-to-image anchored on a reference).
+const FAL_TEXT_TO_IMAGE_ENDPOINT = process.env.NOTDND_FAL_ENDPOINT || "https://fal.run/fal-ai/flux/dev";
+const FAL_FACE_TO_IMAGE_ENDPOINT = process.env.NOTDND_FAL_FACE_ENDPOINT || "https://fal.run/fal-ai/ip-adapter-face-id";
+
+function imageMockForced() {
+  return String(process.env.NOTDND_MOCK_IMAGE || "").trim().toLowerCase() === "true";
+}
+
+function isMockImageProvider(provider) {
+  return provider === "mock" || provider === "placeholder" || provider === "local";
+}
+
+/**
+ * Resolves which image provider to use when a caller does not specify one.
+ * Honours NOTDND_MOCK_IMAGE, then NOTDND_IMAGE_PROVIDER, then falls back to
+ * fal when FAL_API_KEY is present, otherwise mock.
+ * @returns {string}
+ */
+export function resolveImageProvider() {
+  if (imageMockForced()) {
+    return "mock";
+  }
+  const configured = String(process.env.NOTDND_IMAGE_PROVIDER || "").trim().toLowerCase();
+  if (configured) {
+    return configured;
+  }
+  return String(process.env.FAL_API_KEY || "").trim() ? "fal" : "mock";
+}
+
+async function falImage({ prompt, referenceImageUrl, fetchImpl }) {
+  const config = resolveProviderConfig("fal");
+  if (!config.apiKey) {
+    throw makeProviderError("fal", "fal.ai is not configured. Missing FAL_API_KEY.", "MISSING_API_KEY", 400);
+  }
+
+  const endpoint = referenceImageUrl ? FAL_FACE_TO_IMAGE_ENDPOINT : FAL_TEXT_TO_IMAGE_ENDPOINT;
+  const body = referenceImageUrl ? { prompt, image_url: referenceImageUrl } : { prompt };
+
+  const response = await fetchImpl(endpoint, {
+    method: "POST",
+    headers: {
+      Authorization: `Key ${config.apiKey}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(body)
+  });
+  if (!response.ok) {
+    throw makeProviderError("fal", `fal.ai request failed (${response.status})`, "UPSTREAM_AI_ERROR", response.status);
+  }
+
+  const payload = await response.json();
+  const imageUrl = payload?.images?.[0]?.url || payload?.image?.url || payload?.url || null;
+  if (!imageUrl) {
+    throw makeProviderError("fal", "fal.ai response did not include an image url", "UPSTREAM_AI_ERROR", 502);
+  }
+
+  const imageResponse = await fetchImpl(imageUrl);
+  if (!imageResponse.ok) {
+    throw makeProviderError("fal", `fal.ai image download failed (${imageResponse.status})`, "UPSTREAM_AI_ERROR", imageResponse.status);
+  }
+
+  return {
+    provider: "fal",
+    mock: false,
+    bytes: Buffer.from(await imageResponse.arrayBuffer()),
+    url: imageUrl
+  };
+}
+
+/**
+ * Generates a single image and returns its bytes. The base portrait (no
+ * referenceImageUrl) is produced via text-to-image; expression/reference
+ * variants (with referenceImageUrl) via image-to-image / IP-Adapter.
+ * @param {{ provider?: string, prompt?: string, referenceImageUrl?: string|null, style?: string, fetchImpl?: typeof fetch }} [args]
+ * @returns {Promise<{ provider: string, mock: boolean, bytes: Buffer, url: string|null }>}
+ */
+export async function generateImage({
+  provider = resolveImageProvider(),
+  prompt = "",
+  referenceImageUrl = null,
+  style = "",
+  fetchImpl = fetch
+} = {}) {
+  const resolvedProvider = provider || resolveImageProvider();
+  const styledPrompt = String(style || "").trim() ? `${prompt}, ${String(style).trim()} style` : prompt;
+
+  if (isMockImageProvider(resolvedProvider)) {
+    return { provider: "mock", mock: true, bytes: MOCK_IMAGE_PNG, url: null };
+  }
+
+  if (resolvedProvider === "fal") {
+    return falImage({ prompt: styledPrompt, referenceImageUrl, fetchImpl });
+  }
+
+  throw makeProviderError(resolvedProvider, `Unsupported image provider: ${resolvedProvider}`, "UNSUPPORTED_IMAGE_PROVIDER", 400);
 }

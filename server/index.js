@@ -55,6 +55,7 @@ import {
   listSoloRunsForUser,
   loginUser,
   logoutSessionToken,
+  markNpcIntroduced,
   registerUser,
   resolveStorePath,
   saveSoloRun,
@@ -79,7 +80,9 @@ import { createWsHub } from "./realtime/wsHub.js";
 import { resolveSoloAction } from "./solo/actions.js";
 import { resolveGmNarration } from "./solo/gmProvider.js";
 import { buildGmRuntimeStatus } from "./solo/gmSmoke.js";
-import { buildSoloScenePayload } from "./solo/scene.js";
+import { enqueueImageJob } from "./solo/imageWorker.js";
+import { enqueueIdentityJob } from "./solo/npcIdentity.js";
+import { buildNpcIntroDirective, buildSoloScenePayload, collectNpcsWithPendingIntro } from "./solo/scene.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -464,6 +467,43 @@ function assertSoloRunAccess(user, run) {
   });
 }
 
+function buildNpcBasePrompt(run, npcId) {
+  const npc = run?.npcs?.[npcId] || {};
+  if (String(npc.portraitPrompt || "").trim()) {
+    return String(npc.portraitPrompt).trim();
+  }
+  const parts = [npc.displayName || npcId, npc.role || "", npc.appearance || ""]
+    .map((part) => String(part || "").trim())
+    .filter(Boolean);
+  return `character portrait of ${parts.join(", ")}`;
+}
+
+// Returns a fire-and-forget enqueuer for the scene builder. Each visible NPC
+// that still needs art gets one image job. Never blocks the scene response.
+function makeSceneImageEnqueuer(run) {
+  const style = String(run?.flags?.artStyle || "illustrated");
+  return (npcIds) => {
+    for (const npcId of npcIds) {
+      enqueueImageJob({
+        runId: run.runId,
+        npcId,
+        style,
+        basePrompt: buildNpcBasePrompt(run, npcId)
+      });
+    }
+  };
+}
+
+// Fire-and-forget enqueuer for NPC identity generation. Each visible NPC that
+// still lacks a generated name gets one identity job. Never blocks the scene.
+function makeSceneIdentityEnqueuer(run) {
+  return (npcIds) => {
+    for (const npcId of npcIds) {
+      enqueueIdentityJob({ runId: run.runId, npcId });
+    }
+  };
+}
+
 async function handleApi(req, res) {
   const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
 
@@ -688,7 +728,10 @@ async function handleApi(req, res) {
         });
       }
       assertSoloRunAccess(user, run);
-      const scene = buildSoloScenePayload(run);
+      const scene = buildSoloScenePayload(run, {
+        enqueueImages: makeSceneImageEnqueuer(run),
+        enqueueIdentities: makeSceneIdentityEnqueuer(run)
+      });
       if (!scene.ok) {
         throw Object.assign(new Error("Solo scene could not be built."), {
           code: "INVALID_SOLO_SCENE",
@@ -770,9 +813,17 @@ async function handleApi(req, res) {
       const normalizedArchetype = archetype || "weathered wanderer";
       const normalizedBackstory =
         backstorySnippet || "They crossed too many roads to turn back now.";
-      const openingPrompt =
+      let openingPrompt =
         `The player has just arrived at The Shattered Flagon tavern in Ashenmoor. Their character is ${characterName}, a ${normalizedArchetype}. ${normalizedBackstory}. ` +
-        "Narrate their arrival. Describe the tavern atmosphere. Introduce Mira the tavern keeper naturally. End with Mira addressing the player character directly, asking them a question that invites roleplay.";
+        "Narrate their arrival. Describe the tavern atmosphere. Introduce the tavern keeper naturally. End with the tavern keeper addressing the player character directly, asking them a question that invites roleplay.";
+
+      // One-time injection of any user NPC intro directives (opening-prompt
+      // pattern). Procedural NPCs carry none, so this is a no-op for them.
+      const onboardingRun = getSoloRun(runId);
+      const introDirective = buildNpcIntroDirective(onboardingRun);
+      if (introDirective) {
+        openingPrompt += `\n\n${introDirective}`;
+      }
 
       const opening = await runGmPipeline({
         campaignId,
@@ -784,7 +835,11 @@ async function handleApi(req, res) {
       });
 
       if (opening?.narrative) {
-        pushChatLine(campaignId, "Mira", opening.narrative, { internal: true });
+        pushChatLine(campaignId, "Narrator", opening.narrative, { internal: true });
+        // Mark injected NPC intro directives consumed so they fire only once.
+        for (const npcId of collectNpcsWithPendingIntro(onboardingRun)) {
+          markNpcIntroduced(runId, npcId);
+        }
       }
 
       broadcastAuthoritativeState(campaignId, "onboarding-start", "push_chat_line");

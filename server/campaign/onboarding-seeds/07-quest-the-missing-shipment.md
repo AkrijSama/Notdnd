@@ -7,9 +7,9 @@ relations:
     type: threatens
   - target: "The Shattered Flagon"
     type: discussed_in
-  - target: "Mira"
+  - target: "The Tavern Keeper"
     type: offered_by
-  - target: "Drek"
+  - target: "The Mercenary"
     type: possible_guide
   - target: "The Whisperer"
     type: cryptic_source
@@ -25,6 +25,6 @@ confidence: 0.96
 
 A supply caravan bound for [[Ashenmoor]] vanished three nights ago along the marsh road. No wreckage, no survivors, no bodies. Just abandoned wheel ruts swallowed by wet soil and a silence that keeps getting heavier.
 
-Missing cargo includes lamp oil, grain, medicine, and sealed crates no merchant will describe in public. [[Mira]] believes the town will turn on itself if answers do not come soon. [[The Ashen Watch]] insists there is "nothing to investigate."
+Missing cargo includes lamp oil, grain, medicine, and sealed crates no merchant will describe in public. [[The Tavern Keeper]] believes the town will turn on itself if answers do not come soon. [[The Ashen Watch]] insists there is "nothing to investigate."
 
-[[Drek]] knows side trails the maps do not show. [[The Whisperer]] claims the caravan crossed a boundary it should never have touched. Somewhere between those stories waits the first real choice for [[{{characterName}}]].
+[[The Mercenary]] knows side trails the maps do not show. [[The Whisperer]] claims the caravan crossed a boundary it should never have touched. Somewhere between those stories waits the first real choice for [[{{characterName}}]].

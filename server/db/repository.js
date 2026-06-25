@@ -4,7 +4,7 @@ import path from "node:path";
 import { buildQuickstartBlueprint } from "../campaign/quickstart.js";
 import { ensureCampaignMemoryDocs, ensureCampaignMemoryDocsAsync } from "../gm/memoryStore.js";
 import { formatRollSummary, resolveAttack, resolveSkillCheck, rollDiceExpression } from "../rules/engine.js";
-import { createDefaultSoloRun, validateSoloRun } from "../solo/schema.js";
+import { NPC_EXPRESSIONS, createDefaultSoloRun, validateSoloRun } from "../solo/schema.js";
 import { uid } from "../utils/ids.js";
 import { createSeedState } from "./seedState.js";
 
@@ -651,6 +651,179 @@ export function deleteSoloRun(runId) {
     return false;
   }
   delete db.soloRuns[key];
+  bumpStateVersion();
+  writeToDisk();
+  return true;
+}
+
+// ---------------------------------------------------------------------------
+// Image-asset writes (narrow, surgical).
+//
+// These deliberately do NOT go through saveSoloRun: that path deep-clones and
+// fully re-validates the entire run, and writes the whole run back. The image
+// worker runs asynchronously alongside live gameplay, so using saveSoloRun for
+// its write-backs risks clobbering concurrent gameplay state with a stale
+// full-run snapshot. Instead we mutate only the targeted asset record in place
+// and persist. (writeToDisk still serialises the whole db — inherent to this
+// JSON store — but we avoid the deep-clone / full-run overwrite race.)
+// ---------------------------------------------------------------------------
+
+/**
+ * Ensures an NPC has queued image-asset records for its base portrait and every
+ * expression variant, linking them onto the NPC. Idempotent: existing records
+ * and links are left untouched. Returns the resolved asset id map, or null if
+ * the run/NPC does not exist.
+ * @param {string} runId
+ * @param {string} npcId
+ * @param {{ style?: string, expressions?: string[] }} [options]
+ * @returns {{ base: string, variants: Record<string, string> } | null}
+ */
+export function ensureNpcImageAssets(runId, npcId, options = {}) {
+  ensureDb();
+  const runKey = String(runId || "").trim();
+  const run = db.soloRuns[runKey];
+  if (!run) {
+    return null;
+  }
+  const npc = run.npcs && run.npcs[npcId];
+  if (!npc) {
+    return null;
+  }
+
+  run.imageAssets = run.imageAssets && typeof run.imageAssets === "object" ? run.imageAssets : {};
+  const expressions = Array.isArray(options.expressions) ? options.expressions : NPC_EXPRESSIONS;
+  const style = typeof options.style === "string" ? options.style : null;
+  const now = nowIso();
+
+  const ensureAsset = (assetId) => {
+    if (!run.imageAssets[assetId]) {
+      run.imageAssets[assetId] = {
+        assetId,
+        targetType: "npc",
+        targetId: npcId,
+        status: "queued",
+        promptSummary: style ? `style:${style}` : null,
+        uri: null,
+        version: 1,
+        createdAt: now,
+        updatedAt: now,
+        tags: [],
+        flags: {},
+        edition: run.edition ?? null,
+        policyProfileId: run.policyProfileId ?? null,
+        contentTags: []
+      };
+    }
+    return assetId;
+  };
+
+  const baseAssetId = ensureAsset(`img_${npcId}_base`);
+  if (!npc.imageAssetId) {
+    npc.imageAssetId = baseAssetId;
+  }
+
+  npc.expressionVariants = npc.expressionVariants && typeof npc.expressionVariants === "object" ? npc.expressionVariants : {};
+  const variants = {};
+  for (const expression of expressions) {
+    const assetId = ensureAsset(`img_${npcId}_${expression}`);
+    if (!npc.expressionVariants[expression]) {
+      npc.expressionVariants[expression] = assetId;
+    }
+    variants[expression] = assetId;
+  }
+
+  bumpStateVersion();
+  writeToDisk();
+  return { base: baseAssetId, variants };
+}
+
+/**
+ * Surgically updates a single image asset's status (and uri) without
+ * re-validating or rewriting the whole run. Returns false if the run or asset
+ * does not exist.
+ * @param {string} runId
+ * @param {string} assetId
+ * @param {"placeholder"|"queued"|"generated"|"failed"} status
+ * @param {string|null} [uri]
+ * @returns {boolean}
+ */
+export function updateImageAssetStatus(runId, assetId, status, uri = null) {
+  ensureDb();
+  const run = db.soloRuns[String(runId || "").trim()];
+  if (!run || !run.imageAssets || !run.imageAssets[assetId]) {
+    return false;
+  }
+  const asset = run.imageAssets[assetId];
+  asset.status = status;
+  if (uri !== undefined && uri !== null) {
+    asset.uri = String(uri);
+  }
+  asset.updatedAt = nowIso();
+  bumpStateVersion();
+  writeToDisk();
+  return true;
+}
+
+/**
+ * Surgically writes a generated identity onto an NPC without re-validating or
+ * rewriting the whole run. Stores only string/number fields (never raw
+ * generation output beyond these), and promotes generatedName to displayName so
+ * the name surfaces through existing rendering. Returns false if the run or NPC
+ * does not exist.
+ * @param {string} runId
+ * @param {string} npcId
+ * @param {{ generatedName?: string, appearance?: string, personality?: string, portraitPrompt?: string, identitySeed?: number }} identity
+ * @returns {boolean}
+ */
+export function updateNpcIdentity(runId, npcId, identity = {}) {
+  ensureDb();
+  const run = db.soloRuns[String(runId || "").trim()];
+  const npc = run?.npcs?.[npcId];
+  if (!npc) {
+    return false;
+  }
+
+  if (typeof identity.generatedName === "string" && identity.generatedName.trim()) {
+    npc.generatedName = identity.generatedName.trim();
+    npc.displayName = npc.generatedName;
+  }
+  if (typeof identity.appearance === "string") {
+    npc.appearance = identity.appearance;
+  }
+  if (typeof identity.personality === "string") {
+    npc.personality = identity.personality;
+  }
+  if (typeof identity.portraitPrompt === "string") {
+    npc.portraitPrompt = identity.portraitPrompt;
+  }
+  if (Number.isFinite(Number(identity.identitySeed))) {
+    npc.identitySeed = Number(identity.identitySeed);
+  }
+  if (typeof identity.memoryDocId === "string" && identity.memoryDocId.trim()) {
+    npc.memoryDocId = identity.memoryDocId.trim();
+  }
+
+  bumpStateVersion();
+  writeToDisk();
+  return true;
+}
+
+/**
+ * Narrow write that marks an NPC's intro instructions consumed (the GM has
+ * introduced them). Clears introInstructions so the directive fires only once.
+ * Returns false if the run or NPC does not exist.
+ * @param {string} runId
+ * @param {string} npcId
+ * @returns {boolean}
+ */
+export function markNpcIntroduced(runId, npcId) {
+  ensureDb();
+  const run = db.soloRuns[String(runId || "").trim()];
+  const npc = run?.npcs?.[npcId];
+  if (!npc) {
+    return false;
+  }
+  npc.introInstructions = null;
   bumpStateVersion();
   writeToDisk();
   return true;

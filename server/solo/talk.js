@@ -1,12 +1,68 @@
 import crypto from "node:crypto";
+import { detectSentiment } from "../gm/sentiment.js";
 import { getVisibleEntities } from "./entities.js";
 import { resolveAbilityCheck } from "./rules.js";
 import {
+  NPC_EXPRESSIONS,
   createDefaultForbiddenPolicyProfile,
   createDefaultMainlinePolicyProfile,
+  createEmptyExpressionVariants,
   validateEntityAgainstPolicy,
   validateSoloRun
 } from "./schema.js";
+
+// Maps GM narration tone (gm.js GM_TONES) onto an NPC expression variant.
+// For the "neutral" tone (or any unrecognised tone) we fall back to a coarse
+// sentiment read of the spoken line so portraits still react to the content.
+const TONE_EXPRESSION_MAP = {
+  warm: "warm",
+  tense: "suspicious",
+  dangerous: "fearful",
+  dramatic: "surprised",
+  comic: "warm",
+  mysterious: "suspicious"
+};
+
+/**
+ * Resolves the expression variant a portrait should display for a line.
+ * Pure: no I/O, no mutation.
+ * @param {string} tone GM narration tone
+ * @param {string} beatText the dialogue line being spoken
+ * @returns {"neutral"|"warm"|"suspicious"|"fearful"|"surprised"|"angry"}
+ */
+export function mapToneToExpression(tone, beatText = "") {
+  const normalizedTone = String(tone || "neutral");
+  if (normalizedTone !== "neutral" && Object.prototype.hasOwnProperty.call(TONE_EXPRESSION_MAP, normalizedTone)) {
+    return TONE_EXPRESSION_MAP[normalizedTone];
+  }
+  const sentiment = detectSentiment(beatText);
+  if (sentiment === "positive") {
+    return "warm";
+  }
+  if (sentiment === "negative") {
+    return "suspicious";
+  }
+  return "neutral";
+}
+
+// Resolves an NPC's expression-variant asset ids to served image URIs. Returns
+// an all-keys map; a variant is non-null only once its asset is `generated`.
+function resolveExpressionVariantUris(run, npc) {
+  const variants = createEmptyExpressionVariants();
+  const lookup = isPlainObject(npc?.expressionVariants) ? npc.expressionVariants : {};
+  const assets = isPlainObject(run?.imageAssets) ? run.imageAssets : {};
+  for (const expression of NPC_EXPRESSIONS) {
+    const assetId = lookup[expression];
+    if (!isString(assetId)) {
+      continue;
+    }
+    const asset = assets[assetId];
+    if (asset && asset.status === "generated" && isString(asset.uri)) {
+      variants[expression] = asset.uri;
+    }
+  }
+  return variants;
+}
 
 function result(errors) {
   return {
@@ -282,6 +338,12 @@ export function resolveTalkAction(run, action, options = {}) {
 
   const canReveal = Boolean(selectedBeat) && (!checkResult || checkResult.success === true) && selectedBeat.revealed !== true;
   const canRepeat = Boolean(selectedBeat) && selectedBeat.repeatable === true && selectedBeat.revealed === true && (!checkResult || checkResult.success === true);
+  // Tone is supplied by the scene/GM layer when available; absent it, the
+  // expression mapper falls back to sentiment of the spoken line.
+  const currentTone = isString(options.currentTone) ? options.currentTone : "neutral";
+  const spokenLine = isString(selectedBeat?.text) ? selectedBeat.text : "";
+  const expression = mapToneToExpression(currentTone, spokenLine);
+  const expressionVariants = resolveExpressionVariantUris(updatedRun, npc);
   let memoryFact = null;
   const talkResult = canReveal || canRepeat
     ? {
@@ -293,6 +355,8 @@ export function resolveTalkAction(run, action, options = {}) {
         summary: `${npc.displayName}: ${selectedBeat.label}`,
         revealed: canReveal,
         checkResult,
+        expression,
+        expressionVariants,
         contentTags: selectedBeat.contentTags || [],
         linkedMemoryFactIds: selectedBeat.linkedMemoryFactIds || [],
         linkedQuestIds: selectedBeat.linkedQuestIds || [],
@@ -307,6 +371,8 @@ export function resolveTalkAction(run, action, options = {}) {
         summary: selectedBeat && checkResult ? "The conversation does not reveal anything new." : "No new dialogue is available.",
         revealed: false,
         checkResult,
+        expression,
+        expressionVariants,
         contentTags: [],
         linkedMemoryFactIds: [],
         linkedQuestIds: [],

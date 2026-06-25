@@ -36,7 +36,7 @@ test("parse multiple mixed triggers in one response", () => {
 });
 
 test("pure narrative produces no triggers", () => {
-  const source = "Rain taps the shutters while Mira studies your expression.";
+  const source = "Rain taps the shutters while Garrick studies your expression.";
   const parsed = parseTriggers(source);
   assert.equal(parsed.triggers.length, 0);
   assert.equal(parsed.narrative, source);
@@ -126,9 +126,9 @@ test("invalid dice notation falls back to UNKNOWN", () => {
 });
 
 test("NEW_ENTITY parses with single-quoted values", () => {
-  const trigger = firstTrigger("[NEW_ENTITY: name=Mira type=npc]");
+  const trigger = firstTrigger("[NEW_ENTITY: name=Garrick type=npc]");
   assert.equal(trigger.type, "NEW_ENTITY");
-  assert.deepEqual(trigger.parsed, { name: "Mira", entityType: "npc" });
+  assert.deepEqual(trigger.parsed, { name: "Garrick", entityType: "npc" });
 });
 
 test("NEW_ENTITY parses with unquoted values and spaces", () => {
@@ -139,9 +139,9 @@ test("NEW_ENTITY parses with unquoted values and spaces", () => {
 });
 
 test("UPDATE_ENTITY parses unquoted facts", () => {
-  const trigger = firstTrigger("[UPDATE_ENTITY: name=Mira facts=Now suspicious of the party]");
+  const trigger = firstTrigger("[UPDATE_ENTITY: name=Garrick facts=Now suspicious of the party]");
   assert.equal(trigger.type, "UPDATE_ENTITY");
-  assert.equal(trigger.parsed.name, "Mira");
+  assert.equal(trigger.parsed.name, "Garrick");
   assert.equal(trigger.parsed.facts, "Now suspicious of the party");
 });
 

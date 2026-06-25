@@ -295,7 +295,12 @@ export function renderMovementPanel(scene = {}) {
 export function renderEntityCard(entity = {}, selectedEntityId = "") {
   const selected = entity.entityId && entity.entityId === selectedEntityId;
   const inspectable = entity.inspectable !== false;
-  const canTalk = entity.entityType === "npc" && Array.isArray(entity.actionTypes) && entity.actionTypes.includes("talk");
+  // Show an inline Talk button on every visible NPC card so dialogue can be
+  // started directly from the Scene tab. We intentionally do NOT gate on
+  // actionTypes here: not every NPC payload advertises "talk", and the server
+  // resolves talkability (returning a graceful "nothing to say" result when an
+  // NPC has no dialogue). Talk also remains available in the Actions tab.
+  const canTalk = entity.entityType === "npc";
   return `
     <article
       class="solo-entity-card ${selected ? "selected" : ""} ${inspectable ? "inspectable" : ""}"
@@ -807,6 +812,415 @@ export function renderSceneMemoryPanel(scene = {}) {
   `;
 }
 
+// ---------------------------------------------------------------------------
+// Themed game-screen chrome (skins, fonts, character sidebar, tabs, right rail)
+// ---------------------------------------------------------------------------
+
+// Default skin ("Ashen Keep") plus the three premium skins. Each entry is a full
+// CSS custom-property set applied to the shell root so the whole screen retints.
+export const SOLO_SKINS = {
+  ashen: {
+    "--bg": "#1c1510", "--panel": "#171009", "--card": "#1a130c", "--inset": "#120c07",
+    "--card-dim": "#160f09", "--tabbar": "#140e08", "--border": "#2e2420", "--border-faint": "#221a13",
+    "--border-strong": "#3a2e22", "--text": "#e8dcc8", "--text-bright": "#f0e6d4", "--text-2": "#b3a48c",
+    "--text-muted": "#9a8b76", "--text-label": "#8a7c68", "--text-faint": "#6e6150", "--accent": "#c8922a",
+    "--accent-2": "#e0b352", "--accent-grad-a": "#d29b32", "--accent-grad-b": "#bd8420",
+    "--accent-border": "#4a3a1e", "--on-accent": "#1c1308", "--texture": "none", "--texture-size": "auto"
+  },
+  dragon: {
+    "--bg": "#0f1411", "--panel": "#0c100d", "--card": "#121a14", "--inset": "#0c120e",
+    "--card-dim": "#0e1410", "--tabbar": "#0a0f0c", "--border": "#243029", "--border-faint": "#1a241e",
+    "--border-strong": "#2e3d33", "--text": "#e2e8da", "--text-bright": "#f1f5ec", "--text-2": "#a7b3a0",
+    "--text-muted": "#8a978a", "--text-label": "#76837a", "--text-faint": "#5e6b62", "--accent": "#cf5236",
+    "--accent-2": "#e6a23a", "--accent-grad-a": "#d65a3c", "--accent-grad-b": "#9e2a1b",
+    "--accent-border": "#5a261a", "--on-accent": "#f6e8d6",
+    "--texture": "radial-gradient(circle at 50% 100%,rgba(170,90,60,.10) 0 8px,transparent 9px),radial-gradient(circle at 0 100%,rgba(170,90,60,.10) 0 8px,transparent 9px),radial-gradient(circle at 100% 100%,rgba(170,90,60,.10) 0 8px,transparent 9px)",
+    "--texture-size": "20px 14px"
+  },
+  lava: {
+    "--bg": "#16100d", "--panel": "#100b09", "--card": "#1a110d", "--inset": "#0e0907",
+    "--card-dim": "#140d0a", "--tabbar": "#0c0807", "--border": "#3a221a", "--border-faint": "#281712",
+    "--border-strong": "#4a2a1e", "--text": "#f0e0d2", "--text-bright": "#fff0e2", "--text-2": "#c2a896",
+    "--text-muted": "#a08876", "--text-label": "#8a7060", "--text-faint": "#6e5446", "--accent": "#ff6a1f",
+    "--accent-2": "#ffb347", "--accent-grad-a": "#ff7a2a", "--accent-grad-b": "#d94512",
+    "--accent-border": "#7a2e12", "--on-accent": "#1a0c06",
+    "--texture": "linear-gradient(115deg,transparent 47%,rgba(255,90,20,.12) 50%,transparent 53%),linear-gradient(60deg,transparent 47%,rgba(255,120,30,.08) 50%,transparent 53%)",
+    "--texture-size": "90px 90px"
+  },
+  wood: {
+    "--bg": "#161310", "--panel": "#11100a", "--card": "#1a1810", "--inset": "#11100a",
+    "--card-dim": "#15130d", "--tabbar": "#0f0e09", "--border": "#2c2a1c", "--border-faint": "#201e14",
+    "--border-strong": "#3a3724", "--text": "#e6e8d4", "--text-bright": "#f2f4e2", "--text-2": "#aab09a",
+    "--text-muted": "#8e9480", "--text-label": "#787e6a", "--text-faint": "#5e6450", "--accent": "#86a544",
+    "--accent-2": "#c2b24a", "--accent-grad-a": "#92b04e", "--accent-grad-b": "#5e7a2c",
+    "--accent-border": "#3a4a22", "--on-accent": "#14180a",
+    "--texture": "repeating-linear-gradient(92deg,rgba(150,140,90,.05) 0 2px,transparent 2px 8px),repeating-linear-gradient(88deg,rgba(120,110,70,.04) 0 1px,transparent 1px 5px)",
+    "--texture-size": "auto"
+  }
+};
+
+export const SOLO_FONTS = {
+  tome: { "--font-display": "'Cinzel',Georgia,serif", "--font-body": "'Spectral',Georgia,serif" },
+  court: { "--font-display": "'Marcellus',Georgia,serif", "--font-body": "'EB Garamond',Georgia,serif" },
+  iron: { "--font-display": "'Grenze Gotisch',Georgia,serif", "--font-body": "'Spectral',Georgia,serif" }
+};
+
+const SOLO_SKIN_SWATCHES = {
+  ashen: "linear-gradient(135deg,#c8922a,#1c1510)",
+  dragon: "linear-gradient(135deg,#cf5236,#0f1411)",
+  lava: "linear-gradient(135deg,#ff6a1f,#16100d)",
+  wood: "linear-gradient(135deg,#86a544,#161310)"
+};
+
+const SOLO_SKIN_LABELS = { ashen: "Ashen Keep", dragon: "Dragonscale", lava: "Molten Forge", wood: "Wildwood" };
+const SOLO_FONT_LABELS = { tome: "Tome", court: "Court", iron: "Iron" };
+
+export const SOLO_TABS = [
+  { id: "scene", label: "Scene" },
+  { id: "actions", label: "Actions" },
+  { id: "character", label: "Character" },
+  { id: "inventory", label: "Inventory" },
+  { id: "map", label: "Map" },
+  { id: "journal", label: "Journal" }
+];
+
+export function normalizeSkin(skin) {
+  return Object.prototype.hasOwnProperty.call(SOLO_SKINS, skin) ? skin : "ashen";
+}
+
+export function normalizeFontSet(fontSet) {
+  return Object.prototype.hasOwnProperty.call(SOLO_FONTS, fontSet) ? fontSet : "tome";
+}
+
+export function normalizeTab(tab) {
+  return SOLO_TABS.some((entry) => entry.id === tab) ? tab : "scene";
+}
+
+// Build the inline custom-property string applied to the shell root.
+export function soloThemeVarString(skin = "ashen", fontSet = "tome") {
+  const vars = { ...SOLO_SKINS[normalizeSkin(skin)], ...SOLO_FONTS[normalizeFontSet(fontSet)] };
+  return Object.entries(vars)
+    .map(([key, value]) => `${key}:${value}`)
+    .join(";");
+}
+
+// Static fallback character. The solo scene payload does not currently carry
+// player stats, so the sidebar/sheet use this until live data is wired in.
+const SOLO_SAMPLE_CHARACTER = {
+  name: "Akrij the Spellblade",
+  className: "Spellblade",
+  level: 1,
+  hitPoints: { current: 12, max: 12 },
+  armorClass: 13,
+  speed: 30,
+  abilities: [
+    { key: "STR", mod: "+0", score: 10 },
+    { key: "DEX", mod: "+1", score: 12 },
+    { key: "CON", mod: "+0", score: 11 },
+    { key: "INT", mod: "+2", score: 14, accent: true },
+    { key: "WIS", mod: "+1", score: 13 },
+    { key: "CHA", mod: "+0", score: 10 }
+  ],
+  passivePerception: 11,
+  initiative: "+1",
+  proficiency: "+2",
+  region: "Ashenmoor",
+  saves: [
+    { name: "Strength", mod: "+0" },
+    { name: "Dexterity", mod: "+1" },
+    { name: "Constitution", mod: "+2", proficient: true },
+    { name: "Intelligence", mod: "+4", proficient: true },
+    { name: "Wisdom", mod: "+1" },
+    { name: "Charisma", mod: "+0" }
+  ],
+  skills: [
+    { name: "Arcana", mod: "+4", proficient: true },
+    { name: "Investigation", mod: "+4", proficient: true },
+    { name: "Perception", mod: "+3", proficient: true },
+    { name: "Insight", mod: "+1" },
+    { name: "Athletics", mod: "+0" },
+    { name: "Persuasion", mod: "+0" }
+  ],
+  proficiencies: "Light armor · Simple & martial weapons · Arcane focus · Thieves' cant of the Ashen roads"
+};
+
+export function renderSoloThemeSwitcher(skin = "ashen", fontSet = "tome") {
+  const activeSkin = normalizeSkin(skin);
+  const activeFont = normalizeFontSet(fontSet);
+  const chip = (active) =>
+    `display:inline-flex;align-items:center;gap:8px;padding:7px 12px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;` +
+    (active
+      ? "background:var(--accent,#c8922a);border:1px solid var(--accent-2,#e0b352);color:var(--on-accent,#1c1308);"
+      : "background:var(--inset,#120c07);border:1px solid var(--border,#2e2420);color:var(--text-2,#b3a48c);");
+
+  const skinButtons = Object.keys(SOLO_SKINS)
+    .map(
+      (id) =>
+        `<button type="button" data-solo-skin="${id}" style="${chip(id === activeSkin)}">` +
+        `<span style="display:inline-block;flex:none;width:14px;height:14px;border-radius:4px;background:${SOLO_SKIN_SWATCHES[id]};"></span>` +
+        `${escapeHtml(SOLO_SKIN_LABELS[id])}</button>`
+    )
+    .join("");
+
+  const fontButtons = Object.keys(SOLO_FONTS)
+    .map(
+      (id) =>
+        `<button type="button" data-solo-font="${id}" style="${chip(id === activeFont)}">${escapeHtml(SOLO_FONT_LABELS[id])}</button>`
+    )
+    .join("");
+
+  return `
+    <div class="solo-theme-switcher">
+      <div class="solo-theme-group">
+        <span class="solo-theme-kicker">Skins</span>
+        <span class="solo-theme-premium">Premium</span>
+        <div class="solo-theme-buttons">${skinButtons}</div>
+      </div>
+      <div class="solo-theme-group">
+        <span class="solo-theme-kicker">Fonts</span>
+        <span class="solo-theme-premium">Premium</span>
+        <div class="solo-theme-buttons">${fontButtons}</div>
+      </div>
+    </div>
+  `;
+}
+
+export function renderSoloCharacterSidebar(character = SOLO_SAMPLE_CHARACTER) {
+  const hp = character.hitPoints || { current: 0, max: 0 };
+  const hpPct = hp.max > 0 ? Math.max(0, Math.min(100, Math.round((hp.current / hp.max) * 100))) : 0;
+  const abilities = (character.abilities || [])
+    .map(
+      (ability) => `
+        <div class="solo-ability-cell">
+          <div class="solo-ability-key">${escapeHtml(ability.key)}</div>
+          <div class="solo-ability-mod ${ability.accent ? "accent" : ""}">${escapeHtml(ability.mod)}</div>
+          <div class="solo-ability-score">${escapeHtml(ability.score)}</div>
+        </div>
+      `
+    )
+    .join("");
+
+  return `
+    <aside class="solo-game-sidebar">
+      <div class="solo-portrait"></div>
+      <div class="solo-sidebar-identity">
+        <div class="solo-char-name">${escapeHtml(character.name)}</div>
+        <div class="solo-char-sub">${escapeHtml(character.className)} · Level ${escapeHtml(character.level)}</div>
+      </div>
+      <div class="solo-sidebar-block">
+        <div class="solo-hp-row">
+          <span class="solo-stat-kicker">Hit Points</span>
+          <span class="solo-hp-value">${escapeHtml(hp.current)} <span>/ ${escapeHtml(hp.max)}</span></span>
+        </div>
+        <div class="solo-hp-track"><div class="solo-hp-fill" style="width:${hpPct}%;"></div></div>
+        <div class="solo-mini-stats">
+          <div class="solo-mini-stat"><div class="solo-mini-val">${escapeHtml(character.armorClass)}</div><div class="solo-mini-label">Armor</div></div>
+          <div class="solo-mini-stat"><div class="solo-mini-val">${escapeHtml(character.speed)}</div><div class="solo-mini-label">Speed</div></div>
+        </div>
+      </div>
+      <div class="solo-sidebar-block">
+        <div class="solo-stat-kicker">Abilities</div>
+        <div class="solo-ability-grid">${abilities}</div>
+      </div>
+      <div class="solo-sidebar-block solo-passive-block">
+        <div class="solo-passive-row"><span>Passive Perception</span><span>${escapeHtml(character.passivePerception)}</span></div>
+        <div class="solo-passive-row"><span>Initiative</span><span>${escapeHtml(character.initiative)}</span></div>
+        <div class="solo-passive-row"><span>Proficiency</span><span>${escapeHtml(character.proficiency)}</span></div>
+      </div>
+      <div class="solo-sidebar-block solo-conditions-block">
+        <div class="solo-stat-kicker">Conditions</div>
+        <div class="solo-condition">
+          <span class="solo-condition-dot"></span>
+          <div><div class="solo-condition-name">Soaked</div><div class="solo-condition-note">Chilled from the rain — no penalty yet.</div></div>
+        </div>
+      </div>
+    </aside>
+  `;
+}
+
+export function renderSoloGameTabs(activeTab = "scene") {
+  const active = normalizeTab(activeTab);
+  return `
+    <div class="solo-game-tabs" role="tablist">
+      ${SOLO_TABS.map(
+        (tab) =>
+          `<button type="button" role="tab" class="solo-game-tab ${tab.id === active ? "active" : ""}" data-solo-tab="${tab.id}" aria-selected="${tab.id === active}">${escapeHtml(tab.label)}</button>`
+      ).join("")}
+    </div>
+  `;
+}
+
+export function renderSoloSceneInputBar(state = {}) {
+  const scene = state.scene || {};
+  const actions = Array.isArray(scene.availableActions) ? scene.availableActions : [];
+  const chips = actions
+    .filter((action) => action.enabled !== false)
+    .slice(0, 4)
+    .map((action) => {
+      const label = labelForAction(action);
+      return `<button type="button" class="solo-scene-chip" data-solo-action="${escapeHtml(action.type || "")}" data-location-id="${escapeHtml(action.toLocationId || "")}" data-entity-id="${escapeHtml(action.entityId || action.targetEntityId || "")}" data-rest-type="${escapeHtml(action.restType || "")}" data-item-id="${escapeHtml(action.itemId || "")}">${escapeHtml(label)}</button>`;
+    })
+    .join("");
+
+  return `
+    <div class="solo-scene-input">
+      <div class="solo-scene-input-row">
+        <input type="text" class="solo-scene-field" data-solo-attempt-input placeholder="What do you do?" value="${escapeHtml(state.attemptDraft || "")}" />
+        <button type="button" class="solo-attempt-submit" data-solo-attempt-submit>Attempt</button>
+      </div>
+      ${chips ? `<div class="solo-scene-chips">${chips}</div>` : ""}
+    </div>
+  `;
+}
+
+export function renderSoloSceneArt() {
+  // Decorative scene banner matching the design's firelit tavern vignette.
+  return `
+    <div class="solo-scene-art">
+      <div class="solo-scene-art-glow"></div>
+      <div class="solo-scene-art-window"></div>
+      <div class="solo-scene-art-hearth"></div>
+      <div class="solo-scene-art-floor"></div>
+    </div>
+  `;
+}
+
+export function renderSoloCharacterSheet(character = SOLO_SAMPLE_CHARACTER) {
+  const row = (entry) => `
+    <div class="solo-sheet-row">
+      <span class="${entry.proficient ? "proficient" : ""}">${escapeHtml(entry.name)}${entry.proficient ? ` <span class="solo-dot">●</span>` : ""}</span>
+      <span class="${entry.proficient ? "proficient" : ""}">${escapeHtml(entry.mod)}</span>
+    </div>`;
+  const combatCard = (label, value) =>
+    `<div class="solo-combat-card"><div class="solo-mini-label">${escapeHtml(label)}</div><div class="solo-combat-val">${escapeHtml(value)}</div></div>`;
+
+  return `
+    <div class="solo-character-sheet">
+      <div class="solo-sheet-col">
+        <div class="solo-stat-kicker">Saving Throws</div>
+        <div class="solo-sheet-list">${(character.saves || []).map(row).join("")}</div>
+        <div class="solo-stat-kicker" style="margin-top:26px;">Combat</div>
+        <div class="solo-combat-grid">
+          ${combatCard("Armor Class", character.armorClass)}
+          ${combatCard("Initiative", character.initiative)}
+          ${combatCard("Speed", `${character.speed} ft`)}
+          ${combatCard("Hit Points", `${character.hitPoints.current} / ${character.hitPoints.max}`)}
+        </div>
+      </div>
+      <div class="solo-sheet-col">
+        <div class="solo-stat-kicker">Skills</div>
+        <div class="solo-sheet-list">${(character.skills || []).map(row).join("")}</div>
+        <div class="solo-stat-kicker" style="margin-top:26px;">Proficiencies</div>
+        <div class="solo-proficiencies">${escapeHtml(character.proficiencies)}</div>
+      </div>
+    </div>
+  `;
+}
+
+export function renderSoloMapTab() {
+  return `
+    <div class="solo-map-tab">
+      <div class="solo-map-grid"></div>
+      <div class="solo-map-vignette"></div>
+      <div class="solo-map-copy">
+        <div class="solo-map-title">Battle map coming soon</div>
+        <div class="solo-map-sub">Tactical encounters will unfold here when the dice are drawn.</div>
+      </div>
+    </div>
+  `;
+}
+
+export function renderSoloRightRail(state = {}) {
+  const scene = state.scene || {};
+  const primaryNpc = (Array.isArray(scene.visibleEntities) ? scene.visibleEntities : []).find(
+    (entity) => entity?.entityType === "npc"
+  );
+  const relationshipName = primaryNpc?.displayName || "No contacts yet";
+  const relationshipRole = primaryNpc?.summary || "—";
+  return `
+    <aside class="solo-game-rail solo-scene-side">
+      <div class="solo-rail-block">
+        <div class="solo-stat-kicker">Recent Rolls</div>
+        <div class="solo-roll"><div><div class="solo-roll-name">Perception (WIS)</div><div class="solo-roll-detail">d20 14 +1</div></div><span class="solo-roll-total good">15</span></div>
+        <div class="solo-roll"><div><div class="solo-roll-name">Initiative</div><div class="solo-roll-detail">d20 8 +1</div></div><span class="solo-roll-total accent">9</span></div>
+      </div>
+      <div class="solo-rail-block">
+        <div class="solo-stat-kicker">Relationships</div>
+        <div class="solo-relationship">
+          <div class="solo-relationship-head"><div class="solo-relationship-name">${relationshipName}</div><div class="solo-condition-note">${relationshipRole}</div></div>
+          <div class="solo-relationship-row"><span>Trust</span><span class="solo-pips"><b class="good">●</b><b>●●●●</b></span></div>
+          <div class="solo-relationship-row"><span>Suspicion</span><span class="solo-pips"><b class="accent">●●●</b><b>●●</b></span></div>
+          <div class="solo-relationship-row"><span>Fear</span><span class="solo-pips"><b>●●●●●</b></span></div>
+        </div>
+      </div>
+      <div class="solo-rail-block">
+        ${renderSearchResultPanel(state.searchResult, scene.discoveredDetails)}
+      </div>
+      <div class="solo-rail-block">
+        ${renderTalkResultPanel(state.talkResult)}
+      </div>
+      <div class="solo-rail-block">
+        ${renderEntityDetailPanel(state.detail)}
+      </div>
+    </aside>
+  `;
+}
+
+// ---------------------------------------------------------------------------
+// Visual-novel dialogue overlay
+// ---------------------------------------------------------------------------
+// Rendered only while `state.dialogueActive` is true (opened by a talk action),
+// so the existing right-rail talk panel and all string-render tests are
+// untouched. The portrait pulls from talkResult.expressionVariants[expression]
+// when the server has generated it (Part 1), otherwise an atmospheric
+// placeholder stands in until the image worker finishes. The typewriter reveal
+// itself runs in bindSoloSceneShell against live DOM, not in this string.
+export function renderSoloDialogueOverlay(state = {}) {
+  if (!state.dialogueActive || !state.talkResult) {
+    return "";
+  }
+  const talk = state.talkResult;
+  const expression = typeof talk.expression === "string" && talk.expression ? talk.expression : "neutral";
+  const variants = talk.expressionVariants && typeof talk.expressionVariants === "object" ? talk.expressionVariants : {};
+  const portraitUri = typeof variants[expression] === "string" ? variants[expression] : "";
+  const speaker = talk.speakerName || "NPC";
+  const line = talk.line || "There is not much new to say right now.";
+  const typed = state.dialogueTyped === true;
+  const initial = String(speaker).trim().slice(0, 1).toUpperCase() || "?";
+
+  const portraitInner = portraitUri
+    ? `<img class="solo-vn-portrait-img" src="${escapeHtml(portraitUri)}" alt="${escapeHtml(speaker)} portrait" />`
+    : `<div class="solo-vn-portrait-placeholder">
+        <span>${escapeHtml(initial)}</span>
+        <small>Portrait incoming…</small>
+      </div>`;
+
+  // `key` on the portrait forces a fresh element (and thus replays the fade)
+  // whenever the expression changes between consecutive lines.
+  return `
+    <div class="solo-vn-overlay" data-solo-dialogue-overlay role="dialog" aria-modal="true" aria-label="Dialogue with ${escapeHtml(speaker)}">
+      <div class="solo-vn-backdrop" data-solo-dialogue-close></div>
+      <div class="solo-vn-panel" data-solo-dialogue-panel>
+        <div class="solo-vn-portrait" data-expression="${escapeHtml(expression)}" data-portrait-key="${escapeHtml(expression)}">
+          ${portraitInner}
+        </div>
+        <div class="solo-vn-body">
+          <div class="solo-vn-speaker">${escapeHtml(speaker)}</div>
+          <div
+            class="solo-vn-text ${typed ? "is-complete" : ""}"
+            data-solo-dialogue-text
+            data-typed="${typed ? "true" : "false"}"
+            data-fulltext="${escapeHtml(line)}"
+          >${typed ? escapeHtml(line) : ""}</div>
+          <div class="solo-vn-controls">
+            <button type="button" class="solo-vn-next" data-solo-dialogue-next>NEXT ›</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 export function renderSoloSceneShell(state = {}) {
   if (state.loading) {
     return `
@@ -829,31 +1243,87 @@ export function renderSoloSceneShell(state = {}) {
   }
 
   const scene = state.scene || {};
+  const location = scene.location || {};
   const selectedEntityId = state.detail?.entity?.entityId || state.detail?.entityId || "";
   const selectedGmMode = state.gmMode || "placeholder";
+  const character = state.character || SOLO_SAMPLE_CHARACTER;
+  const activeTab = normalizeTab(state.activeTab);
+  const skin = normalizeSkin(state.skin);
+  const fontSet = normalizeFontSet(state.fontSet);
+  const region = location.region || character.region || "Ashenmoor";
+  const title = location.name || "Current Scene";
+
+  // Each tab panel is always present in the markup and toggled with `hidden`,
+  // so screen-reader/test access to every panel's content is preserved.
+  const panel = (id, body) =>
+    `<div class="solo-tab-panel" data-solo-tabpanel="${id}" ${id === activeTab ? "" : "hidden"}>${body}</div>`;
 
   return `
-    <section class="solo-scene-shell solo-scene-shell-polished" data-run-id="${escapeHtml(scene.runId || state.runId || "")}">
-      ${renderSceneHeader(scene, state)}
-      <div class="solo-scene-grid">
-        <main class="solo-scene-main">
-          ${renderLocationPanel(scene.location || {}, scene.gmNarration, scene.gmStatus, selectedGmMode)}
-          ${renderMovementPanel(scene)}
-          ${renderEntityPanel(scene, selectedEntityId)}
+    <section
+      class="solo-scene-shell solo-scene-shell-polished solo-game-shell"
+      data-run-id="${escapeHtml(scene.runId || state.runId || "")}"
+      data-solo-skin="${skin}"
+      data-solo-font="${fontSet}"
+      style="${soloThemeVarString(skin, fontSet)}"
+    >
+      <details class="solo-settings">
+        <summary class="solo-settings-btn" aria-label="Theme settings" title="Theme settings">⚙</summary>
+        <div class="solo-settings-menu">${renderSoloThemeSwitcher(skin, fontSet)}</div>
+      </details>
+      <div class="solo-game-frame solo-scene-grid">
+        ${renderSoloCharacterSidebar(character)}
+        <main class="solo-game-main solo-scene-main">
+          <div class="solo-game-header">
+            <div class="solo-breadcrumb">${escapeHtml(region)} <span>›</span> ${escapeHtml(title)}</div>
+            <div class="solo-game-title">${escapeHtml(title)}</div>
+            ${renderSoloGameTabs(activeTab)}
+          </div>
+          <div class="solo-game-content">
+            ${panel(
+              "scene",
+              `
+                <div class="solo-scene-layout">
+                  <div class="solo-scene-center">
+                    ${renderSoloSceneArt()}
+                    ${renderLocationPanel(location, scene.gmNarration, scene.gmStatus, selectedGmMode)}
+                    ${renderSoloSceneInputBar(state)}
+                  </div>
+                  <div class="solo-scene-npc">
+                    ${renderEntityPanel(scene, selectedEntityId)}
+                    ${renderMovementPanel(scene)}
+                  </div>
+                </div>
+              `
+            )}
+            ${panel(
+              "actions",
+              `
+                ${renderSceneActionBar(scene)}
+                ${renderRestResultPanel(state.restResult)}
+                ${renderAttemptPanel(scene, state.attemptResult)}
+              `
+            )}
+            ${panel("character", renderSoloCharacterSheet(character))}
+            ${panel(
+              "inventory",
+              `
+                ${renderInventoryPanel(scene)}
+                ${renderUseItemResultPanel(state.useItemResult)}
+              `
+            )}
+            ${panel("map", renderSoloMapTab())}
+            ${panel(
+              "journal",
+              `
+                ${renderSceneTimelinePanel(scene)}
+                ${renderSceneMemoryPanel(scene)}
+              `
+            )}
+          </div>
         </main>
-        <aside class="solo-scene-side">
-          ${renderSceneActionBar(scene)}
-          ${renderInventoryPanel(scene)}
-          ${renderSearchResultPanel(state.searchResult, scene.discoveredDetails)}
-          ${renderTalkResultPanel(state.talkResult)}
-          ${renderRestResultPanel(state.restResult)}
-          ${renderUseItemResultPanel(state.useItemResult)}
-          ${renderAttemptPanel(scene, state.attemptResult)}
-          ${renderEntityDetailPanel(state.detail)}
-          ${renderSceneTimelinePanel(scene)}
-          ${renderSceneMemoryPanel(scene)}
-        </aside>
+        ${renderSoloRightRail(state)}
       </div>
+      ${renderSoloDialogueOverlay(state)}
     </section>
   `;
 }
@@ -934,6 +1404,124 @@ export function bindSoloSceneShell(root, handlers = {}) {
       }
     });
   });
+
+  root.querySelectorAll("[data-solo-tab]").forEach((button) => {
+    button.addEventListener("click", () => {
+      handlers.onTab?.({ tab: button.getAttribute("data-solo-tab") });
+    });
+  });
+
+  root.querySelectorAll("[data-solo-skin]").forEach((button) => {
+    button.addEventListener("click", () => {
+      handlers.onSkin?.({ skin: button.getAttribute("data-solo-skin") });
+    });
+  });
+
+  root.querySelectorAll("[data-solo-font]").forEach((button) => {
+    button.addEventListener("click", () => {
+      handlers.onFont?.({ fontSet: button.getAttribute("data-solo-font") });
+    });
+  });
+
+  // ---- Visual-novel dialogue overlay (typewriter + skip + close) ----
+  // Only querySelectorAll is used (test mocks expose no querySelector); unknown
+  // selectors return [] in the browser and in the lightweight mount test mocks.
+  const dialogueTextEl = root.querySelectorAll("[data-solo-dialogue-text]")[0] || null;
+  if (dialogueTextEl && typeof dialogueTextEl.getAttribute === "function") {
+    const fullText = dialogueTextEl.getAttribute("data-fulltext") || "";
+    const alreadyTyped = dialogueTextEl.getAttribute("data-typed") === "true";
+    let timer = null;
+    const finish = () => {
+      if (timer && typeof clearInterval === "function") {
+        clearInterval(timer);
+      }
+      timer = null;
+      dialogueTextEl.textContent = fullText;
+      dialogueTextEl.classList?.add("is-complete");
+      handlers.onDialogueTyped?.();
+    };
+    if (!alreadyTyped && typeof setInterval === "function") {
+      // ~30ms per character typewriter reveal.
+      dialogueTextEl.textContent = "";
+      let i = 0;
+      timer = setInterval(() => {
+        i += 1;
+        dialogueTextEl.textContent = fullText.slice(0, i);
+        if (i >= fullText.length) {
+          finish();
+        }
+      }, 30);
+    }
+    // Click anywhere on the panel (except NEXT) skips the typewriter.
+    root.querySelectorAll("[data-solo-dialogue-panel]").forEach((panel) => {
+      panel.addEventListener("click", (event) => {
+        const target = event?.target;
+        if (target && typeof target.closest === "function" && target.closest("[data-solo-dialogue-next]")) {
+          return;
+        }
+        if (timer) {
+          finish();
+        }
+      });
+    });
+  }
+  // Backdrop and NEXT both close the overlay without reloading the scene.
+  root.querySelectorAll("[data-solo-dialogue-close]").forEach((el) => {
+    el.addEventListener("click", () => handlers.onDialogueClose?.());
+  });
+  root.querySelectorAll("[data-solo-dialogue-next]").forEach((el) => {
+    el.addEventListener("click", (event) => {
+      event.stopPropagation?.();
+      handlers.onDialogueClose?.();
+    });
+  });
+
+  const attemptInput = root.querySelectorAll("[data-solo-attempt-input]")[0] || null;
+  const submitAttempt = () => {
+    const intent = String(attemptInput?.value || "").trim();
+    if (!intent) {
+      return;
+    }
+    handlers.onAttempt?.({ intent });
+  };
+  root.querySelectorAll("[data-solo-attempt-submit]").forEach((button) => {
+    button.addEventListener("click", submitAttempt);
+  });
+  if (attemptInput && typeof attemptInput.addEventListener === "function") {
+    attemptInput.addEventListener("input", () => {
+      handlers.onAttemptDraft?.({ value: attemptInput.value });
+    });
+    attemptInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        submitAttempt();
+      }
+    });
+  }
+}
+
+const SOLO_SKIN_STORAGE_KEY = "notdnd.solo.skin";
+const SOLO_FONT_STORAGE_KEY = "notdnd.solo.fontSet";
+
+function readSoloThemePref(key, fallback) {
+  try {
+    if (typeof localStorage === "undefined") {
+      return fallback;
+    }
+    return localStorage.getItem(key) || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeSoloThemePref(key, value) {
+  try {
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem(key, value);
+    }
+  } catch {
+    // Persisting the theme is best-effort; ignore storage failures.
+  }
 }
 
 export function mountSoloSceneShell(root, { apiClient, runId }) {
@@ -947,7 +1535,14 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     talkResult: null,
     restResult: null,
     useItemResult: null,
-    gmMode: "placeholder"
+    attemptResult: null,
+    attemptDraft: "",
+    dialogueActive: false,
+    dialogueTyped: false,
+    gmMode: "placeholder",
+    activeTab: "scene",
+    skin: normalizeSkin(readSoloThemePref(SOLO_SKIN_STORAGE_KEY, "ashen")),
+    fontSet: normalizeFontSet(readSoloThemePref(SOLO_FONT_STORAGE_KEY, "tome"))
   };
 
   function render() {
@@ -960,8 +1555,69 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       onTalk: handleTalk,
       onRest: handleRest,
       onUseItem: handleUseItem,
-      onGmMode: handleGmMode
+      onGmMode: handleGmMode,
+      onTab: handleTab,
+      onSkin: handleSkin,
+      onFont: handleFont,
+      onAttempt: handleAttempt,
+      onAttemptDraft: handleAttemptDraft,
+      onDialogueClose: handleDialogueClose,
+      onDialogueTyped: handleDialogueTyped
     });
+  }
+
+  function handleDialogueClose() {
+    // Close the dialogue overlay without reloading the scene. The talk result
+    // remains in state so the right-rail summary stays visible.
+    state.dialogueActive = false;
+    render();
+  }
+
+  function handleDialogueTyped() {
+    // Typewriter finished (or was skipped); mark complete so a re-render shows
+    // the full line immediately instead of restarting the reveal.
+    state.dialogueTyped = true;
+  }
+
+  function handleTab({ tab }) {
+    state.activeTab = normalizeTab(tab);
+    render();
+  }
+
+  function handleSkin({ skin }) {
+    state.skin = normalizeSkin(skin);
+    writeSoloThemePref(SOLO_SKIN_STORAGE_KEY, state.skin);
+    render();
+  }
+
+  function handleFont({ fontSet }) {
+    state.fontSet = normalizeFontSet(fontSet);
+    writeSoloThemePref(SOLO_FONT_STORAGE_KEY, state.fontSet);
+    render();
+  }
+
+  function handleAttemptDraft({ value }) {
+    state.attemptDraft = String(value || "");
+  }
+
+  async function handleAttempt({ intent }) {
+    if (!state.scene) {
+      return;
+    }
+    try {
+      const response = await postSoloAction(apiClient, runId, createAttemptAction({ intent }));
+      state.attemptResult = response.attemptResult || response.latestAttemptResult || null;
+      state.attemptDraft = "";
+      state.searchResult = null;
+      state.talkResult = null;
+      state.dialogueActive = false;
+      state.restResult = null;
+      state.useItemResult = null;
+      await loadScene();
+    } catch (error) {
+      state.error = String(error?.message || error || "Attempt failed.");
+      render();
+    }
   }
 
   async function loadScene() {
@@ -985,6 +1641,7 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       state.detail = null;
       state.searchResult = null;
       state.talkResult = null;
+      state.dialogueActive = false;
       state.restResult = null;
       state.useItemResult = null;
     } catch (error) {
@@ -1023,6 +1680,7 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       const response = await postSoloAction(apiClient, runId, createSearchAction());
       state.searchResult = response.searchResult || null;
       state.talkResult = null;
+      state.dialogueActive = false;
       state.restResult = null;
       state.useItemResult = null;
       const refreshed = await fetchSoloScene(apiClient, runId);
@@ -1042,6 +1700,9 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     try {
       const response = await postSoloAction(apiClient, runId, createTalkAction(entity));
       state.talkResult = response.talkResult || null;
+      // Open the visual-novel dialogue overlay and restart the typewriter.
+      state.dialogueActive = Boolean(state.talkResult);
+      state.dialogueTyped = false;
       state.searchResult = null;
       state.restResult = null;
       state.useItemResult = null;
@@ -1064,6 +1725,7 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       state.restResult = response.restResult || null;
       state.searchResult = null;
       state.talkResult = null;
+      state.dialogueActive = false;
       state.useItemResult = null;
       const refreshed = await fetchSoloScene(apiClient, runId);
       state.scene = {
@@ -1084,6 +1746,7 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       state.useItemResult = response.useItemResult || null;
       state.searchResult = null;
       state.talkResult = null;
+      state.dialogueActive = false;
       state.restResult = null;
       const refreshed = await fetchSoloScene(apiClient, runId);
       state.scene = {

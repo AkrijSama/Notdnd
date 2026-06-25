@@ -1,6 +1,7 @@
 import { generateUtility } from "../ai/openrouter.js";
 import { getState } from "../db/repository.js";
 import { getEntity, upsertEntity } from "./memoryStore.js";
+import { detectSentiment } from "./sentiment.js";
 import { getStyleConfig } from "./styleConfig.js";
 
 const responseCounters = new Map();
@@ -37,17 +38,6 @@ function normalizeExtraction(raw = {}) {
           .filter((relation) => relation.target)
       : []
   };
-}
-
-function detectSentiment(text = "") {
-  const lower = String(text || "").toLowerCase();
-  if (/\b(trust|allied|friend|helped|saved|grateful|bond)\b/.test(lower)) {
-    return "positive";
-  }
-  if (/\b(hostile|hate|threat|betray|suspicious|angry|fear)\b/.test(lower)) {
-    return "negative";
-  }
-  return "neutral";
 }
 
 function normalizeName(value = "") {

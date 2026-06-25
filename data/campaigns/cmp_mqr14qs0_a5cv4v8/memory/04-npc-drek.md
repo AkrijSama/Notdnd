@@ -11,7 +11,7 @@ relations:
     type: former_asset_of
   - target: "The Missing Shipment"
     type: knows_about
-  - target: "{{characterName}}"
+  - target: "Akrij"
     type: evaluating
 lastAccessed: 2026-01-01T00:00:00Z
 lastUpdated: 2026-01-01T00:00:00Z
@@ -23,4 +23,4 @@ confidence: 0.92
 
 He has worked for smugglers, pilgrims, and once for captains tied to [[The Ashen Watch]]. None of those stories ended clean. He claims he wants no part in [[The Missing Shipment]], but he flinches when certain route markers are named.
 
-Drek can become a blade at your side or the blade sent after you. Much depends on whether [[{{characterName}}]] speaks to the man he was, or the weapon he still pretends to be.
+Drek can become a blade at your side or the blade sent after you. Much depends on whether [[Akrij]] speaks to the man he was, or the weapon he still pretends to be.

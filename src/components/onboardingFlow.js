@@ -1,3 +1,18 @@
+const ONBOARDING_LOADING_PHRASES = [
+  "Bribing the innkeeper...",
+  "Convincing goblins to relocate...",
+  "Hiding the body...",
+  "Forging your reputation...",
+  "Arguing with the cartographer...",
+  "Feeding the tavern cat...",
+  "Pretending you know what you're doing...",
+  "The Blight has no idea you're coming..."
+];
+
+// The onboarding "arrival" exchange is GM/narrator output, not a single named
+// NPC. Label it generically so no specific character is baked into the UI.
+const NARRATOR_LABEL = "Narrator";
+
 function renderMessages(messages = []) {
   if (!Array.isArray(messages) || messages.length === 0) {
     return `<div class="onboarding-empty">No messages yet.</div>`;
@@ -7,7 +22,7 @@ function renderMessages(messages = []) {
     .map((entry) => {
       const role = entry.role === "user" ? "user" : "assistant";
       return `<article class="onboarding-message ${role}">
-        <div class="onboarding-message-role">${role === "user" ? "You" : "Mira"}</div>
+        <div class="onboarding-message-role">${role === "user" ? "You" : NARRATOR_LABEL}</div>
         <div class="onboarding-message-text">${entry.text || ""}</div>
       </article>`;
     })
@@ -32,7 +47,7 @@ export function renderOnboardingFlow(onboardingState = {}) {
 
         <div class="onboarding-chat-log">
           ${renderMessages(onboardingState.messages || [])}
-          ${thinking ? `<div class="onboarding-thinking">Mira studies your words...</div>` : ""}
+          ${thinking ? `<div class="onboarding-thinking">The world weighs your words...</div>` : ""}
         </div>
 
         <form id="onboarding-chat-form" class="onboarding-form">
@@ -41,7 +56,7 @@ export function renderOnboardingFlow(onboardingState = {}) {
             <input
               name="message"
               maxlength="600"
-              placeholder="Reply to Mira, ask about Ashenmoor, or test the world's memory..."
+              placeholder="Reply, ask about Ashenmoor, or test the world's memory..."
               autocomplete="off"
               ${thinking ? "disabled" : ""}
               required
@@ -112,13 +127,57 @@ export function renderOnboardingFlow(onboardingState = {}) {
         <button type="submit" ${loading ? "disabled" : ""}>Enter the World</button>
       </form>
 
-      ${loading ? `<div class="onboarding-thinking">The world is forming around you...</div>` : ""}
+      ${loading ? `
+        <div class="onboarding-loading" data-onboarding-loading>
+          <div class="onboarding-loading-phrase" data-onboarding-phrase>${ONBOARDING_LOADING_PHRASES[0]}</div>
+          <div class="onboarding-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+            <div class="onboarding-progress-bar" data-onboarding-progress style="width:0%;"></div>
+          </div>
+        </div>
+      ` : ""}
       ${error ? `<div class="onboarding-error">${error}</div>` : ""}
     </section>
   `;
 }
 
+function animateOnboardingLoading(root) {
+  const container = root.querySelector("[data-onboarding-loading]");
+  if (!container) {
+    return;
+  }
+
+  const phraseEl = container.querySelector("[data-onboarding-phrase]");
+  const barEl = container.querySelector("[data-onboarding-progress]");
+  const progressEl = container.querySelector(".onboarding-progress");
+
+  let phraseIndex = 0;
+  if (phraseEl) {
+    setInterval(() => {
+      phraseIndex = (phraseIndex + 1) % ONBOARDING_LOADING_PHRASES.length;
+      phraseEl.textContent = ONBOARDING_LOADING_PHRASES[phraseIndex];
+    }, 600);
+  }
+
+  if (barEl) {
+    let progress = 0;
+    const tick = () => {
+      // Ease in quickly, then crawl with a pause near 90% to feel like real work.
+      const remaining = progress < 90 ? 90 - progress : 99 - progress;
+      const step = Math.max(0.4, remaining * (progress < 90 ? 0.06 : 0.01));
+      progress = Math.min(99, progress + step);
+      barEl.style.width = `${progress}%`;
+      if (progressEl) {
+        progressEl.setAttribute("aria-valuenow", String(Math.round(progress)));
+      }
+    };
+    tick();
+    setInterval(tick, 120);
+  }
+}
+
 export function bindOnboardingFlow(root, handlers = {}) {
+  animateOnboardingLoading(root);
+
   const startForm = root.querySelector("#onboarding-start-form");
   if (startForm) {
     startForm.addEventListener("submit", (event) => {

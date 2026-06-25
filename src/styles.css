@@ -620,6 +620,36 @@ button.alt:hover {
   font-size: 13px;
 }
 
+.onboarding-loading {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.onboarding-loading-phrase {
+  font-size: 13px;
+  color: #d6c8a8;
+  transition: opacity 200ms ease;
+}
+
+.onboarding-progress {
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.onboarding-progress-bar {
+  height: 100%;
+  width: 0%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #b8924a, #e7c878);
+  transition: width 160ms ease;
+}
+
 .onboarding-hint {
   position: relative;
   z-index: 1;
@@ -1072,4 +1102,817 @@ button:disabled {
   .solo-stat-grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* =========================================================================
+   Solo themed game screen (skins, fonts, character sidebar, tabs, right rail)
+   Imported from the "NotDND Game Screen" design. All colors flow from the
+   CSS custom properties set on .solo-game-shell so skins retint everything.
+   ========================================================================= */
+.solo-game-shell {
+  position: relative;
+  min-height: 100vh;
+  box-sizing: border-box;
+  /* Full-bleed: break out of #app's 1400px max-width so the shell fills the
+     whole viewport on wide / ultrawide monitors. */
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
+  padding: 16px clamp(16px, 2.4vw, 56px) 18px;
+  background: var(--bg, #1c1510);
+  color: var(--text, #e8dcc8);
+  font-family: var(--font-body, Georgia, "Times New Roman", serif);
+}
+
+/* ---- Theme settings tucked behind a ⚙ button (top-right) ---- */
+.solo-settings {
+  position: absolute;
+  top: 14px;
+  right: clamp(16px, 2.4vw, 56px);
+  z-index: 30;
+}
+.solo-settings-btn {
+  list-style: none;
+  cursor: pointer;
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  font-size: 17px;
+  line-height: 1;
+  border-radius: 9px;
+  background: var(--inset, #120c07);
+  border: 1px solid var(--border, #2e2420);
+  color: var(--text-2, #b3a48c);
+}
+.solo-settings-btn::-webkit-details-marker,
+.solo-settings-btn::marker { display: none; content: ""; }
+.solo-settings[open] .solo-settings-btn {
+  color: var(--accent, #c8922a);
+  border-color: var(--accent, #c8922a);
+}
+.solo-settings-menu {
+  position: absolute;
+  top: 46px;
+  right: 0;
+  min-width: 260px;
+  padding: 16px 18px;
+  background: var(--panel, #171009);
+  border: 1px solid var(--border, #2e2420);
+  border-radius: 12px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.55);
+}
+
+.solo-theme-switcher {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.solo-theme-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.solo-theme-kicker {
+  font-size: 12px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-muted, #9a8b76);
+  font-weight: 700;
+}
+.solo-theme-premium {
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent-2, #e0b352);
+  border: 1px solid var(--accent, #c8922a);
+  background: var(--inset, #120c07);
+  border-radius: 4px;
+  padding: 3px 7px;
+  font-weight: 700;
+}
+.solo-theme-buttons {
+  display: flex;
+  gap: 9px;
+  flex-wrap: wrap;
+}
+.solo-theme-buttons button {
+  font-family: inherit;
+}
+
+.solo-game-frame {
+  display: flex;
+  gap: 0;
+  align-items: stretch;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--border, #2e2420);
+  min-height: 620px;
+}
+
+/* ---- Left character sidebar ---- */
+.solo-game-sidebar {
+  width: clamp(260px, 18vw, 340px);
+  flex: none;
+  overflow-y: auto;
+  background: var(--panel, #171009);
+  background-image: var(--texture, none);
+  background-size: var(--texture-size, auto);
+  border-right: 1px solid var(--border, #2e2420);
+  display: flex;
+  flex-direction: column;
+}
+.solo-portrait {
+  height: 150px;
+  flex: none;
+  border-bottom: 1px solid var(--border, #2e2420);
+  background:
+    radial-gradient(46px 56px at 50% 96%, #0a0705 60%, transparent 62%),
+    radial-gradient(120% 95% at 50% 18%, #2a1f14, var(--inset, #120c07) 70%);
+}
+.solo-sidebar-identity {
+  padding: 16px 18px 14px;
+  border-bottom: 1px solid var(--border, #2e2420);
+}
+.solo-char-name {
+  font-family: var(--font-display, Georgia, serif);
+  font-size: 19px;
+  color: var(--text-bright, #f0e6d4);
+  line-height: 1.2;
+}
+.solo-char-sub {
+  font-size: 12px;
+  color: var(--text-muted, #9a8b76);
+  margin-top: 5px;
+}
+.solo-sidebar-block {
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--border, #2e2420);
+}
+.solo-stat-kicker {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted, #9a8b76);
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+.solo-hp-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 8px;
+}
+.solo-hp-row .solo-stat-kicker { margin-bottom: 0; }
+.solo-hp-value {
+  font-family: var(--font-body, Georgia, serif);
+  font-size: 15px;
+  color: var(--text, #e8dcc8);
+}
+.solo-hp-value span { color: var(--text-faint, #7a6c58); font-size: 12px; }
+.solo-hp-track {
+  height: 9px;
+  background: var(--inset, #0e0a06);
+  border-radius: 5px;
+  border: 1px solid var(--border, #2e2420);
+  overflow: hidden;
+}
+.solo-hp-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #4f7a32, #6b9a3e);
+  border-radius: 4px;
+}
+.solo-mini-stats { display: flex; gap: 10px; margin-top: 14px; }
+.solo-mini-stat {
+  flex: 1;
+  background: var(--inset, #120c07);
+  border: 1px solid var(--border, #2e2420);
+  border-radius: 6px;
+  padding: 9px 0;
+  text-align: center;
+}
+.solo-mini-val {
+  font-family: var(--font-body, Georgia, serif);
+  font-size: 20px;
+  color: var(--text, #e8dcc8);
+}
+.solo-mini-label {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-label, #8a7c68);
+  margin-top: 2px;
+}
+.solo-ability-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+.solo-ability-cell {
+  background: var(--inset, #120c07);
+  border: 1px solid var(--border, #2e2420);
+  border-radius: 6px;
+  padding: 8px 0;
+  text-align: center;
+}
+.solo-ability-key {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--text-label, #8a7c68);
+  font-weight: 600;
+}
+.solo-ability-mod {
+  font-family: var(--font-body, Georgia, serif);
+  font-size: 18px;
+  color: var(--text, #e8dcc8);
+  margin-top: 1px;
+}
+.solo-ability-mod.accent { color: var(--accent, #c8922a); }
+.solo-ability-score { font-size: 10px; color: var(--text-faint, #6e6150); }
+.solo-passive-block { border-bottom: none; }
+.solo-passive-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 5px 0;
+  font-size: 12px;
+}
+.solo-passive-row span:first-child { color: var(--text-muted, #9a8b76); }
+.solo-passive-row span:last-child {
+  color: var(--text, #e8dcc8);
+  font-family: var(--font-body, Georgia, serif);
+}
+
+/* ---- Main column ---- */
+.solo-game-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg, #1c1510);
+}
+.solo-game-header {
+  padding: 20px 28px 0;
+  border-bottom: 1px solid var(--border, #2e2420);
+  background: var(--card, #1a130c);
+}
+.solo-breadcrumb {
+  font-size: 11px;
+  color: var(--text-label, #8a7c68);
+  margin-bottom: 6px;
+}
+.solo-breadcrumb span { color: var(--text-faint, #5a4f40); }
+.solo-game-title {
+  font-family: var(--font-display, Georgia, serif);
+  font-size: 28px;
+  color: var(--text-bright, #f0e6d4);
+  line-height: 1.1;
+  margin-bottom: 14px;
+}
+.solo-game-tabs { display: flex; gap: 26px; flex-wrap: wrap; }
+.solo-game-tab {
+  padding: 14px 0;
+  font-size: 12.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-label, #8a7c68);
+  cursor: pointer;
+  font-family: inherit;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.solo-game-tab.active {
+  color: var(--text-bright, #f0e6d4);
+  border-bottom-color: var(--accent, #c8922a);
+}
+.solo-game-content { flex: 1; overflow-y: auto; }
+.solo-tab-panel[hidden] { display: none; }
+
+/* ---- Scene tab visual flourishes ---- */
+.solo-scene-art {
+  position: relative;
+  flex: none;
+  height: clamp(180px, 24vh, 320px);
+  overflow: hidden;
+  background: linear-gradient(180deg, #120c08, #1a120b 55%, #0d0907);
+}
+.solo-scene-art-glow {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(130% 90% at 50% 108%, rgba(200, 146, 42, 0.24), rgba(200, 146, 42, 0.05) 45%, transparent 72%);
+}
+.solo-scene-art-window {
+  position: absolute;
+  top: 16%;
+  left: 7%;
+  width: 160px;
+  height: 100px;
+  background: linear-gradient(180deg, #26323b, #141b22);
+  border: 3px solid #0a0705;
+  box-shadow: inset 0 0 26px rgba(0, 0, 0, 0.75);
+}
+.solo-scene-art-hearth {
+  position: absolute;
+  bottom: 20%;
+  left: 60%;
+  width: 200px;
+  height: 200px;
+  background: radial-gradient(circle, rgba(255, 196, 90, 0.46), rgba(200, 120, 30, 0.1) 42%, transparent 70%);
+}
+.solo-scene-art-floor {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 42%;
+  background: linear-gradient(180deg, transparent, #0a0705 78%);
+}
+.solo-scene-input { padding: 18px 28px 22px; max-width: none; }
+.solo-scene-input-row { display: flex; gap: 12px; align-items: stretch; }
+.solo-scene-field {
+  flex: 1;
+  background: var(--inset, #120c07);
+  border: 1px solid var(--border-strong, #3a2e22);
+  border-radius: 7px;
+  padding: 0 18px;
+  height: 52px;
+  color: var(--text-bright, #f0e6d4);
+  font-size: 15px;
+  font-family: var(--font-body, Georgia, serif);
+  outline: none;
+}
+.solo-attempt-submit {
+  flex: none;
+  padding: 0 30px;
+  height: 52px;
+  background: linear-gradient(180deg, var(--accent-grad-a, #d29b32), var(--accent-grad-b, #bd8420));
+  border: 1px solid var(--accent-2, #e0b352);
+  border-radius: 7px;
+  color: var(--on-accent, #1c1308);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.solo-scene-chips { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+.solo-scene-chip {
+  padding: 9px 16px;
+  background: none;
+  border: 1px solid var(--border-strong, #3a2e22);
+  border-radius: 6px;
+  color: var(--text-2, #b3a48c);
+  font-size: 13px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+/* ---- Character sheet tab ---- */
+.solo-character-sheet {
+  padding: 28px 40px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 34px;
+  max-width: 900px;
+}
+.solo-sheet-list { display: flex; flex-direction: column; }
+.solo-sheet-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--border-faint, #221a13);
+  font-size: 13px;
+  color: var(--text-2, #b3a48c);
+}
+.solo-sheet-row span:last-child { font-family: var(--font-body, Georgia, serif); color: var(--text, #e8dcc8); }
+.solo-sheet-row .proficient { color: var(--accent, #c8922a); }
+.solo-dot { color: var(--accent, #c8922a); font-size: 10px; }
+.solo-combat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.solo-combat-card {
+  background: var(--card, #1a130c);
+  border: 1px solid var(--border, #2e2420);
+  border-radius: 6px;
+  padding: 12px;
+}
+.solo-combat-val {
+  font-family: var(--font-body, Georgia, serif);
+  font-size: 22px;
+  color: var(--text, #e8dcc8);
+  margin-top: 3px;
+}
+.solo-proficiencies { font-size: 13px; line-height: 1.8; color: var(--text-2, #b3a48c); }
+
+/* ---- Map tab ---- */
+.solo-map-tab {
+  position: relative;
+  margin: 40px;
+  height: 460px;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--border, #2e2420);
+  background: linear-gradient(180deg, #120c08, #0d0907);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.solo-map-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(200, 146, 42, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(200, 146, 42, 0.05) 1px, transparent 1px);
+  background-size: 46px 46px;
+}
+.solo-map-vignette {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(80% 70% at 50% 50%, transparent 30%, rgba(13, 9, 7, 0.85));
+}
+.solo-map-copy { position: relative; text-align: center; }
+.solo-map-title { font-family: var(--font-body, Georgia, serif); font-size: 22px; color: var(--text-muted, #9a8b76); }
+.solo-map-sub { font-size: 13px; color: var(--text-faint, #6e6150); margin-top: 8px; }
+
+/* ---- Right rail ---- */
+.solo-game-rail {
+  width: clamp(200px, 15vw, 280px);
+  flex: none;
+  background: var(--panel, #171009);
+  background-image: var(--texture, none);
+  background-size: var(--texture-size, auto);
+  border-left: 1px solid var(--border, #2e2420);
+  overflow-y: auto;
+}
+.solo-rail-block { padding: 18px 20px; border-bottom: 1px solid var(--border, #2e2420); }
+.solo-condition {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--inset, #120c07);
+  border: 1px solid var(--border, #2e2420);
+  border-radius: 6px;
+  padding: 11px 14px;
+}
+.solo-condition-dot { width: 8px; height: 8px; border-radius: 50%; background: #3a6a82; flex: none; }
+.solo-condition-name { font-size: 13px; color: var(--text, #e8dcc8); }
+.solo-condition-note { font-size: 11px; color: var(--text-label, #8a7c68); }
+.solo-roll {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--inset, #120c07);
+  border: 1px solid var(--border, #2e2420);
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-bottom: 9px;
+}
+.solo-roll:last-child { margin-bottom: 0; }
+.solo-roll-name { font-size: 12px; color: var(--text-2, #b3a48c); }
+.solo-roll-detail { font-size: 11px; color: var(--text-faint, #6e6150); }
+.solo-roll-total { font-family: var(--font-body, Georgia, serif); font-size: 17px; }
+.solo-roll-total.good { color: #6b9a3e; }
+.solo-roll-total.accent { color: var(--accent, #c8922a); }
+.solo-relationship {
+  background: var(--inset, #120c07);
+  border: 1px solid var(--border, #2e2420);
+  border-radius: 6px;
+  padding: 14px;
+}
+.solo-relationship-head { margin-bottom: 12px; }
+.solo-relationship-name { font-size: 14px; color: var(--text, #e8dcc8); font-family: var(--font-body, Georgia, serif); }
+.solo-relationship-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0;
+  font-size: 12px;
+  color: var(--text-muted, #9a8b76);
+}
+.solo-pips { letter-spacing: 3px; font-size: 11px; }
+.solo-pips b { font-weight: 400; color: var(--border, #2e2420); }
+.solo-pips b.good { color: #6b9a3e; }
+.solo-pips b.accent { color: var(--accent, #c8922a); }
+
+/* ---- Retint the reused functional panels to match the active skin ---- */
+.solo-game-shell .module-card,
+.solo-game-shell .solo-panel,
+.solo-game-shell .solo-location-card,
+.solo-game-shell .solo-gm-placeholder,
+.solo-game-shell .solo-detail-sheet {
+  background: var(--card, #1a130c);
+  border-color: var(--border, #2e2420);
+  color: var(--text, #e8dcc8);
+}
+.solo-game-shell .solo-tab-panel > .solo-panel,
+.solo-game-shell .solo-tab-panel > .module-card { margin: 22px 40px; }
+.solo-game-shell .solo-location-card { margin: 0; border: none; background: transparent; }
+.solo-game-shell .solo-location-copy { padding: 18px 28px 8px; }
+
+/* =========================================================================
+   Player-facing cleanup — hide developer/debug chrome from the game screen.
+   Everything stays in the DOM (tests + screen readers keep access); it is
+   only visually suppressed for the player.
+   ========================================================================= */
+/* Per-panel "Server actions / Server result / N visible" sub-labels. */
+.solo-game-shell .module-header .small { display: none; }
+/* GM provider/eval/mode debug panel and the "NEUTRAL GM NARRATION" kicker. */
+.solo-game-shell .solo-gm-status-panel { display: none; }
+.solo-game-shell .solo-gm-placeholder > span { display: none; }
+/* The literal "Image asset: …" / "No image assigned yet." text box — the
+   atmospheric scene art stands in as the location image. */
+.solo-game-shell .solo-location-image { display: none; }
+/* Entity type tags (location object / exit / player) and image-status meta. */
+.solo-game-shell .solo-entity-topline .tag { display: none; }
+.solo-game-shell .solo-entity-meta { display: none; }
+
+/* =========================================================================
+   Scene tab — 4-zone layout: [character | scene-center | NPCs | rail].
+   The character sidebar and right rail come from the outer frame; the scene
+   tab itself splits into a flexible centre column and a fixed NPC column.
+   ========================================================================= */
+.solo-scene-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(280px, 22vw, 360px);
+  min-height: 0;
+  height: 100%;
+}
+.solo-scene-center {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border-right: 1px solid var(--border, #2e2420);
+}
+/* Location copy is the flexible middle band; the input bar pins to the bottom. */
+.solo-scene-center .solo-location-card {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: block;
+}
+.solo-scene-center .solo-location-copy h3 {
+  font-family: var(--font-display, Georgia, serif);
+  color: var(--text-bright, #f0e6d4);
+}
+/* Narrative is capped to ~4 lines so it never pushes the input off-screen. */
+.solo-scene-center .solo-location-copy > p,
+.solo-scene-center .solo-gm-narration p {
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.solo-scene-center .solo-scene-input {
+  flex: none;
+  margin-top: auto;
+  border-top: 1px solid var(--border, #2e2420);
+  background: var(--card, #1a130c);
+}
+
+/* NPC column — entities with atmospheric portraits, exits beneath. */
+.solo-scene-npc {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+  background: var(--panel, #171009);
+  background-image: var(--texture, none);
+  background-size: var(--texture-size, auto);
+}
+.solo-scene-npc .module-card {
+  margin: 0;
+  border: none;
+  border-bottom: 1px solid var(--border, #2e2420);
+  border-radius: 0;
+  background: transparent;
+}
+.solo-scene-npc .solo-entity-grid { grid-template-columns: 1fr; }
+.solo-scene-npc .solo-button-grid { grid-template-columns: 1fr; }
+
+/* Atmospheric placeholder portrait at the top of every entity card. */
+.solo-game-shell .solo-entity-card::before {
+  content: "";
+  display: block;
+  height: 84px;
+  margin-bottom: 8px;
+  border-radius: 8px;
+  border: 1px solid var(--border-faint, #221a13);
+  background:
+    radial-gradient(58% 60% at 50% 40%, rgba(200, 146, 42, 0.20), transparent 70%),
+    radial-gradient(130% 95% at 50% 8%, #2a1f14, var(--inset, #120c07) 72%);
+}
+
+/* Right-rail result panels sit flush inside their rail blocks. */
+.solo-game-rail .module-card {
+  margin: 0;
+  border: none;
+  background: transparent;
+  padding: 0;
+}
+
+/* =========================================================================
+   Desktop ( >1080px ): fill the viewport, no vertical scroll on the scene.
+   Each column owns its own overflow so the frame height stays locked to the
+   viewport and the action input is always visible above the fold.
+   ========================================================================= */
+@media (min-width: 1081px) {
+  .solo-game-shell { height: 100vh; overflow: hidden; }
+  .solo-game-frame { height: calc(100vh - 34px); min-height: 0; }
+  .solo-game-main { min-height: 0; }
+  .solo-game-content { min-height: 0; overflow: hidden; }
+  /* Non-scene tabs scroll internally; the scene tab is fixed and self-fits. */
+  .solo-tab-panel { height: 100%; box-sizing: border-box; }
+  .solo-tab-panel[data-solo-tabpanel="scene"] { overflow: hidden; }
+  .solo-tab-panel:not([data-solo-tabpanel="scene"]) { overflow-y: auto; }
+}
+
+/* Ultrawide ( >1600px ): give the centre column more breathing room. */
+@media (min-width: 1600px) {
+  .solo-game-shell { padding-left: clamp(40px, 5vw, 160px); padding-right: clamp(40px, 5vw, 160px); }
+  .solo-settings { right: clamp(40px, 5vw, 160px); }
+  .solo-scene-center .solo-location-copy { padding-left: 48px; padding-right: 48px; }
+}
+
+@media (max-width: 1080px) {
+  .solo-game-frame { flex-direction: column; min-height: 0; }
+  .solo-game-sidebar,
+  .solo-game-rail { width: auto; border: none; border-bottom: 1px solid var(--border, #2e2420); }
+  /* Stack the scene's centre and NPC columns on narrow screens. */
+  .solo-scene-layout { grid-template-columns: 1fr; height: auto; }
+  .solo-scene-center { border-right: none; border-bottom: 1px solid var(--border, #2e2420); }
+  .solo-scene-center .solo-location-copy > p,
+  .solo-scene-center .solo-gm-narration p { -webkit-line-clamp: unset; }
+}
+
+/* =========================================================================
+   Visual-novel dialogue overlay
+   A focused, backdrop-dimmed panel that takes over the lower screen when the
+   player talks to an NPC: gold speaker name, a 180x240 expression portrait
+   (with atmospheric placeholder while the art worker runs), a ~30ms/char
+   typewriter reveal, click-to-skip, and a NEXT button to dismiss.
+   ========================================================================= */
+.solo-vn-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0 0 clamp(18px, 4vh, 56px);
+}
+.solo-vn-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(6, 4, 2, 0.62);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  cursor: pointer;
+  animation: solo-vn-dim 200ms ease-out;
+}
+.solo-vn-panel {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  gap: 20px;
+  width: min(880px, 94vw);
+  padding: 18px 22px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, var(--card, #1a130c), var(--panel, #171009));
+  border: 1px solid var(--accent-border, #4a3a1e);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+  cursor: pointer;
+  animation: solo-vn-rise 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.solo-vn-portrait {
+  position: relative;
+  width: 180px;
+  height: 240px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--inset, #120c07);
+  border: 1px solid var(--border, #2e2420);
+  /* Crossfade whenever a fresh portrait element is rendered (expression change). */
+  animation: solo-vn-fade 200ms ease-out;
+}
+.solo-vn-portrait-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.solo-vn-portrait-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: radial-gradient(120% 80% at 50% 0, rgba(200, 146, 42, 0.16), transparent 60%), var(--inset, #120c07);
+  color: var(--text-faint, #6e6150);
+}
+.solo-vn-portrait-placeholder span {
+  font-family: var(--font-display, Georgia, serif);
+  font-size: 54px;
+  line-height: 1;
+  color: var(--accent, #c8922a);
+  opacity: 0.7;
+}
+.solo-vn-portrait-placeholder small {
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.solo-vn-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.solo-vn-speaker {
+  font-family: var(--font-display, Georgia, serif);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--accent-2, #e0b352);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.5);
+  margin-bottom: 10px;
+}
+.solo-vn-text {
+  flex: 1;
+  min-height: 96px;
+  font-size: 16px;
+  line-height: 1.55;
+  color: var(--text, #e8dcc8);
+  white-space: pre-wrap;
+}
+/* Blinking caret while the line is still being revealed. */
+.solo-vn-text:not(.is-complete)::after {
+  content: "▍";
+  margin-left: 1px;
+  color: var(--accent, #c8922a);
+  animation: solo-vn-caret 900ms step-end infinite;
+}
+.solo-vn-controls {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+.solo-vn-next {
+  cursor: pointer;
+  padding: 8px 20px;
+  border-radius: 9px;
+  font-family: var(--font-display, Georgia, serif);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  background: linear-gradient(180deg, var(--accent-grad-a, #d29b32), var(--accent-grad-b, #bd8420));
+  border: 1px solid var(--accent-2, #e0b352);
+  color: var(--on-accent, #1c1308);
+}
+.solo-vn-next:hover {
+  filter: brightness(1.06);
+}
+@keyframes solo-vn-dim {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes solo-vn-rise {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes solo-vn-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes solo-vn-caret {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+/* Mobile: the dialogue takes the full screen, portrait stacked above the text. */
+@media (max-width: 640px) {
+  .solo-vn-overlay {
+    padding: 0;
+    align-items: stretch;
+  }
+  .solo-vn-panel {
+    grid-template-columns: 1fr;
+    gap: 14px;
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    border-radius: 0;
+    align-content: start;
+    overflow-y: auto;
+  }
+  .solo-vn-portrait {
+    width: 100%;
+    height: 40vh;
+  }
+}
+
+/* Respect reduced-motion: drop the overlay animations. */
+@media (prefers-reduced-motion: reduce) {
+  .solo-vn-backdrop,
+  .solo-vn-panel,
+  .solo-vn-portrait { animation: none; }
+  .solo-vn-text:not(.is-complete)::after { animation: none; }
 }

@@ -3,10 +3,71 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { applyOperation, createSoloRun, getSoloRun, saveSoloRun } from "../db/repository.js";
 import { ensureCampaignMemoryDocsAsync, rebuildCampaignIndex } from "../gm/memoryStore.js";
+import { generateNpcIdentity } from "../solo/npcIdentity.js";
+import { writeNpcMemoryDoc } from "../solo/npcMemory.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const onboardingSeedDir = path.join(__dirname, "onboarding-seeds");
+
+// Starting-area NPC roles for the onboarding tavern. These are roles, not named
+// characters — name/appearance/personality are generated per run (see
+// generateNpcIdentity). The display name stays the role as a placeholder until
+// identity is minted, then becomes the generated name.
+const STARTING_NPCS = [
+  {
+    npcId: "tavern_keeper",
+    role: "Tavern Keeper",
+    known: true,
+    tags: ["tavern-keeper", "quest-giver"],
+    dialogueBeats: (characterName) => [
+      {
+        beatId: "tavern_keeper_greeting",
+        label: "Greet the Tavern Keeper",
+        text: `The tavern keeper sets down a clean glass. "You're soaked through, ${characterName}. Sit by the fire. You look like someone who's heard the rumors about the missing shipment — and someone who might be fool enough to ask about them."`,
+        revealed: false,
+        repeatable: true,
+        contentTags: [],
+        linkedMemoryFactIds: [],
+        linkedQuestIds: [],
+        edition: "mainline",
+        policyProfileId: "mainline_default"
+      }
+    ]
+  },
+  {
+    npcId: "mercenary",
+    role: "Mercenary",
+    known: false,
+    tags: ["mercenary"],
+    dialogueBeats: () => []
+  },
+  {
+    npcId: "whisperer",
+    role: "Whisperer",
+    known: false,
+    tags: ["mysterious", "quest-hook"],
+    dialogueBeats: () => []
+  }
+];
+
+function buildStartingNpc(config, characterName) {
+  return {
+    npcId: config.npcId,
+    displayName: config.role,
+    role: config.role,
+    currentLocationId: "start_location",
+    known: config.known === true,
+    status: "present",
+    memoryFactIds: [],
+    tags: config.tags || [],
+    flags: {},
+    edition: "mainline",
+    policyProfileId: "mainline_default",
+    contentTags: [],
+    dialogueBeats: config.dialogueBeats(characterName)
+  };
+}
 
 function memoryRoot() {
   return process.env.NOTDND_MEMORY_ROOT
@@ -156,41 +217,47 @@ export async function createOnboardingCampaign(userId, characterInfo = {}) {
 
   const createdRun = createSoloRun({ userId: actorUserId });
   const run = getSoloRun(createdRun.runId);
+  // Link the run to its campaign so NPC state can be bridged into the campaign
+  // memory graph the GM reads (and resolved later on first-encounter writes).
+  run.campaignId = campaignId;
   const startLocation = run.locations.start_location;
   startLocation.name = "The Shattered Flagon";
   startLocation.description =
-    "A rain-soaked tavern in Ashenmoor. Lamp oil, wet wool, and iron-rich blood. Mira watches the door from behind the bar.";
+    "A rain-soaked tavern in Ashenmoor. Lamp oil, wet wool, and iron-rich blood. The keeper watches the door from behind the bar.";
   startLocation.tags = Array.from(new Set([...(startLocation.tags || []), "ashenmoor", "tavern"]));
 
   run.npcs = run.npcs || {};
-  run.npcs.mira = {
-    npcId: "mira",
-    displayName: "Mira",
-    role: "Tavern Keeper",
-    currentLocationId: "start_location",
-    known: true,
-    status: "present",
-    memoryFactIds: [],
-    tags: ["tavern-keeper", "quest-giver"],
-    flags: {},
-    edition: "mainline",
-    policyProfileId: "mainline_default",
-    contentTags: [],
-    dialogueBeats: [
-      {
-        beatId: "mira_greeting",
-        label: "Greet Mira",
-        text: `Mira sets down a clean glass. "You're soaked through, ${characterName}. Sit by the fire. You look like someone who's heard the rumors about the missing shipment — and someone who might be fool enough to ask about them."`,
-        revealed: false,
-        repeatable: true,
-        contentTags: [],
-        linkedMemoryFactIds: [],
-        linkedQuestIds: [],
-        edition: "mainline",
-        policyProfileId: "mainline_default"
-      }
-    ]
-  };
+  // Mint a procedural identity for each starting-area NPC upfront, before the
+  // player enters the world, and write it onto the entity. generateNpcIdentity
+  // is deterministic per (worldSeed, npcIndex) and never blocks gameplay here —
+  // onboarding is a one-time setup path, not a hot scene request.
+  let npcIndex = 0;
+  for (const config of STARTING_NPCS) {
+    const npc = buildStartingNpc(config, characterName);
+    npc.origin = "procedural";
+    // eslint-disable-next-line no-await-in-loop
+    const identity = await generateNpcIdentity({
+      role: npc.role,
+      worldSeed: run.worldSeed,
+      npcIndex
+    });
+    npc.generatedName = identity.generatedName;
+    npc.appearance = identity.appearance;
+    npc.personality = identity.personality;
+    npc.portraitPrompt = identity.portraitPrompt;
+    npc.identitySeed = identity.identitySeed;
+    npc.displayName = identity.generatedName;
+    // Bridge the NPC into the campaign memory graph (synchronous write).
+    const docId = writeNpcMemoryDoc(campaignId, npc);
+    if (docId) {
+      npc.memoryDocId = docId;
+    }
+    run.npcs[npc.npcId] = npc;
+    npcIndex += 1;
+  }
+
+  // Refresh the memory index so the GM sees the freshly-written NPC docs.
+  await rebuildCampaignIndex(campaignId);
 
   const savedRun = saveSoloRun(run);
 

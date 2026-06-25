@@ -30,6 +30,26 @@ const CONTENT_RATING_VALUES = new Set(CONTENT_RATINGS);
 const DISTRIBUTION_CHANNEL_VALUES = new Set(DISTRIBUTION_CHANNELS);
 const IMAGE_TARGET_TYPES = new Set(["location", "npc", "item", "playerAsset", "scene"]);
 const IMAGE_STATUSES = new Set(["placeholder", "queued", "generated", "failed"]);
+// Ordered set of NPC facial-expression variants. Each maps to its own image
+// asset; the lookup table lives on npc.expressionVariants (all null by default).
+export const NPC_EXPRESSIONS = ["neutral", "warm", "suspicious", "fearful", "surprised", "angry"];
+const NPC_EXPRESSION_SET = new Set(NPC_EXPRESSIONS);
+// How an NPC's identity came to be: fully AI-generated, fully user-defined, or
+// user-seeded with AI filling the gaps.
+export const NPC_ORIGINS = ["procedural", "user", "hybrid"];
+const NPC_ORIGIN_SET = new Set(NPC_ORIGINS);
+
+/**
+ * Builds an all-null expression-variant lookup table.
+ * @returns {Record<string, string | null>}
+ */
+export function createEmptyExpressionVariants() {
+  const variants = {};
+  for (const expression of NPC_EXPRESSIONS) {
+    variants[expression] = null;
+  }
+  return variants;
+}
 const PLAYER_ASSET_TYPES = new Set(["base", "fortress", "lab", "room", "structure", "other"]);
 const QUEST_STATUSES = new Set(["inactive", "active", "completed", "failed"]);
 const ITEM_EFFECT_TYPES = new Set(["message", "recover_resource", "reveal_note"]);
@@ -504,6 +524,27 @@ export function validateLocationGraph(locations, options = {}) {
   return result(errors);
 }
 
+// Optional. When present, expressionVariants must be an object whose keys are
+// known expression names and whose values are an image asset id or null.
+function validateExpressionVariants(value, path, errors) {
+  if (value === undefined || value === null) {
+    return;
+  }
+  if (!isPlainObject(value)) {
+    push(errors, path, "Expected object");
+    return;
+  }
+  for (const [key, assetId] of Object.entries(value)) {
+    if (!NPC_EXPRESSION_SET.has(key)) {
+      push(errors, `${path}.${key}`, "Unknown expression variant");
+      continue;
+    }
+    if (assetId !== null && !isString(assetId)) {
+      push(errors, `${path}.${key}`, "Expected image asset id string or null");
+    }
+  }
+}
+
 export function validateNpc(npc) {
   const errors = [];
   if (!isPlainObject(npc)) {
@@ -519,6 +560,19 @@ export function validateNpc(npc) {
   validateRequiredString(npc.status, "status", errors);
   validateStringArray(npc.memoryFactIds, "memoryFactIds", errors);
   validateOptionalString(npc.imageAssetId, "imageAssetId", errors);
+  validateExpressionVariants(npc.expressionVariants, "expressionVariants", errors);
+  // Procedural identity (all nullable — existing NPCs without these stay valid).
+  validateOptionalString(npc.generatedName, "generatedName", errors);
+  validateOptionalString(npc.appearance, "appearance", errors);
+  validateOptionalString(npc.personality, "personality", errors);
+  validateOptionalString(npc.portraitPrompt, "portraitPrompt", errors);
+  validateOptionalNumber(npc.identitySeed, "identitySeed", errors);
+  // Origin + memory-graph bridge (all nullable — existing NPCs stay valid).
+  if (npc.origin !== undefined && npc.origin !== null) {
+    validateEnum(npc.origin, NPC_ORIGIN_SET, "origin", errors);
+  }
+  validateOptionalString(npc.introInstructions, "introInstructions", errors);
+  validateOptionalString(npc.memoryDocId, "memoryDocId", errors);
   validateStringArray(npc.tags, "tags", errors);
   validateObject(npc.flags, "flags", errors);
   validateContentMetadata(npc, errors);
@@ -1072,8 +1126,8 @@ export function createDefaultSoloRun(options = {}) {
       field_ration: {
         itemId: "field_ration",
         templateId: "placeholder_field_ration",
-        name: "Mira's Trail Loaf",
-        description: "Hardtack and salted root wrapped in oilcloth, pressed into your hand by Mira before you left the Shattered Flagon.",
+        name: "Trail Loaf",
+        description: "Hardtack and salted root wrapped in oilcloth, pressed into your hand by the tavern keeper before you left the Shattered Flagon.",
         quantity: 1,
         usable: true,
         consumable: true,

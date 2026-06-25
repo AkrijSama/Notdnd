@@ -7,9 +7,9 @@ relations:
     type: controls
   - target: "The Missing Shipment"
     type: obstructing
-  - target: "Mira"
+  - target: "The Tavern Keeper"
     type: pressures
-  - target: "Drek"
+  - target: "The Mercenary"
     type: used_as_contract_blade
 lastAccessed: 2026-01-01T00:00:00Z
 lastUpdated: 2026-01-01T00:00:00Z
