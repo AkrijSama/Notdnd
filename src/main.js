@@ -6,6 +6,7 @@ import { renderCommandCenter, bindCommandCenter } from "./components/commandCent
 import { renderCompendium, bindCompendium } from "./components/compendium.js";
 import { renderHomebrewStudio, bindHomebrewStudio } from "./components/homebrewStudio.js";
 import { renderOnboardingFlow, bindOnboardingFlow } from "./components/onboardingFlow.js";
+import { ABILITIES, pointBuyCost, rollAbilityScores } from "../server/solo/dndData.js";
 import { renderSidebar } from "./components/sidebar.js";
 import { mountSoloSceneShell } from "./components/soloSceneShell.js";
 import { renderTopbar } from "./components/topbar.js";
@@ -259,8 +260,128 @@ async function regenerateWorldField(field) {
   }
 }
 
+function defaultCharacterState() {
+  return {
+    step: 1,
+    name: "",
+    pronouns: "",
+    portraitMode: "generate",
+    race: "",
+    characterClass: "",
+    background: "",
+    abilityMethod: "standard_array",
+    baseAbilityScores: { strength: 15, dexterity: 14, constitution: 13, intelligence: 12, wisdom: 10, charisma: 8 },
+    rolledScores: [],
+    chosenSkills: []
+  };
+}
+
 function confirmWorld() {
-  patchOnboarding({ step: "character", error: "" });
+  patchOnboarding({ step: "character", error: "", character: defaultCharacterState() });
+}
+
+// ---- Character creation wizard handlers (Ticket 38) ----
+function charStep(delta) {
+  const c = uiState.onboarding.character || defaultCharacterState();
+  uiState.onboarding.character = { ...c, step: Math.max(1, Math.min(6, (c.step || 1) + delta)) };
+  scheduleRender();
+}
+function charField(field, value) {
+  uiState.onboarding.character = { ...(uiState.onboarding.character || defaultCharacterState()), [field]: value };
+  scheduleRender();
+}
+function charInput(field, value) {
+  // text fields: update state without re-render so the caret is preserved
+  uiState.onboarding.character = { ...(uiState.onboarding.character || defaultCharacterState()), [field]: value };
+}
+function charMethod(method) {
+  const c = uiState.onboarding.character || defaultCharacterState();
+  let baseAbilityScores = c.baseAbilityScores || {};
+  let rolledScores = c.rolledScores || [];
+  if (method === "standard_array") {
+    baseAbilityScores = { strength: 15, dexterity: 14, constitution: 13, intelligence: 12, wisdom: 10, charisma: 8 };
+  } else if (method === "point_buy") {
+    baseAbilityScores = { strength: 8, dexterity: 8, constitution: 8, intelligence: 8, wisdom: 8, charisma: 8 };
+  } else if (method === "roll") {
+    baseAbilityScores = {};
+    rolledScores = [];
+  }
+  uiState.onboarding.character = { ...c, abilityMethod: method, baseAbilityScores, rolledScores };
+  scheduleRender();
+}
+function charAssign(ability, valueStr) {
+  const c = uiState.onboarding.character || defaultCharacterState();
+  const scores = { ...(c.baseAbilityScores || {}) };
+  const value = valueStr === "" ? undefined : Number(valueStr);
+  if (value != null) {
+    // swap: if another ability already holds this value, give it our old one
+    const other = ABILITIES.find((a) => a !== ability && scores[a] === value);
+    if (other) {
+      scores[other] = scores[ability];
+    }
+  }
+  scores[ability] = value;
+  uiState.onboarding.character = { ...c, baseAbilityScores: scores };
+  scheduleRender();
+}
+function charPointBuy(spec) {
+  const [ability, dir] = String(spec || "").split(":");
+  if (!ABILITIES.includes(ability)) {
+    return;
+  }
+  const c = uiState.onboarding.character || defaultCharacterState();
+  const scores = { ...(c.baseAbilityScores || {}) };
+  let value = scores[ability] ?? 8;
+  if (dir === "inc" && value < 15) {
+    value += 1;
+  } else if (dir === "dec" && value > 8) {
+    value -= 1;
+  } else {
+    return;
+  }
+  const candidate = { ...scores, [ability]: value };
+  const used = ABILITIES.reduce((sum, a) => sum + (pointBuyCost(candidate[a] ?? 8) ?? 0), 0);
+  if (used > 27) {
+    return; // over budget; reject
+  }
+  uiState.onboarding.character = { ...c, baseAbilityScores: candidate };
+  scheduleRender();
+}
+function charRoll() {
+  const c = uiState.onboarding.character || defaultCharacterState();
+  const rolled = rollAbilityScores();
+  const baseAbilityScores = {};
+  ABILITIES.forEach((a, i) => {
+    baseAbilityScores[a] = rolled[i];
+  });
+  uiState.onboarding.character = { ...c, rolledScores: rolled, baseAbilityScores };
+  scheduleRender();
+}
+
+async function enterWorld() {
+  const c = uiState.onboarding.character || defaultCharacterState();
+  patchOnboarding({ loading: true, error: "" });
+  try {
+    const response = await store.createWorldRun({
+      world: uiState.onboarding.worldPreview || uiState.onboarding.worldDef || {},
+      character: {
+        name: c.name,
+        pronouns: c.pronouns,
+        race: c.race,
+        characterClass: c.characterClass,
+        background: c.background,
+        baseAbilityScores: c.baseAbilityScores,
+        chosenSkills: c.chosenSkills
+      }
+    });
+    if (response?.runId) {
+      window.location.search = `?soloRunId=${encodeURIComponent(response.runId)}`;
+      return;
+    }
+    patchOnboarding({ loading: false, error: "World creation returned no run." });
+  } catch (error) {
+    patchOnboarding({ loading: false, error: String(error?.message || error || "Failed to enter the world.") });
+  }
 }
 
 // Character submit -> create the run from the confirmed world + character, then
@@ -655,6 +776,14 @@ function renderApp() {
         onRegenerateWorld: regenerateWorld,
         onRegenerateField: regenerateWorldField,
         onConfirmWorld: confirmWorld,
+        onCharStep: charStep,
+        onCharField: charField,
+        onCharInput: charInput,
+        onCharMethod: charMethod,
+        onCharAssign: charAssign,
+        onCharPointBuy: charPointBuy,
+        onCharRoll: charRoll,
+        onCharEnter: enterWorld,
         onFieldChange(field, value) {
           uiState.onboarding[field] = value;
         }

@@ -2146,3 +2146,46 @@ button:disabled {
   color: var(--ink, #ece1c7); border-radius: 8px; padding: 5px 12px; font-size: 13px;
 }
 .solo-exit:hover { background: var(--surface-strong, #271e16); border-color: var(--accent, #c89a4b); }
+
+/* ---- Character creation wizard (Ticket 38) ---- */
+.cw-progress { display: flex; flex-wrap: wrap; gap: 6px; }
+.cw-step { font-size: 12px; padding: 5px 10px; border-radius: 999px; border: 1px solid var(--line, #3d2f22); color: var(--muted, #95897a); }
+.cw-step.active { background: var(--accent, #c89a4b); color: #1a1208; border-color: var(--accent, #c89a4b); }
+.cw-step.done { color: var(--ink, #ece1c7); border-color: var(--line-strong, #503f2e); }
+.cw-body { display: flex; flex-direction: column; gap: 14px; }
+.onb-hint { font-size: 12px; opacity: 0.6; }
+.cw-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+.cw-card {
+  appearance: none; cursor: pointer; text-align: left; display: flex; flex-direction: column; gap: 4px;
+  padding: 12px; border-radius: 12px; border: 2px solid var(--line, #3d2f22);
+  background: var(--surface, #1c1610); color: var(--ink, #ece1c7);
+}
+.cw-card.active { border-color: var(--accent, #c89a4b); }
+.cw-card-title { font-weight: 700; font-family: "Sora", sans-serif; }
+.cw-card-meta { font-size: 12px; color: var(--accent, #c89a4b); }
+.cw-card-sub { font-size: 12px; opacity: 0.8; }
+.cw-card-traits { font-size: 11px; opacity: 0.6; }
+.cw-abilities { display: flex; flex-direction: column; gap: 8px; }
+.cw-ability-row { display: flex; align-items: center; gap: 10px; }
+.cw-ab { width: 42px; font-weight: 700; }
+.cw-ab-val { min-width: 24px; text-align: center; }
+.cw-step-btn { padding: 2px 10px; border-radius: 8px; }
+.cw-mod { opacity: 0.7; font-size: 13px; }
+.cw-remaining, .cw-pool { font-size: 13px; opacity: 0.85; }
+.cw-derived { display: flex; flex-wrap: wrap; gap: 14px; padding: 10px 12px; border-radius: 10px; background: var(--surface, #1c1610); border: 1px solid var(--line, #3d2f22); }
+.cw-derived span b { color: var(--accent, #c89a4b); margin-right: 4px; }
+.cw-nav { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.cw-review { display: flex; flex-direction: column; gap: 12px; }
+.cw-review-head { display: flex; align-items: center; gap: 12px; }
+.cw-portrait-ph { width: 56px; height: 56px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: 700; background: var(--input-bg, #100c08); border: 1px solid var(--line-strong, #503f2e); }
+.cw-review-name { font-size: 20px; font-family: "Sora", sans-serif; }
+.cw-review-sub { font-size: 13px; opacity: 0.8; }
+.cw-ability-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
+.cw-ab-cell { text-align: center; padding: 8px 4px; border-radius: 10px; background: var(--surface, #1c1610); border: 1px solid var(--line, #3d2f22); }
+.cw-ab-key { font-size: 11px; opacity: 0.7; }
+.cw-ab-score { font-size: 20px; font-weight: 700; }
+.cw-ab-mod { font-size: 12px; color: var(--accent, #c89a4b); }
+.cw-review-block { display: flex; flex-direction: column; gap: 4px; }
+.cw-review-row { display: flex; flex-wrap: wrap; gap: 8px; font-size: 13px; }
+.cw-review-row .prof { color: var(--accent, #c89a4b); font-weight: 600; }
+@media (max-width: 640px) { .cw-ability-grid { grid-template-columns: repeat(3, 1fr); } }
