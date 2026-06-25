@@ -64,6 +64,26 @@ test("scene payload exposes the full cast roster with resolved portrait URIs", (
   assert.equal(vex.portraitUri, "/data/assets/run_cast/vex/base.png");
 });
 
+test("scene payload includes the player's character projection", () => {
+  initializeDatabase();
+  resetDatabase();
+  createSoloRun({ userId: "u", runId: "run_player", now: "2026-01-01T00:00:00.000Z" });
+  const run = getSoloRun("run_player");
+  run.player.displayName = "Nyx";
+  run.player.className = "disgraced knight";
+  saveSoloRun(run);
+
+  const payload = buildSoloScenePayload(getSoloRun("run_player"));
+  assert.notEqual(payload.ok, false);
+  assert.ok(payload.player);
+  assert.equal(payload.player.displayName, "Nyx");
+  assert.equal(payload.player.className, "disgraced knight");
+  assert.equal(payload.player.level, 1);
+  assert.deepEqual(payload.player.hitPoints, { current: 10, max: 10 });
+  assert.equal(payload.player.armorClass, null); // not tracked on run.player
+  assert.equal(payload.player.abilities.strength, 10);
+});
+
 test("cast portraitUri is null until the base asset is generated", () => {
   initializeDatabase();
   resetDatabase();

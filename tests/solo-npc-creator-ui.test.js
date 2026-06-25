@@ -1,11 +1,52 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  characterFromScenePlayer,
   renderNpcCreatorModal,
   renderSoloDialogueOverlay,
   renderSoloRightRail,
   renderSoloSceneInputBar
 } from "../src/components/soloSceneShell.js";
+
+test("characterFromScenePlayer maps run.player into the sidebar shape", () => {
+  const c = characterFromScenePlayer({
+    displayName: "Nyx",
+    className: "Knight",
+    level: 2,
+    hitPoints: { current: 7, max: 12 },
+    armorClass: null,
+    speed: null,
+    abilities: { strength: 14, dexterity: 12, constitution: 10, intelligence: 8, wisdom: 13, charisma: 10 },
+    skills: { perception: 3 }
+  });
+  assert.equal(c.name, "Nyx");
+  assert.equal(c.className, "Knight");
+  assert.equal(c.level, 2);
+  assert.deepEqual(c.hitPoints, { current: 7, max: 12 });
+  assert.equal(c.armorClass, 10); // null -> sensible default
+  assert.equal(c.speed, 30);
+  const str = c.abilities.find((a) => a.key === "STR");
+  assert.equal(str.score, 14);
+  assert.equal(str.mod, "+2");
+  const int = c.abilities.find((a) => a.key === "INT");
+  assert.equal(int.mod, "-1"); // floor((8-10)/2)
+  assert.equal(c.passivePerception, 11); // 10 + WIS(13)->+1
+  assert.equal(c.initiative, "+1"); // DEX(12)->+1
+  assert.ok(c.skills.some((s) => s.name === "Perception" && s.mod === "+3"));
+  assert.equal(characterFromScenePlayer(null), null);
+});
+
+test("right rail Recent Rolls uses real attempt history (or shows empty state)", () => {
+  const withRolls = renderSoloRightRail({
+    scene: { attemptHistory: [{ intent: "pick the lock", success: true, checkResult: { total: 17, dc: 14, success: true } }] }
+  });
+  assert.match(withRolls, /pick the lock/);
+  assert.match(withRolls, /vs DC 14/);
+  assert.match(withRolls, /17/);
+
+  const noRolls = renderSoloRightRail({ scene: {} });
+  assert.match(noRolls, /No rolls yet/);
+});
 
 const dialogueState = (talkOverrides, cast = []) => ({
   dialogueActive: true,

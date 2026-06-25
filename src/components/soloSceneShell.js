@@ -944,6 +944,65 @@ const SOLO_SAMPLE_CHARACTER = {
   proficiencies: "Light armor · Simple & martial weapons · Arcane focus · Thieves' cant of the Ashen roads"
 };
 
+function abilityModifier(score) {
+  const n = Number(score);
+  return Number.isFinite(n) ? Math.floor((n - 10) / 2) : 0;
+}
+
+function formatMod(mod) {
+  return `${mod >= 0 ? "+" : ""}${mod}`;
+}
+
+// Maps the server scene.player projection into the character sidebar/sheet shape
+// (SOLO_SAMPLE_CHARACTER). AC/speed aren't tracked on run.player, so the payload
+// sends null and we default here. Returns null when no player is present.
+export function characterFromScenePlayer(player) {
+  if (!player || typeof player !== "object") {
+    return null;
+  }
+  const ab = player.abilities && typeof player.abilities === "object" ? player.abilities : {};
+  const ABILITY_ORDER = [
+    ["STR", "strength"],
+    ["DEX", "dexterity"],
+    ["CON", "constitution"],
+    ["INT", "intelligence"],
+    ["WIS", "wisdom"],
+    ["CHA", "charisma"]
+  ];
+  const abilities = ABILITY_ORDER.map(([key, full]) => {
+    const score = Number.isFinite(Number(ab[full])) ? Number(ab[full]) : 10;
+    return { key, score, mod: formatMod(abilityModifier(score)) };
+  });
+  const dexMod = abilityModifier(Number(ab.dexterity) || 10);
+  const wisMod = abilityModifier(Number(ab.wisdom) || 10);
+  const hp = player.hitPoints && typeof player.hitPoints === "object" ? player.hitPoints : { current: 0, max: 0 };
+  const skillsObj = player.skills && typeof player.skills === "object" ? player.skills : {};
+  const skills = Object.entries(skillsObj).map(([name, value]) => ({
+    name: name.charAt(0).toUpperCase() + name.slice(1),
+    mod: formatMod(Number(value) || 0)
+  }));
+  const saves = ABILITY_ORDER.map(([, full]) => ({
+    name: full.charAt(0).toUpperCase() + full.slice(1),
+    mod: formatMod(abilityModifier(Number(ab[full]) || 10))
+  }));
+  return {
+    name: player.displayName || "Adventurer",
+    className: player.className || "Adventurer",
+    level: typeof player.level === "number" && Number.isFinite(player.level) ? player.level : 1,
+    hitPoints: { current: hp.current ?? 0, max: hp.max ?? 0 },
+    armorClass: typeof player.armorClass === "number" && Number.isFinite(player.armorClass) ? player.armorClass : 10,
+    speed: typeof player.speed === "number" && Number.isFinite(player.speed) ? player.speed : 30,
+    abilities,
+    passivePerception: 10 + wisMod,
+    initiative: formatMod(dexMod),
+    proficiency: "+2",
+    region: "Ashenmoor",
+    saves,
+    skills,
+    proficiencies: "—"
+  };
+}
+
 export function renderSoloThemeSwitcher(skin = "ashen", fontSet = "tome") {
   const activeSkin = normalizeSkin(skin);
   const activeFont = normalizeFontSet(fontSet);
@@ -1178,12 +1237,30 @@ export function renderSoloRightRail(state = {}) {
         })
         .join("")
     : `<div class="solo-empty-state">No one is here yet. Use “Bring someone in” to add a character.</div>`;
+
+  const rollEntries = (Array.isArray(scene.attemptHistory) ? scene.attemptHistory : [])
+    .filter((entry) => entry && entry.checkResult)
+    .slice(-3)
+    .reverse();
+  const recentRolls = rollEntries.length
+    ? rollEntries
+        .map((entry) => {
+          const cr = entry.checkResult || {};
+          const intent = String(entry.intent || "Check");
+          const label = intent.length > 26 ? `${intent.slice(0, 26)}…` : intent;
+          const total = cr.total ?? "—";
+          const dc = cr.dc ?? "—";
+          const cls = cr.success ? "good" : "accent";
+          return `<div class="solo-roll"><div><div class="solo-roll-name">${escapeHtml(label)}</div><div class="solo-roll-detail">vs DC ${escapeHtml(dc)}</div></div><span class="solo-roll-total ${cls}">${escapeHtml(total)}</span></div>`;
+        })
+        .join("")
+    : `<div class="solo-empty-state">No rolls yet.</div>`;
+
   return `
     <aside class="solo-game-rail solo-scene-side">
       <div class="solo-rail-block">
         <div class="solo-stat-kicker">Recent Rolls</div>
-        <div class="solo-roll"><div><div class="solo-roll-name">Perception (WIS)</div><div class="solo-roll-detail">d20 14 +1</div></div><span class="solo-roll-total good">15</span></div>
-        <div class="solo-roll"><div><div class="solo-roll-name">Initiative</div><div class="solo-roll-detail">d20 8 +1</div></div><span class="solo-roll-total accent">9</span></div>
+        ${recentRolls}
       </div>
       <div class="solo-rail-block">
         <div class="solo-stat-kicker">Cast</div>
@@ -1696,6 +1773,7 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     loading: true,
     error: "",
     scene: null,
+    character: null,
     detail: null,
     searchResult: null,
     talkResult: null,
@@ -1902,6 +1980,11 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     render();
     try {
       state.scene = await fetchSoloScene(apiClient, runId);
+      if (state.scene && state.scene.player) {
+        // Surface the player's real character (falls back to the sample only
+        // when the payload genuinely lacks a player).
+        state.character = characterFromScenePlayer(state.scene.player);
+      }
       try {
         const gmScene = await fetchSoloGmScene(apiClient, runId, { mode: state.gmMode });
         if (gmScene?.gmNarration) {

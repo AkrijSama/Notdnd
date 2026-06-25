@@ -220,6 +220,11 @@ export async function createOnboardingCampaign(userId, characterInfo = {}) {
   // Link the run to its campaign so NPC state can be bridged into the campaign
   // memory graph the GM reads (and resolved later on first-encounter writes).
   run.campaignId = campaignId;
+  // Personalize the run's player with the created character (createSoloRun
+  // defaults displayName to "Player" and has no class). className is an extra
+  // field the validator tolerates; the sidebar reads both.
+  run.player.displayName = characterName;
+  run.player.className = archetype;
   const startLocation = run.locations.start_location;
   startLocation.name = "The Shattered Flagon";
   startLocation.description =

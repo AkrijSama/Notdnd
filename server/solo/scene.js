@@ -260,6 +260,13 @@ export function validateSoloScenePayload(payload) {
   } else {
     payload.visibleEntities.forEach((entity, index) => appendNestedErrors(errors, `visibleEntities.${index}`, validateVisibleEntity(entity)));
   }
+  if (payload.player !== undefined) {
+    if (!isPlainObject(payload.player)) {
+      push(errors, "player", "Expected object");
+    } else if (!isString(payload.player.displayName)) {
+      push(errors, "player.displayName", "Expected non-empty string");
+    }
+  }
   if (payload.cast !== undefined) {
     if (!Array.isArray(payload.cast)) {
       push(errors, "cast", "Expected array");
@@ -546,6 +553,28 @@ export function buildCastRoster(run, policyProfile) {
     });
 }
 
+// Pure. Projects run.player into the fields the character sidebar needs.
+// run.player tracks HP via resources.hitPoints and the six D&D abilities; it
+// does not track AC/speed, so those come back null and the client defaults them.
+export function buildPlayerPayload(run) {
+  const player = isPlainObject(run?.player) ? run.player : {};
+  const hp = isPlainObject(player.resources?.hitPoints) ? player.resources.hitPoints : null;
+  return {
+    displayName: isString(player.displayName) ? player.displayName : "Adventurer",
+    className: isString(player.className) ? player.className : "Adventurer",
+    level: typeof player.level === "number" ? player.level : 1,
+    hitPoints: {
+      current: hp && typeof hp.current === "number" ? hp.current : (typeof player.health === "number" ? player.health : 0),
+      max: hp && typeof hp.max === "number" ? hp.max : (typeof player.maxHealth === "number" ? player.maxHealth : 0)
+    },
+    armorClass: typeof player.ac === "number" ? player.ac : null,
+    speed: typeof player.speed === "number" ? player.speed : null,
+    abilities: isPlainObject(player.abilities) ? { ...player.abilities } : {},
+    stats: isPlainObject(player.stats) ? { ...player.stats } : {},
+    skills: isPlainObject(player.skills) ? { ...player.skills } : {}
+  };
+}
+
 export function buildSoloScenePayload(run, options = {}) {
   const runValidation = validateSoloRun(run);
   if (!runValidation.ok) {
@@ -590,6 +619,7 @@ export function buildSoloScenePayload(run, options = {}) {
     policyProfileId: run.policyProfileId,
     location: locationPayload(currentLocation),
     rest: restPayload(currentLocation, policyProfile),
+    player: buildPlayerPayload(run),
     visibleEntities,
     cast: buildCastRoster(run, policyProfile),
     availableMoves: getAvailableMoves(run).filter((move) => {

@@ -523,6 +523,60 @@ function makeSceneImageEnqueuer(run) {
   };
 }
 
+// Real GM narration for the solo Attempt loop. The solo UI is HTTP-only (no
+// WebSocket), so narration is delivered in the action response via a *bounded*
+// await: if the free GM model answers within the budget it replaces the canned
+// template; on timeout/error/missing campaign it falls back to the template so
+// the action is never blocked beyond the budget. The mechanical result is
+// already committed (saveSoloRun) before this runs.
+const GM_ACTION_TIMEOUT_MS = Number(process.env.NOTDND_GM_ACTION_TIMEOUT_MS || 12000);
+
+function withGmTimeout(promise, ms) {
+  let timer = null;
+  const timeout = new Promise((resolve) => {
+    timer = setTimeout(() => resolve(null), ms);
+  });
+  return Promise.race([
+    Promise.resolve(promise).then(
+      (value) => {
+        if (timer) clearTimeout(timer);
+        return value;
+      },
+      () => {
+        if (timer) clearTimeout(timer);
+        return null;
+      }
+    ),
+    timeout
+  ]);
+}
+
+async function narrateAttemptWithGm(run, attemptResult, user) {
+  if (!run?.campaignId || !attemptResult) {
+    return null;
+  }
+  const cr = attemptResult.checkResult;
+  const rollText =
+    cr && cr.total !== undefined && cr.total !== null ? ` (rolled ${cr.total} vs DC ${cr.dc})` : "";
+  const message =
+    `In the current scene, the player attempts: "${String(attemptResult.intent || "an action")}". ` +
+    `The attempt ${attemptResult.success ? "succeeds" : "fails"}${rollText}. ` +
+    "Narrate the immediate outcome in 2-4 vivid sentences of second-person dark-fantasy prose. " +
+    "Do not restate dice or mechanics, and do not use bracketed trigger tags.";
+  const result = await withGmTimeout(
+    runGmPipeline({
+      campaignId: run.campaignId,
+      message,
+      mode: "companion",
+      playerName: run.player?.displayName || "the wanderer",
+      actorUserId: user?.id
+    }),
+    GM_ACTION_TIMEOUT_MS
+  );
+  const narrative = result && typeof result.narrative === "string" ? result.narrative.trim() : "";
+  return narrative || null;
+}
+
 // Fire-and-forget enqueuer for NPC identity generation. Each visible NPC that
 // still lacks a generated name gets one identity job. Never blocks the scene.
 function makeSceneIdentityEnqueuer(run) {
@@ -683,6 +737,20 @@ async function handleApi(req, res) {
       }
 
       const responseRun = resolved.run ? saveSoloRun(resolved.run) : run;
+
+      // Augment the Attempt with real GM narration (bounded; template fallback).
+      let attemptResult = resolved.attemptResult;
+      if (attemptResult) {
+        const gmNarration = await narrateAttemptWithGm(responseRun, attemptResult, user);
+        if (gmNarration) {
+          attemptResult = {
+            ...attemptResult,
+            narration: gmNarration,
+            templateNarration: attemptResult.narration
+          };
+        }
+      }
+
       writeJson(res, 200, {
         ok: true,
         run: responseRun,
@@ -693,7 +761,7 @@ async function handleApi(req, res) {
         talkResult: resolved.talkResult,
         restResult: resolved.restResult,
         useItemResult: resolved.useItemResult,
-        attemptResult: resolved.attemptResult,
+        attemptResult,
         entity: resolved.entity,
         details: resolved.details,
         availableMoves: resolved.availableMoves,
