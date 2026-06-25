@@ -1973,6 +1973,65 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     }
   }
 
+  let castPollTimer = null;
+  let castPollAttempts = 0;
+
+  function castHasMissingPortraits() {
+    const cast = state.scene?.cast;
+    if (!Array.isArray(cast) || cast.length === 0) {
+      return false;
+    }
+    return cast.some(
+      (member) => member && (member.portraitUri === null || member.portraitUri === undefined || member.portraitUri === "")
+    );
+  }
+
+  function stopCastPoll() {
+    if (castPollTimer) {
+      clearTimeout(castPollTimer);
+      castPollTimer = null;
+    }
+  }
+
+  // Portraits generate ~10-15s after a scene loads (async, no WebSocket), so the
+  // first render shows placeholders. Poll the scene a few times until every cast
+  // member has a portrait, then stop. Only runs while portraits are missing.
+  function scheduleCastPoll() {
+    stopCastPoll();
+    castPollAttempts = 0;
+    if (!castHasMissingPortraits() || typeof setTimeout !== "function") {
+      return;
+    }
+    const arm = () => {
+      castPollTimer = setTimeout(tick, 5000);
+      if (castPollTimer && typeof castPollTimer.unref === "function") {
+        castPollTimer.unref();
+      }
+    };
+    const tick = async () => {
+      castPollTimer = null;
+      castPollAttempts += 1;
+      try {
+        const refreshed = await fetchSoloScene(apiClient, runId);
+        state.scene = {
+          ...refreshed,
+          gmNarration: state.scene?.gmNarration || null,
+          gmStatus: state.scene?.gmStatus || null
+        };
+        if (refreshed?.player) {
+          state.character = characterFromScenePlayer(refreshed.player);
+        }
+        render();
+      } catch {
+        // best-effort; keep trying until the attempt budget is spent
+      }
+      if (castHasMissingPortraits() && castPollAttempts < 3) {
+        arm();
+      }
+    };
+    arm();
+  }
+
   async function loadScene() {
     state.loading = true;
     state.error = "";
@@ -2008,6 +2067,7 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     } finally {
       state.loading = false;
       render();
+      scheduleCastPoll();
     }
   }
 
