@@ -2138,14 +2138,16 @@ button:disabled {
 .onb-actions { display: flex; gap: 10px; flex-wrap: wrap; }
 @media (max-width: 640px) { .onb-art-grid { grid-template-columns: 1fr; } }
 
-/* ---- Solo scene exit button ---- */
-.solo-game-header-top { display: flex; align-items: center; gap: 12px; }
-.solo-exit {
-  appearance: none; flex: none; cursor: pointer;
-  border: 1px solid var(--line-strong, #503f2e); background: transparent;
-  color: var(--ink, #ece1c7); border-radius: 8px; padding: 5px 12px; font-size: 13px;
+/* ---- Solo scene settings cog menu ---- */
+.solo-settings.open .solo-settings-btn { color: var(--accent, #c8922a); border-color: var(--accent, #c8922a); }
+.solo-cog-menu { min-width: 200px; padding: 8px; display: flex; flex-direction: column; gap: 2px; }
+.solo-cog-item {
+  appearance: none; text-align: left; width: 100%; cursor: pointer;
+  background: transparent; border: none; border-radius: 8px;
+  color: var(--text, #f0e4cc); padding: 9px 11px; font-size: 14px;
 }
-.solo-exit:hover { background: var(--surface-strong, #271e16); border-color: var(--accent, #c89a4b); }
+.solo-cog-item:hover { background: var(--inset, #120c07); }
+.solo-cog-note { padding: 6px 11px; font-size: 12px; font-style: italic; opacity: 0.7; }
 
 /* ---- Character creation wizard (Ticket 38) ---- */
 .cw-progress { display: flex; flex-wrap: wrap; gap: 6px; }

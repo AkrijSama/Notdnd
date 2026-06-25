@@ -1457,18 +1457,22 @@ export function renderSoloSceneShell(state = {}) {
       data-solo-font="${fontSet}"
       style="${soloThemeVarString(skin, fontSet)}"
     >
-      <details class="solo-settings">
-        <summary class="solo-settings-btn" aria-label="Theme settings" title="Theme settings">⚙</summary>
-        <div class="solo-settings-menu">${renderSoloThemeSwitcher(skin, fontSet)}</div>
-      </details>
+      <div class="solo-settings ${state.menuOpen ? "open" : ""}">
+        <button type="button" class="solo-settings-btn" data-solo-menu-toggle aria-haspopup="true" aria-expanded="${state.menuOpen ? "true" : "false"}" aria-label="Menu" title="Menu">⚙</button>
+        ${state.menuOpen ? `
+          <div class="solo-settings-menu solo-cog-menu" role="menu">
+            <button type="button" class="solo-cog-item" data-solo-exit role="menuitem">Leave Adventure</button>
+            <button type="button" class="solo-cog-item" data-solo-cog="Settings" role="menuitem">Settings</button>
+            <button type="button" class="solo-cog-item" data-solo-cog="Report a bug" role="menuitem">Report a bug</button>
+            ${state.cogNote ? `<div class="solo-cog-note">${escapeHtml(state.cogNote)}</div>` : ""}
+          </div>
+        ` : ""}
+      </div>
       <div class="solo-game-frame solo-scene-grid">
         ${renderSoloCharacterSidebar(character)}
         <main class="solo-game-main solo-scene-main">
           <div class="solo-game-header">
-            <div class="solo-game-header-top">
-              <button type="button" class="solo-exit" data-solo-exit>← Menu</button>
-              <div class="solo-breadcrumb">${escapeHtml(region)} <span>›</span> ${escapeHtml(title)}</div>
-            </div>
+            <div class="solo-breadcrumb">${escapeHtml(region)} <span>›</span> ${escapeHtml(title)}</div>
             <div class="solo-game-title">${escapeHtml(title)}</div>
             ${renderSoloGameTabs(activeTab)}
           </div>
@@ -1530,6 +1534,13 @@ export function bindSoloSceneShell(root, handlers = {}) {
 
   root.querySelectorAll("[data-solo-exit]").forEach((button) => {
     button.addEventListener("click", () => handlers.onExit?.());
+  });
+
+  root.querySelectorAll("[data-solo-menu-toggle]").forEach((button) => {
+    button.addEventListener("click", () => handlers.onMenuToggle?.());
+  });
+  root.querySelectorAll("[data-solo-cog]").forEach((button) => {
+    button.addEventListener("click", () => handlers.onCogPlaceholder?.(button.getAttribute("data-solo-cog")));
   });
 
   root.querySelectorAll("[data-solo-action='move']").forEach((button) => {
@@ -1789,6 +1800,8 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     useItemResult: null,
     attemptResult: null,
     attemptDraft: "",
+    menuOpen: false,
+    cogNote: "",
     dialogueActive: false,
     dialogueTyped: false,
     gmMode: "placeholder",
@@ -1804,6 +1817,8 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     bindSoloSceneShell(root, {
       onReload: loadScene,
       onExit: handleExit,
+      onMenuToggle: handleMenuToggle,
+      onCogPlaceholder: handleCogPlaceholder,
       onMove: handleMove,
       onInspect: handleInspect,
       onSearch: handleSearch,
@@ -1926,6 +1941,17 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     // For an NPC already at the current location, "bring back" focuses them via
     // the talk flow (re-engaging any intro/dialogue).
     return handleTalk(entity);
+  }
+
+  function handleMenuToggle() {
+    state.menuOpen = !state.menuOpen;
+    state.cogNote = "";
+    render();
+  }
+
+  function handleCogPlaceholder(label) {
+    state.cogNote = `${label} — coming soon`;
+    render();
   }
 
   function handleExit() {
