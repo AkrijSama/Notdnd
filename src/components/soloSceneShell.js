@@ -1183,15 +1183,146 @@ export function renderSoloCharacterSheet(character = SOLO_SAMPLE_CHARACTER) {
   `;
 }
 
-export function renderSoloMapTab() {
+// ---------------------------------------------------------------------------
+// Solo battle map — Phase 1 (Tickets: solo battle map).
+// Net-new, solo-only (does NOT touch the multiplayer VTT). Phase 1 scope:
+// spawn the player + visible NPCs as tokens on a 5ft grid, linked to real run
+// entities. No movement/fog yet (Phase 2/3). Positions are derived
+// deterministically from the scene; nothing is persisted server-side.
+// ---------------------------------------------------------------------------
+export const SOLO_MAP_WIDTH = 12;
+export const SOLO_MAP_HEIGHT = 10;
+export const SOLO_MAP_TILE_FEET = 5;
+
+function soloMapClamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function soloTokenInitials(name) {
+  const words = String(name || "").trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) {
+    return "?";
+  }
+  if (words.length === 1) {
+    return words[0].slice(0, 2).toUpperCase();
+  }
+  return (words[0][0] + words[words.length - 1][0]).toUpperCase();
+}
+
+/**
+ * Pure. Builds the Phase-1 token list from a solo scene payload: the player
+ * plus every NPC currently present, each linked to its real run entity and
+ * given a deterministic, collision-free grid position. No movement yet.
+ * @param {object} scene buildSoloScenePayload output (needs .player, .cast)
+ * @param {{width?:number,height?:number}} options
+ * @returns {Array<{id,kind,entityId,displayName,label,portraitUri,faction,speed?,x,y}>}
+ */
+export function buildSoloMapTokens(scene = {}, options = {}) {
+  const width = Number.isFinite(options.width) ? options.width : SOLO_MAP_WIDTH;
+  const height = Number.isFinite(options.height) ? options.height : SOLO_MAP_HEIGHT;
+  const player = scene && typeof scene.player === "object" ? scene.player : null;
+  const cast = Array.isArray(scene?.cast) ? scene.cast : [];
+  const presentNpcs = cast.filter((npc) => npc && npc.present && typeof npc.npcId === "string");
+
+  const used = new Set();
+  const place = (rawX, rawY) => {
+    let x = soloMapClamp(Math.round(rawX), 0, width - 1);
+    let y = soloMapClamp(Math.round(rawY), 0, height - 1);
+    let guard = 0;
+    const limit = width * height;
+    while (used.has(`${x},${y}`) && guard < limit) {
+      x += 1;
+      if (x >= width) {
+        x = 0;
+        y = (y + 1) % height;
+      }
+      guard += 1;
+    }
+    used.add(`${x},${y}`);
+    return { x, y };
+  };
+
+  const tokens = [];
+
+  if (player) {
+    const name = typeof player.displayName === "string" && player.displayName ? player.displayName : "You";
+    tokens.push({
+      id: "player",
+      kind: "player",
+      entityId: "player",
+      displayName: name,
+      label: soloTokenInitials(name),
+      portraitUri: typeof player.portraitUri === "string" ? player.portraitUri : "",
+      faction: "player",
+      // Carried for Phase 2 (speed-validated movement); unused in Phase 1.
+      speed: typeof player.speed === "number" ? player.speed : 30,
+      ...place(Math.floor(width / 2), height - 1)
+    });
+  }
+
+  const count = presentNpcs.length;
+  presentNpcs.forEach((npc, index) => {
+    const name = npc.displayName || npc.role || npc.npcId;
+    const spacing = Math.max(1, Math.floor(width / (count + 1)));
+    tokens.push({
+      id: `npc:${npc.npcId}`,
+      kind: "npc",
+      entityId: npc.npcId,
+      displayName: name,
+      label: soloTokenInitials(name),
+      portraitUri: typeof npc.portraitUri === "string" ? npc.portraitUri : "",
+      faction: "npc",
+      ...place(Math.min(width - 1, (index + 1) * spacing), 1)
+    });
+  });
+
+  return tokens;
+}
+
+function renderSoloMapToken(token) {
+  const inner = token.portraitUri
+    ? `<img src="${escapeHtml(token.portraitUri)}" alt="${escapeHtml(token.displayName)}" />`
+    : escapeHtml(token.label);
+  return `<span class="solo-token solo-token-${escapeHtml(token.kind)}" title="${escapeHtml(token.displayName)}" data-token-id="${escapeHtml(token.id)}" data-entity-id="${escapeHtml(token.entityId)}" data-entity-kind="${escapeHtml(token.kind)}">${inner}</span>`;
+}
+
+export function renderSoloMapTab(scene = {}) {
+  const width = SOLO_MAP_WIDTH;
+  const height = SOLO_MAP_HEIGHT;
+  const tokens = buildSoloMapTokens(scene, { width, height });
+  const tokenByCell = new Map(tokens.map((token) => [`${token.x},${token.y}`, token]));
+
+  const cells = [];
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const token = tokenByCell.get(`${x},${y}`);
+      cells.push(
+        `<div class="solo-map-cell" data-cell="${x},${y}">${token ? renderSoloMapToken(token) : ""}</div>`
+      );
+    }
+  }
+
+  const legend = tokens
+    .map(
+      (token) =>
+        `<span class="solo-map-legend-item"><span class="solo-token solo-token-${escapeHtml(token.kind)}">${escapeHtml(token.label)}</span>${escapeHtml(token.displayName)}</span>`
+    )
+    .join("");
+
   return `
     <div class="solo-map-tab">
-      <div class="solo-map-grid"></div>
-      <div class="solo-map-vignette"></div>
-      <div class="solo-map-copy">
-        <div class="solo-map-title">Battle map coming soon</div>
-        <div class="solo-map-sub">Tactical encounters will unfold here when the dice are drawn.</div>
+      <div class="solo-map-toolbar">
+        <span class="tag">${width}×${height} grid</span>
+        <span class="small">1 tile = ${SOLO_MAP_TILE_FEET} ft · ${width * SOLO_MAP_TILE_FEET}ft × ${height * SOLO_MAP_TILE_FEET}ft</span>
       </div>
+      <div class="solo-map-board" style="grid-template-columns: repeat(${width}, minmax(0, 1fr));" data-map-width="${width}" data-map-height="${height}">
+        ${cells.join("")}
+      </div>
+      ${
+        tokens.length
+          ? `<div class="solo-map-legend">${legend}</div>`
+          : `<div class="solo-map-sub">No combatants on the field.</div>`
+      }
     </div>
   `;
 }
@@ -1509,7 +1640,7 @@ export function renderSoloSceneShell(state = {}) {
                 ${renderUseItemResultPanel(state.useItemResult)}
               `
             )}
-            ${panel("map", renderSoloMapTab())}
+            ${panel("map", renderSoloMapTab(scene))}
             ${panel(
               "journal",
               `
