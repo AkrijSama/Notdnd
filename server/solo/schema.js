@@ -860,6 +860,7 @@ export function validateSoloRun(run) {
 
   validateRequiredString(run.runId, "runId", errors);
   validateOptionalString(run.userId, "userId", errors);
+  validateOptionalString(run.narration, "narration", errors);
   validateEnum(run.status, RUN_STATUSES, "status", errors);
   validateTimestamp(run.createdAt, "createdAt", errors);
   validateTimestamp(run.updatedAt, "updatedAt", errors);

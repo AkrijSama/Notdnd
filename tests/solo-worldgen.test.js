@@ -10,6 +10,7 @@ process.env.NOTDND_MEMORY_ROOT = path.join(tmpDir, "campaigns");
 process.env.NOTDND_WORLD_PROVIDER = "placeholder";
 process.env.NOTDND_NPC_IDENTITY_PROVIDER = "placeholder";
 process.env.NOTDND_MOCK_IMAGE = "true";
+process.env.NOTDND_MOCK_OPENROUTER = "true";
 delete process.env.OPENAI_API_KEY;
 
 const { generateWorld } = await import("../server/solo/worldGen.js");
@@ -122,4 +123,8 @@ test("createWorldOnboardingRun builds a run from world + character", async () =>
   assert.ok(contact, "starting contact created");
   assert.equal(contact.role, "Gate Warden"); // city gate -> Gate Warden
   assert.ok(contact.generatedName);
+
+  // Opening narration is generated + stored so the player reads real prose on
+  // entry (mock GM under NOTDND_MOCK_OPENROUTER, else the location fallback).
+  assert.ok(typeof run.narration === "string" && run.narration.trim().length > 0, "opening narration stored");
 });

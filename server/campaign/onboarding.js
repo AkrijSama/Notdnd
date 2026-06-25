@@ -3,6 +3,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { applyOperation, createSoloRun, getSoloRun, saveSoloRun } from "../db/repository.js";
 import { ensureCampaignMemoryDocsAsync, rebuildCampaignIndex } from "../gm/memoryStore.js";
+import { runGmPipeline } from "../gm/prompting.js";
+import { buildOpeningGmMessage } from "../gm/actionNarration.js";
 import { buildCharacter, toRunPlayer } from "../solo/characterBuild.js";
 import { generateNpcIdentity } from "../solo/npcIdentity.js";
 import { writeNpcMemoryDoc } from "../solo/npcMemory.js";
@@ -299,6 +301,37 @@ function roleForLocationType(type) {
  * @param {{ world?: object, character?: object }} payload
  * @returns {Promise<{ campaignId: string, runId: string, world: object }>}
  */
+const OPENING_NARRATION_TIMEOUT_MS = 15000;
+
+// Generates the world-entry opening via the real GM pipeline, bounded so a slow
+// or unconfigured provider never blocks onboarding. Falls back to the starting
+// location description on timeout/empty/error.
+async function generateOpeningNarration({ campaignId, message, playerName, actorUserId, fallback }) {
+  let timer = null;
+  const timeout = new Promise((resolve) => {
+    timer = setTimeout(() => resolve(null), OPENING_NARRATION_TIMEOUT_MS);
+    if (timer && typeof timer.unref === "function") {
+      timer.unref();
+    }
+  });
+  try {
+    const result = await Promise.race([
+      Promise.resolve(runGmPipeline({ campaignId, message, mode: "companion", playerName, actorUserId })).catch(() => null),
+      timeout
+    ]);
+    if (timer) {
+      clearTimeout(timer);
+    }
+    const narrative = result && typeof result.narrative === "string" ? result.narrative.trim() : "";
+    return narrative || fallback;
+  } catch {
+    if (timer) {
+      clearTimeout(timer);
+    }
+    return fallback;
+  }
+}
+
 export async function createWorldOnboardingRun(userId, { world = {}, character = {} } = {}) {
   const actorUserId = String(userId || "").trim();
   if (!actorUserId) {
@@ -404,6 +437,24 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
   run.npcs[npc.npcId] = npc;
 
   await rebuildCampaignIndex(campaignId);
+
+  // Opening narration: the first thing the player reads when they enter the
+  // world. Real GM prose, grounded in the world overview memory doc just
+  // indexed; bounded with a deterministic fallback.
+  run.narration = await generateOpeningNarration({
+    campaignId,
+    message: buildOpeningGmMessage({
+      characterName,
+      race: built.race,
+      characterClass: built.class,
+      world: resolvedWorld,
+      npc
+    }),
+    playerName: characterName,
+    actorUserId,
+    fallback: resolvedWorld.startingLocation.description
+  });
+
   const savedRun = saveSoloRun(run);
 
   return { campaignId, runId: savedRun.runId, world: resolvedWorld };

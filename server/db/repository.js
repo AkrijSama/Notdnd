@@ -836,6 +836,26 @@ export function updatePlayerPortrait(runId, uri) {
   return true;
 }
 
+/**
+ * Narrow write: stores the current scene narrative on run.narration. Used by the
+ * action loop + world-entry opening so /gm-scene reflects real GM prose as the
+ * player acts. Returns false if the run does not exist.
+ * @param {string} runId
+ * @param {string|null} narration
+ * @returns {boolean}
+ */
+export function updateSoloRunNarration(runId, narration) {
+  ensureDb();
+  const run = db.soloRuns[String(runId || "").trim()];
+  if (!run) {
+    return false;
+  }
+  run.narration = typeof narration === "string" && narration.trim() ? narration : null;
+  bumpStateVersion();
+  writeToDisk();
+  return true;
+}
+
 export function markNpcIntroduced(runId, npcId) {
   ensureDb();
   const run = db.soloRuns[String(runId || "").trim()];

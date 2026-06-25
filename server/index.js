@@ -63,7 +63,8 @@ import {
   resolveStorePath,
   saveSoloRun,
   setCampaignRuntimeState,
-  updateImageAssetStatus
+  updateImageAssetStatus,
+  updateSoloRunNarration
 } from "./db/repository.js";
 import {
   buildContextWindow,
@@ -75,6 +76,7 @@ import {
   upsertEntity
 } from "./gm/memoryStore.js";
 import { buildSessionSystemPrompt, runGmPipeline } from "./gm/prompting.js";
+import { buildActionGmMessage } from "./gm/actionNarration.js";
 import { getProfile } from "./gm/promptProfiles.js";
 import { applyPreset, getPresets } from "./gm/stylePresets.js";
 import { buildStylePromptBlock, getStyleConfig, updateStyleConfig, validateStyleUpdate } from "./gm/styleConfig.js";
@@ -552,18 +554,17 @@ function withGmTimeout(promise, ms) {
   ]);
 }
 
-async function narrateAttemptWithGm(run, attemptResult, user) {
-  if (!run?.campaignId || !attemptResult) {
+// Generates real GM narration for any resolved solo action (move/talk/search/
+// rest/use_item/attempt). Bounded by GM_ACTION_TIMEOUT_MS; returns null on
+// timeout/empty so the caller keeps the mechanical template as a fallback.
+async function narrateActionWithGm(run, resolved, user) {
+  if (!run?.campaignId || !resolved) {
     return null;
   }
-  const cr = attemptResult.checkResult;
-  const rollText =
-    cr && cr.total !== undefined && cr.total !== null ? ` (rolled ${cr.total} vs DC ${cr.dc})` : "";
-  const message =
-    `In the current scene, the player attempts: "${String(attemptResult.intent || "an action")}". ` +
-    `The attempt ${attemptResult.success ? "succeeds" : "fails"}${rollText}. ` +
-    "Narrate the immediate outcome in 2-4 vivid sentences of second-person dark-fantasy prose. " +
-    "Do not restate dice or mechanics, and do not use bracketed trigger tags.";
+  const message = buildActionGmMessage(run, resolved);
+  if (!message) {
+    return null;
+  }
   const result = await withGmTimeout(
     runGmPipeline({
       campaignId: run.campaignId,
@@ -739,17 +740,38 @@ async function handleApi(req, res) {
 
       const responseRun = resolved.run ? saveSoloRun(resolved.run) : run;
 
-      // Augment the Attempt with real GM narration (bounded; template fallback).
+      // Augment EVERY narratable action with real GM narration (bounded; the
+      // mechanical template survives as a fallback). The narration is also
+      // stored as the run's current scene narrative so /gm-scene reflects play.
       let attemptResult = resolved.attemptResult;
-      if (attemptResult) {
-        const gmNarration = await narrateAttemptWithGm(responseRun, attemptResult, user);
-        if (gmNarration) {
-          attemptResult = {
-            ...attemptResult,
-            narration: gmNarration,
-            templateNarration: attemptResult.narration
+      let talkResult = resolved.talkResult;
+      let searchResult = resolved.searchResult;
+      let restResult = resolved.restResult;
+      let useItemResult = resolved.useItemResult;
+
+      const gmNarration = await narrateActionWithGm(responseRun, resolved, user);
+      if (gmNarration) {
+        const actionType = resolved.action?.type;
+        if (actionType === "attempt" && attemptResult) {
+          attemptResult = { ...attemptResult, narration: gmNarration, templateNarration: attemptResult.narration };
+        } else if (actionType === "talk" && talkResult) {
+          // The AI line becomes the NPC's spoken reply; drop the canned
+          // "No new dialogue available" summary when no scripted beat fired.
+          talkResult = {
+            ...talkResult,
+            line: gmNarration,
+            templateLine: talkResult.line,
+            summary: talkResult.found ? talkResult.summary : ""
           };
+        } else if (actionType === "search" && searchResult) {
+          searchResult = { ...searchResult, summary: gmNarration, templateSummary: searchResult.summary };
+        } else if (actionType === "rest" && restResult) {
+          restResult = { ...restResult, summary: gmNarration, templateSummary: restResult.summary };
+        } else if (actionType === "use_item" && useItemResult) {
+          useItemResult = { ...useItemResult, summary: gmNarration, templateSummary: useItemResult.summary };
         }
+        updateSoloRunNarration(responseRun.runId, gmNarration);
+        responseRun.narration = gmNarration;
       }
 
       writeJson(res, 200, {
@@ -758,11 +780,12 @@ async function handleApi(req, res) {
         action: resolved.action,
         event: resolved.event,
         memoryFact: resolved.memoryFact,
-        searchResult: resolved.searchResult,
-        talkResult: resolved.talkResult,
-        restResult: resolved.restResult,
-        useItemResult: resolved.useItemResult,
+        searchResult,
+        talkResult,
+        restResult,
+        useItemResult,
         attemptResult,
+        gmNarration,
         entity: resolved.entity,
         details: resolved.details,
         availableMoves: resolved.availableMoves,
@@ -892,9 +915,27 @@ async function handleApi(req, res) {
         });
       }
       const gmMode = url.searchParams.get("mode") || undefined;
-      const gmNarration = await resolveGmNarration(scene, {
-        mode: gmMode
-      });
+      // Prefer the run's stored narrative (set by the opening + every action via
+      // runGmPipeline). Falls back to the placeholder provider for legacy runs
+      // that have no stored narration yet.
+      let gmNarration;
+      if (typeof run.narration === "string" && run.narration.trim()) {
+        gmNarration = {
+          ok: true,
+          narration: {
+            title: scene.location?.name || "Current Scene",
+            body: run.narration,
+            tone: "neutral",
+            sensoryDetails: [],
+            focusEntityIds: []
+          },
+          suggestedActionLabels: [],
+          warnings: [],
+          stateMutations: []
+        };
+      } else {
+        gmNarration = await resolveGmNarration(scene, { mode: gmMode });
+      }
       const gmStatus = buildGmRuntimeStatus(scene, gmNarration, {
         mode: gmMode
       });
