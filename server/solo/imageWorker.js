@@ -81,9 +81,9 @@ function referenceUrlFor(servedUri) {
 // single bad variant never aborts the rest of the job. The base portrait
 // (referenceImageUrl null) is produced via text-to-image; expression variants
 // pass the base portrait as the IP-Adapter reference (image-to-image).
-async function generateSlot({ runId, npcId, slot, assetId, prompt, style, referenceImageUrl }) {
+async function generateSlot({ runId, npcId, slot, assetId, prompt, style, referenceImageUrl, seed }) {
   try {
-    const result = await generateImage({ prompt, style, referenceImageUrl });
+    const result = await generateImage({ prompt, style, referenceImageUrl, seed });
     const bytes = result?.bytes;
     if (!bytes || !bytes.length) {
       throw new Error("image provider returned no bytes");
@@ -122,6 +122,9 @@ export async function runImageJob(job = {}) {
   const npc = run?.npcs?.[npcId] || null;
 
   const style = job.style ? String(job.style).trim() : "";
+  // Stable per-NPC seed (used by seed-aware providers like Pollinations) so the
+  // same NPC's portraits are reproducible across regenerations.
+  const seed = Number.isFinite(Number(npc?.identitySeed)) ? Number(npc.identitySeed) : null;
   // Prefer an explicit job prompt, then the NPC's generated portraitPrompt,
   // then a role-based fallback (never the bare npcId stub).
   const basePrompt = String(
@@ -145,6 +148,7 @@ export async function runImageJob(job = {}) {
       assetId: linked.base,
       prompt: `${basePrompt}, neutral expression`,
       style,
+      seed,
       referenceImageUrl: null
     });
   }
@@ -164,6 +168,7 @@ export async function runImageJob(job = {}) {
       assetId,
       prompt: `${basePrompt}, ${expression} expression`,
       style,
+      seed,
       referenceImageUrl
     });
     variants.push(variant);

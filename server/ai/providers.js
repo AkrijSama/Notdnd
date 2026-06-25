@@ -388,6 +388,8 @@ export function resolveImageProvider() {
   if (imageMockForced()) {
     return "mock";
   }
+  // Recognized image providers: "pollinations" (keyless, free txt2img),
+  // "fal" (keyed), "mock"/"placeholder"/"local". An explicit env value wins.
   const configured = String(process.env.NOTDND_IMAGE_PROVIDER || "").trim().toLowerCase();
   if (configured) {
     return configured;
@@ -435,11 +437,56 @@ async function falImage({ prompt, referenceImageUrl, fetchImpl }) {
   };
 }
 
+// Pollinations.ai — keyless, free, text-to-image (FLUX). Zero auth: a GET
+// returns image bytes directly. No reference/IP-Adapter support, so it is a
+// base-portrait source only; expression variants fall back to fresh txt2img.
+const POLLINATIONS_BASE = process.env.NOTDND_POLLINATIONS_ENDPOINT || "https://image.pollinations.ai/prompt";
+const POLLINATIONS_MODEL = process.env.NOTDND_POLLINATIONS_MODEL || "flux";
+
+// Deterministic seed so a given prompt yields a stable image (cache-forever
+// friendly). Uses the caller's seed when provided, else a hash of the prompt.
+function pollinationsSeed(prompt, seed) {
+  if (Number.isFinite(Number(seed))) {
+    return Math.abs(Math.trunc(Number(seed)));
+  }
+  let hash = 0;
+  const text = String(prompt || "");
+  for (let i = 0; i < text.length; i += 1) {
+    hash = (hash * 31 + text.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash);
+}
+
+async function pollinationsImage({ prompt, seed, fetchImpl }) {
+  const encoded = encodeURIComponent(String(prompt || "").trim() || "portrait");
+  const params = new URLSearchParams({
+    model: POLLINATIONS_MODEL,
+    width: "512",
+    height: "768",
+    seed: String(pollinationsSeed(prompt, seed)),
+    nologo: "true"
+  });
+  const url = `${POLLINATIONS_BASE}/${encoded}?${params.toString()}`;
+
+  const response = await fetchImpl(url);
+  if (!response.ok) {
+    throw makeProviderError("pollinations", `Pollinations request failed (${response.status})`, "UPSTREAM_AI_ERROR", response.status);
+  }
+
+  return {
+    provider: "pollinations",
+    mock: false,
+    bytes: Buffer.from(await response.arrayBuffer()),
+    url
+  };
+}
+
 /**
  * Generates a single image and returns its bytes. The base portrait (no
  * referenceImageUrl) is produced via text-to-image; expression/reference
- * variants (with referenceImageUrl) via image-to-image / IP-Adapter.
- * @param {{ provider?: string, prompt?: string, referenceImageUrl?: string|null, style?: string, fetchImpl?: typeof fetch }} [args]
+ * variants (with referenceImageUrl) via image-to-image / IP-Adapter where the
+ * provider supports it (Pollinations is txt2img only).
+ * @param {{ provider?: string, prompt?: string, referenceImageUrl?: string|null, style?: string, seed?: number|null, fetchImpl?: typeof fetch }} [args]
  * @returns {Promise<{ provider: string, mock: boolean, bytes: Buffer, url: string|null }>}
  */
 export async function generateImage({
@@ -447,6 +494,7 @@ export async function generateImage({
   prompt = "",
   referenceImageUrl = null,
   style = "",
+  seed = null,
   fetchImpl = fetch
 } = {}) {
   const resolvedProvider = provider || resolveImageProvider();
@@ -454,6 +502,10 @@ export async function generateImage({
 
   if (isMockImageProvider(resolvedProvider)) {
     return { provider: "mock", mock: true, bytes: MOCK_IMAGE_PNG, url: null };
+  }
+
+  if (resolvedProvider === "pollinations") {
+    return pollinationsImage({ prompt: styledPrompt, seed, fetchImpl });
   }
 
   if (resolvedProvider === "fal") {
