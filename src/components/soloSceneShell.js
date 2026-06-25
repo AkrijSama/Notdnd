@@ -999,7 +999,8 @@ export function characterFromScenePlayer(player) {
     region: "Ashenmoor",
     saves,
     skills,
-    proficiencies: "—"
+    proficiencies: "—",
+    portraitUri: typeof player.portraitUri === "string" ? player.portraitUri : ""
   };
 }
 
@@ -1061,7 +1062,7 @@ export function renderSoloCharacterSidebar(character = SOLO_SAMPLE_CHARACTER) {
 
   return `
     <aside class="solo-game-sidebar">
-      <div class="solo-portrait"></div>
+      <div class="solo-portrait">${character.portraitUri ? `<img class="solo-portrait-img" src="${escapeHtml(character.portraitUri)}" alt="${escapeHtml(character.name || "Character")} portrait" />` : ""}</div>
       <div class="solo-sidebar-identity">
         <div class="solo-char-name">${escapeHtml(character.name)}</div>
         <div class="solo-char-sub">${escapeHtml(character.className)} · Level ${escapeHtml(character.level)}</div>
@@ -1996,6 +1997,11 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
   let castPollAttempts = 0;
 
   function castHasMissingPortraits() {
+    // Player portrait still pending?
+    const player = state.scene?.player;
+    if (player && player.character && !player.portraitUri) {
+      return true;
+    }
     const cast = state.scene?.cast;
     if (!Array.isArray(cast) || cast.length === 0) {
       return false;

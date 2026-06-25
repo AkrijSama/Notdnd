@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { generateImage, providerSupportsReference, resolveImageProvider } from "../ai/providers.js";
 import { detectImageExt } from "../api/http.js";
-import { ensureNpcImageAssets, getSoloRun, updateImageAssetStatus } from "../db/repository.js";
+import { ensureNpcImageAssets, getSoloRun, updateImageAssetStatus, updatePlayerPortrait } from "../db/repository.js";
 import { NPC_EXPRESSIONS } from "./schema.js";
 
 // ---------------------------------------------------------------------------
@@ -189,6 +189,54 @@ export async function runImageJob(job = {}) {
   return { ok: true, base, variants };
 }
 
+/**
+ * Generates the player-character portrait from race + class + world tone/style
+ * and stores its URI on run.player (narrow write). Awaitable; idempotent (skips
+ * when a portrait already exists). The player is not an NPC, so this writes
+ * run.player.portraitUri directly rather than an imageAsset record.
+ * @param {{ runId: string }} job
+ */
+export async function runPlayerImageJob(job = {}) {
+  const runId = String(job.runId || "").trim();
+  if (!runId) {
+    return { ok: false, reason: "missing runId" };
+  }
+  const run = getSoloRun(runId);
+  const player = run?.player || null;
+  if (!player) {
+    return { ok: false, reason: "run or player not found" };
+  }
+  if (typeof player.portraitUri === "string" && player.portraitUri) {
+    return { ok: true, skipped: true };
+  }
+
+  const character = player.character || {};
+  const tone = run.world?.tone || "dark fantasy";
+  const style = run.world?.artStyle || "illustrated";
+  const descriptor =
+    [character.race, character.class].filter(Boolean).join(" ") || player.className || "wanderer";
+  const prompt = `character portrait of a ${descriptor}, ${tone}, detailed`;
+  const seed = Number.isFinite(Number(character.identitySeed)) ? Number(character.identitySeed) : null;
+
+  try {
+    const result = await generateImage({ prompt, style, seed });
+    const bytes = result?.bytes;
+    if (!bytes || !bytes.length) {
+      throw new Error("image provider returned no bytes");
+    }
+    const ext = detectImageExt(bytes) || "png";
+    const target = diskPathFor(runId, "player", "base", ext);
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, bytes);
+    const uri = servedUriFor(runId, "player", "base", ext);
+    updatePlayerPortrait(runId, uri);
+    return { ok: true, uri };
+  } catch (error) {
+    logWorker(`player portrait failed for ${runId}`, error);
+    return { ok: false };
+  }
+}
+
 async function drainQueue() {
   if (processing) {
     return;
@@ -199,7 +247,7 @@ async function drainQueue() {
       const job = queue.shift();
       try {
         // eslint-disable-next-line no-await-in-loop
-        await runImageJob(job);
+        await (job && job.kind === "player" ? runPlayerImageJob(job) : runImageJob(job));
       } catch (error) {
         logWorker("job crashed", error);
       }
@@ -220,6 +268,18 @@ export function enqueueImageJob(job = {}) {
     return;
   }
   queue.push(job);
+  Promise.resolve().then(drainQueue).catch((error) => logWorker("drain failed", error));
+}
+
+/**
+ * Enqueues the player-portrait job. Fire-and-forget; safe from a request path.
+ * @param {{ runId: string }} job
+ */
+export function enqueuePlayerImageJob(job = {}) {
+  if (!job || !job.runId) {
+    return;
+  }
+  queue.push({ kind: "player", runId: job.runId });
   Promise.resolve().then(drainQueue).catch((error) => logWorker("drain failed", error));
 }
 

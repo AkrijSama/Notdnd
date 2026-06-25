@@ -816,6 +816,26 @@ export function updateNpcIdentity(runId, npcId, identity = {}) {
  * @param {string} npcId
  * @returns {boolean}
  */
+/**
+ * Narrow write: stores the player's generated portrait URI on run.player.
+ * Bytes live on disk; only the string URI is persisted. Returns false if the
+ * run/player does not exist.
+ * @param {string} runId
+ * @param {string|null} uri
+ * @returns {boolean}
+ */
+export function updatePlayerPortrait(runId, uri) {
+  ensureDb();
+  const run = db.soloRuns[String(runId || "").trim()];
+  if (!run || !run.player) {
+    return false;
+  }
+  run.player.portraitUri = typeof uri === "string" && uri ? uri : null;
+  bumpStateVersion();
+  writeToDisk();
+  return true;
+}
+
 export function markNpcIntroduced(runId, npcId) {
   ensureDb();
   const run = db.soloRuns[String(runId || "").trim()];

@@ -577,9 +577,20 @@ export function buildPlayerPayload(run) {
     abilities: isPlainObject(player.abilities) ? { ...player.abilities } : {},
     stats: isPlainObject(player.stats) ? { ...player.stats } : {},
     skills: isPlainObject(player.skills) ? { ...player.skills } : {},
+    portraitUri: isString(player.portraitUri) ? player.portraitUri : null,
     // Full 5e record (or null) for the character sheet tab.
     character
   };
+}
+
+// Pure. True when the player has a full 5e character but no generated portrait
+// yet — used by the scene route to enqueue a one-off player-portrait job.
+export function playerNeedsPortrait(run) {
+  const player = isPlainObject(run?.player) ? run.player : null;
+  if (!player || !isPlainObject(player.character)) {
+    return false;
+  }
+  return !isString(player.portraitUri);
 }
 
 export function buildSoloScenePayload(run, options = {}) {
@@ -672,6 +683,17 @@ export function buildSoloScenePayload(run, options = {}) {
       const npcIds = collectNpcsNeedingArt(run, visibleEntities);
       if (npcIds.length > 0) {
         options.enqueueImages(npcIds);
+      }
+    } catch {
+      // Best-effort only.
+    }
+  }
+
+  // Opt-in, fire-and-forget player-portrait generation. Never blocks delivery.
+  if (typeof options.enqueuePlayerPortrait === "function") {
+    try {
+      if (playerNeedsPortrait(run)) {
+        options.enqueuePlayerPortrait();
       }
     } catch {
       // Best-effort only.

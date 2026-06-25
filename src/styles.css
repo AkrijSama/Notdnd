@@ -2189,3 +2189,7 @@ button:disabled {
 .cw-review-row { display: flex; flex-wrap: wrap; gap: 8px; font-size: 13px; }
 .cw-review-row .prof { color: var(--accent, #c89a4b); font-weight: 600; }
 @media (max-width: 640px) { .cw-ability-grid { grid-template-columns: repeat(3, 1fr); } }
+
+/* ---- Player portrait (solo sidebar) ---- */
+.solo-portrait { overflow: hidden; }
+.solo-portrait-img { width: 100%; height: 100%; object-fit: cover; display: block; }

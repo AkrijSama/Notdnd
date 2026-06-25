@@ -84,7 +84,7 @@ import { createWsHub } from "./realtime/wsHub.js";
 import { resolveSoloAction } from "./solo/actions.js";
 import { resolveGmNarration } from "./solo/gmProvider.js";
 import { buildGmRuntimeStatus } from "./solo/gmSmoke.js";
-import { enqueueImageJob, writeUploadedBasePortrait } from "./solo/imageWorker.js";
+import { enqueueImageJob, enqueuePlayerImageJob, writeUploadedBasePortrait } from "./solo/imageWorker.js";
 import { enqueueIdentityJob, runIdentityJob } from "./solo/npcIdentity.js";
 import { buildNpcIntroDirective, buildSoloScenePayload, collectNpcsWithPendingIntro } from "./solo/scene.js";
 
@@ -925,7 +925,8 @@ async function handleApi(req, res) {
       assertSoloRunAccess(user, run);
       const scene = buildSoloScenePayload(run, {
         enqueueImages: makeSceneImageEnqueuer(run),
-        enqueueIdentities: makeSceneIdentityEnqueuer(run)
+        enqueueIdentities: makeSceneIdentityEnqueuer(run),
+        enqueuePlayerPortrait: () => enqueuePlayerImageJob({ runId: run.runId })
       });
       if (!scene.ok) {
         throw Object.assign(new Error("Solo scene could not be built."), {

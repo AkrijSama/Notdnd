@@ -397,6 +397,7 @@ export function validatePlayerState(player) {
   validateOptionalString(player.characterClass, "characterClass", errors);
   validateOptionalString(player.background, "background", errors);
   validateOptionalString(player.pronouns, "pronouns", errors);
+  validateOptionalString(player.portraitUri, "portraitUri", errors);
   validateOptionalNumber(player.proficiencyBonus, "proficiencyBonus", errors);
 
   return result(errors);
