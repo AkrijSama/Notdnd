@@ -2137,3 +2137,12 @@ button:disabled {
 .onb-regen-text { margin-top: 8px; }
 .onb-actions { display: flex; gap: 10px; flex-wrap: wrap; }
 @media (max-width: 640px) { .onb-art-grid { grid-template-columns: 1fr; } }
+
+/* ---- Solo scene exit button ---- */
+.solo-game-header-top { display: flex; align-items: center; gap: 12px; }
+.solo-exit {
+  appearance: none; flex: none; cursor: pointer;
+  border: 1px solid var(--line-strong, #503f2e); background: transparent;
+  color: var(--ink, #ece1c7); border-radius: 8px; padding: 5px 12px; font-size: 13px;
+}
+.solo-exit:hover { background: var(--surface-strong, #271e16); border-color: var(--accent, #c89a4b); }

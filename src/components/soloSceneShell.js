@@ -1464,7 +1464,10 @@ export function renderSoloSceneShell(state = {}) {
         ${renderSoloCharacterSidebar(character)}
         <main class="solo-game-main solo-scene-main">
           <div class="solo-game-header">
-            <div class="solo-breadcrumb">${escapeHtml(region)} <span>›</span> ${escapeHtml(title)}</div>
+            <div class="solo-game-header-top">
+              <button type="button" class="solo-exit" data-solo-exit>← Menu</button>
+              <div class="solo-breadcrumb">${escapeHtml(region)} <span>›</span> ${escapeHtml(title)}</div>
+            </div>
             <div class="solo-game-title">${escapeHtml(title)}</div>
             ${renderSoloGameTabs(activeTab)}
           </div>
@@ -1522,6 +1525,10 @@ export function renderSoloSceneShell(state = {}) {
 export function bindSoloSceneShell(root, handlers = {}) {
   root.querySelectorAll("[data-solo-action='reload-scene']").forEach((button) => {
     button.addEventListener("click", () => handlers.onReload?.());
+  });
+
+  root.querySelectorAll("[data-solo-exit]").forEach((button) => {
+    button.addEventListener("click", () => handlers.onExit?.());
   });
 
   root.querySelectorAll("[data-solo-action='move']").forEach((button) => {
@@ -1795,6 +1802,7 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     root.innerHTML = renderSoloSceneShell(state);
     bindSoloSceneShell(root, {
       onReload: loadScene,
+      onExit: handleExit,
       onMove: handleMove,
       onInspect: handleInspect,
       onSearch: handleSearch,
@@ -1917,6 +1925,17 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     // For an NPC already at the current location, "bring back" focuses them via
     // the talk flow (re-engaging any intro/dialogue).
     return handleTalk(entity);
+  }
+
+  function handleExit() {
+    // The run is already persisted server-side; leaving just navigates home.
+    if (typeof window === "undefined") {
+      return;
+    }
+    if (typeof window.confirm === "function" && !window.confirm("Leave this adventure? Your progress is saved.")) {
+      return;
+    }
+    window.location.href = "/";
   }
 
   function handleDialogueClose() {
