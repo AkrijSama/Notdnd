@@ -559,19 +559,26 @@ export function buildCastRoster(run, policyProfile) {
 export function buildPlayerPayload(run) {
   const player = isPlainObject(run?.player) ? run.player : {};
   const hp = isPlainObject(player.resources?.hitPoints) ? player.resources.hitPoints : null;
+  const character = isPlainObject(player.character) ? player.character : null;
+  const derived = isPlainObject(character?.derivedStats) ? character.derivedStats : null;
   return {
     displayName: isString(player.displayName) ? player.displayName : "Adventurer",
     className: isString(player.className) ? player.className : "Adventurer",
+    race: isString(player.race) ? player.race : (character?.race ?? null),
+    background: isString(player.background) ? player.background : (character?.background ?? null),
     level: typeof player.level === "number" ? player.level : 1,
     hitPoints: {
       current: hp && typeof hp.current === "number" ? hp.current : (typeof player.health === "number" ? player.health : 0),
       max: hp && typeof hp.max === "number" ? hp.max : (typeof player.maxHealth === "number" ? player.maxHealth : 0)
     },
-    armorClass: typeof player.ac === "number" ? player.ac : null,
-    speed: typeof player.speed === "number" ? player.speed : null,
+    // Prefer the 5e derived stats when a full character is present.
+    armorClass: typeof derived?.armorClass === "number" ? derived.armorClass : (typeof player.ac === "number" ? player.ac : null),
+    speed: typeof derived?.speed === "number" ? derived.speed : (typeof player.speed === "number" ? player.speed : null),
     abilities: isPlainObject(player.abilities) ? { ...player.abilities } : {},
     stats: isPlainObject(player.stats) ? { ...player.stats } : {},
-    skills: isPlainObject(player.skills) ? { ...player.skills } : {}
+    skills: isPlainObject(player.skills) ? { ...player.skills } : {},
+    // Full 5e record (or null) for the character sheet tab.
+    character
   };
 }
 

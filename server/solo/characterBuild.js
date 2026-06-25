@@ -97,3 +97,40 @@ export function buildCharacter(choices = {}) {
     racialTraits: raceData?.traits || []
   };
 }
+
+/**
+ * Projects a built character onto a run.player object, preserving the required
+ * run.player structure (stats, skills, resources) and overlaying the 5e data:
+ * final ability scores onto `abilities` (same keys), HP from derived maxHp, and
+ * the full character record under `player.character` for the sheet. Pure.
+ * @param {object} character output of buildCharacter()
+ * @param {object} [basePlayer] existing run.player to merge onto
+ * @returns {object} new run.player
+ */
+export function toRunPlayer(character, basePlayer = {}) {
+  const player = { ...basePlayer };
+  if (character?.name) {
+    player.displayName = character.name;
+  }
+  player.className = character?.class || player.className || null;
+  player.characterClass = character?.class || null;
+  player.race = character?.race || null;
+  player.background = character?.background || null;
+  player.pronouns = character?.pronouns || null;
+  player.level = character?.level || player.level || 1;
+  player.proficiencyBonus = character?.proficiencyBonus || 2;
+  player.abilities = { ...(player.abilities || {}), ...(character?.abilityScores?.final || {}) };
+
+  const maxHp = character?.derivedStats?.maxHp;
+  if (Number.isFinite(maxHp)) {
+    player.health = maxHp;
+    player.maxHealth = maxHp;
+    player.resources = {
+      ...(player.resources || {}),
+      hitPoints: { current: maxHp, max: maxHp }
+    };
+  }
+
+  player.character = character || null; // full 5e record for the sheet tab
+  return player;
+}

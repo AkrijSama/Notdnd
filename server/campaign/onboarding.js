@@ -3,8 +3,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { applyOperation, createSoloRun, getSoloRun, saveSoloRun } from "../db/repository.js";
 import { ensureCampaignMemoryDocsAsync, rebuildCampaignIndex } from "../gm/memoryStore.js";
+import { buildCharacter, toRunPlayer } from "../solo/characterBuild.js";
 import { generateNpcIdentity } from "../solo/npcIdentity.js";
 import { writeNpcMemoryDoc } from "../solo/npcMemory.js";
+import { generateWorld } from "../solo/worldGen.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -267,4 +269,142 @@ export async function createOnboardingCampaign(userId, characterInfo = {}) {
   const savedRun = saveSoloRun(run);
 
   return { campaignId, runId: savedRun.runId };
+}
+
+// A starting contact whose role suits the generated starting-location type.
+function roleForLocationType(type) {
+  const key = String(type || "").toLowerCase();
+  const map = {
+    tavern: "Tavern Keeper",
+    "city gate": "Gate Warden",
+    wilderness: "Wandering Hunter",
+    dungeon: "Fellow Prisoner",
+    port: "Dockmaster",
+    market: "Merchant",
+    temple: "Acolyte",
+    ruins: "Scavenger",
+    camp: "Camp Quartermaster",
+    crossroads: "Wayfarer"
+  };
+  return map[key] || "Local";
+}
+
+/**
+ * World-generator onboarding (Tickets 38 + 39). Resolves the world from the
+ * player's (partial) definition, creates the campaign + solo run, builds the
+ * starting location from the generated world, seeds a world-overview memory doc,
+ * generates one tone-appropriate starting NPC, and applies the full 5e
+ * character onto run.player.
+ * @param {string} userId
+ * @param {{ world?: object, character?: object }} payload
+ * @returns {Promise<{ campaignId: string, runId: string, world: object }>}
+ */
+export async function createWorldOnboardingRun(userId, { world = {}, character = {} } = {}) {
+  const actorUserId = String(userId || "").trim();
+  if (!actorUserId) {
+    const error = new Error("userId is required to create a world onboarding run.");
+    error.code = "BAD_REQUEST";
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const resolvedWorld = await generateWorld(world);
+  const characterName = sanitizeName(character.name, "Wanderer");
+
+  const created = applyOperation(
+    "create_campaign",
+    {
+      name: resolvedWorld.name,
+      setting: resolvedWorld.tone,
+      status: "Ready",
+      readiness: 90,
+      players: [characterName]
+    },
+    { actorUserId }
+  );
+  const campaignId = String(created?.id || "").trim();
+  if (!campaignId) {
+    const error = new Error("Failed to create world onboarding campaign.");
+    error.code = "CAMPAIGN_CREATE_FAILED";
+    error.statusCode = 500;
+    throw error;
+  }
+
+  // Seed a world-overview memory doc from the generated world (not hardcoded
+  // Ashenmoor lore) so the GM's context reflects the player's world.
+  await ensureCampaignMemoryDocsAsync(campaignId, {
+    "World Overview":
+      `# ${resolvedWorld.name}\n\nTone: ${resolvedWorld.tone}\n\n${resolvedWorld.description}\n\n` +
+      `Starting location: ${resolvedWorld.startingLocation.name} — ${resolvedWorld.startingLocation.description}`
+  });
+
+  const createdRun = createSoloRun({ userId: actorUserId });
+  const run = getSoloRun(createdRun.runId);
+  run.campaignId = campaignId;
+  run.world = {
+    ...run.world,
+    name: resolvedWorld.name,
+    tone: resolvedWorld.tone,
+    startingLocationName: resolvedWorld.startingLocationName,
+    startingLocationType: resolvedWorld.startingLocationType,
+    flavor: resolvedWorld.flavor,
+    artStyle: resolvedWorld.artStyle
+  };
+  run.flags = { ...(run.flags || {}), artStyle: resolvedWorld.artStyle };
+
+  // Replace the placeholder starting location with the generated one.
+  const start = run.locations.start_location;
+  start.name = resolvedWorld.startingLocation.name;
+  start.description = resolvedWorld.startingLocation.description;
+  start.tags = Array.from(
+    new Set([
+      ...(start.tags || []).filter((tag) => tag !== "placeholder"),
+      slugTag(resolvedWorld.tone),
+      slugTag(resolvedWorld.startingLocationType)
+    ])
+  );
+
+  // Apply the full 5e character onto run.player.
+  const built = buildCharacter(character);
+  run.player = toRunPlayer(built, run.player);
+
+  // One tone-appropriate starting contact.
+  const npcRole = roleForLocationType(resolvedWorld.startingLocationType);
+  const npc = {
+    npcId: "npc_start_contact",
+    displayName: npcRole,
+    role: npcRole,
+    currentLocationId: "start_location",
+    known: true,
+    status: "present",
+    memoryFactIds: [],
+    tags: [slugTag(npcRole)],
+    flags: {},
+    edition: "mainline",
+    policyProfileId: "mainline_default",
+    contentTags: [],
+    origin: "procedural"
+  };
+  const identity = await generateNpcIdentity({
+    role: `${npcRole} in a ${resolvedWorld.tone} world`,
+    worldSeed: run.worldSeed,
+    npcIndex: 0
+  });
+  npc.generatedName = identity.generatedName;
+  npc.appearance = identity.appearance;
+  npc.personality = identity.personality;
+  npc.portraitPrompt = identity.portraitPrompt;
+  npc.identitySeed = identity.identitySeed;
+  npc.displayName = identity.generatedName;
+  const docId = writeNpcMemoryDoc(campaignId, npc);
+  if (docId) {
+    npc.memoryDocId = docId;
+  }
+  run.npcs = run.npcs || {};
+  run.npcs[npc.npcId] = npc;
+
+  await rebuildCampaignIndex(campaignId);
+  const savedRun = saveSoloRun(run);
+
+  return { campaignId, runId: savedRun.runId, world: resolvedWorld };
 }

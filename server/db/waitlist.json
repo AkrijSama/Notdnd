@@ -628,5 +628,20 @@
     "email": "smoke.duplicate@example.com",
     "interest": "Never-Forget Memory",
     "timestamp": "2026-06-25T18:39:06.664Z"
+  },
+  {
+    "email": "smoke.waitlist@example.com",
+    "interest": "All of it",
+    "timestamp": "2026-06-25T19:28:29.503Z"
+  },
+  {
+    "email": "smoke.duplicate@example.com",
+    "interest": "Multiplayer",
+    "timestamp": "2026-06-25T19:28:29.509Z"
+  },
+  {
+    "email": "smoke.duplicate@example.com",
+    "interest": "Never-Forget Memory",
+    "timestamp": "2026-06-25T19:28:29.513Z"
   }
 ]
