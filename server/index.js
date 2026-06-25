@@ -939,6 +939,7 @@ async function handleApi(req, res) {
       const gmStatus = buildGmRuntimeStatus(scene, gmNarration, {
         mode: gmMode
       });
+      if (typeof run.narration === "string" && run.narration.trim()) gmStatus.mode = "live";
       writeJson(res, 200, {
         ok: true,
         scene,
