@@ -390,6 +390,15 @@ export function validatePlayerState(player) {
     }
   }
 
+  // Optional 5e character fields (Ticket 38). All nullable; the rich nested
+  // record (abilityScores/derivedStats/savingThrows/skills/etc.) is tolerated
+  // as supplementary data and not strictly shaped here.
+  validateOptionalString(player.race, "race", errors);
+  validateOptionalString(player.characterClass, "characterClass", errors);
+  validateOptionalString(player.background, "background", errors);
+  validateOptionalString(player.pronouns, "pronouns", errors);
+  validateOptionalNumber(player.proficiencyBonus, "proficiencyBonus", errors);
+
   return result(errors);
 }
 
@@ -413,6 +422,14 @@ export function validateWorldState(world) {
 
   validateObject(world.flags, "flags", errors);
   validateStringArray(world.tags, "tags", errors);
+
+  // Optional world-generator definition fields (Ticket 39). All nullable so
+  // existing/default worlds stay valid.
+  validateOptionalString(world.tone, "tone", errors);
+  validateOptionalString(world.startingLocationName, "startingLocationName", errors);
+  validateOptionalString(world.startingLocationType, "startingLocationType", errors);
+  validateOptionalString(world.flavor, "flavor", errors);
+  validateOptionalString(world.artStyle, "artStyle", errors);
 
   return result(errors);
 }
