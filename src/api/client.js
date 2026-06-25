@@ -175,6 +175,24 @@ export function createApiClient(baseUrl = "") {
         body: JSON.stringify(payload)
       });
     },
+    async previewWorld(definition) {
+      return request("/api/onboarding/world", {
+        method: "POST",
+        body: JSON.stringify({ world: definition })
+      });
+    },
+    async regenerateWorldField({ definition, field }) {
+      return request("/api/onboarding/world/field", {
+        method: "POST",
+        body: JSON.stringify({ definition, field })
+      });
+    },
+    async createWorldRun({ world, character }) {
+      return request("/api/onboarding/world-run", {
+        method: "POST",
+        body: JSON.stringify({ world, character })
+      });
+    },
     async getGmMemory(campaignId) {
       return request(`/api/gm/memory?campaignId=${encodeURIComponent(campaignId)}`);
     },

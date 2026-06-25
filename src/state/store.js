@@ -256,6 +256,27 @@ export function createStore({ apiClient = null } = {}) {
     return response;
   }
 
+  async function previewWorld(definition = {}) {
+    if (!apiClient) {
+      throw new Error("API client is required for world generation.");
+    }
+    return apiClient.previewWorld(definition);
+  }
+
+  async function regenerateWorldField({ definition = {}, field } = {}) {
+    if (!apiClient) {
+      throw new Error("API client is required for world generation.");
+    }
+    return apiClient.regenerateWorldField({ definition, field });
+  }
+
+  async function createWorldRun({ world = {}, character = {} } = {}) {
+    if (!apiClient) {
+      throw new Error("API client is required for world onboarding.");
+    }
+    return apiClient.createWorldRun({ world, character });
+  }
+
   return {
     getState() {
       return state;
@@ -563,6 +584,15 @@ export function createStore({ apiClient = null } = {}) {
     },
     async startOnboarding({ characterName, archetype, backstorySnippet }) {
       return startOnboarding({ characterName, archetype, backstorySnippet });
+    },
+    async previewWorld(definition) {
+      return previewWorld(definition);
+    },
+    async regenerateWorldField(payload) {
+      return regenerateWorldField(payload);
+    },
+    async createWorldRun(payload) {
+      return createWorldRun(payload);
     },
     async rollDice({ expression, label, actor }) {
       return syncOperationWithResult("roll_dice", {

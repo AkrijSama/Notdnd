@@ -37,6 +37,8 @@ const uiState = {
     thinking: false,
     error: "",
     campaignId: "",
+    worldDef: {},
+    worldPreview: null,
     characterName: "",
     archetype: "",
     backstorySnippet: "",
@@ -191,58 +193,109 @@ function shouldShowOnboarding(state) {
   if (!user) {
     return false;
   }
-  if (uiState.onboarding.step === "arrival") {
-    return true;
-  }
   if (uiState.onboarding.step === "completed") {
     return false;
   }
-  if (uiState.onboarding.step === "character") {
+  if (["world", "world_preview", "character", "arrival"].includes(uiState.onboarding.step)) {
     return true;
   }
   return (state.campaigns || []).length === 0;
 }
 
+function patchOnboarding(patch) {
+  uiState.onboarding = { ...uiState.onboarding, ...patch };
+  scheduleRender();
+}
+
+// World-definition field handlers: chip selections re-render (to show the
+// active state); free-text input does not (preserve caret), mirroring the
+// character form's onFieldChange.
+function onWorldFieldSelect(field, value) {
+  uiState.onboarding.worldDef = { ...(uiState.onboarding.worldDef || {}), [field]: value };
+  scheduleRender();
+}
+function onWorldFieldInput(field, value) {
+  uiState.onboarding.worldDef = { ...(uiState.onboarding.worldDef || {}), [field]: value };
+}
+
+async function generateWorld() {
+  patchOnboarding({ loading: true, error: "" });
+  try {
+    const response = await store.previewWorld(uiState.onboarding.worldDef || {});
+    patchOnboarding({ loading: false, worldPreview: response.world, step: "world_preview" });
+  } catch (error) {
+    patchOnboarding({ loading: false, error: String(error?.message || error || "World generation failed.") });
+  }
+}
+
+async function regenerateWorld() {
+  patchOnboarding({ loading: true, error: "" });
+  try {
+    const response = await store.previewWorld(uiState.onboarding.worldDef || {});
+    patchOnboarding({ loading: false, worldPreview: response.world });
+  } catch (error) {
+    patchOnboarding({ loading: false, error: String(error?.message || error || "World regeneration failed.") });
+  }
+}
+
+async function regenerateWorldField(field) {
+  patchOnboarding({ loading: true, error: "" });
+  try {
+    const response = await store.regenerateWorldField({ definition: uiState.onboarding.worldDef || {}, field });
+    const world = { ...(uiState.onboarding.worldPreview || {}) };
+    if (field === "description") {
+      world.description = response.value;
+    } else if (field === "startingLocationDescription") {
+      world.startingLocation = { ...(world.startingLocation || {}), description: response.value };
+    } else {
+      world[field] = response.value;
+      if (field === "startingLocationName") {
+        world.startingLocation = { ...(world.startingLocation || {}), name: response.value };
+      }
+    }
+    patchOnboarding({ loading: false, worldPreview: world });
+  } catch (error) {
+    patchOnboarding({ loading: false, error: String(error?.message || error || "Field regeneration failed.") });
+  }
+}
+
+function confirmWorld() {
+  patchOnboarding({ step: "character", error: "" });
+}
+
+// Character submit -> create the run from the confirmed world + character, then
+// drop straight into the solo scene. (Pass 4 replaces the simple form with the
+// full 5e wizard; the world + character payload shape stays the same.)
 async function startOnboarding(payload) {
-  uiState.onboarding = {
-    ...uiState.onboarding,
-    step: "character",
+  patchOnboarding({
     loading: true,
     error: "",
     characterName: payload.characterName,
     archetype: payload.archetype,
     backstorySnippet: payload.backstorySnippet
-  };
-  scheduleRender();
+  });
 
   try {
-    const response = await store.startOnboarding(payload);
+    const response = await store.createWorldRun({
+      world: uiState.onboarding.worldPreview || uiState.onboarding.worldDef || {},
+      character: {
+        name: payload.characterName,
+        race: payload.race,
+        characterClass: payload.characterClass,
+        background: payload.background,
+        baseAbilityScores: payload.baseAbilityScores,
+        chosenSkills: payload.chosenSkills,
+        pronouns: payload.pronouns
+      }
+    });
     if (response?.runId) {
       window.location.search = `?soloRunId=${encodeURIComponent(response.runId)}`;
       return;
     }
-    const firstMessage = String(response.firstMessage || "").trim();
-    uiState.onboarding = {
-      ...uiState.onboarding,
-      step: "arrival",
-      loading: false,
-      thinking: false,
-      error: "",
-      campaignId: response.campaignId,
-      messages: firstMessage ? [{ role: "assistant", text: firstMessage }] : [],
-      exchanges: 0
-    };
-    uiState.activeTab = "command";
-    await loadCampaignMembers();
+    patchOnboarding({ loading: false, error: "World creation returned no run." });
   } catch (error) {
-    uiState.onboarding = {
-      ...uiState.onboarding,
-      loading: false,
-      error: String(error?.message || error || "Failed to start onboarding.")
-    };
+    patchOnboarding({ loading: false, error: String(error?.message || error || "Failed to enter the world.") });
   }
-
-  scheduleRender();
 }
 
 async function sendOnboardingMessage(message) {
@@ -534,7 +587,7 @@ function renderApp() {
   const user = state.auth?.user;
   const onboardingVisible = shouldShowOnboarding(state);
   if (onboardingVisible && uiState.onboarding.step === "inactive") {
-    uiState.onboarding.step = "character";
+    uiState.onboarding.step = "world";
   }
 
   if (user && state.selectedCampaignId && state.selectedCampaignId !== uiState.activeRealtimeCampaignId) {
@@ -596,6 +649,12 @@ function renderApp() {
         onStart: startOnboarding,
         onSendMessage: sendOnboardingMessage,
         onOpenDashboard: openOnboardingCampaignDashboard,
+        onWorldField: onWorldFieldSelect,
+        onWorldFieldInput,
+        onGenerateWorld: generateWorld,
+        onRegenerateWorld: regenerateWorld,
+        onRegenerateField: regenerateWorldField,
+        onConfirmWorld: confirmWorld,
         onFieldChange(field, value) {
           uiState.onboarding[field] = value;
         }

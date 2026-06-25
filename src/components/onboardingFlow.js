@@ -13,6 +13,126 @@ const ONBOARDING_LOADING_PHRASES = [
 // NPC. Label it generically so no specific character is baked into the UI.
 const NARRATOR_LABEL = "Narrator";
 
+const TONE_CHIPS = ["dark fantasy", "high fantasy", "grimdark", "sword and sorcery", "post-apocalyptic", "cosmic horror", "steampunk", "mythic"];
+const LOCATION_TYPE_CHIPS = ["tavern", "city gate", "wilderness", "dungeon", "port", "market", "temple", "ruins", "camp", "crossroads"];
+const ART_STYLE_OPTIONS = [
+  { id: "illustrated", label: "Illustrated Dark Fantasy", blurb: "Painterly, dramatic, card-art" },
+  { id: "anime", label: "Anime VN", blurb: "Clean line art, expressive faces" },
+  { id: "cinematic", label: "Dark Cinematic", blurb: "Moody, filmic key art" }
+];
+
+function esc(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function renderChip(label, active, attr) {
+  return `<button type="button" class="onb-chip ${active ? "active" : ""}" ${attr}>${esc(label)}</button>`;
+}
+
+function renderWorldStep(state) {
+  const def = state.worldDef || {};
+  const loading = Boolean(state.loading);
+  const toneChips = TONE_CHIPS.map((tone) => renderChip(tone, def.tone === tone, `data-world-tone="${esc(tone)}"`)).join("");
+  const locChips = LOCATION_TYPE_CHIPS.map((type) => renderChip(type, def.startingLocationType === type, `data-world-loctype="${esc(type)}"`)).join("");
+  const artCards = ART_STYLE_OPTIONS.map(
+    (option) => `
+      <button type="button" class="onb-art-card ${(def.artStyle || "illustrated") === option.id ? "active" : ""}" data-world-artstyle="${option.id}">
+        <div class="onb-art-prev onb-art-${option.id}"></div>
+        <div class="onb-art-label">${esc(option.label)}</div>
+        <div class="onb-art-blurb">${esc(option.blurb)}</div>
+      </button>`
+  ).join("");
+
+  return `
+    <section class="onboarding-shell onb-world">
+      <header class="onboarding-header">
+        <div class="tag">World Generator</div>
+        <h2>Define Your World</h2>
+        <p class="onb-disclaimer">Fields you leave blank will be imagined by the AI.</p>
+      </header>
+
+      <div class="onb-field">
+        <label>World name</label>
+        <input data-world-field="name" maxlength="80" placeholder="The Shattered Realm" value="${esc(def.name || "")}" ${loading ? "disabled" : ""} />
+      </div>
+
+      <div class="onb-field">
+        <label>Tone / setting</label>
+        <div class="onb-chips">${toneChips}</div>
+        <input data-world-field="tone" maxlength="60" placeholder="…or type your own" value="${esc(def.tone || "")}" ${loading ? "disabled" : ""} />
+      </div>
+
+      <div class="onb-field">
+        <label>Starting region / location name</label>
+        <input data-world-field="startingLocationName" maxlength="80" placeholder="The Ashen Wastes" value="${esc(def.startingLocationName || "")}" ${loading ? "disabled" : ""} />
+      </div>
+
+      <div class="onb-field">
+        <label>Starting location type</label>
+        <div class="onb-chips">${locChips}</div>
+      </div>
+
+      <div class="onb-field">
+        <label>One sentence of world flavor</label>
+        <textarea data-world-field="flavor" maxlength="240" placeholder="A kingdom where magic was outlawed after the god-wars" ${loading ? "disabled" : ""}>${esc(def.flavor || "")}</textarea>
+      </div>
+
+      <div class="onb-field">
+        <label>Art style</label>
+        <div class="onb-art-grid">${artCards}</div>
+      </div>
+
+      <button class="onb-primary" data-action="generate-world" ${loading ? "disabled" : ""}>${loading ? "Generating…" : "Generate World"}</button>
+      ${state.error ? `<div class="onboarding-error">${esc(state.error)}</div>` : ""}
+    </section>
+  `;
+}
+
+function renderWorldPreviewStep(state) {
+  const world = state.worldPreview || {};
+  const loading = Boolean(state.loading);
+  const location = world.startingLocation || { name: world.startingLocationName, description: "" };
+  return `
+    <section class="onboarding-shell onb-world">
+      <header class="onboarding-header">
+        <div class="tag">World Preview</div>
+        <h2>${esc(world.name || "Your World")}
+          <button type="button" class="onb-regen" title="Regenerate name" data-world-regen-field="name" ${loading ? "disabled" : ""}>⟳</button>
+        </h2>
+      </header>
+
+      <div class="onb-preview">
+        <div class="onb-preview-block">
+          <div class="onb-kicker">The World</div>
+          <p>${esc(world.description || "")}</p>
+          <button type="button" class="onb-regen-text" data-world-regen-field="description" ${loading ? "disabled" : ""}>⟳ Regenerate description</button>
+        </div>
+        <div class="onb-preview-block">
+          <div class="onb-kicker">You begin at</div>
+          <strong>${esc(location.name || "")}</strong>
+          <p>${esc(location.description || "")}</p>
+          <button type="button" class="onb-regen-text" data-world-regen-field="startingLocationDescription" ${loading ? "disabled" : ""}>⟳ Regenerate location</button>
+        </div>
+        <div class="onb-preview-meta">
+          <span class="tag">${esc(world.tone || "")}</span>
+          <span class="tag">${esc(world.startingLocationType || "")}</span>
+          <span class="tag">${esc(world.artStyle || "")}</span>
+        </div>
+      </div>
+
+      <div class="onb-actions">
+        <button class="onb-primary" data-action="confirm-world" ${loading ? "disabled" : ""}>Looks good — Create my character</button>
+        <button class="ghost" data-action="regenerate-world" ${loading ? "disabled" : ""}>Regenerate blanks</button>
+      </div>
+      ${state.error ? `<div class="onboarding-error">${esc(state.error)}</div>` : ""}
+    </section>
+  `;
+}
+
 function renderMessages(messages = []) {
   if (!Array.isArray(messages) || messages.length === 0) {
     return `<div class="onboarding-empty">No messages yet.</div>`;
@@ -35,6 +155,14 @@ export function renderOnboardingFlow(onboardingState = {}) {
   const thinking = Boolean(onboardingState.thinking);
   const exchanges = Number(onboardingState.exchanges || 0);
   const error = String(onboardingState.error || "");
+
+  if (step === "world") {
+    return renderWorldStep(onboardingState);
+  }
+
+  if (step === "world_preview") {
+    return renderWorldPreviewStep(onboardingState);
+  }
 
   if (step === "arrival") {
     return `
@@ -177,6 +305,37 @@ function animateOnboardingLoading(root) {
 
 export function bindOnboardingFlow(root, handlers = {}) {
   animateOnboardingLoading(root);
+
+  // ---- World generator (Ticket 39) ----
+  root.querySelectorAll("[data-world-tone]").forEach((button) => {
+    button.addEventListener("click", () => handlers.onWorldField?.("tone", button.getAttribute("data-world-tone")));
+  });
+  root.querySelectorAll("[data-world-loctype]").forEach((button) => {
+    button.addEventListener("click", () => handlers.onWorldField?.("startingLocationType", button.getAttribute("data-world-loctype")));
+  });
+  root.querySelectorAll("[data-world-artstyle]").forEach((button) => {
+    button.addEventListener("click", () => handlers.onWorldField?.("artStyle", button.getAttribute("data-world-artstyle")));
+  });
+  root.querySelectorAll("[data-world-field]").forEach((field) => {
+    if (typeof field.addEventListener === "function") {
+      field.addEventListener("input", () => handlers.onWorldFieldInput?.(field.getAttribute("data-world-field"), field.value));
+    }
+  });
+  const generateBtn = root.querySelector('[data-action="generate-world"]');
+  if (generateBtn) {
+    generateBtn.addEventListener("click", () => handlers.onGenerateWorld?.());
+  }
+  const confirmWorldBtn = root.querySelector('[data-action="confirm-world"]');
+  if (confirmWorldBtn) {
+    confirmWorldBtn.addEventListener("click", () => handlers.onConfirmWorld?.());
+  }
+  const regenerateWorldBtn = root.querySelector('[data-action="regenerate-world"]');
+  if (regenerateWorldBtn) {
+    regenerateWorldBtn.addEventListener("click", () => handlers.onRegenerateWorld?.());
+  }
+  root.querySelectorAll("[data-world-regen-field]").forEach((button) => {
+    button.addEventListener("click", () => handlers.onRegenerateField?.(button.getAttribute("data-world-regen-field")));
+  });
 
   const startForm = root.querySelector("#onboarding-start-form");
   if (startForm) {

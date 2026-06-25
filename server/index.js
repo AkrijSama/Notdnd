@@ -34,7 +34,8 @@ import { generateWithProvider, listAiProviders } from "./ai/providers.js";
 import { detectImageExt, parseMultipartFile, readJsonBody, readRawBody, serveStatic, writeJson, writeText } from "./api/http.js";
 import { handleQuickstartBuildPayload, handleQuickstartParsePayload } from "./api/quickstartRoutes.js";
 import { tokenFromRequest } from "./auth/httpAuth.js";
-import { createOnboardingCampaign } from "./campaign/onboarding.js";
+import { createOnboardingCampaign, createWorldOnboardingRun } from "./campaign/onboarding.js";
+import { generateWorld, regenerateWorldField } from "./solo/worldGen.js";
 import {
   addCampaignMember,
   applyOperation,
@@ -1044,6 +1045,50 @@ async function handleApi(req, res) {
         runId,
         firstMessage: String(opening?.narrative || "").trim()
       });
+    } catch (error) {
+      routeError(res, error);
+    }
+    return true;
+  }
+
+  // World generator preview — fills blank fields, persists nothing.
+  if (req.method === "POST" && url.pathname === "/api/onboarding/world") {
+    try {
+      requireAuth(req);
+      const payload = await readJsonBody(req);
+      const world = await generateWorld(payload?.world || {});
+      writeJson(res, 200, { ok: true, world });
+    } catch (error) {
+      routeError(res, error);
+    }
+    return true;
+  }
+
+  // Regenerate a single world field (per-field ⟳).
+  if (req.method === "POST" && url.pathname === "/api/onboarding/world/field") {
+    try {
+      requireAuth(req);
+      const payload = await readJsonBody(req);
+      const value = await regenerateWorldField(payload?.definition || {}, String(payload?.field || ""), {
+        salt: String(payload?.salt || "")
+      });
+      writeJson(res, 200, { ok: true, value });
+    } catch (error) {
+      routeError(res, error);
+    }
+    return true;
+  }
+
+  // Create the run from a confirmed world + character (replaces /start flow).
+  if (req.method === "POST" && url.pathname === "/api/onboarding/world-run") {
+    try {
+      const user = requireAuth(req);
+      const payload = await readJsonBody(req);
+      const result = await createWorldOnboardingRun(user.id, {
+        world: payload?.world || {},
+        character: payload?.character || {}
+      });
+      writeJson(res, 200, { ok: true, ...result });
     } catch (error) {
       routeError(res, error);
     }
