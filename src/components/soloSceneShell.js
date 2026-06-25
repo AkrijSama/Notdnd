@@ -1062,12 +1062,18 @@ export function renderSoloSceneInputBar(state = {}) {
     })
     .join("");
 
+  const confirmation = typeof state.npcCreatorConfirmation === "string" ? state.npcCreatorConfirmation : "";
+
   return `
     <div class="solo-scene-input">
       <div class="solo-scene-input-row">
         <input type="text" class="solo-scene-field" data-solo-attempt-input placeholder="What do you do?" value="${escapeHtml(state.attemptDraft || "")}" />
         <button type="button" class="solo-attempt-submit" data-solo-attempt-submit>Attempt</button>
       </div>
+      <div class="solo-scene-tools">
+        <button type="button" class="solo-bring-in" data-solo-npc-create>＋ Bring someone in</button>
+      </div>
+      ${confirmation ? `<div class="solo-npc-confirm" role="status">${escapeHtml(confirmation)}</div>` : ""}
       ${chips ? `<div class="solo-scene-chips">${chips}</div>` : ""}
     </div>
   `;
@@ -1132,11 +1138,46 @@ export function renderSoloMapTab() {
 
 export function renderSoloRightRail(state = {}) {
   const scene = state.scene || {};
-  const primaryNpc = (Array.isArray(scene.visibleEntities) ? scene.visibleEntities : []).find(
-    (entity) => entity?.entityType === "npc"
-  );
-  const relationshipName = primaryNpc?.displayName || "No contacts yet";
-  const relationshipRole = primaryNpc?.summary || "—";
+  // Prefer the full server-side cast roster (all run.npcs with portrait URIs);
+  // fall back to current-location NPCs for older payloads without `cast`.
+  const roster =
+    Array.isArray(scene.cast) && scene.cast.length
+      ? scene.cast
+      : (Array.isArray(scene.visibleEntities) ? scene.visibleEntities : [])
+          .filter((entity) => entity?.entityType === "npc")
+          .map((entity) => ({
+            npcId: String(entity.entityId || "").split(":").slice(1).join(":") || entity.entityId,
+            entityId: entity.entityId,
+            displayName: entity.displayName,
+            role: entity.summary,
+            portraitUri: "",
+            present: true
+          }));
+
+  const cast = roster.length
+    ? roster
+        .map((member) => {
+          const name = member.displayName || "Unknown";
+          const role = member.role || "—";
+          const entityId = member.entityId || (member.npcId ? `npc:${member.npcId}` : "");
+          const portraitUri = typeof member.portraitUri === "string" ? member.portraitUri : "";
+          const initial = String(name).trim().slice(0, 1).toUpperCase() || "?";
+          const thumb = portraitUri
+            ? `<img src="${escapeHtml(portraitUri)}" alt="${escapeHtml(name)}" />`
+            : `<span>${escapeHtml(initial)}</span>`;
+          const away = member.present === false ? ` <span class="solo-cast-away">away</span>` : "";
+          return `
+            <div class="solo-cast-card">
+              <div class="solo-cast-thumb">${thumb}</div>
+              <div class="solo-cast-meta">
+                <div class="solo-cast-name">${escapeHtml(name)}${away}</div>
+                <div class="solo-cast-role">${escapeHtml(role)}</div>
+              </div>
+              <button type="button" class="solo-cast-bringback" data-solo-npc-bringback data-entity-id="${escapeHtml(entityId)}">Bring back</button>
+            </div>`;
+        })
+        .join("")
+    : `<div class="solo-empty-state">No one is here yet. Use “Bring someone in” to add a character.</div>`;
   return `
     <aside class="solo-game-rail solo-scene-side">
       <div class="solo-rail-block">
@@ -1145,13 +1186,8 @@ export function renderSoloRightRail(state = {}) {
         <div class="solo-roll"><div><div class="solo-roll-name">Initiative</div><div class="solo-roll-detail">d20 8 +1</div></div><span class="solo-roll-total accent">9</span></div>
       </div>
       <div class="solo-rail-block">
-        <div class="solo-stat-kicker">Relationships</div>
-        <div class="solo-relationship">
-          <div class="solo-relationship-head"><div class="solo-relationship-name">${relationshipName}</div><div class="solo-condition-note">${relationshipRole}</div></div>
-          <div class="solo-relationship-row"><span>Trust</span><span class="solo-pips"><b class="good">●</b><b>●●●●</b></span></div>
-          <div class="solo-relationship-row"><span>Suspicion</span><span class="solo-pips"><b class="accent">●●●</b><b>●●</b></span></div>
-          <div class="solo-relationship-row"><span>Fear</span><span class="solo-pips"><b>●●●●●</b></span></div>
-        </div>
+        <div class="solo-stat-kicker">Cast</div>
+        <div class="solo-cast-list">${cast}</div>
       </div>
       <div class="solo-rail-block">
         ${renderSearchResultPanel(state.searchResult, scene.discoveredDetails)}
@@ -1215,6 +1251,75 @@ export function renderSoloDialogueOverlay(state = {}) {
           <div class="solo-vn-controls">
             <button type="button" class="solo-vn-next" data-solo-dialogue-next>NEXT ›</button>
           </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// ---------------------------------------------------------------------------
+// In-scene NPC creator modal
+// ---------------------------------------------------------------------------
+// Lightweight 3-field modal (portrait / who / how-they-enter), rendered only
+// while state.npcCreator.open is true. Field values + the selected File live in
+// state so they survive the shell's full-innerHTML re-renders.
+export function renderNpcCreatorModal(state = {}) {
+  const creator = state.npcCreator || {};
+  if (!creator.open) {
+    return "";
+  }
+  const mode = creator.mode === "imagine" ? "imagine" : "upload";
+  const loading = creator.loading === true;
+  const previewUrl = typeof creator.previewUrl === "string" ? creator.previewUrl : "";
+  const error = typeof creator.error === "string" ? creator.error : "";
+  const thumbInner = previewUrl
+    ? `<img src="${escapeHtml(previewUrl)}" alt="Portrait preview" />`
+    : `<span>${mode === "imagine" ? "GM" : "?"}</span>`;
+
+  return `
+    <div class="solo-npc-modal-overlay" data-solo-npc-overlay role="dialog" aria-modal="true" aria-label="Bring in a character">
+      <div class="solo-npc-modal-backdrop" data-solo-npc-close></div>
+      <div class="solo-npc-modal" data-solo-npc-modal>
+        <div class="solo-npc-modal-head">
+          <h3>Bring someone in</h3>
+          <button type="button" class="solo-npc-modal-x" data-solo-npc-close aria-label="Close">×</button>
+        </div>
+
+        <div class="solo-npc-field">
+          <label class="solo-npc-label">Portrait</label>
+          <div class="solo-npc-portrait-row">
+            <div class="solo-npc-thumb">${thumbInner}</div>
+            <div class="solo-npc-portrait-controls">
+              <label class="solo-npc-upload ${mode === "imagine" ? "is-disabled" : ""}">
+                <input type="file" accept="image/png,image/jpeg,image/webp" data-solo-npc-file ${mode === "imagine" ? "disabled" : ""} />
+                <span>Upload a portrait</span>
+              </label>
+              <label class="solo-npc-checkbox">
+                <input type="checkbox" data-solo-npc-imagine ${mode === "imagine" ? "checked" : ""} />
+                <span>Let the GM imagine them</span>
+              </label>
+              <small class="solo-npc-hint">JPG, PNG, or WEBP · up to 10MB</small>
+            </div>
+          </div>
+        </div>
+
+        <div class="solo-npc-field">
+          <label class="solo-npc-label">Who they are</label>
+          <input type="text" class="solo-npc-input" data-solo-npc-name placeholder="Name (optional — the GM can name them)" value="${escapeHtml(creator.name || "")}" />
+          <input type="text" class="solo-npc-input" data-solo-npc-desc placeholder="a scarred mercenary with a secret" value="${escapeHtml(creator.description || "")}" />
+        </div>
+
+        <div class="solo-npc-field">
+          <label class="solo-npc-label">How they enter</label>
+          <textarea class="solo-npc-textarea" data-solo-npc-intro rows="2" placeholder="My old mentor walks in, looking for me...">${escapeHtml(creator.introInstructions || "")}</textarea>
+        </div>
+
+        ${error ? `<div class="solo-npc-error" role="alert">${escapeHtml(error)}</div>` : ""}
+        ${loading ? `<div class="solo-npc-loading">The GM is preparing to introduce them…</div>` : ""}
+
+        <div class="solo-npc-actions">
+          <button type="button" class="ghost" data-solo-npc-close ${loading ? "disabled" : ""}>Cancel</button>
+          <button type="button" class="solo-npc-submit" data-solo-npc-submit ${loading ? "disabled" : ""}>Bring them in</button>
         </div>
       </div>
     </div>
@@ -1324,6 +1429,7 @@ export function renderSoloSceneShell(state = {}) {
         ${renderSoloRightRail(state)}
       </div>
       ${renderSoloDialogueOverlay(state)}
+      ${renderNpcCreatorModal(state)}
     </section>
   `;
 }
@@ -1476,6 +1582,44 @@ export function bindSoloSceneShell(root, handlers = {}) {
     });
   });
 
+  // ---- In-scene NPC creator modal + cast roster ----
+  root.querySelectorAll("[data-solo-npc-create]").forEach((button) => {
+    button.addEventListener("click", () => handlers.onOpenNpcCreator?.());
+  });
+  root.querySelectorAll("[data-solo-npc-close]").forEach((el) => {
+    el.addEventListener("click", () => handlers.onNpcClose?.());
+  });
+  root.querySelectorAll("[data-solo-npc-submit]").forEach((button) => {
+    button.addEventListener("click", () => handlers.onNpcSubmit?.());
+  });
+  const npcFileInput = root.querySelectorAll("[data-solo-npc-file]")[0] || null;
+  if (npcFileInput && typeof npcFileInput.addEventListener === "function") {
+    npcFileInput.addEventListener("change", (event) => {
+      handlers.onNpcFile?.({ file: event?.target?.files?.[0] || null });
+    });
+  }
+  const npcImagineInput = root.querySelectorAll("[data-solo-npc-imagine]")[0] || null;
+  if (npcImagineInput && typeof npcImagineInput.addEventListener === "function") {
+    npcImagineInput.addEventListener("change", (event) => {
+      handlers.onNpcMode?.({ imagine: Boolean(event?.target?.checked) });
+    });
+  }
+  for (const [selector, field] of [
+    ["[data-solo-npc-name]", "name"],
+    ["[data-solo-npc-desc]", "description"],
+    ["[data-solo-npc-intro]", "introInstructions"]
+  ]) {
+    const el = root.querySelectorAll(selector)[0] || null;
+    if (el && typeof el.addEventListener === "function") {
+      el.addEventListener("input", () => handlers.onNpcField?.({ field, value: el.value }));
+    }
+  }
+  root.querySelectorAll("[data-solo-npc-bringback]").forEach((button) => {
+    button.addEventListener("click", () => {
+      handlers.onBringBack?.({ entityId: button.getAttribute("data-entity-id") });
+    });
+  });
+
   const attemptInput = root.querySelectorAll("[data-solo-attempt-input]")[0] || null;
   const submitAttempt = () => {
     const intent = String(attemptInput?.value || "").trim();
@@ -1524,6 +1668,20 @@ function writeSoloThemePref(key, value) {
   }
 }
 
+function freshNpcCreatorState() {
+  return {
+    open: false,
+    mode: "upload",
+    file: null,
+    previewUrl: "",
+    name: "",
+    description: "",
+    introInstructions: "",
+    loading: false,
+    error: ""
+  };
+}
+
 export function mountSoloSceneShell(root, { apiClient, runId }) {
   const state = {
     runId,
@@ -1541,6 +1699,8 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     dialogueTyped: false,
     gmMode: "placeholder",
     activeTab: "scene",
+    npcCreator: freshNpcCreatorState(),
+    npcCreatorConfirmation: "",
     skin: normalizeSkin(readSoloThemePref(SOLO_SKIN_STORAGE_KEY, "ashen")),
     fontSet: normalizeFontSet(readSoloThemePref(SOLO_FONT_STORAGE_KEY, "tome"))
   };
@@ -1562,8 +1722,115 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       onAttempt: handleAttempt,
       onAttemptDraft: handleAttemptDraft,
       onDialogueClose: handleDialogueClose,
-      onDialogueTyped: handleDialogueTyped
+      onDialogueTyped: handleDialogueTyped,
+      onOpenNpcCreator: handleOpenNpcCreator,
+      onNpcClose: handleNpcClose,
+      onNpcMode: handleNpcMode,
+      onNpcFile: handleNpcFile,
+      onNpcField: handleNpcField,
+      onNpcSubmit: handleNpcSubmit,
+      onBringBack: handleBringBack
     });
+  }
+
+  function revokePreview() {
+    const url = state.npcCreator?.previewUrl;
+    if (url && typeof URL !== "undefined" && typeof URL.revokeObjectURL === "function") {
+      try {
+        URL.revokeObjectURL(url);
+      } catch {
+        // best-effort cleanup
+      }
+    }
+  }
+
+  function handleOpenNpcCreator() {
+    state.npcCreatorConfirmation = "";
+    revokePreview();
+    state.npcCreator = { ...freshNpcCreatorState(), open: true };
+    render();
+  }
+
+  function handleNpcClose() {
+    revokePreview();
+    state.npcCreator = freshNpcCreatorState();
+    render();
+  }
+
+  function handleNpcMode({ imagine }) {
+    const creator = state.npcCreator;
+    creator.mode = imagine ? "imagine" : "upload";
+    if (imagine) {
+      revokePreview();
+      creator.file = null;
+      creator.previewUrl = "";
+    }
+    render();
+  }
+
+  function handleNpcFile({ file }) {
+    const creator = state.npcCreator;
+    revokePreview();
+    creator.file = file || null;
+    creator.mode = "upload";
+    creator.previewUrl =
+      file && typeof URL !== "undefined" && typeof URL.createObjectURL === "function"
+        ? URL.createObjectURL(file)
+        : "";
+    render();
+  }
+
+  function handleNpcField({ field, value }) {
+    // No re-render: keep the live DOM (and caret) intact while typing; state is
+    // synced so a later render repopulates from these values.
+    const creator = state.npcCreator;
+    if (field === "name") {
+      creator.name = String(value || "");
+    } else if (field === "description") {
+      creator.description = String(value || "");
+    } else if (field === "introInstructions") {
+      creator.introInstructions = String(value || "");
+    }
+  }
+
+  async function handleNpcSubmit() {
+    const creator = state.npcCreator;
+    if (!creator || creator.loading) {
+      return;
+    }
+    creator.loading = true;
+    creator.error = "";
+    render();
+    try {
+      // Portrait uploaded -> "user"; otherwise AI-portrait "hybrid".
+      const origin = creator.file ? "user" : "hybrid";
+      const created = await apiClient.createNpc(runId, {
+        name: creator.name,
+        description: creator.description,
+        introInstructions: creator.introInstructions,
+        origin
+      });
+      const npc = created?.npc || null;
+      if (creator.file && npc?.npcId) {
+        await apiClient.uploadNpcPortrait(runId, npc.npcId, creator.file);
+      }
+      const name = npc?.generatedName || npc?.displayName || "A new figure";
+      revokePreview();
+      state.npcCreator = freshNpcCreatorState();
+      await loadScene();
+      state.npcCreatorConfirmation = `${name} is entering the story…`;
+      render();
+    } catch (error) {
+      creator.loading = false;
+      creator.error = String(error?.message || error || "Could not bring them in.");
+      render();
+    }
+  }
+
+  function handleBringBack(entity) {
+    // For an NPC already at the current location, "bring back" focuses them via
+    // the talk flow (re-engaging any intro/dialogue).
+    return handleTalk(entity);
   }
 
   function handleDialogueClose() {
@@ -1623,6 +1890,7 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
   async function loadScene() {
     state.loading = true;
     state.error = "";
+    state.npcCreatorConfirmation = "";
     render();
     try {
       state.scene = await fetchSoloScene(apiClient, runId);

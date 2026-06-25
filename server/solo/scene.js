@@ -259,6 +259,24 @@ export function validateSoloScenePayload(payload) {
   } else {
     payload.visibleEntities.forEach((entity, index) => appendNestedErrors(errors, `visibleEntities.${index}`, validateVisibleEntity(entity)));
   }
+  if (payload.cast !== undefined) {
+    if (!Array.isArray(payload.cast)) {
+      push(errors, "cast", "Expected array");
+    } else {
+      payload.cast.forEach((entry, index) => {
+        if (!isPlainObject(entry)) {
+          push(errors, `cast.${index}`, "Expected object");
+          return;
+        }
+        if (!isString(entry.npcId)) {
+          push(errors, `cast.${index}.npcId`, "Expected non-empty string");
+        }
+        if (!isString(entry.displayName)) {
+          push(errors, `cast.${index}.displayName`, "Expected non-empty string");
+        }
+      });
+    }
+  }
   if (!Array.isArray(payload.availableMoves)) {
     push(errors, "availableMoves", "Expected array");
   }
@@ -485,6 +503,44 @@ export function buildNpcIntroDirective(run) {
   return `Introduce the following custom NPC(s) naturally into the scene, following each directive:\n${lines.join("\n")}`;
 }
 
+// Pure. Builds the full NPC roster (every NPC in run.npcs, policy-filtered) with
+// resolved portrait/expression URIs, so the client cast list isn't limited to
+// the current location. A URI is included only when its asset is generated.
+export function buildCastRoster(run, policyProfile) {
+  if (!isPlainObject(run) || !isPlainObject(run.npcs)) {
+    return [];
+  }
+  const assets = isPlainObject(run.imageAssets) ? run.imageAssets : {};
+  const uriFor = (assetId) => {
+    const asset = assetId ? assets[assetId] : null;
+    return asset && asset.status === "generated" && isString(asset.uri) ? asset.uri : null;
+  };
+
+  return Object.values(run.npcs)
+    .filter((npc) => isPlainObject(npc) && policyAllows(npc, policyProfile))
+    .map((npc) => {
+      const variants = isPlainObject(npc.expressionVariants) ? npc.expressionVariants : {};
+      const expressionVariants = {};
+      for (const [expression, assetId] of Object.entries(variants)) {
+        const uri = uriFor(assetId);
+        if (uri) {
+          expressionVariants[expression] = uri;
+        }
+      }
+      return {
+        npcId: npc.npcId,
+        displayName: npc.generatedName || npc.displayName || npc.role || npc.npcId,
+        role: npc.role || "",
+        origin: npc.origin || null,
+        known: npc.known !== false,
+        currentLocationId: npc.currentLocationId || null,
+        present: npc.currentLocationId === run.currentLocationId,
+        portraitUri: uriFor(npc.imageAssetId),
+        expressionVariants
+      };
+    });
+}
+
 export function buildSoloScenePayload(run, options = {}) {
   const runValidation = validateSoloRun(run);
   if (!runValidation.ok) {
@@ -530,6 +586,7 @@ export function buildSoloScenePayload(run, options = {}) {
     location: locationPayload(currentLocation),
     rest: restPayload(currentLocation, policyProfile),
     visibleEntities,
+    cast: buildCastRoster(run, policyProfile),
     availableMoves: getAvailableMoves(run).filter((move) => {
       const destination = run.locations[move.locationId];
       return destination ? policyAllows(destination, policyProfile) : false;

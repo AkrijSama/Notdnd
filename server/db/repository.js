@@ -850,11 +850,10 @@ export function createSoloNpc(runId, input = {}) {
   const description = String(input.description || "").trim();
   const introInstructions = String(input.introInstructions || "").trim();
 
+  // Portrait upload exists now, so "user" is a valid origin (a portrait is
+  // uploaded in a follow-up request). Unknown/empty origins default by intent.
   let origin = String(input.origin || "").trim().toLowerCase();
-  if (origin === "user") {
-    origin = "hybrid"; // no portrait upload yet — treat as AI-portrait hybrid
-  }
-  if (origin !== "procedural" && origin !== "hybrid") {
+  if (origin !== "procedural" && origin !== "hybrid" && origin !== "user") {
     origin = name || description ? "hybrid" : "procedural";
   }
 

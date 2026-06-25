@@ -107,6 +107,35 @@ export function createApiClient(baseUrl = "") {
         body: JSON.stringify({ action })
       });
     },
+    async createNpc(runId, { name, description, introInstructions, origin } = {}) {
+      return request(`/api/solo/runs/${encodeURIComponent(runId)}/npcs`, {
+        method: "POST",
+        body: JSON.stringify({ name, description, introInstructions, origin })
+      });
+    },
+    async uploadNpcPortrait(runId, npcId, file) {
+      // Multipart upload — must NOT set Content-Type so the browser supplies the
+      // multipart boundary. Reuses the closure's auth token / base URL.
+      const headers = {};
+      if (authToken) {
+        headers.Authorization = `Bearer ${authToken}`;
+      }
+      const form = new FormData();
+      form.append("file", file);
+      const response = await fetch(
+        `${baseUrl}/api/solo/runs/${encodeURIComponent(runId)}/npcs/${encodeURIComponent(npcId)}/portrait`,
+        { method: "POST", headers, body: form }
+      );
+      const payload = await response.json();
+      if (!response.ok || payload.ok === false) {
+        const error = new Error(payload.error || `Request failed: ${response.status}`);
+        error.code = payload.code;
+        error.status = response.status;
+        error.payload = payload;
+        throw error;
+      }
+      return payload;
+    },
     async applyOperation(op, payload = {}, expectedVersion = null) {
       return request("/api/ops", {
         method: "POST",

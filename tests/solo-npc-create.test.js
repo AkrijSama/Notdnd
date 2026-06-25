@@ -31,7 +31,7 @@ function freshRun(runId, { campaignId } = {}) {
   }
 }
 
-test("createSoloNpc with name + description = hybrid; identity fills gaps, name preserved", async () => {
+test("createSoloNpc preserves origin 'user'; identity fills gaps, name preserved", async () => {
   freshRun("run_c_a", { campaignId: "cmp_a" });
   const created = createSoloNpc("run_c_a", {
     name: "Doorman",
@@ -42,7 +42,7 @@ test("createSoloNpc with name + description = hybrid; identity fills gaps, name 
   assert.ok(created && created.npcId);
 
   let npc = getSoloRun("run_c_a").npcs[created.npcId];
-  assert.equal(npc.origin, "hybrid"); // user coerced to hybrid (no upload)
+  assert.equal(npc.origin, "user"); // no longer coerced — upload exists now
   assert.equal(npc.generatedName, "Doorman"); // user name preserved
   assert.equal(npc.introInstructions, "Have them block the exit");
   assert.equal(npc.known, true);
