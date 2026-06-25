@@ -2,9 +2,43 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   renderNpcCreatorModal,
+  renderSoloDialogueOverlay,
   renderSoloRightRail,
   renderSoloSceneInputBar
 } from "../src/components/soloSceneShell.js";
+
+const dialogueState = (talkOverrides, cast = []) => ({
+  dialogueActive: true,
+  scene: { cast },
+  talkResult: {
+    npcId: "vex",
+    speakerName: "Vex",
+    expression: "neutral",
+    line: "Well met.",
+    expressionVariants: {},
+    ...talkOverrides
+  }
+});
+
+test("VN overlay uses the expression variant when present", () => {
+  const html = renderSoloDialogueOverlay(
+    dialogueState({ expressionVariants: { neutral: "/v/neutral.png" } }, [{ npcId: "vex", portraitUri: "/v/base.png" }])
+  );
+  assert.match(html, /src="\/v\/neutral.png"/);
+});
+
+test("VN overlay falls back to the base portrait when the variant is missing", () => {
+  const html = renderSoloDialogueOverlay(
+    dialogueState({ expressionVariants: {} }, [{ npcId: "vex", portraitUri: "/v/base.png" }])
+  );
+  assert.match(html, /src="\/v\/base.png"/);
+  assert.doesNotMatch(html, /Portrait incoming/);
+});
+
+test("VN overlay shows the placeholder only when neither variant nor base exists", () => {
+  const html = renderSoloDialogueOverlay(dialogueState({ expressionVariants: {} }, []));
+  assert.match(html, /Portrait incoming/);
+});
 
 test("renderNpcCreatorModal is empty when closed", () => {
   assert.equal(renderNpcCreatorModal({}), "");

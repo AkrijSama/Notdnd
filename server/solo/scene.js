@@ -1,3 +1,4 @@
+import { providerSupportsReference, resolveImageProvider } from "../ai/providers.js";
 import { getAvailableSoloActions } from "./actions.js";
 import { getVisibleEntities, validateVisibleEntity } from "./entities.js";
 import { generatePlaceholderGmNarration, validateGmSceneOutput } from "./gm.js";
@@ -407,15 +408,19 @@ export function summarizeSceneForUi(payload) {
   };
 }
 
-// Pure. Returns the raw ids of visible NPCs whose portrait art is incomplete
-// (base or any expression variant missing / not yet generated). Used by the
-// scene route to decide which image jobs to enqueue.
+// Returns the raw ids of visible NPCs whose portrait art is incomplete. Used by
+// the scene route to decide which image jobs to enqueue. Expression variants
+// only count toward "incomplete" when the active provider can actually generate
+// consistent ones (img2img / IP-Adapter); under a txt2img-only provider
+// (Pollinations) only the base portrait is required, which avoids a perpetual
+// re-enqueue loop for variants that will never be generated there.
 export function collectNpcsNeedingArt(run, visibleEntities = null) {
   if (!isPlainObject(run) || !isPlainObject(run.npcs)) {
     return [];
   }
   const entities = Array.isArray(visibleEntities) ? visibleEntities : getVisibleEntities(run);
   const assets = isPlainObject(run.imageAssets) ? run.imageAssets : {};
+  const variantsMatter = providerSupportsReference(resolveImageProvider());
   const needing = [];
 
   for (const entity of entities) {
@@ -431,7 +436,7 @@ export function collectNpcsNeedingArt(run, visibleEntities = null) {
     const variants = isPlainObject(npc.expressionVariants) ? npc.expressionVariants : {};
     const generated = (assetId) => isString(assetId) && assets[assetId]?.status === "generated";
     const baseReady = generated(npc.imageAssetId);
-    const variantsReady = NPC_EXPRESSIONS.every((expression) => generated(variants[expression]));
+    const variantsReady = !variantsMatter || NPC_EXPRESSIONS.every((expression) => generated(variants[expression]));
 
     if (!baseReady || !variantsReady) {
       needing.push(npcId);

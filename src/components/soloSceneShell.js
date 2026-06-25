@@ -1216,9 +1216,17 @@ export function renderSoloDialogueOverlay(state = {}) {
     return "";
   }
   const talk = state.talkResult;
+  const scene = state.scene || {};
   const expression = typeof talk.expression === "string" && talk.expression ? talk.expression : "neutral";
   const variants = talk.expressionVariants && typeof talk.expressionVariants === "object" ? talk.expressionVariants : {};
-  const portraitUri = typeof variants[expression] === "string" ? variants[expression] : "";
+  // Fallback chain: requested expression variant -> the NPC's base portrait
+  // (from the cast roster) -> atmospheric placeholder. Never a broken image.
+  const castMember = (Array.isArray(scene.cast) ? scene.cast : []).find(
+    (member) => member && member.npcId === talk.npcId
+  ) || null;
+  const baseUri = castMember && typeof castMember.portraitUri === "string" ? castMember.portraitUri : "";
+  const variantUri = typeof variants[expression] === "string" && variants[expression] ? variants[expression] : "";
+  const portraitUri = variantUri || baseUri;
   const speaker = talk.speakerName || "NPC";
   const line = talk.line || "There is not much new to say right now.";
   const typed = state.dialogueTyped === true;
@@ -1237,7 +1245,7 @@ export function renderSoloDialogueOverlay(state = {}) {
     <div class="solo-vn-overlay" data-solo-dialogue-overlay role="dialog" aria-modal="true" aria-label="Dialogue with ${escapeHtml(speaker)}">
       <div class="solo-vn-backdrop" data-solo-dialogue-close></div>
       <div class="solo-vn-panel" data-solo-dialogue-panel>
-        <div class="solo-vn-portrait" data-expression="${escapeHtml(expression)}" data-portrait-key="${escapeHtml(expression)}">
+        <div class="solo-vn-portrait" data-expression="${escapeHtml(expression)}" data-portrait-key="${escapeHtml(portraitUri || expression)}">
           ${portraitInner}
         </div>
         <div class="solo-vn-body">

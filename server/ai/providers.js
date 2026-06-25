@@ -378,6 +378,16 @@ function isMockImageProvider(provider) {
   return provider === "mock" || provider === "placeholder" || provider === "local";
 }
 
+// Providers that can anchor expression variants on a base reference image
+// (img2img / IP-Adapter). Txt2img-only providers (Pollinations) cannot, so
+// variants there would be unrelated faces — callers should skip them and fall
+// back to the base portrait. Mock counts as capable so the variant path stays
+// covered in tests.
+const TXT2IMG_ONLY_IMAGE_PROVIDERS = new Set(["pollinations"]);
+export function providerSupportsReference(provider) {
+  return !TXT2IMG_ONLY_IMAGE_PROVIDERS.has(String(provider || "").trim().toLowerCase());
+}
+
 /**
  * Resolves which image provider to use when a caller does not specify one.
  * Honours NOTDND_MOCK_IMAGE, then NOTDND_IMAGE_PROVIDER, then falls back to

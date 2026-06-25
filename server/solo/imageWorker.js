@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
-import { generateImage } from "../ai/providers.js";
+import { generateImage, providerSupportsReference, resolveImageProvider } from "../ai/providers.js";
+import { detectImageExt } from "../api/http.js";
 import { ensureNpcImageAssets, getSoloRun, updateImageAssetStatus } from "../db/repository.js";
 import { NPC_EXPRESSIONS } from "./schema.js";
 
@@ -30,13 +31,13 @@ function assetsRoot() {
     : path.resolve(process.cwd(), "data/assets");
 }
 
-function diskPathFor(runId, npcId, slot) {
-  return path.join(assetsRoot(), String(runId), String(npcId), `${slot}.png`);
+function diskPathFor(runId, npcId, slot, ext = "png") {
+  return path.join(assetsRoot(), String(runId), String(npcId), `${slot}.${ext}`);
 }
 
 // Public URI served by the existing static handler (serveStatic, repo root).
-function servedUriFor(runId, npcId, slot) {
-  return `/data/assets/${encodeURIComponent(runId)}/${encodeURIComponent(npcId)}/${slot}.png`;
+function servedUriFor(runId, npcId, slot, ext = "png") {
+  return `/data/assets/${encodeURIComponent(runId)}/${encodeURIComponent(npcId)}/${slot}.${ext}`;
 }
 
 /**
@@ -88,11 +89,15 @@ async function generateSlot({ runId, npcId, slot, assetId, prompt, style, refere
     if (!bytes || !bytes.length) {
       throw new Error("image provider returned no bytes");
     }
-    const target = diskPathFor(runId, npcId, slot);
+    // Name/serve the file by its real type (providers may return JPEG/WEBP, not
+    // always PNG) so the served Content-Type matches the bytes.
+    const ext = detectImageExt(bytes) || "png";
+    const target = diskPathFor(runId, npcId, slot, ext);
     fs.mkdirSync(path.dirname(target), { recursive: true });
     fs.writeFileSync(target, bytes);
-    updateImageAssetStatus(runId, assetId, "generated", servedUriFor(runId, npcId, slot));
-    return { slot, ok: true, uri: servedUriFor(runId, npcId, slot) };
+    const uri = servedUriFor(runId, npcId, slot, ext);
+    updateImageAssetStatus(runId, assetId, "generated", uri);
+    return { slot, ok: true, uri };
   } catch (error) {
     updateImageAssetStatus(runId, assetId, "failed", null);
     logWorker(`slot ${slot} failed for ${runId}/${npcId}`, error);
@@ -155,23 +160,30 @@ export async function runImageJob(job = {}) {
   const referenceImageUrl = base.ok ? referenceUrlFor(base.uri) : null;
 
   const variants = [];
-  for (const expression of NPC_EXPRESSIONS) {
-    const assetId = linked.variants[expression];
-    if (!assetId) {
-      continue;
+  // Expression variants only make sense with a provider that can anchor them on
+  // the base portrait (img2img / IP-Adapter). Under a txt2img-only provider
+  // (e.g. Pollinations) they would be unrelated faces — and would clobber an
+  // uploaded base — so skip them; the UI falls back to the base portrait for
+  // every expression (consistent by definition).
+  if (providerSupportsReference(resolveImageProvider())) {
+    for (const expression of NPC_EXPRESSIONS) {
+      const assetId = linked.variants[expression];
+      if (!assetId) {
+        continue;
+      }
+      // eslint-disable-next-line no-await-in-loop
+      const variant = await generateSlot({
+        runId,
+        npcId,
+        slot: expression,
+        assetId,
+        prompt: `${basePrompt}, ${expression} expression`,
+        style,
+        seed,
+        referenceImageUrl
+      });
+      variants.push(variant);
     }
-    // eslint-disable-next-line no-await-in-loop
-    const variant = await generateSlot({
-      runId,
-      npcId,
-      slot: expression,
-      assetId,
-      prompt: `${basePrompt}, ${expression} expression`,
-      style,
-      seed,
-      referenceImageUrl
-    });
-    variants.push(variant);
   }
 
   return { ok: true, base, variants };

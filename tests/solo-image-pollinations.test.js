@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { generateImage } from "../server/ai/providers.js";
+import { generateImage, providerSupportsReference } from "../server/ai/providers.js";
+
+test("providerSupportsReference: only txt2img-only providers lack reference support", () => {
+  assert.equal(providerSupportsReference("pollinations"), false);
+  assert.equal(providerSupportsReference("fal"), true);
+  assert.equal(providerSupportsReference("local"), true);
+  assert.equal(providerSupportsReference("mock"), true);
+});
 
 test("pollinations builds the expected URL and returns image bytes", async () => {
   let calledUrl = "";
