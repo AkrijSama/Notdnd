@@ -31,7 +31,7 @@ loadDotenv();
 import { createAiJobProcessor } from "./ai/processor.js";
 import { generateNarrative, generateRaw, getCampaignUsage, getModelTiers } from "./ai/openrouter.js";
 import { generateWithProvider, listAiProviders } from "./ai/providers.js";
-import { readJsonBody, serveStatic, writeJson, writeText } from "./api/http.js";
+import { detectImageExt, parseMultipartFile, readJsonBody, readRawBody, serveStatic, writeJson, writeText } from "./api/http.js";
 import { handleQuickstartBuildPayload, handleQuickstartParsePayload } from "./api/quickstartRoutes.js";
 import { tokenFromRequest } from "./auth/httpAuth.js";
 import { createOnboardingCampaign } from "./campaign/onboarding.js";
@@ -45,6 +45,8 @@ import {
   createSoloRun,
   getCampaignRole,
   getCampaignRuntimeState,
+  createSoloNpc,
+  ensureNpcImageAssets,
   getCurrentStateVersion,
   getMetrics,
   getSoloRun,
@@ -59,7 +61,8 @@ import {
   registerUser,
   resolveStorePath,
   saveSoloRun,
-  setCampaignRuntimeState
+  setCampaignRuntimeState,
+  updateImageAssetStatus
 } from "./db/repository.js";
 import {
   buildContextWindow,
@@ -80,8 +83,8 @@ import { createWsHub } from "./realtime/wsHub.js";
 import { resolveSoloAction } from "./solo/actions.js";
 import { resolveGmNarration } from "./solo/gmProvider.js";
 import { buildGmRuntimeStatus } from "./solo/gmSmoke.js";
-import { enqueueImageJob } from "./solo/imageWorker.js";
-import { enqueueIdentityJob } from "./solo/npcIdentity.js";
+import { enqueueImageJob, writeUploadedBasePortrait } from "./solo/imageWorker.js";
+import { enqueueIdentityJob, runIdentityJob } from "./solo/npcIdentity.js";
 import { buildNpcIntroDirective, buildSoloScenePayload, collectNpcsWithPendingIntro } from "./solo/scene.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -445,6 +448,32 @@ function parseSoloRunScenePath(pathname) {
   return decodeURIComponent(raw);
 }
 
+function parseSoloRunNpcsPath(pathname) {
+  const prefix = "/api/solo/runs/";
+  if (!pathname.startsWith(prefix) || !pathname.endsWith("/npcs")) {
+    return null;
+  }
+  const raw = pathname.slice(prefix.length, -"/npcs".length).replace(/\/+$/, "").trim();
+  if (!raw || raw.includes("/")) {
+    return null;
+  }
+  return decodeURIComponent(raw);
+}
+
+function parseSoloRunPortraitPath(pathname) {
+  const prefix = "/api/solo/runs/";
+  const suffix = "/portrait";
+  if (!pathname.startsWith(prefix) || !pathname.endsWith(suffix)) {
+    return null;
+  }
+  const mid = pathname.slice(prefix.length, -suffix.length);
+  const match = /^([^/]+)\/npcs\/([^/]+)$/.exec(mid);
+  if (!match) {
+    return null;
+  }
+  return { runId: decodeURIComponent(match[1]), npcId: decodeURIComponent(match[2]) };
+}
+
 function parseSoloRunGmScenePath(pathname) {
   const prefix = "/api/solo/runs/";
   if (!pathname.startsWith(prefix) || !pathname.endsWith("/gm-scene")) {
@@ -670,6 +699,103 @@ async function handleApi(req, res) {
         availableMoves: resolved.availableMoves,
         availableActions: resolved.availableActions
       });
+    } catch (error) {
+      routeError(res, error);
+    }
+    return true;
+  }
+
+  const soloNpcsRunId = parseSoloRunNpcsPath(url.pathname);
+  if (soloNpcsRunId && req.method === "POST") {
+    try {
+      const user = requireAuth(req);
+      const run = getSoloRun(soloNpcsRunId);
+      if (!run) {
+        throw Object.assign(new Error("Solo run not found."), {
+          code: "NOT_FOUND",
+          statusCode: 404
+        });
+      }
+      assertSoloRunAccess(user, run);
+
+      const payload = await readJsonBody(req);
+      const created = createSoloNpc(soloNpcsRunId, {
+        name: payload.name,
+        description: payload.description,
+        introInstructions: payload.introInstructions,
+        origin: payload.origin
+      });
+      if (!created) {
+        throw Object.assign(new Error("Solo run not found."), {
+          code: "NOT_FOUND",
+          statusCode: 404
+        });
+      }
+
+      // Fill any missing identity fields and bridge the NPC into the campaign
+      // memory graph so the GM can see it. Awaited so the response carries the
+      // fully-resolved NPC.
+      await runIdentityJob({ runId: created.runId, npcId: created.npcId });
+      const finalRun = getSoloRun(created.runId);
+      writeJson(res, 201, {
+        ok: true,
+        npc: finalRun?.npcs?.[created.npcId] || null
+      });
+    } catch (error) {
+      routeError(res, error);
+    }
+    return true;
+  }
+
+  const portraitTarget = parseSoloRunPortraitPath(url.pathname);
+  if (portraitTarget && req.method === "POST") {
+    try {
+      const MAX_PORTRAIT_BYTES = 10 * 1024 * 1024;
+      const user = requireAuth(req);
+      const run = getSoloRun(portraitTarget.runId);
+      if (!run) {
+        throw Object.assign(new Error("Solo run not found."), { code: "NOT_FOUND", statusCode: 404 });
+      }
+      assertSoloRunAccess(user, run);
+      if (!run.npcs?.[portraitTarget.npcId]) {
+        throw Object.assign(new Error("NPC not found."), { code: "NOT_FOUND", statusCode: 404 });
+      }
+
+      // Read with a 1MB slack over the limit for the multipart envelope, then
+      // enforce the real 10MB cap on the decoded file bytes.
+      const raw = await readRawBody(req, MAX_PORTRAIT_BYTES + 1024 * 1024);
+      const file = parseMultipartFile(raw, req.headers["content-type"]);
+      if (!file || !file.data || file.data.length === 0) {
+        throw Object.assign(new Error("No image file provided."), { code: "BAD_REQUEST", statusCode: 400 });
+      }
+      if (file.data.length > MAX_PORTRAIT_BYTES) {
+        throw Object.assign(new Error("Image exceeds the 10MB limit."), { code: "PAYLOAD_TOO_LARGE", statusCode: 413 });
+      }
+      const ext = detectImageExt(file.data);
+      if (!ext) {
+        throw Object.assign(new Error("Unsupported image type. Use JPG, PNG, or WEBP."), { code: "UNSUPPORTED_MEDIA_TYPE", statusCode: 415 });
+      }
+
+      // Write the upload as the base portrait, mark its asset generated, and
+      // link it onto the NPC.
+      const { uri } = writeUploadedBasePortrait(run.runId, portraitTarget.npcId, ext, file.data);
+      const linked = ensureNpcImageAssets(run.runId, portraitTarget.npcId, { style: run.flags?.artStyle });
+      if (!linked) {
+        throw Object.assign(new Error("NPC not found."), { code: "NOT_FOUND", statusCode: 404 });
+      }
+      const assetId = linked.base;
+      updateImageAssetStatus(run.runId, assetId, "generated", uri);
+
+      // Base exists from the upload — generate expression variants anchored on it.
+      const freshRun = getSoloRun(run.runId);
+      enqueueImageJob({
+        runId: run.runId,
+        npcId: portraitTarget.npcId,
+        style: String(run.flags?.artStyle || "illustrated"),
+        basePrompt: buildNpcBasePrompt(freshRun, portraitTarget.npcId)
+      });
+
+      writeJson(res, 201, { ok: true, assetId, uri });
     } catch (error) {
       routeError(res, error);
     }

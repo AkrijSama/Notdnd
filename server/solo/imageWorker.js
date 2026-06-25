@@ -39,6 +39,27 @@ function servedUriFor(runId, npcId, slot) {
   return `/data/assets/${encodeURIComponent(runId)}/${encodeURIComponent(npcId)}/${slot}.png`;
 }
 
+/**
+ * Writes a user-uploaded base portrait (arbitrary extension) to the same
+ * on-disk asset layout the worker uses, and returns its served URI. Variant
+ * generation then anchors on this file via IP-Adapter.
+ * @param {string} runId
+ * @param {string} npcId
+ * @param {string} ext canonical extension without dot (png|jpg|webp)
+ * @param {Buffer} bytes
+ * @returns {{ fileName: string, uri: string }}
+ */
+export function writeUploadedBasePortrait(runId, npcId, ext, bytes) {
+  const fileName = `base.${ext}`;
+  const target = path.join(assetsRoot(), String(runId), String(npcId), fileName);
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  fs.writeFileSync(target, bytes);
+  return {
+    fileName,
+    uri: `/data/assets/${encodeURIComponent(runId)}/${encodeURIComponent(npcId)}/${fileName}`
+  };
+}
+
 function logWorker(message, error) {
   // eslint-disable-next-line no-console
   console.error(`[imageWorker] ${message}${error ? `: ${String(error?.message || error)}` : ""}`);
@@ -109,16 +130,24 @@ export async function runImageJob(job = {}) {
     `portrait of a ${npc?.role || npcId}, dark fantasy, detailed`
   ).trim();
 
-  // Base portrait first (text-to-image) — it anchors every variant.
-  const base = await generateSlot({
-    runId,
-    npcId,
-    slot: "base",
-    assetId: linked.base,
-    prompt: `${basePrompt}, neutral expression`,
-    style,
-    referenceImageUrl: null
-  });
+  // Base portrait anchors every variant. If a base already exists (e.g. a user
+  // upload marked "generated"), reuse it instead of regenerating; otherwise
+  // produce it via text-to-image.
+  const baseAsset = run?.imageAssets?.[linked.base] || null;
+  let base;
+  if (baseAsset && baseAsset.status === "generated" && typeof baseAsset.uri === "string" && baseAsset.uri) {
+    base = { slot: "base", ok: true, uri: baseAsset.uri, reused: true };
+  } else {
+    base = await generateSlot({
+      runId,
+      npcId,
+      slot: "base",
+      assetId: linked.base,
+      prompt: `${basePrompt}, neutral expression`,
+      style,
+      referenceImageUrl: null
+    });
+  }
   const referenceImageUrl = base.ok ? referenceUrlFor(base.uri) : null;
 
   const variants = [];

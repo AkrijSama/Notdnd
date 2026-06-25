@@ -829,6 +829,67 @@ export function markNpcIntroduced(runId, npcId) {
   return true;
 }
 
+/**
+ * Creates a custom NPC on a solo run from user input and persists it (full-run
+ * validate). Identity is left for the fill-gaps generator/bridge to complete.
+ * Origin "user" is coerced to "hybrid" until image upload exists (Ticket 34);
+ * with no name/description it defaults to "procedural". Returns { runId, npcId }
+ * or null if the run does not exist.
+ * @param {string} runId
+ * @param {{ name?: string, description?: string, introInstructions?: string, origin?: string }} input
+ * @returns {{ runId: string, npcId: string } | null}
+ */
+export function createSoloNpc(runId, input = {}) {
+  ensureDb();
+  const run = db.soloRuns[String(runId || "").trim()];
+  if (!run) {
+    return null;
+  }
+
+  const name = String(input.name || "").trim();
+  const description = String(input.description || "").trim();
+  const introInstructions = String(input.introInstructions || "").trim();
+
+  let origin = String(input.origin || "").trim().toLowerCase();
+  if (origin === "user") {
+    origin = "hybrid"; // no portrait upload yet — treat as AI-portrait hybrid
+  }
+  if (origin !== "procedural" && origin !== "hybrid") {
+    origin = name || description ? "hybrid" : "procedural";
+  }
+
+  const role = (description || "wanderer").slice(0, 80);
+  const npcId = uid("npc");
+  const npc = {
+    npcId,
+    displayName: name || role,
+    role,
+    currentLocationId: run.currentLocationId,
+    known: true,
+    status: "present",
+    memoryFactIds: [],
+    tags: [],
+    flags: {},
+    edition: run.edition ?? null,
+    policyProfileId: run.policyProfileId ?? null,
+    contentTags: [],
+    origin
+  };
+  if (name) {
+    npc.generatedName = name;
+  }
+  if (introInstructions) {
+    npc.introInstructions = introInstructions;
+  }
+
+  run.npcs = run.npcs && typeof run.npcs === "object" ? run.npcs : {};
+  run.npcs[npcId] = npc;
+  validateSoloRunOrThrow(run);
+  bumpStateVersion();
+  writeToDisk();
+  return { runId: run.runId, npcId };
+}
+
 export function getState(options = {}) {
   ensureDb();
   const userId = options?.userId || null;
