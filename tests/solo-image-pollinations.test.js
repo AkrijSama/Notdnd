@@ -66,10 +66,43 @@ test("pollinations derives a deterministic seed from the prompt when none given"
   assert.match(seedOf(urls[0]), /^\d+$/);
 });
 
-test("pollinations throws on a non-ok response", async () => {
+test("generateImage retries the same provider once before failing over", async () => {
+  // First call fails (transient 503), second call on the SAME provider succeeds.
+  let calls = 0;
+  const fetchImpl = async () => {
+    calls += 1;
+    if (calls === 1) {
+      return { ok: false, status: 503 };
+    }
+    return { ok: true, async arrayBuffer() { return new ArrayBuffer(4); } };
+  };
+
+  const result = await generateImage({ provider: "pollinations", prompt: "x", fetchImpl, retryDelayMs: 0 });
+
+  assert.equal(result.provider, "pollinations", "succeeded on the retry, no failover needed");
+  assert.equal(calls, 2, "retried the same provider exactly once");
+});
+
+test("generateImage fails over to the next provider (mock) when the primary keeps failing", async () => {
+  let calls = 0;
+  const fetchImpl = async () => {
+    calls += 1;
+    return { ok: false, status: 503 }; // pollinations always down
+  };
+
+  const result = await generateImage({ provider: "pollinations", prompt: "x", fetchImpl, retryDelayMs: 0 });
+
+  // pollinations tried twice, cloudflare skipped (unwired), mock is the fallback.
+  assert.equal(calls, 2, "primary attempted twice before failover");
+  assert.equal(result.provider, "mock");
+  assert.equal(result.mock, true);
+});
+
+test("generateImage throws listing tried providers when every provider fails", async () => {
   const fetchImpl = async () => ({ ok: false, status: 503 });
   await assert.rejects(
-    () => generateImage({ provider: "pollinations", prompt: "x", fetchImpl }),
-    /Pollinations request failed \(503\)/
+    // Empty priority list -> no mock fallback, so the chain is exhausted.
+    () => generateImage({ provider: "pollinations", prompt: "x", fetchImpl, retryDelayMs: 0, providerPriority: [] }),
+    /All image providers failed.*pollinations/s
   );
 });

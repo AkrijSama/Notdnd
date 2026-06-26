@@ -505,12 +505,63 @@ async function pollinationsImage({ prompt, seed, fetchImpl, width, height }) {
   };
 }
 
+// Failover order tried after the primary/resolved provider (deduped against it).
+// "cloudflare" is a placeholder for the next task — it is not wired in
+// dispatchImageProvider yet, so the loop skips it automatically; wiring it up
+// there gives it failover for free. "mock" is the terminal last resort: it never
+// hits the network and never fails, so it keeps the pipeline moving with a
+// placeholder rather than leaving the asset stuck when every real provider is
+// down.
+const IMAGE_PROVIDER_PRIORITY = ["pollinations", "cloudflare", "mock"];
+
+function sleep(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+// True for providers dispatchImageProvider knows how to call. Unwired providers
+// (e.g. cloudflare for now) are skipped by the failover loop without an attempt.
+function isWiredImageProvider(provider) {
+  const p = String(provider || "").trim().toLowerCase();
+  return p === "pollinations" || p === "fal" || isMockImageProvider(p);
+}
+
+// Dispatches one generation to a single, concrete provider. Throws for providers
+// that are not wired yet so the failover loop can skip past them.
+async function dispatchImageProvider(provider, args) {
+  const p = String(provider || "").trim().toLowerCase();
+  if (isMockImageProvider(p)) {
+    return { provider: "mock", mock: true, bytes: MOCK_IMAGE_PNG, url: null };
+  }
+  if (p === "pollinations") {
+    return pollinationsImage({
+      prompt: args.prompt,
+      seed: args.seed,
+      fetchImpl: args.fetchImpl,
+      width: args.width,
+      height: args.height
+    });
+  }
+  if (p === "fal") {
+    return falImage({ prompt: args.prompt, referenceImageUrl: args.referenceImageUrl, fetchImpl: args.fetchImpl });
+  }
+  throw makeProviderError(p, `Image provider not wired yet: ${p}`, "PROVIDER_NOT_WIRED", 501);
+}
+
 /**
- * Generates a single image and returns its bytes. The base portrait (no
- * referenceImageUrl) is produced via text-to-image; expression/reference
- * variants (with referenceImageUrl) via image-to-image / IP-Adapter where the
- * provider supports it (Pollinations is txt2img only).
- * @param {{ provider?: string, prompt?: string, referenceImageUrl?: string|null, style?: string, seed?: number|null, width?: number|null, height?: number|null, fetchImpl?: typeof fetch }} [args]
+ * Generates a single image and returns its bytes, with provider failover.
+ *
+ * The primary/resolved provider is tried first; on any error it is retried once
+ * (after retryDelayMs), and if that also fails the loop moves down the priority
+ * list. Unwired providers are skipped. The first success returns immediately; if
+ * nothing succeeds the call throws, listing what was tried. Transparent to
+ * callers — the return shape is unchanged.
+ *
+ * The base portrait (no referenceImageUrl) is produced via text-to-image;
+ * expression/reference variants (with referenceImageUrl) via image-to-image /
+ * IP-Adapter where the provider supports it.
+ * @param {{ provider?: string, prompt?: string, referenceImageUrl?: string|null, style?: string, seed?: number|null, width?: number|null, height?: number|null, fetchImpl?: typeof fetch, retryDelayMs?: number, providerPriority?: string[] }} [args]
  * @returns {Promise<{ provider: string, mock: boolean, bytes: Buffer, url: string|null }>}
  */
 export async function generateImage({
@@ -521,22 +572,58 @@ export async function generateImage({
   seed = null,
   width = null,
   height = null,
-  fetchImpl = fetch
+  fetchImpl = fetch,
+  retryDelayMs = 1000,
+  providerPriority = IMAGE_PROVIDER_PRIORITY
 } = {}) {
-  const resolvedProvider = provider || resolveImageProvider();
   const styledPrompt = String(style || "").trim() ? `${prompt}, ${String(style).trim()} style` : prompt;
+  const args = { prompt: styledPrompt, referenceImageUrl, seed, width, height, fetchImpl };
 
-  if (isMockImageProvider(resolvedProvider)) {
-    return { provider: "mock", mock: true, bytes: MOCK_IMAGE_PNG, url: null };
+  const primary = String(provider || resolveImageProvider() || "mock").trim().toLowerCase();
+
+  // Mock short-circuits: no network, never fails — skip the failover machinery
+  // (and its retry delay) entirely so mock/test runs stay instant.
+  if (isMockImageProvider(primary)) {
+    return dispatchImageProvider("mock", args);
   }
 
-  if (resolvedProvider === "pollinations") {
-    return pollinationsImage({ prompt: styledPrompt, seed, fetchImpl, width, height });
+  // Build the failover chain: primary first, then the priority list, deduped.
+  const chain = [];
+  for (const candidate of [primary, ...(Array.isArray(providerPriority) ? providerPriority : [])]) {
+    const key = String(candidate || "").trim().toLowerCase();
+    if (key && !chain.includes(key)) {
+      chain.push(key);
+    }
   }
 
-  if (resolvedProvider === "fal") {
-    return falImage({ prompt: styledPrompt, referenceImageUrl, fetchImpl });
+  const tried = [];
+  let lastError = null;
+
+  for (const candidate of chain) {
+    if (!isWiredImageProvider(candidate)) {
+      continue; // not implemented yet (e.g. cloudflare) — skip with no attempt/delay
+    }
+    // Two tries per provider: the initial attempt, then one retry after a short
+    // delay. Any error (throw, non-200, timeout) is treated as retriable.
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+      try {
+        return await dispatchImageProvider(candidate, args);
+      } catch (error) {
+        lastError = error;
+        tried.push(`${candidate} (attempt ${attempt})`);
+        if (attempt === 1 && retryDelayMs > 0) {
+          // eslint-disable-next-line no-await-in-loop
+          await sleep(retryDelayMs);
+        }
+      }
+    }
   }
 
-  throw makeProviderError(resolvedProvider, `Unsupported image provider: ${resolvedProvider}`, "UNSUPPORTED_IMAGE_PROVIDER", 400);
+  throw makeProviderError(
+    primary,
+    `All image providers failed. Tried: ${tried.join(", ") || "none"}.` +
+      (lastError ? ` Last error: ${String(lastError.message || lastError)}.` : ""),
+    "ALL_IMAGE_PROVIDERS_FAILED",
+    502
+  );
 }
