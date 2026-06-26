@@ -20,7 +20,7 @@ const {
   ensureNpcImageAssets,
   updateImageAssetStatus
 } = await import("../server/db/repository.js");
-const { writeUploadedBasePortrait, runImageJob } = await import("../server/solo/imageWorker.js");
+const { writeUploadedBasePortrait, runImageJob, runVariantImageJob } = await import("../server/solo/imageWorker.js");
 const { NPC_EXPRESSIONS } = await import("../server/solo/schema.js");
 
 // A valid 1x1 PNG (correct magic bytes).
@@ -76,7 +76,7 @@ function seedRunWithNpc(runId) {
   saveSoloRun(run);
 }
 
-test("uploaded base is reused (not regenerated) and variants generate from it", async () => {
+test("uploaded base is reused (not regenerated); a requested variant generates from it", async () => {
   seedRunWithNpc("run_up_a");
 
   const { uri } = writeUploadedBasePortrait("run_up_a", "guard", "png", PNG);
@@ -98,9 +98,15 @@ test("uploaded base is reused (not regenerated) and variants generate from it", 
   run = getSoloRun("run_up_a");
   // Base uri unchanged (upload preserved, not overwritten by a generated base.png record).
   assert.equal(run.imageAssets[linked.base].uri, uri);
-  // All variants generated from the uploaded base.
+  // Variants are lazy: runImageJob did NOT generate any of them.
   for (const expression of NPC_EXPRESSIONS) {
     const assetId = run.npcs.guard.expressionVariants[expression];
-    assert.equal(run.imageAssets[assetId].status, "generated");
+    assert.equal(run.imageAssets[assetId].status, "queued", `${expression} should stay queued (lazy)`);
   }
+
+  // On demand, a single variant generates from the uploaded base.
+  const variant = await runVariantImageJob({ runId: "run_up_a", npcId: "guard", expression: "warm", style: "illustrated" });
+  assert.equal(variant.ok, true);
+  run = getSoloRun("run_up_a");
+  assert.equal(run.imageAssets[run.npcs.guard.expressionVariants.warm].status, "generated");
 });

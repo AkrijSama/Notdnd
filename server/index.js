@@ -36,6 +36,7 @@ import { handleQuickstartBuildPayload, handleQuickstartParsePayload } from "./ap
 import { tokenFromRequest } from "./auth/httpAuth.js";
 import { createOnboardingCampaign, createWorldOnboardingRun } from "./campaign/onboarding.js";
 import { generateWorld, regenerateWorldField } from "./solo/worldGen.js";
+import { sanitizePlayerText } from "./solo/safety.js";
 import {
   addCampaignMember,
   applyOperation,
@@ -57,10 +58,12 @@ import {
   initializeDatabase,
   listCampaignMembers,
   listSoloRunsForUser,
+  confirmPasswordReset,
   loginUser,
   logoutSessionToken,
   markNpcIntroduced,
   registerUser,
+  requestPasswordReset,
   resolveStorePath,
   saveSoloRun,
   setCampaignRuntimeState,
@@ -88,7 +91,7 @@ import { createWsHub } from "./realtime/wsHub.js";
 import { resolveSoloAction } from "./solo/actions.js";
 import { resolveGmNarration } from "./solo/gmProvider.js";
 import { buildGmRuntimeStatus } from "./solo/gmSmoke.js";
-import { enqueueImageJob, enqueueLocationImageJob, enqueuePlayerImageJob, writeUploadedBasePortrait } from "./solo/imageWorker.js";
+import { enqueueImageJob, enqueueLocationImageJob, enqueuePlayerImageJob, enqueueVariantImageJob, writeUploadedBasePortrait } from "./solo/imageWorker.js";
 import { enqueueIdentityJob, runIdentityJob } from "./solo/npcIdentity.js";
 import { buildNpcIntroDirective, buildSoloScenePayload, collectNpcsWithPendingIntro } from "./solo/scene.js";
 
@@ -108,6 +111,40 @@ const waitlistInterests = new Set([
   "All of it"
 ]);
 const previewRateByUser = new Map();
+
+// In-memory rate limiter for unauthenticated auth endpoints (login/register):
+// max 10 attempts per client IP per 15-minute window. No dependency — a Map of
+// ip -> { count, resetAt }. Blocks credential stuffing / brute force. Per
+// process, so it resets on restart (acceptable for this layer).
+const AUTH_RATE_LIMIT_MAX = 10;
+const AUTH_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
+const authRateByIp = new Map();
+
+function clientIp(req) {
+  const forwarded = String(req.headers["x-forwarded-for"] || "").split(",")[0].trim();
+  return forwarded || req.socket?.remoteAddress || "unknown";
+}
+
+// Throws a 429 once an IP exceeds the window's attempt budget. Counts every
+// attempt (success or failure) so a stuffing run cannot hide behind valid hits.
+function enforceAuthRateLimit(req) {
+  const ip = clientIp(req);
+  const now = Date.now();
+  let bucket = authRateByIp.get(ip);
+  if (!bucket || now >= bucket.resetAt) {
+    bucket = { count: 0, resetAt: now + AUTH_RATE_LIMIT_WINDOW_MS };
+    authRateByIp.set(ip, bucket);
+  }
+  bucket.count += 1;
+  if (bucket.count > AUTH_RATE_LIMIT_MAX) {
+    const retryAfterSec = Math.max(1, Math.ceil((bucket.resetAt - now) / 1000));
+    throw Object.assign(new Error("Too many attempts. Please wait and try again."), {
+      code: "RATE_LIMITED",
+      statusCode: 429,
+      retryAfterSec
+    });
+  }
+}
 
 initializeDatabase();
 
@@ -720,6 +757,7 @@ async function handleApi(req, res) {
 
   if (req.method === "POST" && url.pathname === "/api/auth/register") {
     try {
+      enforceAuthRateLimit(req);
       const payload = await readJsonBody(req);
       const result = registerUser(payload);
       writeJson(res, 200, { ok: true, ...result });
@@ -731,8 +769,31 @@ async function handleApi(req, res) {
 
   if (req.method === "POST" && url.pathname === "/api/auth/login") {
     try {
+      enforceAuthRateLimit(req);
       const payload = await readJsonBody(req);
       const result = loginUser(payload);
+      writeJson(res, 200, { ok: true, ...result });
+    } catch (error) {
+      routeError(res, error);
+    }
+    return true;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/auth/reset-request") {
+    try {
+      const payload = await readJsonBody(req);
+      const result = requestPasswordReset(payload);
+      writeJson(res, 200, { ok: true, ...result });
+    } catch (error) {
+      routeError(res, error);
+    }
+    return true;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/auth/reset-confirm") {
+    try {
+      const payload = await readJsonBody(req);
+      const result = confirmPasswordReset(payload);
       writeJson(res, 200, { ok: true, ...result });
     } catch (error) {
       routeError(res, error);
@@ -890,6 +951,24 @@ async function handleApi(req, res) {
         responseRun.narration = gmNarration;
       }
 
+      // Lazy expression variants: a talk beat tells us which expression the NPC
+      // needs — generate ONLY that one variant on demand (the worker skips it if
+      // already generated), instead of eagerly producing all six on encounter.
+      // "neutral" is skipped: the base portrait already is the neutral face and
+      // the client falls back to it.
+      if (
+        resolved.action?.type === "talk" &&
+        talkResult?.npcId &&
+        talkResult?.expression &&
+        talkResult.expression !== "neutral"
+      ) {
+        enqueueVariantImageJob({
+          runId: responseRun.runId,
+          npcId: talkResult.npcId,
+          expression: talkResult.expression
+        });
+      }
+
       // Victory narration: when the main quest was just completed, one final GM
       // call writes the closing beat shown on the victory screen before the
       // summary. Best-effort — null on timeout/failure.
@@ -937,10 +1016,12 @@ async function handleApi(req, res) {
       assertSoloRunAccess(user, run);
 
       const payload = await readJsonBody(req);
+      // Sanitize player-supplied NPC text before it feeds identity generation /
+      // GM intro directives (prompt-injection guard; clean prose is unchanged).
       const created = createSoloNpc(soloNpcsRunId, {
-        name: payload.name,
-        description: payload.description,
-        introInstructions: payload.introInstructions,
+        name: sanitizePlayerText(payload.name, { maxLength: 80 }),
+        description: sanitizePlayerText(payload.description, { maxLength: 300 }),
+        introInstructions: sanitizePlayerText(payload.introInstructions, { maxLength: 300 }),
         origin: payload.origin
       });
       if (!created) {

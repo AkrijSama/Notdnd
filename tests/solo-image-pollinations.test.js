@@ -66,10 +66,49 @@ test("pollinations derives a deterministic seed from the prompt when none given"
   assert.match(seedOf(urls[0]), /^\d+$/);
 });
 
-test("pollinations throws on a non-ok response", async () => {
+test("generateImage retries the same provider once before failing over", async () => {
+  // First call fails (transient 503), second call on the SAME provider succeeds.
+  let calls = 0;
+  const fetchImpl = async () => {
+    calls += 1;
+    if (calls === 1) {
+      return { ok: false, status: 503 };
+    }
+    return { ok: true, async arrayBuffer() { return new ArrayBuffer(4); } };
+  };
+
+  const result = await generateImage({ provider: "pollinations", prompt: "x", fetchImpl, retryDelayMs: 0 });
+
+  assert.equal(result.provider, "pollinations", "succeeded on the retry, no failover needed");
+  assert.equal(calls, 2, "retried the same provider exactly once");
+});
+
+test("generateImage throws when all real providers fail (no mock fallback)", async () => {
+  let calls = 0;
+  const fetchImpl = async () => {
+    calls += 1;
+    return { ok: false, status: 503 }; // pollinations always down
+  };
+
+  // Mock is NOT in the production chain, so an outage of every real provider
+  // throws (asset stays "failed" + retries) rather than caching a placeholder.
+  await assert.rejects(
+    () => generateImage({ provider: "pollinations", prompt: "x", fetchImpl, retryDelayMs: 0 }),
+    /All image providers failed.*pollinations/s
+  );
+  // pollinations tried twice; cloudflare skipped (unwired); no further attempts.
+  assert.equal(calls, 2, "primary attempted twice, then the chain is exhausted");
+});
+
+test("generateImage error lists every provider/attempt tried", async () => {
   const fetchImpl = async () => ({ ok: false, status: 503 });
   await assert.rejects(
-    () => generateImage({ provider: "pollinations", prompt: "x", fetchImpl }),
-    /Pollinations request failed \(503\)/
+    () => generateImage({ provider: "pollinations", prompt: "x", fetchImpl, retryDelayMs: 0 }),
+    (error) => {
+      assert.match(error.message, /All image providers failed/);
+      assert.match(error.message, /pollinations \(attempt 1\)/);
+      assert.match(error.message, /pollinations \(attempt 2\)/);
+      return true;
+    }
   );
 });

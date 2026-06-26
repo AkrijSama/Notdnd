@@ -214,12 +214,16 @@ export function getAvailableSoloActions(run, options = {}) {
 // original run (it can never satisfy a predicate, so this is a no-op there).
 function finalizeQuestProgress(originalRun, result) {
   const activeRun = result.run || originalRun;
-  const { updated, wonQuest, completed } = advanceQuests(activeRun, result);
+  const { updated, wonQuest, completed, advanced } = advanceQuests(activeRun, result);
   if (updated) {
-    result.run = activeRun; // persist the flipped quest status
-    // The quest that just advanced this turn (the win, or the first completed
-    // quest) so the GM can dramatize the progress in its narration.
-    result.questJustAdvanced = wonQuest || (Array.isArray(completed) ? completed[0] : null) || null;
+    result.run = activeRun; // persist the flipped quest status / stage
+    // The quest that moved this turn — the win, else a completed quest, else a
+    // stage advance — so the GM can dramatize the progress in its narration.
+    result.questJustAdvanced =
+      wonQuest ||
+      (Array.isArray(completed) ? completed[0] : null) ||
+      (Array.isArray(advanced) ? advanced[0] : null) ||
+      null;
   }
   if (wonQuest) {
     result.runWon = true;

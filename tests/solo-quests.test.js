@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import { createDefaultSoloRun, validateQuestState } from "../server/solo/schema.js";
 import { createMainQuest, advanceQuests, getQuestPayload } from "../server/solo/quests.js";
+import { resolveSoloAction } from "../server/solo/actions.js";
 
 const WORLD = { name: "Ashenmoor", tone: "grim", startingLocationName: "The Hollow" };
 
@@ -13,9 +14,8 @@ function runWithQuest(quest, patch = {}) {
 }
 
 test("createMainQuest returns a valid quest record", () => {
-  const quest = createMainQuest(WORLD, { secondLocationId: "second_location", firstNpcId: "npc_start_contact" });
+  const quest = createMainQuest(WORLD, { secondLocationId: "second_location", firstNpcId: "npc_quest_giver" });
 
-  // Shape from the scoping report.
   assert.equal(quest.questId, "quest_main");
   assert.equal(quest.status, "active");
   assert.equal(quest.isMain, true);
@@ -25,98 +25,147 @@ test("createMainQuest returns a valid quest record", () => {
   assert.deepEqual(quest.relatedEntityIds, []);
   assert.deepEqual(quest.memoryFactIds, []);
   assert.deepEqual(quest.flags, {});
-  // Prefers reach_location at the supplied second location.
+  // Top-level completion mirrors the active (stage 0) completion for back-compat.
   assert.deepEqual(quest.completion, { kind: "reach_location", targetId: "second_location" });
 
   // Passes the schema validator (so it survives validateSoloRun).
   assert.equal(validateQuestState(quest).ok, true);
 });
 
-test("createMainQuest falls back to talk_beat when no second location exists", () => {
-  const quest = createMainQuest(WORLD, { firstNpcId: "npc_start_contact" });
-  assert.deepEqual(quest.completion, { kind: "talk_beat", targetId: "npc_start_contact" });
-  assert.equal(validateQuestState(quest).ok, true);
+test("createMainQuest builds two stages: reach the location, then talk", () => {
+  const quest = createMainQuest(WORLD, {
+    secondLocationId: "second_location",
+    secondLocationName: "Market Square",
+    firstNpcId: "npc_quest_giver"
+  });
+
+  assert.equal(Array.isArray(quest.stages), true);
+  assert.equal(quest.stages.length, 2);
+  assert.deepEqual(quest.stages[0].completion, { kind: "reach_location", targetId: "second_location" });
+  assert.deepEqual(quest.stages[1].completion, { kind: "talk_beat", targetId: "npc_quest_giver" });
+  // Stage 0 objective references the destination by name.
+  assert.match(quest.stages[0].objective, /Market Square/);
+  // Title + description reference the arc from the start.
+  assert.match(quest.description, /Market Square/);
+  // Top-level fields mirror stage 0.
+  assert.deepEqual(quest.completion, quest.stages[0].completion);
+  assert.equal(quest.objective, quest.stages[0].objective);
 });
 
-test("createMainQuest defaults to reach_location at second_location with no options", () => {
+test("createMainQuest defaults stage 0 to reach_location at second_location", () => {
   const quest = createMainQuest(WORLD);
+  assert.deepEqual(quest.stages[0].completion, { kind: "reach_location", targetId: "second_location" });
   assert.deepEqual(quest.completion, { kind: "reach_location", targetId: "second_location" });
 });
 
-test("advanceQuests flips status to completed when a predicate matches", () => {
-  const quest = createMainQuest(WORLD, { secondLocationId: "second_location" });
+test("stage 0 predicate fires -> advances to stage 1, NOT completed", () => {
+  const quest = createMainQuest(WORLD, { secondLocationId: "second_location", firstNpcId: "npc_quest_giver" });
   const run = runWithQuest(quest, { currentLocationId: "second_location" });
 
   const outcome = advanceQuests(run, {});
+
+  assert.equal(outcome.updated, true);
+  assert.equal(outcome.wonQuest, null, "reaching the location is not a win");
+  assert.equal(run.quests.quest_main.stage, 1, "advanced to stage 1");
+  assert.equal(run.quests.quest_main.status, "active", "still active, not completed");
+  assert.equal(outcome.advanced[0].questId, "quest_main");
+  assert.deepEqual(outcome.completed, []);
+  // Top-level completion now mirrors stage 1 (the talk beat).
+  assert.deepEqual(run.quests.quest_main.completion, { kind: "talk_beat", targetId: "npc_quest_giver" });
+});
+
+test("stage 1 predicate fires -> quest completes (and is a win for the main quest)", () => {
+  const quest = createMainQuest(WORLD, { secondLocationId: "second_location", firstNpcId: "npc_quest_giver" });
+  quest.stage = 1; // already advanced to the talk stage
+  const run = runWithQuest(quest);
+
+  const outcome = advanceQuests(run, { talkResult: { linkedQuestIds: ["quest_main"] } });
 
   assert.equal(outcome.updated, true);
   assert.ok(outcome.wonQuest);
   assert.equal(outcome.wonQuest.questId, "quest_main");
   assert.equal(run.quests.quest_main.status, "completed");
+  assert.deepEqual(outcome.advanced, [], "completing is not a stage advance");
 });
 
-test("advanceQuests does NOT flip status before the predicate is met", () => {
-  const quest = createMainQuest(WORLD, { secondLocationId: "second_location" });
-  // Player is still at the start location — the reach predicate is not satisfied.
+test("questJustAdvanced is set on a stage advance via resolveSoloAction", () => {
+  const run = createDefaultSoloRun({ now: "2026-01-01T00:00:00.000Z" });
+  run.quests = {
+    quest_main: createMainQuest(WORLD, { secondLocationId: "second_location", firstNpcId: "npc_quest_giver" })
+  };
+
+  // Moving into the second location satisfies stage 0 -> advances to stage 1.
+  const result = resolveSoloAction(run, { type: "move", actorId: "player", toLocationId: "second_location" });
+
+  assert.equal(result.ok, true);
+  assert.ok(!result.runWon, "a stage advance is not a win");
+  assert.ok(result.questJustAdvanced, "questJustAdvanced set on stage advance");
+  assert.equal(result.questJustAdvanced.questId, "quest_main");
+  assert.equal(result.run.quests.quest_main.stage, 1);
+  assert.equal(result.run.quests.quest_main.status, "active");
+});
+
+test("advanceQuests does NOT advance before the active stage's predicate is met", () => {
+  const quest = createMainQuest(WORLD, { secondLocationId: "second_location", firstNpcId: "npc_quest_giver" });
+  // Still at the start location — stage 0's reach predicate is not satisfied.
   const run = runWithQuest(quest, { currentLocationId: "start_location" });
 
   const outcome = advanceQuests(run, {});
 
   assert.equal(outcome.updated, false);
   assert.equal(outcome.wonQuest, null);
+  assert.equal(run.quests.quest_main.stage, 0);
   assert.equal(run.quests.quest_main.status, "active");
 });
 
 test("advanceQuests does not mutate on a non-matching action", () => {
-  const quest = createMainQuest(WORLD, { secondLocationId: "second_location" });
+  const quest = createMainQuest(WORLD, { secondLocationId: "second_location", firstNpcId: "npc_quest_giver" });
   const run = runWithQuest(quest, { currentLocationId: "start_location" });
   const before = JSON.stringify(run.quests);
 
-  // A search action with no bearing on a reach_location quest.
+  // A search action has no bearing on stage 0's reach_location predicate.
   const outcome = advanceQuests(run, { searchResult: { found: false } });
 
   assert.equal(outcome.updated, false);
-  assert.equal(outcome.wonQuest, null);
   assert.equal(JSON.stringify(run.quests), before, "quests unchanged");
 });
 
-test("advanceQuests completes a talk_beat quest only when the beat links it", () => {
-  const quest = createMainQuest(WORLD, { firstNpcId: "npc_start_contact" });
+test("the talk stage completes only when the beat links this quest", () => {
+  const quest = createMainQuest(WORLD, { secondLocationId: "second_location", firstNpcId: "npc_quest_giver" });
+  quest.stage = 1; // on the talk stage
   const run = runWithQuest(quest);
 
-  // Wrong / empty links: no completion.
   assert.equal(advanceQuests(run, { talkResult: { linkedQuestIds: [] } }).updated, false);
   assert.equal(advanceQuests(run, { talkResult: { linkedQuestIds: ["quest_side"] } }).updated, false);
   assert.equal(run.quests.quest_main.status, "active");
 
-  // The beat links this quest: completion fires.
   const outcome = advanceQuests(run, { talkResult: { linkedQuestIds: ["quest_main"] } });
   assert.equal(outcome.updated, true);
-  assert.equal(outcome.wonQuest.questId, "quest_main");
   assert.equal(run.quests.quest_main.status, "completed");
 });
 
-test("advanceQuests skips already-completed quests (idempotent)", () => {
-  const quest = createMainQuest(WORLD, { secondLocationId: "second_location" });
+test("advanceQuests skips an already-completed quest (idempotent)", () => {
+  const quest = createMainQuest(WORLD, { secondLocationId: "second_location", firstNpcId: "npc_quest_giver" });
   const run = runWithQuest(quest, { currentLocationId: "second_location" });
 
-  const first = advanceQuests(run, {});
-  assert.equal(first.updated, true);
-  // Running again must not re-flip or re-report a win.
-  const second = advanceQuests(run, {});
-  assert.equal(second.updated, false);
-  assert.equal(second.wonQuest, null);
+  advanceQuests(run, {}); // stage 0 -> 1
+  advanceQuests(run, { talkResult: { linkedQuestIds: ["quest_main"] } }); // stage 1 -> completed
+  assert.equal(run.quests.quest_main.status, "completed");
+
+  const again = advanceQuests(run, { talkResult: { linkedQuestIds: ["quest_main"] } });
+  assert.equal(again.updated, false);
+  assert.equal(again.wonQuest, null);
 });
 
 test("getQuestPayload returns active quests and the main quest", () => {
-  const quest = createMainQuest(WORLD, { secondLocationId: "second_location" });
+  const quest = createMainQuest(WORLD, { secondLocationId: "second_location", firstNpcId: "npc_quest_giver" });
   const run = runWithQuest(quest);
 
   const payload = getQuestPayload(run);
   assert.equal(payload.activeQuests.length, 1);
   assert.equal(payload.mainQuest.questId, "quest_main");
 
-  // Once completed, it drops out of activeQuests but remains the main quest.
+  // Once completed it drops out of activeQuests but remains the main quest.
   run.quests.quest_main.status = "completed";
   const after = getQuestPayload(run);
   assert.equal(after.activeQuests.length, 0);

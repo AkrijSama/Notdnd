@@ -505,12 +505,142 @@ async function pollinationsImage({ prompt, seed, fetchImpl, width, height }) {
   };
 }
 
+// Cloudflare Workers AI — FLUX-1-schnell. Failover provider #2: keyed
+// (CF_ACCOUNT_ID + CF_API_TOKEN), a single POST that returns the generated image
+// bytes directly (not a URL). flux-1-schnell accepts num_steps but NOT
+// width/height — it generates at a fixed resolution, so those args are ignored.
+const CLOUDFLARE_FLUX_MODEL = "@cf/black-forest-labs/flux-1-schnell";
+
+async function cloudflareImage({ prompt, seed, width, height, fetchImpl }) {
+  const accountId = String(process.env.CF_ACCOUNT_ID || "").trim();
+  const apiToken = String(process.env.CF_API_TOKEN || "").trim();
+  if (!accountId || !apiToken) {
+    throw makeProviderError(
+      "cloudflare",
+      "Cloudflare Workers AI is not configured. Missing CF_ACCOUNT_ID or CF_API_TOKEN.",
+      "MISSING_API_KEY",
+      400
+    );
+  }
+  // width/height are intentionally ignored — flux-1-schnell has a fixed output
+  // size and rejects/ignores dimension params.
+  void width;
+  void height;
+
+  const endpoint = `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(accountId)}/ai/run/${CLOUDFLARE_FLUX_MODEL}`;
+  // Reuse the deterministic prompt-seed so an NPC's identitySeed keeps the same
+  // character consistent here too (and so failover from Pollinations is stable).
+  const body = { prompt: String(prompt || "").trim() || "portrait", num_steps: 8, seed: pollinationsSeed(prompt, seed) };
+
+  const response = await fetchImpl(endpoint, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiToken}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(body)
+  });
+  if (!response.ok) {
+    throw makeProviderError("cloudflare", `Cloudflare request failed (${response.status})`, "UPSTREAM_AI_ERROR", response.status);
+  }
+
+  // flux-1-schnell returns the image bytes directly. Defensive: some Workers AI
+  // image responses instead wrap a base64 image in JSON ({"result":{"image":"…"}});
+  // decode that so we always persist real image bytes, never JSON text.
+  const buf = Buffer.from(await response.arrayBuffer());
+  const contentType = String(response.headers?.get?.("content-type") || "").toLowerCase();
+  if (contentType.includes("application/json")) {
+    try {
+      const json = JSON.parse(buf.toString("utf8"));
+      const b64 = json?.result?.image || json?.image || null;
+      if (b64) {
+        return { provider: "cloudflare", mock: false, bytes: Buffer.from(b64, "base64"), url: null };
+      }
+    } catch {
+      // not JSON after all — fall through to the raw bytes below
+    }
+  }
+
+  return {
+    provider: "cloudflare",
+    mock: false,
+    bytes: buf,
+    url: null
+  };
+}
+
+// Failover order tried after the primary/resolved provider (deduped against it).
+// "cloudflare" is wired below; the loop only attempts it when its keys are set
+// (isWiredImageProvider), otherwise it is skipped with no attempt/delay.
+//
+// Mock is deliberately NOT in this chain: it never fails, so including it would
+// cache a 1x1 placeholder forever on a real outage. Instead, when every real
+// provider fails the loop throws, the asset stays "failed", and the scene poll
+// retries it later. Mock only activates when NOTDND_MOCK_IMAGE=true, which
+// short-circuits before this chain ever runs.
+const IMAGE_PROVIDER_PRIORITY = ["pollinations", "cloudflare"];
+
+function sleep(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+// True for providers dispatchImageProvider knows how to call. Cloudflare is only
+// "wired" once both of its keys are present, so the failover loop skips it (no
+// attempt/delay) when it is unconfigured.
+function isWiredImageProvider(provider) {
+  const p = String(provider || "").trim().toLowerCase();
+  if (p === "cloudflare") {
+    return Boolean(String(process.env.CF_ACCOUNT_ID || "").trim() && String(process.env.CF_API_TOKEN || "").trim());
+  }
+  return p === "pollinations" || p === "fal" || isMockImageProvider(p);
+}
+
+// Dispatches one generation to a single, concrete provider. Throws for providers
+// that are not wired yet so the failover loop can skip past them.
+async function dispatchImageProvider(provider, args) {
+  const p = String(provider || "").trim().toLowerCase();
+  if (isMockImageProvider(p)) {
+    return { provider: "mock", mock: true, bytes: MOCK_IMAGE_PNG, url: null };
+  }
+  if (p === "pollinations") {
+    return pollinationsImage({
+      prompt: args.prompt,
+      seed: args.seed,
+      fetchImpl: args.fetchImpl,
+      width: args.width,
+      height: args.height
+    });
+  }
+  if (p === "fal") {
+    return falImage({ prompt: args.prompt, referenceImageUrl: args.referenceImageUrl, fetchImpl: args.fetchImpl });
+  }
+  if (p === "cloudflare") {
+    return cloudflareImage({
+      prompt: args.prompt,
+      seed: args.seed,
+      width: args.width,
+      height: args.height,
+      fetchImpl: args.fetchImpl
+    });
+  }
+  throw makeProviderError(p, `Image provider not wired yet: ${p}`, "PROVIDER_NOT_WIRED", 501);
+}
+
 /**
- * Generates a single image and returns its bytes. The base portrait (no
- * referenceImageUrl) is produced via text-to-image; expression/reference
- * variants (with referenceImageUrl) via image-to-image / IP-Adapter where the
- * provider supports it (Pollinations is txt2img only).
- * @param {{ provider?: string, prompt?: string, referenceImageUrl?: string|null, style?: string, seed?: number|null, width?: number|null, height?: number|null, fetchImpl?: typeof fetch }} [args]
+ * Generates a single image and returns its bytes, with provider failover.
+ *
+ * The primary/resolved provider is tried first; on any error it is retried once
+ * (after retryDelayMs), and if that also fails the loop moves down the priority
+ * list. Unwired providers are skipped. The first success returns immediately; if
+ * nothing succeeds the call throws, listing what was tried. Transparent to
+ * callers — the return shape is unchanged.
+ *
+ * The base portrait (no referenceImageUrl) is produced via text-to-image;
+ * expression/reference variants (with referenceImageUrl) via image-to-image /
+ * IP-Adapter where the provider supports it.
+ * @param {{ provider?: string, prompt?: string, referenceImageUrl?: string|null, style?: string, seed?: number|null, width?: number|null, height?: number|null, fetchImpl?: typeof fetch, retryDelayMs?: number, providerPriority?: string[] }} [args]
  * @returns {Promise<{ provider: string, mock: boolean, bytes: Buffer, url: string|null }>}
  */
 export async function generateImage({
@@ -521,22 +651,58 @@ export async function generateImage({
   seed = null,
   width = null,
   height = null,
-  fetchImpl = fetch
+  fetchImpl = fetch,
+  retryDelayMs = 1000,
+  providerPriority = IMAGE_PROVIDER_PRIORITY
 } = {}) {
-  const resolvedProvider = provider || resolveImageProvider();
   const styledPrompt = String(style || "").trim() ? `${prompt}, ${String(style).trim()} style` : prompt;
+  const args = { prompt: styledPrompt, referenceImageUrl, seed, width, height, fetchImpl };
 
-  if (isMockImageProvider(resolvedProvider)) {
-    return { provider: "mock", mock: true, bytes: MOCK_IMAGE_PNG, url: null };
+  const primary = String(provider || resolveImageProvider() || "mock").trim().toLowerCase();
+
+  // Mock short-circuits: no network, never fails — skip the failover machinery
+  // (and its retry delay) entirely so mock/test runs stay instant.
+  if (isMockImageProvider(primary)) {
+    return dispatchImageProvider("mock", args);
   }
 
-  if (resolvedProvider === "pollinations") {
-    return pollinationsImage({ prompt: styledPrompt, seed, fetchImpl, width, height });
+  // Build the failover chain: primary first, then the priority list, deduped.
+  const chain = [];
+  for (const candidate of [primary, ...(Array.isArray(providerPriority) ? providerPriority : [])]) {
+    const key = String(candidate || "").trim().toLowerCase();
+    if (key && !chain.includes(key)) {
+      chain.push(key);
+    }
   }
 
-  if (resolvedProvider === "fal") {
-    return falImage({ prompt: styledPrompt, referenceImageUrl, fetchImpl });
+  const tried = [];
+  let lastError = null;
+
+  for (const candidate of chain) {
+    if (!isWiredImageProvider(candidate)) {
+      continue; // not implemented yet (e.g. cloudflare) — skip with no attempt/delay
+    }
+    // Two tries per provider: the initial attempt, then one retry after a short
+    // delay. Any error (throw, non-200, timeout) is treated as retriable.
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+      try {
+        return await dispatchImageProvider(candidate, args);
+      } catch (error) {
+        lastError = error;
+        tried.push(`${candidate} (attempt ${attempt})`);
+        if (attempt === 1 && retryDelayMs > 0) {
+          // eslint-disable-next-line no-await-in-loop
+          await sleep(retryDelayMs);
+        }
+      }
+    }
   }
 
-  throw makeProviderError(resolvedProvider, `Unsupported image provider: ${resolvedProvider}`, "UNSUPPORTED_IMAGE_PROVIDER", 400);
+  throw makeProviderError(
+    primary,
+    `All image providers failed. Tried: ${tried.join(", ") || "none"}.` +
+      (lastError ? ` Last error: ${String(lastError.message || lastError)}.` : ""),
+    "ALL_IMAGE_PROVIDERS_FAILED",
+    502
+  );
 }

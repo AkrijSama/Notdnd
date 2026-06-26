@@ -37,7 +37,9 @@ export function buildActionGmMessage(run, resolved) {
 
   if (type === "attempt") {
     const ar = resolved.attemptResult;
-    if (!ar) {
+    // No AI narration for a missing or policy-flagged attempt: a flagged intent
+    // must never reach the model, and its fixed in-character refusal stands.
+    if (!ar || ar.policyViolation) {
       return null;
     }
     const cr = ar.checkResult;

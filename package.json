@@ -5,13 +5,14 @@
   "type": "module",
   "description": "Notdnd scaffold: Roll20 + D&D Beyond mechanics with AI GM placeholders",
   "dependencies": {
+    "better-sqlite3": "^12.11.1",
     "flexsearch": "^0.8.205"
   },
   "scripts": {
     "dev": "node server/index.js",
     "start": "node server/index.js",
     "check": "for f in $(rg --files -g '*.js' -g '*.mjs' src server tests scripts); do node --check \"$f\" || exit 1; done",
-    "unit": "node --test tests/*.test.js",
+    "unit": "NOTDND_BOOTSTRAP_DEMO=true node --test tests/*.test.js",
     "verify": "npm run check && npm run unit",
     "smoke": "node scripts/smoke.mjs",
     "smoke:ai": "node scripts/smoke-ai.mjs",

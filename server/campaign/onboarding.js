@@ -437,13 +437,47 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
   run.npcs = run.npcs || {};
   run.npcs[npc.npcId] = npc;
 
-  // Seed the single MVP main quest from the generated world. Default goal is to
-  // reach the second location; if the run somehow lacks one, fall back to a
-  // talk beat with the starting contact.
+  // Seed stage-1 content at the second location: a quest-giver NPC whose first
+  // dialogue beat is linked to the main quest. Reaching the second location
+  // advances the quest to stage 1; talking to this figure there completes it.
+  const secondLocation = run.locations?.second_location || null;
+  if (secondLocation) {
+    run.npcs.npc_quest_giver = {
+      npcId: "npc_quest_giver",
+      displayName: "A waiting figure",
+      role: "stranger",
+      currentLocationId: "second_location",
+      known: true,
+      status: "present",
+      memoryFactIds: [],
+      tags: ["quest"],
+      flags: {},
+      edition: "mainline",
+      policyProfileId: "mainline_default",
+      contentTags: [],
+      origin: "procedural",
+      dialogueBeats: [
+        {
+          beatId: "beat_quest_main_arrival",
+          label: "Why you came",
+          text: `So — you reached ${secondLocation.name}. What you came looking for begins here. There is no turning back now.`,
+          revealed: false,
+          repeatable: false,
+          linkedQuestIds: ["quest_main"],
+          contentTags: []
+        }
+      ]
+    };
+  }
+
+  // Seed the two-stage MVP main quest: travel to the second location (stage 0),
+  // then speak with the figure waiting there (stage 1). When no second location
+  // exists, fall back to the starting contact as the stage-1 target.
   run.quests = run.quests || {};
   run.quests.quest_main = createMainQuest(resolvedWorld, {
-    secondLocationId: run.locations?.second_location ? "second_location" : null,
-    firstNpcId: npc.npcId
+    secondLocationId: secondLocation ? "second_location" : null,
+    secondLocationName: secondLocation?.name || null,
+    firstNpcId: secondLocation ? "npc_quest_giver" : npc.npcId
   });
 
   await rebuildCampaignIndex(campaignId);

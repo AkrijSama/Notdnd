@@ -7,8 +7,13 @@ import { formatRollSummary, resolveAttack, resolveSkillCheck, rollDiceExpression
 import { NPC_EXPRESSIONS, createDefaultSoloRun, validateSoloRun } from "../solo/schema.js";
 import { uid } from "../utils/ids.js";
 import { createSeedState } from "./seedState.js";
+import { getDatabase } from "./database.js";
 
-const DEFAULT_STORE_PATH = path.resolve(process.cwd(), "server/db/notdnd.db.json");
+// Legacy JSON store (default location). On first run it is imported into SQLite
+// and renamed to <path>.bak.
+const DEFAULT_LEGACY_JSON_PATH = path.resolve(process.cwd(), "server/db/notdnd.db.json");
+// SQLite store (default location). The active, durable store.
+const DEFAULT_SQLITE_PATH = path.resolve(process.cwd(), "server/db/notdnd.sqlite");
 const SESSION_TTL_SECONDS = Number(process.env.NOTDND_SESSION_TTL_SECONDS || 60 * 60 * 24 * 7);
 const PBKDF2_ITERATIONS = Number(process.env.NOTDND_PBKDF2_ITERATIONS || 210000);
 
@@ -17,12 +22,118 @@ const WRITE_ROLES = new Set(["owner", "gm", "editor"]);
 const PLAY_ROLES = new Set(["owner", "gm", "editor", "player"]);
 const MANAGE_MEMBER_ROLES = new Set(["owner", "gm"]);
 
+// Resolves the active SQLite store path. Honours NOTDND_DB_PATH (callers/tests
+// still point at it): a ".json" value is mapped to its ".sqlite" sibling so
+// existing temp-dir setups keep working without changes; ":memory:" yields an
+// ephemeral in-memory database.
 function storePath() {
-  return process.env.NOTDND_DB_PATH ? path.resolve(process.env.NOTDND_DB_PATH) : DEFAULT_STORE_PATH;
+  const configured = process.env.NOTDND_DB_PATH;
+  if (!configured) {
+    return DEFAULT_SQLITE_PATH;
+  }
+  if (configured === ":memory:") {
+    return ":memory:";
+  }
+  const resolved = path.resolve(configured);
+  if (resolved.endsWith(".sqlite")) {
+    return resolved;
+  }
+  if (resolved.endsWith(".json")) {
+    return `${resolved.slice(0, -".json".length)}.sqlite`;
+  }
+  return `${resolved}.sqlite`;
+}
+
+// Resolves the legacy JSON store path for the one-time migration. Mirrors
+// storePath()'s NOTDND_DB_PATH handling but points at the ".json" file.
+function legacyJsonPath() {
+  const configured = process.env.NOTDND_DB_PATH;
+  if (!configured) {
+    return DEFAULT_LEGACY_JSON_PATH;
+  }
+  if (configured === ":memory:") {
+    return null;
+  }
+  const resolved = path.resolve(configured);
+  if (resolved.endsWith(".json")) {
+    return resolved;
+  }
+  if (resolved.endsWith(".sqlite")) {
+    return `${resolved.slice(0, -".sqlite".length)}.json`;
+  }
+  return `${resolved}.json`;
 }
 
 function ensureStoreDir() {
-  fs.mkdirSync(path.dirname(storePath()), { recursive: true });
+  const target = storePath();
+  if (target !== ":memory:") {
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+  }
+}
+
+function conn() {
+  return getDatabase(storePath());
+}
+
+// Reconstructs the in-memory db object from the SQLite tables. Returns null when
+// the store has never been initialized (no rows / no sentinel), so the caller
+// falls through to legacy-JSON migration or a fresh seed.
+function readFromSqlite() {
+  const sdb = conn();
+  const initialized = sdb.prepare("SELECT value FROM kv WHERE key = ?").get("__initialized__");
+  if (!initialized) {
+    return null;
+  }
+
+  const out = {};
+  for (const row of sdb.prepare("SELECT key, value FROM kv").all()) {
+    if (row.key === "__initialized__") {
+      continue;
+    }
+    out[row.key] = JSON.parse(row.value);
+  }
+  out.users = sdb.prepare("SELECT data FROM users").all().map((row) => JSON.parse(row.data));
+  out.sessions = sdb.prepare("SELECT data FROM sessions").all().map((row) => JSON.parse(row.data));
+  out.soloRuns = {};
+  for (const row of sdb.prepare("SELECT id, data FROM campaigns").all()) {
+    out.soloRuns[row.id] = JSON.parse(row.data);
+  }
+  return out;
+}
+
+// Reads the legacy JSON store (pre-SQLite). Returns the parsed object or null.
+function loadLegacyJson() {
+  const jsonPath = legacyJsonPath();
+  if (!jsonPath || !fs.existsSync(jsonPath)) {
+    return null;
+  }
+  try {
+    const raw = fs.readFileSync(jsonPath, "utf8");
+    if (!raw.trim()) {
+      return null;
+    }
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+// Set when loadFromDisk imported a legacy JSON file; the file is renamed to .bak
+// only after the first successful SQLite write (so a crash mid-migration never
+// loses data).
+let pendingLegacyMigrationPath = null;
+
+function finalizeLegacyMigration() {
+  if (!pendingLegacyMigrationPath) {
+    return;
+  }
+  const jsonPath = pendingLegacyMigrationPath;
+  pendingLegacyMigrationPath = null;
+  try {
+    fs.renameSync(jsonPath, `${jsonPath}.bak`);
+  } catch {
+    // best-effort: data is already safely in SQLite; the .bak rename is cosmetic
+  }
 }
 
 function deepClone(value) {
@@ -155,24 +266,97 @@ function defaultCampaignRuntimeState() {
 
 function loadFromDisk() {
   ensureStoreDir();
-  if (!fs.existsSync(storePath())) {
-    return null;
+  // Prefer the SQLite store. If it has never been written, fall back to a
+  // one-time import of the legacy JSON file (renamed to .bak after the first
+  // successful SQLite write — see finalizeLegacyMigration).
+  const fromSqlite = readFromSqlite();
+  if (fromSqlite) {
+    return fromSqlite;
   }
-
-  try {
-    const raw = fs.readFileSync(storePath(), "utf8");
-    if (!raw.trim()) {
-      return null;
-    }
-    return JSON.parse(raw);
-  } catch {
-    return null;
+  const legacy = loadLegacyJson();
+  if (legacy) {
+    pendingLegacyMigrationPath = legacyJsonPath();
+    return legacy;
   }
+  return null;
 }
 
+// Persists the whole in-memory db to SQLite in a single transaction (atomic and
+// durable — the JSON store had neither). users/sessions/soloRuns get their own
+// tables; every other top-level key is JSON in `kv` so nothing is dropped. A
+// full replace per write matches the previous whole-file rewrite cost while
+// eliminating the corruption/torn-write risk.
 function writeToDisk() {
   ensureStoreDir();
-  fs.writeFileSync(storePath(), JSON.stringify(db, null, 2), "utf8");
+  const sdb = conn();
+
+  const persist = sdb.transaction(() => {
+    sdb.prepare("DELETE FROM users").run();
+    const insertUser = sdb.prepare(
+      "INSERT INTO users (id, email, displayName, passwordHash, isAdmin, createdAt, data) " +
+        "VALUES (@id, @email, @displayName, @passwordHash, @isAdmin, @createdAt, @data)"
+    );
+    for (const user of Array.isArray(db.users) ? db.users : []) {
+      if (!user || typeof user.id !== "string") {
+        continue;
+      }
+      insertUser.run({
+        id: user.id,
+        email: typeof user.email === "string" ? user.email : null,
+        displayName: typeof user.displayName === "string" ? user.displayName : null,
+        passwordHash: typeof user.passwordHash === "string" ? user.passwordHash : null,
+        isAdmin: user.isAdmin ? 1 : 0,
+        createdAt: Number.isFinite(Number(user.createdAt)) ? Number(user.createdAt) : null,
+        data: JSON.stringify(user)
+      });
+    }
+
+    sdb.prepare("DELETE FROM sessions").run();
+    const insertSession = sdb.prepare(
+      "INSERT INTO sessions (token, userId, createdAt, expiresAt, data) " +
+        "VALUES (@token, @userId, @createdAt, @expiresAt, @data)"
+    );
+    for (const session of Array.isArray(db.sessions) ? db.sessions : []) {
+      if (!session || typeof session.token !== "string") {
+        continue;
+      }
+      insertSession.run({
+        token: session.token,
+        userId: typeof session.userId === "string" ? session.userId : null,
+        createdAt: Number.isFinite(Number(session.createdAt)) ? Number(session.createdAt) : null,
+        expiresAt: Number.isFinite(Number(session.expiresAt)) ? Number(session.expiresAt) : null,
+        data: JSON.stringify(session)
+      });
+    }
+
+    sdb.prepare("DELETE FROM campaigns").run();
+    const insertRun = sdb.prepare("INSERT INTO campaigns (id, userId, data) VALUES (@id, @userId, @data)");
+    const soloRuns = db.soloRuns && typeof db.soloRuns === "object" ? db.soloRuns : {};
+    for (const [runId, run] of Object.entries(soloRuns)) {
+      if (!runId || !run) {
+        continue;
+      }
+      insertRun.run({
+        id: runId,
+        userId: typeof run.userId === "string" ? run.userId : null,
+        data: JSON.stringify(run)
+      });
+    }
+
+    // Everything else (campaigns[] multiplayer array, books, maps, aiJobs,
+    // stateVersion, *ByCampaign maps, etc.) → kv catch-all so no key is lost.
+    sdb.prepare("DELETE FROM kv").run();
+    const insertKv = sdb.prepare("INSERT INTO kv (key, value) VALUES (?, ?)");
+    insertKv.run("__initialized__", "1");
+    for (const [key, value] of Object.entries(db)) {
+      if (key === "users" || key === "sessions" || key === "soloRuns") {
+        continue;
+      }
+      insertKv.run(key, JSON.stringify(value === undefined ? null : value));
+    }
+  });
+
+  persist();
 }
 
 function getUserById(userId) {
@@ -297,8 +481,16 @@ function createSessionForUser(userId) {
   return token;
 }
 
+// The demo account (known email + password) is a credential-stuffing target, so
+// it is created ONLY when explicitly enabled for local development — never by
+// default, and never in production. Tests enable it via the env in the npm
+// "unit" script.
+function demoBootstrapEnabled() {
+  return String(process.env.NOTDND_BOOTSTRAP_DEMO || "").trim().toLowerCase() === "true";
+}
+
 function bootstrapAdminAndMemberships() {
-  if (db.users.length === 0) {
+  if (db.users.length === 0 && demoBootstrapEnabled()) {
     const bootstrapEmail = normalizeEmail(process.env.NOTDND_BOOTSTRAP_EMAIL || "demo@notdnd.local");
     const bootstrapPassword = String(process.env.NOTDND_BOOTSTRAP_PASSWORD || "demo1234");
     const bootstrapDisplayName = normalizeDisplayName(process.env.NOTDND_BOOTSTRAP_DISPLAY_NAME || "Demo GM", "Demo GM");
@@ -311,23 +503,30 @@ function bootstrapAdminAndMemberships() {
       passwordHash: passwordRecord.hash,
       passwordSalt: passwordRecord.salt,
       passwordIterations: passwordRecord.iterations,
+      resetToken: null,
+      resetTokenExpiresAt: null,
       isAdmin: true,
       createdAt: nowEpochSec()
     });
   }
 
+  // May be undefined when the demo bootstrap is disabled and no one has
+  // registered yet (a fresh production install); owner assignment is then
+  // skipped — real users own the campaigns they create.
   const adminUser = db.users[0];
   for (const campaign of db.campaigns) {
     if (!db.campaignMembersByCampaign[campaign.id]) {
       db.campaignMembersByCampaign[campaign.id] = [];
     }
-    const hasOwner = db.campaignMembersByCampaign[campaign.id].some((entry) => entry.userId === adminUser.id);
-    if (!hasOwner) {
-      db.campaignMembersByCampaign[campaign.id].push({
-        userId: adminUser.id,
-        role: "owner",
-        addedAt: nowEpochSec()
-      });
+    if (adminUser) {
+      const hasOwner = db.campaignMembersByCampaign[campaign.id].some((entry) => entry.userId === adminUser.id);
+      if (!hasOwner) {
+        db.campaignMembersByCampaign[campaign.id].push({
+          userId: adminUser.id,
+          role: "owner",
+          addedAt: nowEpochSec()
+        });
+      }
     }
     ensureCampaignVersionSlot(campaign.id);
     db.journalsByCampaign[campaign.id] = db.journalsByCampaign[campaign.id] || [];
@@ -362,6 +561,9 @@ function ensureDb() {
     ensureDefaults(db);
     bootstrapAdminAndMemberships();
     writeToDisk();
+    // Now that the data is safely in SQLite, retire the legacy JSON file (if the
+    // load above imported one) by renaming it to .bak.
+    finalizeLegacyMigration();
     return;
   }
 
@@ -1087,6 +1289,8 @@ export function registerUser({ email, password, displayName }) {
     passwordHash: passwordRecord.hash,
     passwordSalt: passwordRecord.salt,
     passwordIterations: passwordRecord.iterations,
+    resetToken: null,
+    resetTokenExpiresAt: null,
     isAdmin: false,
     createdAt: nowEpochSec()
   };
@@ -1130,6 +1334,86 @@ export function loginUser({ email, password }) {
     token,
     expiresIn: SESSION_TTL_SECONDS
   };
+}
+
+// Password reset: a short-lived 6-digit code stored on the user record. No email
+// provider yet, so the code is logged to the console (real delivery is a
+// follow-up). Never exposed via sanitizeUser, so it does not leak in responses.
+const RESET_TOKEN_TTL_SECONDS = 15 * 60;
+
+function generateResetCode() {
+  return String(crypto.randomInt(0, 1_000_000)).padStart(6, "0");
+}
+
+/**
+ * Issues a password-reset code for an email. Always returns ok (never reveals
+ * whether the email exists — account-enumeration guard). When the user exists,
+ * a 6-digit, 15-minute code is stored and logged to the console.
+ * @param {{ email?: string }} input
+ * @returns {{ ok: true }}
+ */
+export function requestPasswordReset({ email } = {}) {
+  ensureDb();
+  const normalizedEmail = normalizeEmail(email);
+  const user = normalizedEmail ? getUserByEmail(normalizedEmail) : null;
+  if (user) {
+    const code = generateResetCode();
+    user.resetToken = code;
+    user.resetTokenExpiresAt = nowEpochSec() + RESET_TOKEN_TTL_SECONDS;
+    writeToDisk();
+    // eslint-disable-next-line no-console
+    console.log(`[auth] Password reset code for ${user.email}: ${code} (expires in 15 minutes)`);
+  }
+  return { ok: true };
+}
+
+/**
+ * Completes a password reset: validates the code (present, unexpired, matching),
+ * hashes the new password, and clears the code. Existing sessions are
+ * invalidated so a leaked code cannot ride an old session. A too-short password
+ * is rejected WITHOUT consuming the code so the user can retry.
+ * @param {{ email?: string, token?: string, newPassword?: string }} input
+ * @returns {{ ok: true }}
+ */
+export function confirmPasswordReset({ email, token, newPassword } = {}) {
+  ensureDb();
+  const normalizedEmail = normalizeEmail(email);
+  const user = normalizedEmail ? getUserByEmail(normalizedEmail) : null;
+  const code = String(token || "").trim();
+
+  if (!user || !user.resetToken || !user.resetTokenExpiresAt) {
+    throw makeError("BAD_REQUEST", "Invalid or expired reset code.", 400);
+  }
+  if (Number(user.resetTokenExpiresAt) <= nowEpochSec()) {
+    user.resetToken = null;
+    user.resetTokenExpiresAt = null;
+    writeToDisk();
+    throw makeError("BAD_REQUEST", "Invalid or expired reset code.", 400);
+  }
+
+  // Constant-time comparison so the code cannot be guessed by timing.
+  const expected = Buffer.from(String(user.resetToken));
+  const provided = Buffer.from(code);
+  const matches = expected.length === provided.length && crypto.timingSafeEqual(expected, provided);
+  if (!matches) {
+    throw makeError("BAD_REQUEST", "Invalid or expired reset code.", 400);
+  }
+
+  if (String(newPassword || "").length < 8) {
+    throw makeError("BAD_REQUEST", "Password must be at least 8 characters.", 400);
+  }
+
+  const passwordRecord = hashPassword(newPassword);
+  user.passwordHash = passwordRecord.hash;
+  user.passwordSalt = passwordRecord.salt;
+  user.passwordIterations = passwordRecord.iterations;
+  user.resetToken = null;
+  user.resetTokenExpiresAt = null;
+  // Invalidate all existing sessions for this user after a password change.
+  db.sessions = db.sessions.filter((session) => session.userId !== user.id);
+  writeToDisk();
+
+  return { ok: true };
 }
 
 export function logoutSessionToken(token) {
