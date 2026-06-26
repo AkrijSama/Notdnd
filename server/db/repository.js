@@ -481,8 +481,16 @@ function createSessionForUser(userId) {
   return token;
 }
 
+// The demo account (known email + password) is a credential-stuffing target, so
+// it is created ONLY when explicitly enabled for local development — never by
+// default, and never in production. Tests enable it via the env in the npm
+// "unit" script.
+function demoBootstrapEnabled() {
+  return String(process.env.NOTDND_BOOTSTRAP_DEMO || "").trim().toLowerCase() === "true";
+}
+
 function bootstrapAdminAndMemberships() {
-  if (db.users.length === 0) {
+  if (db.users.length === 0 && demoBootstrapEnabled()) {
     const bootstrapEmail = normalizeEmail(process.env.NOTDND_BOOTSTRAP_EMAIL || "demo@notdnd.local");
     const bootstrapPassword = String(process.env.NOTDND_BOOTSTRAP_PASSWORD || "demo1234");
     const bootstrapDisplayName = normalizeDisplayName(process.env.NOTDND_BOOTSTRAP_DISPLAY_NAME || "Demo GM", "Demo GM");
@@ -495,23 +503,30 @@ function bootstrapAdminAndMemberships() {
       passwordHash: passwordRecord.hash,
       passwordSalt: passwordRecord.salt,
       passwordIterations: passwordRecord.iterations,
+      resetToken: null,
+      resetTokenExpiresAt: null,
       isAdmin: true,
       createdAt: nowEpochSec()
     });
   }
 
+  // May be undefined when the demo bootstrap is disabled and no one has
+  // registered yet (a fresh production install); owner assignment is then
+  // skipped — real users own the campaigns they create.
   const adminUser = db.users[0];
   for (const campaign of db.campaigns) {
     if (!db.campaignMembersByCampaign[campaign.id]) {
       db.campaignMembersByCampaign[campaign.id] = [];
     }
-    const hasOwner = db.campaignMembersByCampaign[campaign.id].some((entry) => entry.userId === adminUser.id);
-    if (!hasOwner) {
-      db.campaignMembersByCampaign[campaign.id].push({
-        userId: adminUser.id,
-        role: "owner",
-        addedAt: nowEpochSec()
-      });
+    if (adminUser) {
+      const hasOwner = db.campaignMembersByCampaign[campaign.id].some((entry) => entry.userId === adminUser.id);
+      if (!hasOwner) {
+        db.campaignMembersByCampaign[campaign.id].push({
+          userId: adminUser.id,
+          role: "owner",
+          addedAt: nowEpochSec()
+        });
+      }
     }
     ensureCampaignVersionSlot(campaign.id);
     db.journalsByCampaign[campaign.id] = db.journalsByCampaign[campaign.id] || [];
@@ -1274,6 +1289,8 @@ export function registerUser({ email, password, displayName }) {
     passwordHash: passwordRecord.hash,
     passwordSalt: passwordRecord.salt,
     passwordIterations: passwordRecord.iterations,
+    resetToken: null,
+    resetTokenExpiresAt: null,
     isAdmin: false,
     createdAt: nowEpochSec()
   };
@@ -1317,6 +1334,86 @@ export function loginUser({ email, password }) {
     token,
     expiresIn: SESSION_TTL_SECONDS
   };
+}
+
+// Password reset: a short-lived 6-digit code stored on the user record. No email
+// provider yet, so the code is logged to the console (real delivery is a
+// follow-up). Never exposed via sanitizeUser, so it does not leak in responses.
+const RESET_TOKEN_TTL_SECONDS = 15 * 60;
+
+function generateResetCode() {
+  return String(crypto.randomInt(0, 1_000_000)).padStart(6, "0");
+}
+
+/**
+ * Issues a password-reset code for an email. Always returns ok (never reveals
+ * whether the email exists — account-enumeration guard). When the user exists,
+ * a 6-digit, 15-minute code is stored and logged to the console.
+ * @param {{ email?: string }} input
+ * @returns {{ ok: true }}
+ */
+export function requestPasswordReset({ email } = {}) {
+  ensureDb();
+  const normalizedEmail = normalizeEmail(email);
+  const user = normalizedEmail ? getUserByEmail(normalizedEmail) : null;
+  if (user) {
+    const code = generateResetCode();
+    user.resetToken = code;
+    user.resetTokenExpiresAt = nowEpochSec() + RESET_TOKEN_TTL_SECONDS;
+    writeToDisk();
+    // eslint-disable-next-line no-console
+    console.log(`[auth] Password reset code for ${user.email}: ${code} (expires in 15 minutes)`);
+  }
+  return { ok: true };
+}
+
+/**
+ * Completes a password reset: validates the code (present, unexpired, matching),
+ * hashes the new password, and clears the code. Existing sessions are
+ * invalidated so a leaked code cannot ride an old session. A too-short password
+ * is rejected WITHOUT consuming the code so the user can retry.
+ * @param {{ email?: string, token?: string, newPassword?: string }} input
+ * @returns {{ ok: true }}
+ */
+export function confirmPasswordReset({ email, token, newPassword } = {}) {
+  ensureDb();
+  const normalizedEmail = normalizeEmail(email);
+  const user = normalizedEmail ? getUserByEmail(normalizedEmail) : null;
+  const code = String(token || "").trim();
+
+  if (!user || !user.resetToken || !user.resetTokenExpiresAt) {
+    throw makeError("BAD_REQUEST", "Invalid or expired reset code.", 400);
+  }
+  if (Number(user.resetTokenExpiresAt) <= nowEpochSec()) {
+    user.resetToken = null;
+    user.resetTokenExpiresAt = null;
+    writeToDisk();
+    throw makeError("BAD_REQUEST", "Invalid or expired reset code.", 400);
+  }
+
+  // Constant-time comparison so the code cannot be guessed by timing.
+  const expected = Buffer.from(String(user.resetToken));
+  const provided = Buffer.from(code);
+  const matches = expected.length === provided.length && crypto.timingSafeEqual(expected, provided);
+  if (!matches) {
+    throw makeError("BAD_REQUEST", "Invalid or expired reset code.", 400);
+  }
+
+  if (String(newPassword || "").length < 8) {
+    throw makeError("BAD_REQUEST", "Password must be at least 8 characters.", 400);
+  }
+
+  const passwordRecord = hashPassword(newPassword);
+  user.passwordHash = passwordRecord.hash;
+  user.passwordSalt = passwordRecord.salt;
+  user.passwordIterations = passwordRecord.iterations;
+  user.resetToken = null;
+  user.resetTokenExpiresAt = null;
+  // Invalidate all existing sessions for this user after a password change.
+  db.sessions = db.sessions.filter((session) => session.userId !== user.id);
+  writeToDisk();
+
+  return { ok: true };
 }
 
 export function logoutSessionToken(token) {

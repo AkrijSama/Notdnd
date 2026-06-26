@@ -12,7 +12,7 @@
     "dev": "node server/index.js",
     "start": "node server/index.js",
     "check": "for f in $(rg --files -g '*.js' -g '*.mjs' src server tests scripts); do node --check \"$f\" || exit 1; done",
-    "unit": "node --test tests/*.test.js",
+    "unit": "NOTDND_BOOTSTRAP_DEMO=true node --test tests/*.test.js",
     "verify": "npm run check && npm run unit",
     "smoke": "node scripts/smoke.mjs",
     "smoke:ai": "node scripts/smoke-ai.mjs",
