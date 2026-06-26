@@ -340,10 +340,18 @@ async function regenerateWorld() {
   }
 }
 
+// Bumped on every per-field regenerate so each request carries a fresh salt.
+// The offline world generator is deterministic per (definition, salt); without
+// a changing salt the regenerated value is byte-identical and the button looks
+// dead. Combined with Date.now() for uniqueness across reloads.
+let worldRegenSalt = 0;
+
 async function regenerateWorldField(field) {
   patchOnboarding({ loading: true, error: "" });
+  worldRegenSalt += 1;
+  const salt = `${field}:${worldRegenSalt}:${Date.now()}`;
   try {
-    const response = await store.regenerateWorldField({ definition: uiState.onboarding.worldDef || {}, field });
+    const response = await store.regenerateWorldField({ definition: uiState.onboarding.worldDef || {}, field, salt });
     const world = { ...(uiState.onboarding.worldPreview || {}) };
     if (field === "description") {
       world.description = response.value;

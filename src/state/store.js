@@ -263,11 +263,11 @@ export function createStore({ apiClient = null } = {}) {
     return apiClient.previewWorld(definition);
   }
 
-  async function regenerateWorldField({ definition = {}, field } = {}) {
+  async function regenerateWorldField({ definition = {}, field, salt } = {}) {
     if (!apiClient) {
       throw new Error("API client is required for world generation.");
     }
-    return apiClient.regenerateWorldField({ definition, field });
+    return apiClient.regenerateWorldField({ definition, field, salt });
   }
 
   async function createWorldRun({ world = {}, character = {} } = {}) {

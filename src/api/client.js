@@ -187,10 +187,10 @@ export function createApiClient(baseUrl = "") {
         body: JSON.stringify({ world: definition })
       });
     },
-    async regenerateWorldField({ definition, field }) {
+    async regenerateWorldField({ definition, field, salt }) {
       return request("/api/onboarding/world/field", {
         method: "POST",
-        body: JSON.stringify({ definition, field })
+        body: JSON.stringify({ definition, field, salt })
       });
     },
     async createWorldRun({ world, character }) {

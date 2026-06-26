@@ -115,6 +115,35 @@ function fallbackField(def, field, seed) {
   }
 }
 
+// Offline fallback prose. Several seed-selected variants per field so the
+// per-field "⟳" regenerate buttons actually change the text even with no AI
+// provider — without variants, the template was byte-identical every call and
+// the buttons looked dead. Flavor stays its own sentence to avoid grammar gaps.
+const DESCRIPTION_TEMPLATES = [
+  (m) => `${capitalize(m.tone)} hangs over ${m.name}. ${m.flavor} Folk speak of ${m.startingLocationName} as one of the last places that still offers shelter.`,
+  (m) => `${m.name} is a ${m.tone} world. ${m.flavor} ${capitalize(m.startingLocationName)} endures as one of the few refuges left.`,
+  (m) => `Across ${m.name}, a ${m.tone} mood settles deep. ${m.flavor} Many drift toward ${m.startingLocationName}, where shelter can still be found.`,
+  (m) => `In ${m.name}, the ${m.tone} years have left their mark. ${m.flavor} ${capitalize(m.startingLocationName)} remains a place the desperate still seek out.`,
+  (m) => `${capitalize(m.tone)} runs through every corner of ${m.name}. ${m.flavor} Travelers whisper that ${m.startingLocationName} is where the weary still find an open door.`
+];
+
+const LOCATION_TEMPLATES = [
+  (m) => `You begin at ${m.startingLocationName}, a ${m.startingLocationType} on the frayed edge of the known world.`,
+  (m) => `Your story opens in ${m.startingLocationName}, a ${m.startingLocationType} where few questions are asked.`,
+  (m) => `${capitalize(m.startingLocationName)} — a ${m.startingLocationType} clinging to the margins — is where you start.`,
+  (m) => `You arrive at ${m.startingLocationName}, a weathered ${m.startingLocationType} that has seen better days.`,
+  (m) => `It starts at ${m.startingLocationName}, a ${m.startingLocationType} half-forgotten by the wider world.`
+];
+
+function fallbackDescription(merged, seed) {
+  return pick(DESCRIPTION_TEMPLATES, seed, 0)(merged);
+}
+
+function fallbackLocationDescription(merged, seed) {
+  // Offset so location prose doesn't always move in lockstep with description.
+  return pick(LOCATION_TEMPLATES, seed, 3)(merged);
+}
+
 function synthesize(def, parsed, seed) {
   const merged = {};
   for (const field of CORE_FIELDS) {
@@ -127,10 +156,10 @@ function synthesize(def, parsed, seed) {
   merged.artStyle = ART_STYLES.includes(def.artStyle) ? def.artStyle : "illustrated";
   merged.description = isStr(parsed?.description)
     ? parsed.description.trim()
-    : `${capitalize(merged.tone)} hangs over ${merged.name}. ${merged.flavor} Folk speak of ${merged.startingLocationName} as one of the last places that still offers shelter.`;
+    : fallbackDescription(merged, seed);
   const locationDescription = isStr(parsed?.startingLocationDescription)
     ? parsed.startingLocationDescription.trim()
-    : `You begin at ${merged.startingLocationName}, a ${merged.startingLocationType} on the frayed edge of the known world.`;
+    : fallbackLocationDescription(merged, seed);
   merged.startingLocation = { name: merged.startingLocationName, description: locationDescription };
   return merged;
 }
