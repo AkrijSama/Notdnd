@@ -474,7 +474,11 @@ async function pollinationsImage({ prompt, seed, fetchImpl }) {
     width: "512",
     height: "768",
     seed: String(pollinationsSeed(prompt, seed)),
-    nologo: "true"
+    nologo: "true",
+    // Server-side LLM prompt enhancement: Pollinations expands the terse prompt
+    // into a richer, art-directed one before generation. Free quality lift on
+    // every image the app produces.
+    enhance: "true"
   });
   const url = `${POLLINATIONS_BASE}/${encoded}?${params.toString()}`;
 

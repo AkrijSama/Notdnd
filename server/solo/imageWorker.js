@@ -30,6 +30,12 @@ import { NPC_EXPRESSIONS } from "./schema.js";
 const queue = [];
 let processing = false;
 
+// Shared art-direction suffix appended to EVERY character portrait prompt
+// (player + NPC) so the whole cast reads as one coherent art set rather than a
+// grab-bag of styles.
+const PORTRAIT_ART_DIRECTION =
+  "fantasy portrait, painterly illustration, dramatic rim lighting, detailed face, upper body, plain dark background";
+
 // Resolved at call time (not module load) so tests can redirect the root.
 function assetsRoot() {
   return process.env.NOTDND_ASSETS_ROOT
@@ -157,7 +163,7 @@ export async function runImageJob(job = {}) {
       npcId,
       slot: "base",
       assetId: linked.base,
-      prompt: `${basePrompt}, neutral expression`,
+      prompt: `${basePrompt}, neutral expression, ${PORTRAIT_ART_DIRECTION}`,
       style,
       seed,
       referenceImageUrl: null
@@ -183,7 +189,7 @@ export async function runImageJob(job = {}) {
         npcId,
         slot: expression,
         assetId,
-        prompt: `${basePrompt}, ${expression} expression`,
+        prompt: `${basePrompt}, ${expression} expression, ${PORTRAIT_ART_DIRECTION}`,
         style,
         seed,
         referenceImageUrl
@@ -219,9 +225,27 @@ export async function runPlayerImageJob(job = {}) {
   const character = player.character || {};
   const tone = run.world?.tone || "dark fantasy";
   const style = run.world?.artStyle || "illustrated";
-  const descriptor =
-    [character.race, character.class].filter(Boolean).join(" ") || player.className || "wanderer";
-  const prompt = `character portrait of a ${descriptor}, ${tone}, detailed`;
+
+  // Build the subject from the full character record (character.* wins, then the
+  // mirrored run.player.* fields) instead of the old race+class-only descriptor.
+  const name = character.name || player.displayName || null;
+  const race = character.race || player.race || null;
+  const characterClass = character.class || player.className || player.characterClass || null;
+  const background = character.background || player.background || null;
+  const pronouns = character.pronouns || player.pronouns || null;
+
+  const subject =
+    [
+      name ? `${name},` : null,
+      pronouns ? `${pronouns},` : null,
+      race,
+      characterClass,
+      background ? `${background} background` : null
+    ]
+      .filter(Boolean)
+      .join(" ") || "wanderer";
+
+  const prompt = `character portrait of ${subject}, ${tone}, ${PORTRAIT_ART_DIRECTION}`;
   const seed = Number.isFinite(Number(character.identitySeed)) ? Number(character.identitySeed) : null;
 
   try {
