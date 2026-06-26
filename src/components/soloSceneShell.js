@@ -1222,6 +1222,16 @@ export const SOLO_MAP_WIDTH = 12;
 export const SOLO_MAP_HEIGHT = 10;
 export const SOLO_MAP_TILE_FEET = 5;
 
+// Image-completion poll cadence. Portraits + location art generate async (one
+// shared worker queue, no WebSocket), so the scene loads with placeholders and
+// we poll until every URI is ready. Real providers (Pollinations) routinely
+// take far longer than the old 15s budget — base portrait, each NPC base, and
+// the location background all generate sequentially — so the window must cover
+// realistic latency, not just a couple of ticks. Still bounded: the poll stops
+// early as soon as nothing is pending, and at the cap otherwise.
+const SOLO_ART_POLL_INTERVAL_MS = 5000;
+const SOLO_ART_POLL_MAX_ATTEMPTS = 24; // ~2 minutes at 5s
+
 function soloMapClamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
@@ -2690,7 +2700,7 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       return;
     }
     const arm = () => {
-      castPollTimer = setTimeout(tick, 5000);
+      castPollTimer = setTimeout(tick, SOLO_ART_POLL_INTERVAL_MS);
       if (castPollTimer && typeof castPollTimer.unref === "function") {
         castPollTimer.unref();
       }
@@ -2701,7 +2711,7 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       // Never tear down the DOM while the cog menu is open — a full re-render
       // would destroy the open menu and eat in-flight clicks.
       if (state.menuOpen) {
-        if (sceneArtPending() && castPollAttempts < 3) {
+        if (sceneArtPending() && castPollAttempts < SOLO_ART_POLL_MAX_ATTEMPTS) {
           arm();
         }
         return;
@@ -2724,7 +2734,7 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       } catch {
         // best-effort; keep trying until the attempt budget is spent
       }
-      if (sceneArtPending() && castPollAttempts < 3) {
+      if (sceneArtPending() && castPollAttempts < SOLO_ART_POLL_MAX_ATTEMPTS) {
         arm();
       }
     };
