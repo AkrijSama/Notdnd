@@ -2310,11 +2310,15 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       return;
     }
     // Signal an explicit exit so bootstrap() does NOT auto-resume this run.
+    // The flag must stay set across the navigation below: without it, "/"
+    // would auto-redirect straight back into this run (re-entry loop).
     try {
       window.sessionStorage?.setItem("notdnd_exited_run", "true");
     } catch {
       // sessionStorage may be unavailable; navigation still proceeds.
     }
+    // "/" now renders the minimal solo home (Continue card + Start a New
+    // Adventure + past runs), not the legacy 7-tab GM shell.
     window.location.href = "/";
   }
 

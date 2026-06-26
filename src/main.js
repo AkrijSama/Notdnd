@@ -21,6 +21,7 @@ const uiState = {
   activeTab: "command",
   compendiumQuery: "",
   resumeRunId: null,
+  soloRuns: [],
   apiHealthy: false,
   realtimeConnected: false,
   activeRealtimeCampaignId: null,
@@ -83,6 +84,105 @@ const realtimeClient = createRealtimeClient({
     scheduleRender();
   }
 });
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+// Minimal header for the solo player's surfaces (home + login). Deliberately
+// omits the 7-tab GM/multiplayer nav (renderTopbar) — solo players never see it.
+// Keeps only the brand and the auth/account affordances that bindAppEvents wires.
+function renderSoloHeader(user, accountMenuOpen = false) {
+  return `
+    <header class="topbar solo-topbar">
+      <div class="brand">
+        <h1>Notdnd</h1>
+        <span>Solo AI RPG</span>
+      </div>
+      <div class="inline">
+        <span class="small">${user ? `Signed in: ${escapeHtml(user.displayName)}` : "Not signed in"}</span>
+        ${
+          user
+            ? `
+              <div class="account-menu">
+                <button class="ghost" data-action="toggle-account-menu" aria-haspopup="true" aria-expanded="${accountMenuOpen ? "true" : "false"}">Account ▾</button>
+                ${
+                  accountMenuOpen
+                    ? `
+                      <div class="account-dropdown" role="menu">
+                        <button class="account-dropdown-item" role="menuitem" data-action="open-account">Account Settings</button>
+                        <button class="account-dropdown-item" role="menuitem" data-action="logout">Sign Out</button>
+                      </div>
+                    `
+                    : ""
+                }
+              </div>
+            `
+            : `<button class="ghost" data-action="toggle-auth">Sign In</button>`
+        }
+      </div>
+    </header>
+  `;
+}
+
+function renderSoloRunCard(run, { primary = false } = {}) {
+  const worldName = run?.world?.name || "Untitled World";
+  const charName = run?.player?.displayName || "Adventurer";
+  const status = run?.status || "unknown";
+  return `
+    <article class="solo-home-run-card${primary ? " primary" : ""}">
+      <div class="solo-home-run-meta">
+        <strong>${escapeHtml(worldName)}</strong>
+        <span class="small">${escapeHtml(charName)} · ${escapeHtml(status)}</span>
+      </div>
+      <button data-action="open-run" data-run-id="${escapeHtml(run.runId)}">${primary ? "Continue your adventure" : "Resume"}</button>
+    </article>
+  `;
+}
+
+// The solo home screen: the post-login / post-exit destination for solo players.
+// Replaces the 7-tab legacy shell. Shows a Continue card for the most recent
+// active run, a Start a New Adventure button, and any past runs.
+function renderSoloHome(state) {
+  const runs = Array.isArray(uiState.soloRuns) ? uiState.soloRuns : [];
+  const activeRuns = runs.filter((run) => run?.status === "active");
+  const continueRun =
+    activeRuns.find((run) => run.runId === uiState.resumeRunId) || activeRuns[0] || null;
+  const pastRuns = runs.filter((run) => run !== continueRun);
+
+  return `
+    <main class="panel main solo-home-main">
+      <section class="solo-home">
+        <div class="solo-home-hero">
+          <h2>Your adventures</h2>
+          <p class="small">Step back into a world, or begin a new one.</p>
+        </div>
+        ${
+          continueRun
+            ? `<div class="solo-home-continue">${renderSoloRunCard(continueRun, { primary: true })}</div>`
+            : ""
+        }
+        <div class="solo-home-start">
+          <button data-action="start-new-adventure">Start a New Adventure</button>
+        </div>
+        ${
+          pastRuns.length > 0
+            ? `<section class="solo-home-past">
+                 <h3>Past adventures</h3>
+                 <div class="solo-home-run-list">
+                   ${pastRuns.map((run) => renderSoloRunCard(run)).join("")}
+                 </div>
+               </section>`
+            : ""
+        }
+      </section>
+    </main>
+  `;
+}
 
 function renderActiveTab(state) {
   switch (uiState.activeTab) {
@@ -562,6 +662,15 @@ function bindAppEvents() {
     });
   }
 
+  appRoot.querySelectorAll("[data-action='open-run']").forEach((button) => {
+    button.addEventListener("click", () => {
+      const runId = button.getAttribute("data-run-id");
+      if (runId) {
+        window.location.search = `?soloRunId=${encodeURIComponent(runId)}`;
+      }
+    });
+  });
+
   const resumeRunBtn = appRoot.querySelector("[data-action='resume-run']");
   if (resumeRunBtn) {
     resumeRunBtn.addEventListener("click", () => {
@@ -750,11 +859,22 @@ function renderApp() {
 
   const focusSnapshot = captureFocusSnapshot();
 
+  // Solo players never see the 7-tab GM shell. Unauthenticated visitors get a
+  // login screen; the auth panel is forced open so they can sign in without a
+  // nav bar to toggle it.
+  if (!user && !onboardingVisible) {
+    uiState.showAuthPanel = true;
+  }
+
+  const authMessageHtml = uiState.authMessage
+    ? `<section class="module-card"><div class="small">${uiState.authMessage}</div></section>`
+    : "";
+
   const html = onboardingVisible
     ? `
       <div class="app-shell">
-        ${renderTopbar(uiState.activeTab, user, uiState.showAccountMenu)}
-        ${uiState.authMessage ? `<section class="module-card"><div class="small">${uiState.authMessage}</div></section>` : ""}
+        ${renderSoloHeader(user, uiState.showAccountMenu)}
+        ${authMessageHtml}
         ${renderAuthPanel(state)}
         <main class="panel main onboarding-main">
           <section id="onboarding-root">
@@ -763,41 +883,26 @@ function renderApp() {
         </main>
       </div>
     `
+    : user
+    ? `
+      <div class="app-shell">
+        ${renderSoloHeader(user, uiState.showAccountMenu)}
+        ${authMessageHtml}
+        ${renderAuthPanel(state)}
+        ${renderSoloHome(state)}
+      </div>
+    `
     : `
       <div class="app-shell">
-        ${renderTopbar(uiState.activeTab, user, uiState.showAccountMenu)}
-        ${uiState.authMessage ? `<section class="module-card"><div class="small">${uiState.authMessage}</div></section>` : ""}
-        ${renderAuthPanel(state)}
-        ${
-          uiState.resumeRunId
-            ? `<section class="module-card resume-banner">
-                 <div class="resume-banner-copy">
-                   <strong>Your adventure is waiting.</strong>
-                   <span class="small">You left a run in progress — pick up where you left off.</span>
-                 </div>
-                 <div class="inline">
-                   <button data-action="resume-run">Continue your adventure</button>
-                   <button class="ghost" data-action="dismiss-resume">Dismiss</button>
-                 </div>
-               </section>`
-            : ""
-        }
-        <div class="layout">
-          ${renderSidebar(state)}
-          <main class="panel main">
-            <section id="active-module">
-              ${renderActiveTab(state)}
-            </section>
-            <section class="module-card">
-              <div class="module-header">
-                <h3>Scaffold Status</h3>
-                <button class="ghost" data-action="reset-state">Reset Demo Data</button>
-              </div>
-              <div class="small">Secure auth + permissions + versioned sync + realtime collaboration + AI adapters are active.</div>
-              <div class="footer-note">API: ${uiState.apiHealthy ? "Connected" : "Offline"} | Realtime: ${uiState.realtimeConnected ? "Connected" : "Disconnected"} | Presence: ${uiState.presenceUsers.length} | State v${state.stateVersion ?? 0}</div>
-            </section>
-          </main>
-        </div>
+        ${renderSoloHeader(user, uiState.showAccountMenu)}
+        ${authMessageHtml}
+        <main class="panel main solo-home-main">
+          <section class="module-card solo-login-card">
+            <h2>Welcome to Notdnd</h2>
+            <p class="small">Sign in to begin or continue your solo adventure.</p>
+          </section>
+          ${renderAuthPanel(state)}
+        </main>
       </div>
     `;
 
@@ -942,10 +1047,16 @@ async function bootstrap() {
       }
       try {
         const soloResponse = await apiClient.listSoloRuns();
-        const runs = (soloResponse?.runs || []).filter((run) => run?.status === "active");
-        if (runs.length > 0) {
-          const mostRecent = runs[0];
+        const allRuns = soloResponse?.runs || [];
+        // Keep the full list so the solo home can show a Continue card plus any
+        // past adventures.
+        uiState.soloRuns = allRuns;
+        const activeRuns = allRuns.filter((run) => run?.status === "active");
+        if (activeRuns.length > 0) {
+          const mostRecent = activeRuns[0];
           if (justExited) {
+            // Explicit exit: land on the solo home with a Continue card instead
+            // of auto-re-entering the run we just left.
             uiState.resumeRunId = mostRecent.runId;
           } else {
             window.location.search = `?soloRunId=${encodeURIComponent(mostRecent.runId)}`;
@@ -953,7 +1064,7 @@ async function bootstrap() {
           }
         }
       } catch {
-        // fall through to Command Center if solo-run listing fails
+        // fall through to the solo home if solo-run listing fails
       }
     }
   }
