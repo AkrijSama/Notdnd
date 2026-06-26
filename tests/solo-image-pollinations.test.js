@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { generateImage, providerSupportsReference } from "../server/ai/providers.js";
 
-test("providerSupportsReference: only txt2img-only providers lack reference support", () => {
-  assert.equal(providerSupportsReference("pollinations"), false);
+test("providerSupportsReference: all current providers generate expression variants", () => {
+  // Pollinations now generates variants via seed-locked prompt variation, so it
+  // is no longer gated out (TXT2IMG_ONLY_IMAGE_PROVIDERS is empty).
+  assert.equal(providerSupportsReference("pollinations"), true);
   assert.equal(providerSupportsReference("fal"), true);
   assert.equal(providerSupportsReference("local"), true);
   assert.equal(providerSupportsReference("mock"), true);
@@ -33,6 +35,22 @@ test("pollinations builds the expected URL and returns image bytes", async () =>
   assert.match(calledUrl, /seed=42/);
   assert.match(calledUrl, /nologo=true/);
   assert.match(decodeURIComponent(calledUrl), /a grim knight, dark fantasy style/);
+
+  // Per-type dimensions: callers (location jobs) can override the portrait
+  // default with an explicit landscape aspect.
+  let landscapeUrl = "";
+  await generateImage({
+    provider: "pollinations",
+    prompt: "a wide vista",
+    width: 768,
+    height: 512,
+    fetchImpl: async (url) => {
+      landscapeUrl = url;
+      return { ok: true, async arrayBuffer() { return new ArrayBuffer(4); } };
+    }
+  });
+  assert.match(landscapeUrl, /width=768/);
+  assert.match(landscapeUrl, /height=512/);
 });
 
 test("pollinations derives a deterministic seed from the prompt when none given", async () => {

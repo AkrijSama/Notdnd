@@ -89,14 +89,22 @@ function referenceUrlFor(servedUri) {
   return base ? `${base}${servedUri}` : servedUri;
 }
 
+// Per-type image dimensions: portrait (512x768) for player + NPC faces,
+// landscape (768x512) for location establishing shots ("wide establishing
+// shot" prompts need a landscape aspect, not a portrait one).
+const PORTRAIT_DIMENSIONS = { width: 512, height: 768 };
+const LANDSCAPE_DIMENSIONS = { width: 768, height: 512 };
+
 // Generates one slot, writes bytes to disk, and flips the asset's status.
 // On any failure the asset is marked `failed`; the error is swallowed so a
 // single bad variant never aborts the rest of the job. The base portrait
 // (referenceImageUrl null) is produced via text-to-image; expression variants
-// pass the base portrait as the IP-Adapter reference (image-to-image).
-async function generateSlot({ runId, npcId, slot, assetId, prompt, style, referenceImageUrl, seed }) {
+// pass the base portrait as the IP-Adapter reference (image-to-image) where the
+// provider supports it, else fresh seed-locked txt2img. width/height default to
+// portrait when omitted.
+async function generateSlot({ runId, npcId, slot, assetId, prompt, style, referenceImageUrl, seed, width, height }) {
   try {
-    const result = await generateImage({ prompt, style, referenceImageUrl, seed });
+    const result = await generateImage({ prompt, style, referenceImageUrl, seed, width, height });
     const bytes = result?.bytes;
     if (!bytes || !bytes.length) {
       throw new Error("image provider returned no bytes");
@@ -166,17 +174,19 @@ export async function runImageJob(job = {}) {
       prompt: `${basePrompt}, neutral expression, ${PORTRAIT_ART_DIRECTION}`,
       style,
       seed,
-      referenceImageUrl: null
+      referenceImageUrl: null,
+      ...PORTRAIT_DIMENSIONS
     });
   }
   const referenceImageUrl = base.ok ? referenceUrlFor(base.uri) : null;
 
   const variants = [];
-  // Expression variants only make sense with a provider that can anchor them on
-  // the base portrait (img2img / IP-Adapter). Under a txt2img-only provider
-  // (e.g. Pollinations) they would be unrelated faces — and would clobber an
-  // uploaded base — so skip them; the UI falls back to the base portrait for
-  // every expression (consistent by definition).
+  // Expression variants: providers that can anchor on the base (fal / IP-Adapter)
+  // do so via referenceImageUrl; txt2img providers (Pollinations) ignore the
+  // reference and instead generate a fresh image with the SAME per-NPC seed and a
+  // prompt delta (", angry expression"), which keeps the character recognizable.
+  // Only providers in TXT2IMG_ONLY_IMAGE_PROVIDERS (currently none) skip variants
+  // and fall back to the base portrait for every expression.
   if (providerSupportsReference(resolveImageProvider())) {
     for (const expression of NPC_EXPRESSIONS) {
       const assetId = linked.variants[expression];
@@ -192,7 +202,8 @@ export async function runImageJob(job = {}) {
         prompt: `${basePrompt}, ${expression} expression, ${PORTRAIT_ART_DIRECTION}`,
         style,
         seed,
-        referenceImageUrl
+        referenceImageUrl,
+        ...PORTRAIT_DIMENSIONS
       });
       variants.push(variant);
     }
@@ -249,7 +260,7 @@ export async function runPlayerImageJob(job = {}) {
   const seed = Number.isFinite(Number(character.identitySeed)) ? Number(character.identitySeed) : null;
 
   try {
-    const result = await generateImage({ prompt, style, seed });
+    const result = await generateImage({ prompt, style, seed, ...PORTRAIT_DIMENSIONS });
     const bytes = result?.bytes;
     if (!bytes || !bytes.length) {
       throw new Error("image provider returned no bytes");
@@ -311,7 +322,8 @@ export async function runLocationImageJob(job = {}) {
   const folder = `location_${locationId}`;
 
   try {
-    const result = await generateImage({ prompt, style, seed });
+    // Location backgrounds are wide establishing shots -> landscape aspect.
+    const result = await generateImage({ prompt, style, seed, ...LANDSCAPE_DIMENSIONS });
     const bytes = result?.bytes;
     if (!bytes || !bytes.length) {
       throw new Error("image provider returned no bytes");

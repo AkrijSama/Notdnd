@@ -378,12 +378,17 @@ function isMockImageProvider(provider) {
   return provider === "mock" || provider === "placeholder" || provider === "local";
 }
 
-// Providers that can anchor expression variants on a base reference image
-// (img2img / IP-Adapter). Txt2img-only providers (Pollinations) cannot, so
-// variants there would be unrelated faces — callers should skip them and fall
-// back to the base portrait. Mock counts as capable so the variant path stays
-// covered in tests.
-const TXT2IMG_ONLY_IMAGE_PROVIDERS = new Set(["pollinations"]);
+// Gate for expression-variant generation: providers listed here SKIP variants
+// entirely (the worker falls back to the base portrait for every expression).
+// Pollinations used to be here because it is txt2img-only (no IP-Adapter), but
+// it now generates variants via seed-locked prompt variation: the same per-NPC
+// identitySeed across every expression slot plus a prompt delta (", angry
+// expression") yields recognizably the same character with a different
+// expression — not IP-Adapter quality, but far better than a frozen face. The
+// set is empty for now; fal (true img2img) and the mock provider produce
+// variants too. (Name kept for back-compat; "reference" here means "generates
+// expression variants", whether via a reference image or seed-locked prompts.)
+const TXT2IMG_ONLY_IMAGE_PROVIDERS = new Set();
 export function providerSupportsReference(provider) {
   return !TXT2IMG_ONLY_IMAGE_PROVIDERS.has(String(provider || "").trim().toLowerCase());
 }
@@ -467,12 +472,17 @@ function pollinationsSeed(prompt, seed) {
   return Math.abs(hash);
 }
 
-async function pollinationsImage({ prompt, seed, fetchImpl }) {
+async function pollinationsImage({ prompt, seed, fetchImpl, width, height }) {
+  // Default to portrait (512x768) for faces; callers pass landscape (768x512)
+  // for location establishing shots via generateImage's width/height params.
+  // (Number(null) === 0, so guard on > 0 — not just isFinite — to keep defaults.)
+  const w = Number(width) > 0 ? Math.trunc(Number(width)) : 512;
+  const h = Number(height) > 0 ? Math.trunc(Number(height)) : 768;
   const encoded = encodeURIComponent(String(prompt || "").trim() || "portrait");
   const params = new URLSearchParams({
     model: POLLINATIONS_MODEL,
-    width: "512",
-    height: "768",
+    width: String(w),
+    height: String(h),
     seed: String(pollinationsSeed(prompt, seed)),
     nologo: "true",
     // Server-side LLM prompt enhancement: Pollinations expands the terse prompt
@@ -500,7 +510,7 @@ async function pollinationsImage({ prompt, seed, fetchImpl }) {
  * referenceImageUrl) is produced via text-to-image; expression/reference
  * variants (with referenceImageUrl) via image-to-image / IP-Adapter where the
  * provider supports it (Pollinations is txt2img only).
- * @param {{ provider?: string, prompt?: string, referenceImageUrl?: string|null, style?: string, seed?: number|null, fetchImpl?: typeof fetch }} [args]
+ * @param {{ provider?: string, prompt?: string, referenceImageUrl?: string|null, style?: string, seed?: number|null, width?: number|null, height?: number|null, fetchImpl?: typeof fetch }} [args]
  * @returns {Promise<{ provider: string, mock: boolean, bytes: Buffer, url: string|null }>}
  */
 export async function generateImage({
@@ -509,6 +519,8 @@ export async function generateImage({
   referenceImageUrl = null,
   style = "",
   seed = null,
+  width = null,
+  height = null,
   fetchImpl = fetch
 } = {}) {
   const resolvedProvider = provider || resolveImageProvider();
@@ -519,7 +531,7 @@ export async function generateImage({
   }
 
   if (resolvedProvider === "pollinations") {
-    return pollinationsImage({ prompt: styledPrompt, seed, fetchImpl });
+    return pollinationsImage({ prompt: styledPrompt, seed, fetchImpl, width, height });
   }
 
   if (resolvedProvider === "fal") {
