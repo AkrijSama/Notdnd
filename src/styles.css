@@ -1200,6 +1200,14 @@ button:disabled {
   font-family: inherit;
 }
 
+/* Column wrapper: stacks the three-column frame above the full-width bottom
+   tab bar so the bar sticks to the bottom of the available height. */
+.solo-game-layout {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  min-height: 0;
+}
 .solo-game-frame {
   display: flex;
   gap: 0;
@@ -1365,15 +1373,28 @@ button:disabled {
   line-height: 1.1;
   margin-bottom: 14px;
 }
-.solo-game-tabs { display: flex; gap: 26px; flex-wrap: wrap; }
+/* Full-width bottom tab bar spanning all three columns (designer spec). The
+   bar is a sibling of .solo-game-frame inside .solo-game-layout, pinned to the
+   bottom of the game frame. */
+.solo-game-tabs {
+  width: 100%;
+  display: flex;
+  border-top: 1px solid var(--border, #2e2420);
+  background: var(--bg-card, var(--card, #1a130c));
+  padding: 0 24px;
+  gap: 0;
+}
 .solo-game-tab {
+  flex: 1;
+  text-align: center;
   padding: 14px 0;
   font-size: 12.5px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   background: none;
   border: none;
-  border-bottom: 2px solid transparent;
+  border-bottom: none;
+  border-top: 3px solid transparent;
   color: var(--text-label, #8a7c68);
   cursor: pointer;
   font-family: inherit;
@@ -1382,7 +1403,7 @@ button:disabled {
 }
 .solo-game-tab.active {
   color: var(--text-bright, #f0e6d4);
-  border-bottom-color: var(--accent, #c8922a);
+  border-top-color: var(--accent, #c8922a);
 }
 .solo-game-content { flex: 1; overflow-y: auto; }
 .solo-tab-panel[hidden] { display: none; }
@@ -1739,7 +1760,10 @@ button:disabled {
    ========================================================================= */
 @media (min-width: 1081px) {
   .solo-game-shell { height: 100vh; overflow: hidden; }
-  .solo-game-frame { height: calc(100vh - 34px); min-height: 0; }
+  /* The layout (frame + bottom tab bar) fills the padded shell; the frame
+     flexes to leave the tab bar its natural height pinned at the bottom. */
+  .solo-game-layout { height: calc(100vh - 34px); }
+  .solo-game-frame { flex: 1; min-height: 0; }
   .solo-game-main { min-height: 0; }
   .solo-game-content { min-height: 0; overflow: hidden; }
   /* Non-scene tabs scroll internally; the scene tab is fixed and self-fits. */

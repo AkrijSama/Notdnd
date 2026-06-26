@@ -1659,13 +1659,13 @@ export function renderSoloSceneShell(state = {}) {
           </div>
         ` : ""}
       </div>
+      <div class="solo-game-layout">
       <div class="solo-game-frame solo-scene-grid">
         ${renderSoloCharacterSidebar(character)}
         <main class="solo-game-main solo-scene-main">
           <div class="solo-game-header">
             <div class="solo-breadcrumb">${escapeHtml(region)} <span>›</span> ${escapeHtml(title)}</div>
             <div class="solo-game-title">${escapeHtml(title)}</div>
-            ${renderSoloGameTabs(activeTab)}
           </div>
           <div class="solo-game-content">
             ${panel(
@@ -1711,6 +1711,8 @@ export function renderSoloSceneShell(state = {}) {
           </div>
         </main>
         ${renderSoloRightRail(state)}
+      </div>
+      ${renderSoloGameTabs(activeTab)}
       </div>
       ${renderSoloDialogueOverlay(state)}
       ${renderNpcCreatorModal(state)}
