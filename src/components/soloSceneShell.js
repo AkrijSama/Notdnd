@@ -773,6 +773,36 @@ export function renderEntityDetailPanel(detail = null) {
   `;
 }
 
+// Quest objective panel — pinned to the top of the Journal tab. Shows the active
+// quest (the main quest if active, else the first active quest), its one-line
+// objective, and a stage indicator past stage 0. Falls back to a neutral empty
+// state when nothing is active (e.g. after the main quest is completed).
+export function renderQuestPanel(scene = {}) {
+  const quests = scene.quests || {};
+  const main = quests.mainQuest && quests.mainQuest.status === "active" ? quests.mainQuest : null;
+  const active =
+    main ||
+    (Array.isArray(quests.activeQuests) ? quests.activeQuests.find((quest) => quest && quest.status === "active") : null) ||
+    null;
+  return `
+    <section class="module-card solo-panel solo-quest-panel">
+      <div class="module-header">
+        <h3>Objective</h3>
+        <span class="small">Your quest</span>
+      </div>
+      ${
+        active
+          ? `<div class="solo-quest-active">
+               <strong class="solo-quest-title">${escapeHtml(active.title || "Untitled Quest")}</strong>
+               <div class="small solo-quest-objective">${escapeHtml(active.objective || "")}</div>
+               ${Number(active.stage) > 0 ? `<div class="small solo-quest-stage">Stage ${escapeHtml(active.stage)}</div>` : ""}
+             </div>`
+          : renderEmpty("No active quest.")
+      }
+    </section>
+  `;
+}
+
 export function renderSceneTimelinePanel(scene = {}) {
   const events = Array.isArray(scene.recentTimeline) ? scene.recentTimeline : [];
   return `
@@ -1695,6 +1725,33 @@ export function renderSoloSceneShell(state = {}) {
     `;
   }
 
+  // Victory screen: the main quest was completed (run concluded as a win).
+  // Mirrors the death-screen layout with a gold scheme and triumphant copy.
+  if (state.victoryScreen) {
+    const summary = state.runSummary || {};
+    const name = summary.playerName || state.character?.name || "Your adventurer";
+    const where = summary.location || state.scene?.location?.name || "the world";
+    const played = formatRunDuration(summary.timePlayedMs);
+    const questTitle = state.scene?.quests?.mainQuest?.title || "your quest";
+    return `
+      <section class="solo-scene-shell solo-victory-screen" data-solo-victory>
+        <div class="solo-victory-card">
+          <div class="solo-victory-kicker">Victory</div>
+          <h2 class="solo-victory-title">${escapeHtml(name)} prevails.</h2>
+          <p class="solo-victory-sub">You completed <strong>${escapeHtml(questTitle)}</strong>. This chapter is won.</p>
+          <dl class="solo-victory-summary">
+            <div><dt>Adventurer</dt><dd>${escapeHtml(name)}</dd></div>
+            <div><dt>Quest</dt><dd>${escapeHtml(questTitle)}</dd></div>
+            <div><dt>Last seen</dt><dd>${escapeHtml(where)}</dd></div>
+            <div><dt>Time played</dt><dd>${escapeHtml(played)}</dd></div>
+            <div><dt>Outcome</dt><dd>${escapeHtml(summary.outcome || "victory")}</dd></div>
+          </dl>
+          <button class="solo-victory-home" data-solo-home>Return to your adventures</button>
+        </div>
+      </section>
+    `;
+  }
+
   // Death screen: the run has been concluded as a death; replace the shell with
   // a summary before the player returns to the solo home.
   if (state.deathScreen) {
@@ -1763,6 +1820,11 @@ export function renderSoloSceneShell(state = {}) {
           <div class="solo-game-header">
             <div class="solo-breadcrumb">${escapeHtml(region)} <span>›</span> ${escapeHtml(title)}</div>
             <div class="solo-game-title">${escapeHtml(title)}</div>
+            ${
+              scene.quests?.mainQuest && scene.quests.mainQuest.status === "active" && scene.quests.mainQuest.objective
+                ? `<div class="small solo-game-objective">Objective: ${escapeHtml(scene.quests.mainQuest.objective)}</div>`
+                : ""
+            }
           </div>
           <div class="solo-game-content">
             ${
@@ -1824,6 +1886,7 @@ export function renderSoloSceneShell(state = {}) {
             ${panel(
               "journal",
               `
+                ${renderQuestPanel(scene)}
                 ${renderSceneTimelinePanel(scene)}
                 ${renderSceneMemoryPanel(scene)}
               `
@@ -2202,10 +2265,14 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     busy: null,
     banner: "",
     gmThinking: false,
-    // Run conclusion (death / abandon). runConcluded guards against double-close;
-    // deathScreen swaps the shell for a summary screen; runSummary holds it.
+    // Run conclusion (death / abandon / victory). runConcluded guards against
+    // double-close; death/victory screens swap the shell for a summary; runSummary
+    // holds it. pendingVictory is set from an action response's runWon flag and
+    // flushed into the victory screen once the action settles.
     runConcluded: false,
     deathScreen: false,
+    victoryScreen: false,
+    pendingVictory: false,
     runSummary: null,
     menuOpen: false,
     cogNote: "",
@@ -2473,6 +2540,9 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     } finally {
       state.busy = null;
       clearLag();
+      // If this action won the run (main quest completed), swap to the victory
+      // screen before the final render.
+      await maybeConcludeVictory();
       render();
     }
   }
@@ -2616,6 +2686,36 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     return state.runSummary;
   }
 
+  // Posts a solo action and flags a pending victory when the server reports the
+  // main quest was just completed (response.runWon). The flag is flushed by
+  // maybeConcludeVictory once the action settles.
+  async function postAction(action) {
+    const response = await postSoloAction(apiClient, runId, action);
+    if (response && response.runWon) {
+      state.pendingVictory = true;
+    }
+    return response;
+  }
+
+  // Concludes the run as a win when it was just won — either via the action
+  // response (pendingVictory) or a main quest already flipped to "completed" in
+  // the scene (covers reload / re-entry into a won run). Idempotent and mutually
+  // exclusive with the death screen. The server already concluded the run as
+  // "victory"; concludeRun just fetches the summary (idempotent server-side).
+  async function maybeConcludeVictory() {
+    if (state.runConcluded || state.deathScreen || state.victoryScreen) {
+      return false;
+    }
+    const wonByQuest = state.scene?.quests?.mainQuest?.status === "completed";
+    if (!state.pendingVictory && !wonByQuest) {
+      return false;
+    }
+    state.pendingVictory = false;
+    await concludeRun("victory");
+    state.victoryScreen = true;
+    return true;
+  }
+
   // Navigates to the solo home, flagging the exit so bootstrap() does not
   // auto-resume this (now concluded) run — otherwise "/" would redirect straight
   // back into it (re-entry loop).
@@ -2690,7 +2790,7 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       return;
     }
     return runAction("attempt", async () => {
-      const response = await postSoloAction(apiClient, runId, createAttemptAction({ intent }));
+      const response = await postAction(createAttemptAction({ intent }));
       state.attemptResult = response.attemptResult || response.latestAttemptResult || null;
       state.attemptDraft = "";
       state.searchResult = null;
@@ -2900,6 +3000,9 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
         await concludeRun("died");
         state.deathScreen = true;
       }
+      // Main quest completed in the scene (reload / re-entry into a won run):
+      // conclude as a victory. No-op when already concluded or downed.
+      await maybeConcludeVictory();
       state.detail = null;
       state.searchResult = null;
       state.talkResult = null;
@@ -2928,14 +3031,14 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       return;
     }
     return runAction("move", async () => {
-      await postSoloAction(apiClient, runId, createMoveAction(state.scene, move));
+      await postAction(createMoveAction(state.scene, move));
       await loadScene();
     });
   }
 
   function handleInspect(entity) {
     return runAction("inspect", async () => {
-      state.detail = await postSoloAction(apiClient, runId, createInspectAction(entity));
+      state.detail = await postAction(createInspectAction(entity));
     });
   }
 
@@ -2952,7 +3055,7 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
 
   function handleSearch() {
     return runAction("search", async () => {
-      const response = await postSoloAction(apiClient, runId, createSearchAction());
+      const response = await postAction(createSearchAction());
       state.searchResult = response.searchResult || null;
       state.talkResult = null;
       state.dialogueActive = false;
@@ -2964,7 +3067,7 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
 
   function handleTalk(entity) {
     return runAction("talk", async () => {
-      const response = await postSoloAction(apiClient, runId, createTalkAction(entity));
+      const response = await postAction(createTalkAction(entity));
       state.talkResult = response.talkResult || null;
       // Open the visual-novel dialogue overlay and restart the typewriter.
       state.dialogueActive = Boolean(state.talkResult);
@@ -2978,7 +3081,7 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
 
   function handleRest(action) {
     return runAction("rest", async () => {
-      const response = await postSoloAction(apiClient, runId, createRestAction(action));
+      const response = await postAction(createRestAction(action));
       state.restResult = response.restResult || null;
       state.searchResult = null;
       state.talkResult = null;
@@ -2990,7 +3093,7 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
 
   function handleUseItem(item) {
     return runAction("use_item", async () => {
-      const response = await postSoloAction(apiClient, runId, createUseItemAction(item));
+      const response = await postAction(createUseItemAction(item));
       state.useItemResult = response.useItemResult || null;
       state.searchResult = null;
       state.talkResult = null;

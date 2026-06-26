@@ -163,6 +163,17 @@ export function buildGmSceneInput(scenePayload, options = {}) {
     .filter((fact) => allowedByPolicy(fact, policyProfile))
     .map(compactMemoryFact);
 
+  // Quest context (MVP quest engine): the player's active objectives (title +
+  // objective only) so the GM can weave the goal into narration/dialogue, plus
+  // an optional note about a quest that just advanced this turn (passed by the
+  // action path). Truth still lives in the deterministic quest engine — the GM
+  // only narrates it.
+  const quests = isPlainObject(scenePayload.quests) ? scenePayload.quests : {};
+  const activeQuests = asArray(quests.activeQuests)
+    .filter((quest) => isPlainObject(quest))
+    .map((quest) => ({ title: quest.title || "", objective: quest.objective || "" }));
+  const questJustAdvanced = isPlainObject(options.questJustAdvanced) ? options.questJustAdvanced : null;
+
   return {
     ok: true,
     runId: scenePayload.runId,
@@ -176,11 +187,14 @@ export function buildGmSceneInput(scenePayload, options = {}) {
     availableActions: asArray(scenePayload.availableActions).map(compactAction),
     recentTimeline,
     relevantMemoryFacts,
+    activeQuests,
+    questJustAdvanced,
     gmInstructions: {
       mode: "scene_framing",
       doNotMutateState: true,
       respectPolicy: true,
-      noCanonInvention: true
+      noCanonInvention: true,
+      noQuestInvention: true
     },
     errors: []
   };
