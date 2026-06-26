@@ -2192,7 +2192,13 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     fontSet: normalizeFontSet(readSoloThemePref(SOLO_FONT_STORAGE_KEY, "tome"))
   };
 
+  // External/timer-triggered renders are deferred while a text field is focused
+  // (see externalRender + the focusout flush below). Any render — user or
+  // external — clears it, so a deferred flush never double-renders.
+  let pendingExternalRender = false;
+
   function render() {
+    pendingExternalRender = false;
     root.innerHTML = renderSoloSceneShell(state);
     bindSoloSceneShell(root, {
       onReload: loadScene,
@@ -2226,6 +2232,62 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       onNpcField: handleNpcField,
       onNpcSubmit: handleNpcSubmit,
       onBringBack: handleBringBack
+    });
+  }
+
+  // True while the user is actively typing in a text input/textarea inside the
+  // shell — used to suppress external/timer renders that would clear focus/caret
+  // mid-keystroke. Mirrors main.js's isEditingTextField guard. Defensive about
+  // headless test roots (no document / no root.contains).
+  function isSoloEditingTextField() {
+    if (typeof document === "undefined") {
+      return false;
+    }
+    const el = document.activeElement;
+    if (!el || el === document.body || (typeof root.contains === "function" && !root.contains(el))) {
+      return false;
+    }
+    if (el.tagName === "TEXTAREA") {
+      return true;
+    }
+    if (el.tagName === "INPUT") {
+      const type = (el.getAttribute("type") || "text").toLowerCase();
+      return ["text", "search", "email", "password", "number", "url", "tel", ""].includes(type);
+    }
+    return false;
+  }
+
+  // Render driven by an external/timer event (NOT a user click / tab switch). If
+  // a text field is focused, skip the innerHTML rebuild and remember to re-run it
+  // once focus leaves — a mid-keystroke rebuild would drop focus/caret. User
+  // actions call render() directly and are never deferred.
+  function externalRender() {
+    if (isSoloEditingTextField()) {
+      pendingExternalRender = true;
+      return;
+    }
+    render();
+  }
+
+  // One-time: when focus leaves a text field, flush any render that was deferred
+  // while the user was typing. Listens on `root` (which persists across innerHTML
+  // rebuilds); focusout bubbles up to it. The 0ms defer lets activeElement settle
+  // so hopping between two text fields doesn't trigger a premature flush.
+  if (typeof root.addEventListener === "function") {
+    root.addEventListener("focusout", () => {
+      if (!pendingExternalRender) {
+        return;
+      }
+      const flush = () => {
+        if (pendingExternalRender && !isSoloEditingTextField()) {
+          render();
+        }
+      };
+      if (typeof setTimeout === "function") {
+        setTimeout(flush, 0);
+      } else {
+        flush();
+      }
     });
   }
 
@@ -2364,9 +2426,11 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     state.banner = "";
     clearLag();
     if (typeof setTimeout === "function") {
+      // Timer-triggered: the "GM is thinking" lag indicator must not rebuild the
+      // DOM (and drop focus) if the player is mid-keystroke in a text field.
       lagTimer = setTimeout(() => {
         state.gmThinking = true;
-        render();
+        externalRender();
       }, 2000);
       if (lagTimer && typeof lagTimer.unref === "function") {
         lagTimer.unref();
