@@ -88,7 +88,7 @@ import { createWsHub } from "./realtime/wsHub.js";
 import { resolveSoloAction } from "./solo/actions.js";
 import { resolveGmNarration } from "./solo/gmProvider.js";
 import { buildGmRuntimeStatus } from "./solo/gmSmoke.js";
-import { enqueueImageJob, enqueueLocationImageJob, enqueuePlayerImageJob, writeUploadedBasePortrait } from "./solo/imageWorker.js";
+import { enqueueImageJob, enqueueLocationImageJob, enqueuePlayerImageJob, enqueueVariantImageJob, writeUploadedBasePortrait } from "./solo/imageWorker.js";
 import { enqueueIdentityJob, runIdentityJob } from "./solo/npcIdentity.js";
 import { buildNpcIntroDirective, buildSoloScenePayload, collectNpcsWithPendingIntro } from "./solo/scene.js";
 
@@ -888,6 +888,24 @@ async function handleApi(req, res) {
         }
         updateSoloRunNarration(responseRun.runId, gmNarration);
         responseRun.narration = gmNarration;
+      }
+
+      // Lazy expression variants: a talk beat tells us which expression the NPC
+      // needs — generate ONLY that one variant on demand (the worker skips it if
+      // already generated), instead of eagerly producing all six on encounter.
+      // "neutral" is skipped: the base portrait already is the neutral face and
+      // the client falls back to it.
+      if (
+        resolved.action?.type === "talk" &&
+        talkResult?.npcId &&
+        talkResult?.expression &&
+        talkResult.expression !== "neutral"
+      ) {
+        enqueueVariantImageJob({
+          runId: responseRun.runId,
+          npcId: talkResult.npcId,
+          expression: talkResult.expression
+        });
       }
 
       // Victory narration: when the main quest was just completed, one final GM

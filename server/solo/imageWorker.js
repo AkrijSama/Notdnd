@@ -15,10 +15,11 @@ import { NPC_EXPRESSIONS } from "./schema.js";
 // Async NPC portrait worker.
 //
 // Generate-once-cache-forever. Never invoked inline from a request path: the
-// scene route enqueues jobs and returns immediately. Each job generates a base
-// portrait (once) plus the six expression variants, anchored on the base via
-// reference conditioning, writes the bytes to disk, and flips each asset's
-// status via a narrow repository write (never saveSoloRun).
+// scene route enqueues jobs and returns immediately. On first NPC encounter a
+// job generates only the base portrait; expression variants are generated
+// lazily, one at a time, when a talk beat needs them (runVariantImageJob). Each
+// slot's bytes are written to disk and its asset status flipped via a narrow
+// repository write (never saveSoloRun).
 //
 // All image generation goes through the provider abstraction
 // (server/ai/providers.js → generateImage). No provider endpoints are hardcoded
@@ -126,8 +127,10 @@ async function generateSlot({ runId, npcId, slot, assetId, prompt, style, refere
 }
 
 /**
- * Core job runner. Awaitable (used directly by tests). Generates the base
- * portrait first, then the six expression variants anchored on it.
+ * NPC base-portrait job. Awaitable (used directly by tests). Generates ONLY the
+ * base portrait on first encounter — expression variants are produced lazily,
+ * one per talk beat, by runVariantImageJob. (Most NPCs are seen in only 1-2
+ * expressions, so eagerly generating all six wasted ~70% of the image budget.)
  * @param {{ runId: string, npcId: string, style?: string, basePrompt?: string }} job
  * @returns {Promise<{ ok: boolean, base?: object, variants?: object[], reason?: string }>}
  */
@@ -178,47 +181,85 @@ export async function runImageJob(job = {}) {
       ...PORTRAIT_DIMENSIONS
     });
   }
-  const referenceImageUrl = base.ok ? referenceUrlFor(base.uri) : null;
+  // Expression variants are NOT generated here. They are produced lazily — one
+  // at a time, when a talk beat actually needs a given expression — by
+  // runVariantImageJob. First encounter costs exactly one image (the base).
+  return { ok: true, base, variants: [] };
+}
 
-  const variants = [];
-  // Expression variants: providers that can anchor on the base (fal / IP-Adapter)
-  // do so via referenceImageUrl; txt2img providers (Pollinations) ignore the
-  // reference and instead generate a fresh image with the SAME per-NPC seed and a
-  // prompt delta (", angry expression"), which keeps the character recognizable.
-  // Only providers in TXT2IMG_ONLY_IMAGE_PROVIDERS (currently none) skip variants
-  // and fall back to the base portrait for every expression.
-  if (providerSupportsReference(resolveImageProvider())) {
-    for (const expression of NPC_EXPRESSIONS) {
-      const assetId = linked.variants[expression];
-      if (!assetId) {
-        continue;
-      }
-      // Generate-once / cache-forever: skip a variant slot that is already
-      // generated (mirrors the base-portrait reuse check above). Only missing or
-      // previously-failed slots are (re)generated, so re-running the job after a
-      // partial failure fills the gaps without re-paying for completed slots.
-      const variantAsset = run?.imageAssets?.[assetId] || null;
-      if (variantAsset && variantAsset.status === "generated" && typeof variantAsset.uri === "string" && variantAsset.uri) {
-        variants.push({ slot: expression, ok: true, uri: variantAsset.uri, reused: true });
-        continue;
-      }
-      // eslint-disable-next-line no-await-in-loop
-      const variant = await generateSlot({
-        runId,
-        npcId,
-        slot: expression,
-        assetId,
-        prompt: `${basePrompt}, ${expression} expression, ${PORTRAIT_ART_DIRECTION}`,
-        style,
-        seed,
-        referenceImageUrl,
-        ...PORTRAIT_DIMENSIONS
-      });
-      variants.push(variant);
-    }
+/**
+ * Lazy single-variant job: generates ONE expression variant for an NPC, on
+ * demand (a talk beat told us which expression is needed). Awaitable; never
+ * throws to the queue. Generate-once / cache-forever (skips an already-generated
+ * slot), and seed-locked to the NPC's identitySeed so the variant stays
+ * consistent with the base. Anchors on the base portrait as an IP-Adapter
+ * reference where the provider supports it; txt2img providers (Pollinations)
+ * ignore the reference and rely on the shared seed + prompt delta.
+ * @param {{ runId: string, npcId: string, expression: string, style?: string, basePrompt?: string }} job
+ * @returns {Promise<{ ok: boolean, variant?: object, reason?: string, skipped?: boolean }>}
+ */
+export async function runVariantImageJob(job = {}) {
+  const runId = String(job.runId || "").trim();
+  const npcId = String(job.npcId || "").trim();
+  const expression = String(job.expression || "").trim();
+  if (!runId || !npcId || !expression) {
+    return { ok: false, reason: "missing runId, npcId, or expression" };
+  }
+  if (!NPC_EXPRESSIONS.includes(expression)) {
+    return { ok: false, reason: `unknown expression: ${expression}` };
+  }
+  // Txt2img-only providers (TXT2IMG_ONLY_IMAGE_PROVIDERS, currently none) skip
+  // variants entirely; the UI falls back to the base portrait for every expression.
+  if (!providerSupportsReference(resolveImageProvider())) {
+    return { ok: true, skipped: true, reason: "provider does not generate variants" };
   }
 
-  return { ok: true, base, variants };
+  const linked = ensureNpcImageAssets(runId, npcId, { style: job.style });
+  if (!linked) {
+    return { ok: false, reason: "run or npc not found" };
+  }
+  const assetId = linked.variants[expression];
+  if (!assetId) {
+    return { ok: false, reason: `no slot for expression: ${expression}` };
+  }
+
+  const run = getSoloRun(runId);
+  // Generate-once / cache-forever: a variant already generated is reused as-is.
+  const existing = run?.imageAssets?.[assetId] || null;
+  if (existing && existing.status === "generated" && typeof existing.uri === "string" && existing.uri) {
+    return { ok: true, variant: { slot: expression, ok: true, uri: existing.uri, reused: true } };
+  }
+
+  const npc = run?.npcs?.[npcId] || null;
+  const style = job.style ? String(job.style).trim() : "";
+  // Seed-locked to the base so the variant reads as the same character.
+  const seed = Number.isFinite(Number(npc?.identitySeed)) ? Number(npc.identitySeed) : null;
+  const basePrompt = String(
+    job.basePrompt ||
+    npc?.portraitPrompt ||
+    `portrait of a ${npc?.role || npcId}, dark fantasy, detailed`
+  ).trim();
+
+  // Anchor on the base portrait when it exists (IP-Adapter providers); txt2img
+  // ignores it and relies on the shared seed + prompt delta.
+  const baseAsset = run?.imageAssets?.[linked.base] || null;
+  const referenceImageUrl =
+    baseAsset && baseAsset.status === "generated" && typeof baseAsset.uri === "string" && baseAsset.uri
+      ? referenceUrlFor(baseAsset.uri)
+      : null;
+
+  const variant = await generateSlot({
+    runId,
+    npcId,
+    slot: expression,
+    assetId,
+    prompt: `${basePrompt}, ${expression} expression, ${PORTRAIT_ART_DIRECTION}`,
+    style,
+    seed,
+    referenceImageUrl,
+    ...PORTRAIT_DIMENSIONS
+  });
+  return { ok: true, variant };
 }
 
 /**
@@ -358,6 +399,9 @@ function dispatchJob(job) {
   if (job && job.kind === "location") {
     return runLocationImageJob(job);
   }
+  if (job && job.kind === "variant") {
+    return runVariantImageJob(job);
+  }
   return runImageJob(job);
 }
 
@@ -392,6 +436,27 @@ export function enqueueImageJob(job = {}) {
     return;
   }
   queue.push(job);
+  Promise.resolve().then(drainQueue).catch((error) => logWorker("drain failed", error));
+}
+
+/**
+ * Enqueues a lazy single-expression-variant job. Fire-and-forget; safe from a
+ * request path. The worker skips it if that variant is already generated, so
+ * it's cheap to call on every talk beat.
+ * @param {{ runId: string, npcId: string, expression: string, style?: string, basePrompt?: string }} job
+ */
+export function enqueueVariantImageJob(job = {}) {
+  if (!job || !job.runId || !job.npcId || !job.expression) {
+    return;
+  }
+  queue.push({
+    kind: "variant",
+    runId: job.runId,
+    npcId: job.npcId,
+    expression: job.expression,
+    style: job.style,
+    basePrompt: job.basePrompt
+  });
   Promise.resolve().then(drainQueue).catch((error) => logWorker("drain failed", error));
 }
 

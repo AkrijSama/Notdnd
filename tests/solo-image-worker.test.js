@@ -20,7 +20,7 @@ const {
   ensureNpcImageAssets,
   updateImageAssetStatus
 } = await import("../server/db/repository.js");
-const { runImageJob } = await import("../server/solo/imageWorker.js");
+const { runImageJob, runVariantImageJob } = await import("../server/solo/imageWorker.js");
 const { NPC_EXPRESSIONS } = await import("../server/solo/schema.js");
 const { serveStatic } = await import("../server/api/http.js");
 
@@ -42,7 +42,7 @@ function seedRunWithNpc(runId) {
   saveSoloRun(run);
 }
 
-test("runImageJob generates base + all expression variants in mock mode", async () => {
+test("runImageJob generates ONLY the base; variants are lazy (runVariantImageJob on demand)", async () => {
   seedRunWithNpc("run_img_a");
   const result = await runImageJob({
     runId: "run_img_a",
@@ -52,22 +52,43 @@ test("runImageJob generates base + all expression variants in mock mode", async 
   });
   assert.equal(result.ok, true);
 
-  const run = getSoloRun("run_img_a");
+  let run = getSoloRun("run_img_a");
   assert.equal(run.npcs.tavern_keeper.imageAssetId, "img_tavern_keeper_base");
 
-  // base + 6 variants all generated, with served uris.
+  // Base generated, with served uri...
   const baseAsset = run.imageAssets.img_tavern_keeper_base;
   assert.equal(baseAsset.status, "generated");
   assert.equal(baseAsset.uri, "/data/assets/run_img_a/tavern_keeper/base.png");
   assert.ok(fs.existsSync(path.join(process.env.NOTDND_ASSETS_ROOT, "run_img_a", "tavern_keeper", "base.png")));
 
+  // ...but NO expression variants are generated eagerly — every variant slot
+  // stays queued until a talk beat asks for it.
   for (const expression of NPC_EXPRESSIONS) {
     const assetId = run.npcs.tavern_keeper.expressionVariants[expression];
     assert.equal(assetId, `img_tavern_keeper_${expression}`);
-    assert.equal(run.imageAssets[assetId].status, "generated");
-    assert.equal(run.imageAssets[assetId].uri, `/data/assets/run_img_a/tavern_keeper/${expression}.png`);
-    assert.ok(fs.existsSync(path.join(process.env.NOTDND_ASSETS_ROOT, "run_img_a", "tavern_keeper", `${expression}.png`)));
+    assert.equal(run.imageAssets[assetId].status, "queued", `${expression} should stay queued (lazy)`);
   }
+
+  // Lazy on-demand: generate only the "warm" variant.
+  const warmResult = await runVariantImageJob({
+    runId: "run_img_a",
+    npcId: "tavern_keeper",
+    expression: "warm",
+    style: "illustrated"
+  });
+  assert.equal(warmResult.ok, true);
+
+  run = getSoloRun("run_img_a");
+  const warmId = run.npcs.tavern_keeper.expressionVariants.warm;
+  assert.equal(run.imageAssets[warmId].status, "generated");
+  assert.equal(run.imageAssets[warmId].uri, "/data/assets/run_img_a/tavern_keeper/warm.png");
+  assert.ok(fs.existsSync(path.join(process.env.NOTDND_ASSETS_ROOT, "run_img_a", "tavern_keeper", "warm.png")));
+  // Only the requested variant was produced; the rest remain queued.
+  assert.equal(run.imageAssets[run.npcs.tavern_keeper.expressionVariants.angry].status, "queued");
+
+  // Generate-once / cache-forever: re-requesting the same variant reuses it.
+  const again = await runVariantImageJob({ runId: "run_img_a", npcId: "tavern_keeper", expression: "warm" });
+  assert.equal(again.variant.reused, true);
 
   // The run is still schema-valid after the narrow worker writes.
   assert.doesNotThrow(() => saveSoloRun(getSoloRun("run_img_a")));

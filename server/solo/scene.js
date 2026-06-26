@@ -428,7 +428,6 @@ export function collectNpcsNeedingArt(run, visibleEntities = null) {
   }
   const entities = Array.isArray(visibleEntities) ? visibleEntities : getVisibleEntities(run);
   const assets = isPlainObject(run.imageAssets) ? run.imageAssets : {};
-  const variantsMatter = providerSupportsReference(resolveImageProvider());
   const needing = [];
 
   for (const entity of entities) {
@@ -441,12 +440,11 @@ export function collectNpcsNeedingArt(run, visibleEntities = null) {
       continue;
     }
 
-    const variants = isPlainObject(npc.expressionVariants) ? npc.expressionVariants : {};
+    // Only a missing BASE portrait makes an NPC "need art" on encounter.
+    // Expression variants are generated lazily per talk beat (runVariantImageJob),
+    // not eagerly here — most NPCs are only ever seen in 1-2 expressions.
     const generated = (assetId) => isString(assetId) && assets[assetId]?.status === "generated";
-    const baseReady = generated(npc.imageAssetId);
-    const variantsReady = !variantsMatter || NPC_EXPRESSIONS.every((expression) => generated(variants[expression]));
-
-    if (!baseReady || !variantsReady) {
+    if (!generated(npc.imageAssetId)) {
       needing.push(npcId);
     }
   }
