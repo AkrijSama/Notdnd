@@ -83,26 +83,32 @@ test("generateImage retries the same provider once before failing over", async (
   assert.equal(calls, 2, "retried the same provider exactly once");
 });
 
-test("generateImage fails over to the next provider (mock) when the primary keeps failing", async () => {
+test("generateImage throws when all real providers fail (no mock fallback)", async () => {
   let calls = 0;
   const fetchImpl = async () => {
     calls += 1;
     return { ok: false, status: 503 }; // pollinations always down
   };
 
-  const result = await generateImage({ provider: "pollinations", prompt: "x", fetchImpl, retryDelayMs: 0 });
-
-  // pollinations tried twice, cloudflare skipped (unwired), mock is the fallback.
-  assert.equal(calls, 2, "primary attempted twice before failover");
-  assert.equal(result.provider, "mock");
-  assert.equal(result.mock, true);
+  // Mock is NOT in the production chain, so an outage of every real provider
+  // throws (asset stays "failed" + retries) rather than caching a placeholder.
+  await assert.rejects(
+    () => generateImage({ provider: "pollinations", prompt: "x", fetchImpl, retryDelayMs: 0 }),
+    /All image providers failed.*pollinations/s
+  );
+  // pollinations tried twice; cloudflare skipped (unwired); no further attempts.
+  assert.equal(calls, 2, "primary attempted twice, then the chain is exhausted");
 });
 
-test("generateImage throws listing tried providers when every provider fails", async () => {
+test("generateImage error lists every provider/attempt tried", async () => {
   const fetchImpl = async () => ({ ok: false, status: 503 });
   await assert.rejects(
-    // Empty priority list -> no mock fallback, so the chain is exhausted.
-    () => generateImage({ provider: "pollinations", prompt: "x", fetchImpl, retryDelayMs: 0, providerPriority: [] }),
-    /All image providers failed.*pollinations/s
+    () => generateImage({ provider: "pollinations", prompt: "x", fetchImpl, retryDelayMs: 0 }),
+    (error) => {
+      assert.match(error.message, /All image providers failed/);
+      assert.match(error.message, /pollinations \(attempt 1\)/);
+      assert.match(error.message, /pollinations \(attempt 2\)/);
+      return true;
+    }
   );
 });

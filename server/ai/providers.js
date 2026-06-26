@@ -508,11 +508,14 @@ async function pollinationsImage({ prompt, seed, fetchImpl, width, height }) {
 // Failover order tried after the primary/resolved provider (deduped against it).
 // "cloudflare" is a placeholder for the next task — it is not wired in
 // dispatchImageProvider yet, so the loop skips it automatically; wiring it up
-// there gives it failover for free. "mock" is the terminal last resort: it never
-// hits the network and never fails, so it keeps the pipeline moving with a
-// placeholder rather than leaving the asset stuck when every real provider is
-// down.
-const IMAGE_PROVIDER_PRIORITY = ["pollinations", "cloudflare", "mock"];
+// there gives it failover for free.
+//
+// Mock is deliberately NOT in this chain: it never fails, so including it would
+// cache a 1x1 placeholder forever on a real outage. Instead, when every real
+// provider fails the loop throws, the asset stays "failed", and the scene poll
+// retries it later. Mock only activates when NOTDND_MOCK_IMAGE=true, which
+// short-circuits before this chain ever runs.
+const IMAGE_PROVIDER_PRIORITY = ["pollinations", "cloudflare"];
 
 function sleep(ms) {
   return new Promise((resolve) => {
