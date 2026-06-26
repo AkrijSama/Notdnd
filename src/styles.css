@@ -2219,3 +2219,14 @@ button:disabled {
 /* ---- Player portrait (solo sidebar) ---- */
 .solo-portrait { overflow: hidden; }
 .solo-portrait-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* ---- Resume-adventure banner (home screen after explicit exit) ---- */
+.resume-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  border: 1px solid var(--accent, #c89a4b);
+}
+.resume-banner-copy { display: flex; flex-direction: column; gap: 2px; }

@@ -1063,7 +1063,7 @@ export function renderSoloCharacterSidebar(character = SOLO_SAMPLE_CHARACTER) {
 
   return `
     <aside class="solo-game-sidebar">
-      <div class="solo-portrait">${character.portraitUri ? `<img class="solo-portrait-img" src="${escapeHtml(character.portraitUri)}" alt="${escapeHtml(character.name || "Character")} portrait" />` : ""}</div>
+      <div class="solo-portrait" data-portrait-for="player" data-portrait-img-class="solo-portrait-img">${character.portraitUri ? `<img class="solo-portrait-img" src="${escapeHtml(character.portraitUri)}" alt="${escapeHtml(character.name || "Character")} portrait" />` : ""}</div>
       <div class="solo-sidebar-identity">
         <div class="solo-char-name">${escapeHtml(character.name)}</div>
         <div class="solo-char-sub">${escapeHtml(character.className)} · Level ${escapeHtml(character.level)}</div>
@@ -1392,7 +1392,7 @@ export function renderSoloRightRail(state = {}) {
           const away = member.present === false ? ` <span class="solo-cast-away">away</span>` : "";
           return `
             <div class="solo-cast-card">
-              <div class="solo-cast-thumb">${thumb}</div>
+              <div class="solo-cast-thumb" data-portrait-for="${escapeHtml(entityId)}">${thumb}</div>
               <div class="solo-cast-meta">
                 <div class="solo-cast-name">${escapeHtml(name)}${away}</div>
                 <div class="solo-cast-role">${escapeHtml(role)}</div>
@@ -2266,6 +2266,12 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     if (typeof window.confirm === "function" && !window.confirm("Leave this adventure? Your progress is saved.")) {
       return;
     }
+    // Signal an explicit exit so bootstrap() does NOT auto-resume this run.
+    try {
+      window.sessionStorage?.setItem("notdnd_exited_run", "true");
+    } catch {
+      // sessionStorage may be unavailable; navigation still proceeds.
+    }
     window.location.href = "/";
   }
 
@@ -2351,6 +2357,41 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
   // Portraits generate ~10-15s after a scene loads (async, no WebSocket), so the
   // first render shows placeholders. Poll the scene a few times until every cast
   // member has a portrait, then stop. Only runs while portraits are missing.
+  // Swaps newly-generated portraits into the existing DOM in place — no full
+  // re-render — so open menus and in-flight interactions survive the poll.
+  // Portrait slots carry data-portrait-for="<player|npc:ID>".
+  function applyPortraitUpdates(rootEl, scene) {
+    if (!rootEl || !scene || typeof rootEl.querySelectorAll !== "function") {
+      return;
+    }
+    const uris = {};
+    if (scene.player) {
+      uris.player = typeof scene.player.portraitUri === "string" ? scene.player.portraitUri : "";
+    }
+    for (const npc of Array.isArray(scene.cast) ? scene.cast : []) {
+      if (npc && typeof npc.npcId === "string") {
+        uris[`npc:${npc.npcId}`] = typeof npc.portraitUri === "string" ? npc.portraitUri : "";
+      }
+    }
+    rootEl.querySelectorAll("[data-portrait-for]").forEach((slot) => {
+      const key = slot.getAttribute("data-portrait-for");
+      const uri = uris[key];
+      if (!uri) {
+        return;
+      }
+      const img = typeof slot.querySelector === "function" ? slot.querySelector("img") : null;
+      if (img) {
+        if (img.getAttribute("src") !== uri) {
+          img.setAttribute("src", uri);
+        }
+      } else {
+        // Placeholder -> real portrait: replace just this small slot's contents.
+        const cls = slot.getAttribute("data-portrait-img-class") || "";
+        slot.innerHTML = `<img class="${cls}" src="${escapeHtml(uri)}" alt="" />`;
+      }
+    });
+  }
+
   function scheduleCastPoll() {
     stopCastPoll();
     castPollAttempts = 0;
@@ -2366,6 +2407,14 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     const tick = async () => {
       castPollTimer = null;
       castPollAttempts += 1;
+      // Never tear down the DOM while the cog menu is open — a full re-render
+      // would destroy the open menu and eat in-flight clicks.
+      if (state.menuOpen) {
+        if (castHasMissingPortraits() && castPollAttempts < 3) {
+          arm();
+        }
+        return;
+      }
       try {
         const refreshed = await fetchSoloScene(apiClient, runId);
         state.scene = {
@@ -2376,7 +2425,9 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
         if (refreshed?.player) {
           state.character = characterFromScenePlayer(refreshed.player);
         }
-        render();
+        // Targeted update: only swap newly-available portraits in place rather
+        // than rebuilding the whole shell (which flickers and drops clicks).
+        applyPortraitUpdates(root, state.scene);
       } catch {
         // best-effort; keep trying until the attempt budget is spent
       }

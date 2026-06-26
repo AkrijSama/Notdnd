@@ -20,6 +20,7 @@ const store = createStore({ apiClient });
 const uiState = {
   activeTab: "command",
   compendiumQuery: "",
+  resumeRunId: null,
   apiHealthy: false,
   realtimeConnected: false,
   activeRealtimeCampaignId: null,
@@ -546,6 +547,22 @@ function bindAppEvents() {
     });
   }
 
+  const resumeRunBtn = appRoot.querySelector("[data-action='resume-run']");
+  if (resumeRunBtn) {
+    resumeRunBtn.addEventListener("click", () => {
+      if (uiState.resumeRunId) {
+        window.location.search = `?soloRunId=${encodeURIComponent(uiState.resumeRunId)}`;
+      }
+    });
+  }
+  const dismissResumeBtn = appRoot.querySelector("[data-action='dismiss-resume']");
+  if (dismissResumeBtn) {
+    dismissResumeBtn.addEventListener("click", () => {
+      uiState.resumeRunId = null;
+      scheduleRender();
+    });
+  }
+
   const openAccountBtn = appRoot.querySelector("[data-action='open-account']");
   if (openAccountBtn) {
     openAccountBtn.addEventListener("click", () => {
@@ -736,6 +753,20 @@ function renderApp() {
         ${renderTopbar(uiState.activeTab, user, uiState.showAccountMenu)}
         ${uiState.authMessage ? `<section class="module-card"><div class="small">${uiState.authMessage}</div></section>` : ""}
         ${renderAuthPanel(state)}
+        ${
+          uiState.resumeRunId
+            ? `<section class="module-card resume-banner">
+                 <div class="resume-banner-copy">
+                   <strong>Your adventure is waiting.</strong>
+                   <span class="small">You left a run in progress — pick up where you left off.</span>
+                 </div>
+                 <div class="inline">
+                   <button data-action="resume-run">Continue your adventure</button>
+                   <button class="ghost" data-action="dismiss-resume">Dismiss</button>
+                 </div>
+               </section>`
+            : ""
+        }
         <div class="layout">
           ${renderSidebar(state)}
           <main class="panel main">
@@ -881,13 +912,28 @@ async function bootstrap() {
     if (campaigns.length === 0) {
       uiState.onboarding.step = "character";
     } else {
+      // If the player explicitly left a run, don't auto-resume it — offer a
+      // "Continue your adventure" prompt on the home screen instead.
+      let justExited = false;
+      try {
+        justExited = window.sessionStorage?.getItem("notdnd_exited_run") === "true";
+        if (justExited) {
+          window.sessionStorage.removeItem("notdnd_exited_run");
+        }
+      } catch {
+        justExited = false;
+      }
       try {
         const soloResponse = await apiClient.listSoloRuns();
         const runs = (soloResponse?.runs || []).filter((run) => run?.status === "active");
         if (runs.length > 0) {
           const mostRecent = runs[0];
-          window.location.search = `?soloRunId=${encodeURIComponent(mostRecent.runId)}`;
-          return;
+          if (justExited) {
+            uiState.resumeRunId = mostRecent.runId;
+          } else {
+            window.location.search = `?soloRunId=${encodeURIComponent(mostRecent.runId)}`;
+            return;
+          }
         }
       } catch {
         // fall through to Command Center if solo-run listing fails
