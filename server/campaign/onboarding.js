@@ -113,6 +113,118 @@ function interpolateTemplate(template, replacements) {
   return output;
 }
 
+function isStr(value) {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+// Deterministic non-negative hash for tone-driven content selection.
+function contentSeed(value) {
+  let hash = 0;
+  const text = String(value || "");
+  for (let i = 0; i < text.length; i += 1) {
+    hash = (hash * 31 + text.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash);
+}
+
+// Tone-keyed archetypes for the second location (replaces the old hardcoded
+// "Ashenmoor Market Square"). The name is built from the world name + suffix;
+// the description reacts to the world. Unmatched tones fall back by seed.
+const LOCATION_ARCHETYPES = {
+  market: {
+    tones: ["high fantasy", "steampunk", "mythic"],
+    suffix: "Market",
+    describe: (world, place) =>
+      `${place} is the crowded heart of trade in ${world} — shuttered stalls, traded rumors, and watchful eyes under every awning.`
+  },
+  ruins: {
+    tones: ["dark fantasy", "grimdark"],
+    suffix: "Ruins",
+    describe: (world, place) =>
+      `${place} is what ${world} left behind: broken stone, cold ash, and the sense that something still stirs in the rubble.`
+  },
+  crossroads: {
+    tones: ["sword and sorcery"],
+    suffix: "Crossroads",
+    describe: (world, place) =>
+      `${place} is where every road in ${world} tangles together — travelers, opportunists, and trouble all pass through here.`
+  },
+  harbor: {
+    tones: ["cosmic horror", "post-apocalyptic"],
+    suffix: "Harbor",
+    describe: (world, place) =>
+      `${place} sits where ${world} meets dark water. The tide carries in more than ships, and not all of it is welcome.`
+  },
+  shrine: {
+    // Default fallback for any unmatched tone.
+    tones: [],
+    suffix: "Shrine",
+    describe: (world, place) =>
+      `${place} is an old holy place in ${world}, half-remembered and half-feared, where pilgrims still leave offerings they dare not explain.`
+  }
+};
+
+function pickLocationArchetype(tone, seed) {
+  const key = String(tone || "").trim().toLowerCase();
+  const entries = Object.values(LOCATION_ARCHETYPES);
+  const matches = entries.filter((entry) => entry.tones.some((t) => String(t).toLowerCase() === key));
+  const pool = matches.length > 0 ? matches : entries;
+  const index = Math.abs(Math.trunc(Number(seed) || 0)) % pool.length;
+  return pool[index];
+}
+
+// Builds the quest-giver's dialogue: the quest-completing arrival beat first
+// (so reaching + talking still resolves stage 1 in one conversation), then
+// tone-flavoured lore / hint / ambient beats for ongoing conversation. The
+// extra beats carry no quest link, so they never advance the quest themselves.
+function buildQuestGiverBeats(world = {}, place = "this place") {
+  const tone = isStr(world.tone) ? world.tone.trim() : "uncertain";
+  const worldName = isStr(world.name) ? world.name.trim() : "this world";
+  return [
+    {
+      beatId: "beat_quest_main_arrival",
+      label: "Why you came",
+      text: `So — you reached ${place}. What you came looking for begins here. There is no turning back now.`,
+      revealed: false,
+      repeatable: false,
+      linkedQuestIds: ["quest_main"],
+      contentTags: []
+    },
+    {
+      beatId: "beat_lore",
+      label: "About this place",
+      text: `They say ${place} remembers more of ${worldName} than the living do. Stand here long enough and the ${tone} of it all settles into your bones.`,
+      revealed: false,
+      repeatable: false,
+      linkedQuestIds: [],
+      contentTags: []
+    },
+    {
+      beatId: "beat_hint",
+      label: "What comes next",
+      text: `If you mean to see this through, don't linger. Speak plainly with those who wait here — what you seek is closer than the road behind you.`,
+      revealed: false,
+      repeatable: false,
+      linkedQuestIds: [],
+      contentTags: []
+    },
+    {
+      beatId: "beat_ambient",
+      label: "A passing word",
+      text: `The figure studies you. "${capitalizeFirst(tone)} days," they murmur, "and ${worldName} grows no kinder. Watch yourself."`,
+      revealed: false,
+      repeatable: true,
+      linkedQuestIds: [],
+      contentTags: []
+    }
+  ];
+}
+
+function capitalizeFirst(value) {
+  const s = String(value || "").trim();
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+}
+
 async function seedOnboardingMemory(campaignId, replacements) {
   const memoryDir = path.join(memoryRoot(), campaignId, "memory");
   await ensureCampaignMemoryDocsAsync(campaignId);
@@ -437,10 +549,26 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
   run.npcs = run.npcs || {};
   run.npcs[npc.npcId] = npc;
 
-  // Seed stage-1 content at the second location: a quest-giver NPC whose first
-  // dialogue beat is linked to the main quest. Reaching the second location
-  // advances the quest to stage 1; talking to this figure there completes it.
+  // Un-hardcode the second location: give it a tone-driven archetype name +
+  // description (was the fixed "Ashenmoor Market Square" from the default graph).
+  const worldSeed = contentSeed(`${resolvedWorld.name}|${resolvedWorld.tone}`);
   const secondLocation = run.locations?.second_location || null;
+  if (secondLocation) {
+    const archetype = pickLocationArchetype(resolvedWorld.tone, worldSeed);
+    secondLocation.name = `${resolvedWorld.name} ${archetype.suffix}`;
+    secondLocation.description = archetype.describe(resolvedWorld.name, secondLocation.name);
+    secondLocation.tags = Array.from(
+      new Set([
+        ...(secondLocation.tags || []).filter((tag) => !["ashenmoor", "market", "curfew"].includes(tag)),
+        slugTag(resolvedWorld.tone),
+        slugTag(archetype.suffix)
+      ])
+    );
+  }
+
+  // Seed stage-1 content at the second location: a quest-giver NPC whose arrival
+  // beat is linked to the main quest (talking there completes stage 1), plus
+  // tone-flavoured lore/hint/ambient beats for ongoing conversation.
   if (secondLocation) {
     run.npcs.npc_quest_giver = {
       npcId: "npc_quest_giver",
@@ -456,28 +584,19 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
       policyProfileId: "mainline_default",
       contentTags: [],
       origin: "procedural",
-      dialogueBeats: [
-        {
-          beatId: "beat_quest_main_arrival",
-          label: "Why you came",
-          text: `So — you reached ${secondLocation.name}. What you came looking for begins here. There is no turning back now.`,
-          revealed: false,
-          repeatable: false,
-          linkedQuestIds: ["quest_main"],
-          contentTags: []
-        }
-      ]
+      dialogueBeats: buildQuestGiverBeats(resolvedWorld, secondLocation.name)
     };
   }
 
   // Seed the two-stage MVP main quest: travel to the second location (stage 0),
-  // then speak with the figure waiting there (stage 1). When no second location
-  // exists, fall back to the starting contact as the stage-1 target.
+  // then speak with the figure waiting there (stage 1). The tone-keyed template
+  // (quests.js) supplies the title/objectives; targets resolve to this run.
   run.quests = run.quests || {};
   run.quests.quest_main = createMainQuest(resolvedWorld, {
     secondLocationId: secondLocation ? "second_location" : null,
     secondLocationName: secondLocation?.name || null,
-    firstNpcId: secondLocation ? "npc_quest_giver" : npc.npcId
+    firstNpcId: secondLocation ? "npc_quest_giver" : npc.npcId,
+    seed: worldSeed
   });
 
   await rebuildCampaignIndex(campaignId);

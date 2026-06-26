@@ -25,9 +25,128 @@ function isString(value) {
   return typeof value === "string" && value.trim().length > 0;
 }
 
-function titleCase(value) {
-  const s = String(value || "").trim();
-  return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+// Deterministic non-negative hash for template selection when no seed is given.
+function hashSeed(value) {
+  let hash = 0;
+  const text = String(value || "");
+  for (let i = 0; i < text.length; i += 1) {
+    hash = (hash * 31 + text.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash);
+}
+
+// ---------------------------------------------------------------------------
+// Tone-keyed main-quest templates. Each is a two-stage arc that only uses the
+// reach_location and talk_beat predicates (no new engine work). Stage targetIds
+// are symbolic; createMainQuest resolves them to the run's real ids by kind
+// (reach_location -> the second location, talk_beat -> the destination NPC).
+// Objective/title/description support {world}, {place}, {start} interpolation.
+// ---------------------------------------------------------------------------
+export const QUEST_TEMPLATES = [
+  {
+    tones: ["dark fantasy", "grimdark"],
+    title: "Blood Debt",
+    description:
+      "A debt written in blood goes unpaid across {world}. The one who wronged you was last seen near {place} — go, and settle it.",
+    stages: [
+      {
+        objective: "Travel to {place} on the trail of your quarry.",
+        completion: { kind: "reach_location", targetId: "second_location" }
+      },
+      {
+        objective: "Confront the figure waiting at {place} and collect what you are owed.",
+        completion: { kind: "talk_beat", targetId: "npc_quest_giver" }
+      }
+    ]
+  },
+  {
+    tones: ["high fantasy"],
+    title: "The Last Beacon",
+    description:
+      "The old lights of {world} are failing one by one. Reach {place} and rekindle the last beacon before the dark closes over everything.",
+    stages: [
+      {
+        objective: "Journey to {place}, where the last beacon still stands.",
+        completion: { kind: "reach_location", targetId: "second_location" }
+      },
+      {
+        objective: "Find the beacon's keeper at {place} and learn how to make it burn again.",
+        completion: { kind: "talk_beat", targetId: "npc_quest_giver" }
+      }
+    ]
+  },
+  {
+    tones: ["cosmic horror"],
+    title: "The Drowned Signal",
+    description:
+      "Something beneath {world} is calling, and the signal is loudest at {place}. Go. Listen. Try to come back as yourself.",
+    stages: [
+      {
+        objective: "Trace the drowned signal to {place}.",
+        completion: { kind: "reach_location", targetId: "second_location" }
+      },
+      {
+        objective: "Find the one at {place} who has heard it longest, and learn what it wants.",
+        completion: { kind: "talk_beat", targetId: "npc_quest_giver" }
+      }
+    ]
+  },
+  {
+    tones: ["post-apocalyptic"],
+    title: "The Broken Road",
+    description:
+      "Nothing comes easy in {world}. Word is there's shelter still standing at {place} — if it hasn't fallen too.",
+    stages: [
+      {
+        objective: "Cross the broken road to {place}.",
+        completion: { kind: "reach_location", targetId: "second_location" }
+      },
+      {
+        objective: "Find whoever holds {place} and bargain your way inside.",
+        completion: { kind: "talk_beat", targetId: "npc_quest_giver" }
+      }
+    ]
+  },
+  {
+    // Default fallback (empty tones) — the mystery arc for any unmatched tone.
+    tones: [],
+    title: "The Missing Shipment",
+    description:
+      "A shipment vanished on the roads of {world}, and the trail leads to {place}. Someone there knows more than they are saying.",
+    stages: [
+      {
+        objective: "Follow the trail to {place}.",
+        completion: { kind: "reach_location", targetId: "second_location" }
+      },
+      {
+        objective: "Question the figure at {place} about the missing shipment.",
+        completion: { kind: "talk_beat", targetId: "npc_quest_giver" }
+      }
+    ]
+  }
+];
+
+/**
+ * Selects a quest template by world tone (matches tones[], case-insensitive).
+ * Unmatched tones fall back to the empty-tones default template. The seed makes
+ * selection deterministic if a tone ever maps to multiple templates.
+ * @param {string} tone
+ * @param {number} [seed]
+ * @returns {object} a QUEST_TEMPLATES entry
+ */
+export function pickQuestTemplate(tone, seed = 0) {
+  const key = String(tone || "").trim().toLowerCase();
+  const matches = QUEST_TEMPLATES.filter(
+    (template) => Array.isArray(template.tones) && template.tones.some((t) => String(t).toLowerCase() === key)
+  );
+  if (matches.length > 0) {
+    const index = Math.abs(Math.trunc(Number(seed) || 0)) % matches.length;
+    return matches[index];
+  }
+  return (
+    QUEST_TEMPLATES.find((template) => Array.isArray(template.tones) && template.tones.length === 0) ||
+    QUEST_TEMPLATES[QUEST_TEMPLATES.length - 1]
+  );
 }
 
 /**
@@ -63,34 +182,41 @@ export function createMainQuest(worldDef = {}, options = {}) {
     : "the next waypoint";
   const firstNpcId = isString(options.firstNpcId) ? options.firstNpcId.trim() : null;
 
-  const stageZero = {
-    objective: `Travel to ${secondLocationName}.`,
-    completion: { kind: "reach_location", targetId: secondLocationId }
-  };
+  // Tone-keyed template supplies the title/description/objective text; the engine
+  // still drives completion via the resolved run ids below.
+  const seed = Number.isFinite(Number(options.seed)) ? Number(options.seed) : hashSeed(`${name}|${tone}`);
+  const template = pickQuestTemplate(tone, seed);
 
-  const stageOne = firstNpcId
-    ? {
-        objective: "Find what awaits you there.",
-        completion: { kind: "talk_beat", targetId: firstNpcId }
-      }
-    : {
-        // No NPC to seed a quest beat on. The predicate switch has no
-        // search-reveal kind, so fall back to a second reach of the same
-        // destination — degenerate but always completable.
-        objective: "Find what awaits you there.",
-        completion: { kind: "reach_location", targetId: secondLocationId }
-      };
+  const fill = (text) =>
+    String(text || "")
+      .replace(/\{world\}/g, name)
+      .replace(/\{place\}/g, secondLocationName)
+      .replace(/\{start\}/g, startName);
 
-  const stages = [stageZero, stageOne];
+  // Resolve each template stage's symbolic completion to the run's real targets:
+  // reach_location -> the second location; talk_beat -> the destination NPC
+  // (with a safe reach fallback when no NPC was seeded).
+  const stages = template.stages.map((stage) => {
+    const kind = stage.completion?.kind === "talk_beat" ? "talk_beat" : "reach_location";
+    let completion;
+    if (kind === "talk_beat") {
+      completion = firstNpcId
+        ? { kind: "talk_beat", targetId: firstNpcId }
+        : { kind: "reach_location", targetId: secondLocationId };
+    } else {
+      completion = { kind: "reach_location", targetId: secondLocationId };
+    }
+    return { objective: fill(stage.objective), completion };
+  });
+
+  const stageZero = stages[0];
 
   return {
     questId: MAIN_QUEST_ID,
     status: "active",
     isMain: true,
-    title: `The ${titleCase(tone)} Road`,
-    description:
-      `${name} is a ${tone} world. First, travel to ${secondLocationName}; ` +
-      `then uncover what waits for you there. ${startName} is only where your story opens.`,
+    title: fill(template.title),
+    description: fill(template.description),
     stages,
     stage: 0,
     // Mirror of the active stage (stage 0) for back-compat.
