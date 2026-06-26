@@ -2314,6 +2314,13 @@ button:disabled {
 .cw-remaining, .cw-pool { font-size: 13px; opacity: 0.85; }
 .cw-derived { display: flex; flex-wrap: wrap; gap: 14px; padding: 10px 12px; border-radius: 10px; background: var(--surface, #1c1610); border: 1px solid var(--line, #3d2f22); }
 .cw-derived span b { color: var(--accent, #c89a4b); margin-right: 4px; }
+/* Inline "what's still required" hint above the gated Enter the World button. */
+.cw-validation {
+  margin: 4px 0 10px;
+  color: var(--warn, #d9a23d);
+  font-size: 13px;
+  text-align: right;
+}
 .cw-nav { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
 .cw-review { display: flex; flex-direction: column; gap: 12px; }
 .cw-review-head { display: flex; align-items: center; gap: 12px; }

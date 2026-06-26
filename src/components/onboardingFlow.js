@@ -266,10 +266,24 @@ function renderCharacterWizard(state) {
   const bodies = { 1: renderCharIdentity, 2: renderCharRace, 3: renderCharClass, 4: renderCharBackground, 5: renderCharAbilities, 6: renderCharReview };
   const body = (bodies[step] || renderCharIdentity)(c);
   const isLast = step === 6;
+
+  // Gate "Enter the World" on the three required character fields. Recomputed
+  // every render, so the button re-enables live as the player fills fields in
+  // (e.g. steps back to pick a race, returns to review). Back/nav are never
+  // blocked — only the final submit.
+  const missingRequirements = isLast
+    ? [
+        { ok: typeof c.name === "string" && c.name.trim().length > 0, label: "Enter a character name" },
+        { ok: Boolean(c.race), label: "Choose a race" },
+        { ok: Boolean(c.characterClass), label: "Choose a class" }
+      ].filter((req) => !req.ok).map((req) => req.label)
+    : [];
+  const canEnter = missingRequirements.length === 0;
+
   const nav = `<div class="cw-nav">
     ${step > 1 ? `<button class="ghost" data-cw-back ${state.loading ? "disabled" : ""}>Back</button>` : "<span></span>"}
     ${isLast
-      ? `<button class="onb-primary" data-cw-enter ${state.loading ? "disabled" : ""}>${state.loading ? "Entering…" : "Enter the World"}</button>`
+      ? `<button class="onb-primary" data-cw-enter ${state.loading || !canEnter ? "disabled" : ""}>${state.loading ? "Entering…" : "Enter the World"}</button>`
       : `<button class="onb-primary" data-cw-next>Next</button>`}
   </div>`;
   return `
@@ -278,6 +292,11 @@ function renderCharacterWizard(state) {
       ${renderWizardProgress(step)}
       <div class="cw-body">${body}</div>
       ${state.error ? `<div class="onboarding-error">${esc(state.error)}</div>` : ""}
+      ${
+        isLast && !canEnter
+          ? `<div class="cw-validation" role="status">To continue: ${missingRequirements.map(esc).join(" · ")}.</div>`
+          : ""
+      }
       ${nav}
     </section>`;
 }

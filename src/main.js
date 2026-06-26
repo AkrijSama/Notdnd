@@ -478,6 +478,16 @@ function charRoll() {
 
 async function enterWorld() {
   const c = uiState.onboarding.character || defaultCharacterState();
+  // Defense-in-depth: the Review-step button is disabled when these are
+  // missing, but never trust the UI gate alone. Surface what's still required.
+  const missing = [];
+  if (!(typeof c.name === "string" && c.name.trim().length > 0)) missing.push("a character name");
+  if (!c.race) missing.push("a race");
+  if (!c.characterClass) missing.push("a class");
+  if (missing.length > 0) {
+    patchOnboarding({ error: `To continue, please add: ${missing.join(", ")}.` });
+    return;
+  }
   patchOnboarding({ loading: true, error: "" });
   try {
     const response = await store.createWorldRun({
