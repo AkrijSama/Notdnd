@@ -2245,7 +2245,7 @@ button:disabled {
 
 /* ---- Player portrait (solo sidebar) ---- */
 .solo-portrait { overflow: hidden; }
-.solo-portrait-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.solo-portrait-img { width: 100%; height: auto; object-fit: cover; display: block; }
 
 /* ---- Resume-adventure banner (home screen after explicit exit) ---- */
 .resume-banner {
