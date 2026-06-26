@@ -9,6 +9,7 @@ import {
   validateSoloRun
 } from "./schema.js";
 import { getUsableInventoryItems } from "./useItem.js";
+import { POLICY_VIOLATION_NARRATION, screenPlayerIntent } from "./safety.js";
 
 const PROVIDER_OUTPUT_FIELDS = new Set([
   "summary",
@@ -570,6 +571,37 @@ export function applyFailureDamage(run, amount = FAILED_ATTEMPT_DAMAGE) {
   };
 }
 
+// A flagged intent (prompt injection / explicit / empty-after-sanitize) never
+// reaches the AI: it resolves to a no-op, in-character refusal. Nothing is rolled
+// or damaged, and the raw offending text is neither echoed nor persisted. The
+// `policyViolation` flag lets the client style it as a subtle in-character beat
+// rather than a hard error; buildActionGmMessage skips the GM call when it sees it.
+function buildPolicyViolationAttempt(run, action, reason) {
+  return {
+    ok: true,
+    run, // unchanged clone — still schema-valid
+    event: null,
+    memoryFact: null,
+    attemptResult: {
+      intent: "", // redacted — do not echo the flagged input
+      targetId: action.targetId || null,
+      success: false,
+      summary: POLICY_VIOLATION_NARRATION,
+      checkResult: null,
+      narration: POLICY_VIOLATION_NARRATION,
+      warnings: ["ATTEMPT_POLICY_VIOLATION"],
+      proposedEffects: [],
+      damage: null,
+      policyViolation: true,
+      policyReason: reason || "policy"
+    },
+    attemptContext: null,
+    providerInput: null,
+    providerErrors: [],
+    errors: []
+  };
+}
+
 export function resolveAttemptAction(run, action, options = {}) {
   const validation = validateAttemptAction(run, action);
   if (!validation.ok) {
@@ -580,7 +612,17 @@ export function resolveAttemptAction(run, action, options = {}) {
   }
 
   const updatedRun = clone(run);
-  const context = buildAttemptContext(updatedRun, action, options);
+
+  // Safety screen on the player's freeform intent BEFORE it can reach any AI
+  // prompt. A flag short-circuits to an in-character refusal; otherwise we use
+  // the sanitized intent (injection-shaped text stripped) for the rest of the flow.
+  const screen = screenPlayerIntent(action.intent);
+  if (!screen.ok) {
+    return buildPolicyViolationAttempt(updatedRun, action, screen.reason);
+  }
+  const safeAction = screen.cleanIntent === action.intent ? action : { ...action, intent: screen.cleanIntent };
+
+  const context = buildAttemptContext(updatedRun, safeAction, options);
   if (!context.ok) {
     return {
       ok: false,
@@ -612,8 +654,8 @@ export function resolveAttemptAction(run, action, options = {}) {
 
   const narration = success ? providerOutput.successNarration : providerOutput.failureNarration;
   const attemptResult = {
-    intent: action.intent,
-    targetId: action.targetId || null,
+    intent: safeAction.intent,
+    targetId: safeAction.targetId || null,
     success,
     summary: providerOutput.summary,
     checkResult,
@@ -624,14 +666,14 @@ export function resolveAttemptAction(run, action, options = {}) {
   };
 
   const memoryEffect = (providerOutput.proposedEffects || []).find((effect) => effect.type === "memory_fact" && isString(effect.text));
-  const memoryFact = memoryEffect ? createAttemptMemoryFact(updatedRun, action, attemptResult, memoryEffect, options) : null;
+  const memoryFact = memoryEffect ? createAttemptMemoryFact(updatedRun, safeAction, attemptResult, memoryEffect, options) : null;
   if (memoryFact) {
     updatedRun.memoryFacts.push(memoryFact);
   }
 
-  const event = createAttemptTimelineEvent(updatedRun, action, attemptResult, memoryFact, options);
+  const event = createAttemptTimelineEvent(updatedRun, safeAction, attemptResult, memoryFact, options);
   updatedRun.timeline.push(event);
-  updatedRun.updatedAt = isoFromOption(options.now ?? action.createdAt);
+  updatedRun.updatedAt = isoFromOption(options.now ?? safeAction.createdAt);
 
   const finalValidation = validateSoloRun(updatedRun);
   if (!finalValidation.ok) {

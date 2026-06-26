@@ -1,5 +1,22 @@
 import crypto from "node:crypto";
 import { generateWithProvider } from "../ai/providers.js";
+import { sanitizePlayerText } from "./safety.js";
+
+// Player-supplied world fields that flow into the AI prompt (and into stored
+// world state). Sanitized at generateWorld's entry so injection-shaped text
+// never reaches the model; clean names/tone/flavor pass through unchanged.
+const PLAYER_WORLD_FIELDS = ["name", "tone", "flavor", "startingLocationName", "startingLocationType"];
+
+function sanitizeWorldDef(definition) {
+  const src = definition && typeof definition === "object" ? definition : {};
+  const out = { ...src };
+  for (const field of PLAYER_WORLD_FIELDS) {
+    if (typeof src[field] === "string") {
+      out[field] = sanitizePlayerText(src[field], { maxLength: 200 });
+    }
+  }
+  return out;
+}
 
 // ---------------------------------------------------------------------------
 // World generator. The player defines the world; the AI fills only what they
@@ -173,7 +190,7 @@ function synthesize(def, parsed, seed) {
  *   startingLocation{name,description}, startingLocationName/Type, artStyle)
  */
 export async function generateWorld(definition = {}, options = {}) {
-  const def = definition && typeof definition === "object" ? definition : {};
+  const def = sanitizeWorldDef(definition);
   const seed = seedFrom(def.name || "", def.tone || "", def.flavor || "", String(options.salt || ""));
   let raw = "";
   if (hasBlanks(def) || options.force === true) {

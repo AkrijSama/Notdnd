@@ -36,6 +36,7 @@ import { handleQuickstartBuildPayload, handleQuickstartParsePayload } from "./ap
 import { tokenFromRequest } from "./auth/httpAuth.js";
 import { createOnboardingCampaign, createWorldOnboardingRun } from "./campaign/onboarding.js";
 import { generateWorld, regenerateWorldField } from "./solo/worldGen.js";
+import { sanitizePlayerText } from "./solo/safety.js";
 import {
   addCampaignMember,
   applyOperation,
@@ -955,10 +956,12 @@ async function handleApi(req, res) {
       assertSoloRunAccess(user, run);
 
       const payload = await readJsonBody(req);
+      // Sanitize player-supplied NPC text before it feeds identity generation /
+      // GM intro directives (prompt-injection guard; clean prose is unchanged).
       const created = createSoloNpc(soloNpcsRunId, {
-        name: payload.name,
-        description: payload.description,
-        introInstructions: payload.introInstructions,
+        name: sanitizePlayerText(payload.name, { maxLength: 80 }),
+        description: sanitizePlayerText(payload.description, { maxLength: 300 }),
+        introInstructions: sanitizePlayerText(payload.introInstructions, { maxLength: 300 }),
         origin: payload.origin
       });
       if (!created) {
