@@ -578,6 +578,9 @@ export function buildPlayerPayload(run) {
     stats: isPlainObject(player.stats) ? { ...player.stats } : {},
     skills: isPlainObject(player.skills) ? { ...player.skills } : {},
     portraitUri: isString(player.portraitUri) ? player.portraitUri : null,
+    // Lifecycle status (e.g. "downed" at 0 HP); drives the run-conclusion /
+    // death-screen flow on the client. Null when the run carries no status.
+    status: isString(player.status) ? player.status : null,
     // Full 5e record (or null) for the character sheet tab.
     character
   };

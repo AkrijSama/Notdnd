@@ -20,7 +20,11 @@ const PROVIDER_OUTPUT_FIELDS = new Set([
   "failureNarration",
   "proposedEffects"
 ]);
-const ALLOWED_EFFECT_TYPES = new Set(["timeline_event", "memory_fact", "narration"]);
+const ALLOWED_EFFECT_TYPES = new Set(["timeline_event", "memory_fact", "narration", "damage"]);
+
+// Minimal failure-cost mechanic (not full combat): a failed attempt costs the
+// player a small, fixed amount of HP. Kept simple and deterministic on purpose.
+const FAILED_ATTEMPT_DAMAGE = 2;
 const SKILL_TO_ABILITY = {
   investigation: "intelligence",
   perception: "wisdom",
@@ -516,8 +520,53 @@ export function createAttemptTimelineEvent(run, action, attemptResult, memoryFac
       success: attemptResult.success,
       checkResult: attemptResult.checkResult || null,
       narration: attemptResult.narration,
-      warnings: attemptResult.warnings || []
+      warnings: attemptResult.warnings || [],
+      damage: attemptResult.damage || null
     }
+  };
+}
+
+// Applies a small HP cost to the player after a failed attempt. Mutates the
+// (already-cloned) run in place: clamps HP at 0 (never negative) and marks the
+// player "downed" when they hit 0. The canonical HP store is
+// player.resources.hitPoints; top-level player.health is kept in sync when
+// present so older payloads stay consistent. Returns a structured record for
+// the action result, or null when no damageable HP gauge exists.
+export function applyFailureDamage(run, amount = FAILED_ATTEMPT_DAMAGE) {
+  const player = isPlainObject(run?.player) ? run.player : null;
+  if (!player) {
+    return null;
+  }
+  const gauge = isPlainObject(player.resources?.hitPoints) ? player.resources.hitPoints : null;
+  const hpBefore = gauge && isNumber(gauge.current)
+    ? gauge.current
+    : (isNumber(player.health) ? player.health : null);
+  if (hpBefore === null) {
+    return null;
+  }
+  const max = gauge && isNumber(gauge.max)
+    ? gauge.max
+    : (isNumber(player.maxHealth) ? player.maxHealth : hpBefore);
+  const cost = Math.max(0, Math.round(amount));
+  const hpAfter = Math.max(0, hpBefore - cost);
+
+  if (gauge) {
+    gauge.current = hpAfter;
+  }
+  if (isNumber(player.health)) {
+    player.health = hpAfter;
+  }
+  const downed = hpAfter <= 0;
+  if (downed) {
+    player.status = "downed";
+  }
+
+  return {
+    amount: hpBefore - hpAfter, // actual HP lost (after clamping)
+    hpBefore,
+    hpAfter,
+    max,
+    downed
   };
 }
 
@@ -558,6 +607,9 @@ export function resolveAttemptAction(run, action, options = {}) {
     success = checkResult.ok === true && checkResult.success === true;
   }
 
+  // Minimal failure-cost: a failed attempt drains a little HP (clamped at 0).
+  const damage = success ? null : applyFailureDamage(updatedRun, FAILED_ATTEMPT_DAMAGE);
+
   const narration = success ? providerOutput.successNarration : providerOutput.failureNarration;
   const attemptResult = {
     intent: action.intent,
@@ -567,7 +619,8 @@ export function resolveAttemptAction(run, action, options = {}) {
     checkResult,
     narration,
     warnings: providerResult.warnings,
-    proposedEffects: providerOutput.proposedEffects || []
+    proposedEffects: providerOutput.proposedEffects || [],
+    damage
   };
 
   const memoryEffect = (providerOutput.proposedEffects || []).find((effect) => effect.type === "memory_fact" && isString(effect.text));

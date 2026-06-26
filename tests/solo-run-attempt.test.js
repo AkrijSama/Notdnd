@@ -3,12 +3,35 @@ import assert from "node:assert/strict";
 
 import { createDefaultSoloRun } from "../server/solo/schema.js";
 import {
+  applyFailureDamage,
   buildAttemptContext,
   buildAttemptProviderInput,
   resolveAttemptAction,
   validateAttemptAction,
   validateAttemptProviderOutput
 } from "../server/solo/attempt.js";
+
+// Forces a failed ability check: roll 1 against an impossible DC.
+function failingAttempt(run, overrides = {}) {
+  return resolveAttemptAction(run, {
+    type: "attempt",
+    actorId: "player",
+    intent: "Force the door open",
+    ...overrides
+  }, {
+    fixedRoll: 1,
+    attemptProviderFn: () => ({
+      summary: "You strain against the door.",
+      recommendedAbility: "strength",
+      dc: 30,
+      advantage: false,
+      disadvantage: false,
+      successNarration: "The door bursts open.",
+      failureNarration: "The door holds firm.",
+      proposedEffects: []
+    })
+  });
+}
 
 test("valid attempt resolves and creates timeline event", () => {
   const run = createDefaultSoloRun({ now: "2026-01-01T00:00:00.000Z" });
@@ -183,4 +206,91 @@ test("invalid provider output falls back safely", () => {
 
   assert.equal(result.ok, true);
   assert.equal(result.attemptResult.warnings.includes("ATTEMPT_PROVIDER_FALLBACK"), true);
+});
+
+test("failed attempt costs the player HP and surfaces the damage", () => {
+  const run = createDefaultSoloRun({ now: "2026-01-01T00:00:00.000Z" });
+  const before = run.player.resources.hitPoints.current; // 10 by default
+
+  const result = failingAttempt(run);
+
+  assert.equal(result.ok, true);
+  assert.equal(result.attemptResult.success, false);
+  assert.ok(result.attemptResult.damage, "damage is surfaced in the result");
+  assert.equal(result.attemptResult.damage.amount, 2);
+  assert.equal(result.attemptResult.damage.hpBefore, before);
+  assert.equal(result.attemptResult.damage.hpAfter, before - 2);
+  assert.equal(result.attemptResult.damage.downed, false);
+  // The mutated run reflects the new HP for the scene payload to read back.
+  assert.equal(result.run.player.resources.hitPoints.current, before - 2);
+});
+
+test("successful attempt does not cost HP", () => {
+  const run = createDefaultSoloRun({ now: "2026-01-01T00:00:00.000Z" });
+  const before = run.player.resources.hitPoints.current;
+
+  const result = resolveAttemptAction(run, {
+    type: "attempt",
+    actorId: "player",
+    intent: "Convince the guard"
+  }, {
+    fixedRoll: 20,
+    attemptProviderFn: () => ({
+      summary: "You make your case.",
+      recommendedAbility: "persuasion",
+      dc: 5,
+      advantage: false,
+      disadvantage: false,
+      successNarration: "They nod you through.",
+      failureNarration: "They wave you off.",
+      proposedEffects: []
+    })
+  });
+
+  assert.equal(result.attemptResult.success, true);
+  assert.equal(result.attemptResult.damage, null);
+  assert.equal(result.run.player.resources.hitPoints.current, before);
+});
+
+test("HP clamps at 0 (never negative) and the player is downed at 0 HP", () => {
+  const run = createDefaultSoloRun({ now: "2026-01-01T00:00:00.000Z" });
+  run.player.resources.hitPoints.current = 1; // one hit from going down
+
+  const result = failingAttempt(run);
+
+  assert.equal(result.ok, true, "downed run still validates");
+  assert.equal(result.attemptResult.damage.hpBefore, 1);
+  assert.equal(result.attemptResult.damage.hpAfter, 0);
+  assert.equal(result.attemptResult.damage.amount, 1); // only the HP actually lost
+  assert.equal(result.attemptResult.damage.downed, true);
+  assert.equal(result.run.player.resources.hitPoints.current, 0);
+  assert.equal(result.run.player.status, "downed");
+});
+
+test("applyFailureDamage never drives HP below zero", () => {
+  const run = createDefaultSoloRun({ now: "2026-01-01T00:00:00.000Z" });
+  run.player.resources.hitPoints.current = 0;
+
+  const record = applyFailureDamage(run, 5);
+
+  assert.equal(record.hpBefore, 0);
+  assert.equal(record.hpAfter, 0);
+  assert.equal(record.amount, 0);
+  assert.equal(record.downed, true);
+  assert.equal(run.player.resources.hitPoints.current, 0);
+});
+
+test("damage is an allowed proposed-effect type", () => {
+  const validation = validateAttemptProviderOutput({
+    summary: "A risky shove.",
+    recommendedAbility: "strength",
+    dc: 10,
+    advantage: false,
+    disadvantage: false,
+    successNarration: "It works.",
+    failureNarration: "It backfires.",
+    proposedEffects: [{ type: "damage" }]
+  });
+
+  assert.equal(validation.ok, true, JSON.stringify(validation.errors));
 });

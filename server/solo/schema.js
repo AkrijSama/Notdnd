@@ -24,6 +24,9 @@ export const FORBIDDEN_BLOCKED_TAGS = [
 ];
 
 const RUN_STATUSES = new Set(["active", "completed", "abandoned"]);
+// Minimal player condition set. "downed" is set when HP reaches 0 (see the
+// failed-attempt damage mechanic in attempt.js). Not full combat.
+const PLAYER_STATUS_VALUES = new Set(["active", "downed"]);
 const EDITION_VALUES = new Set(EDITIONS);
 const RULESET_VALUES = new Set(RULESET_IDS);
 const CONTENT_RATING_VALUES = new Set(CONTENT_RATINGS);
@@ -399,6 +402,9 @@ export function validatePlayerState(player) {
   validateOptionalString(player.pronouns, "pronouns", errors);
   validateOptionalString(player.portraitUri, "portraitUri", errors);
   validateOptionalNumber(player.proficiencyBonus, "proficiencyBonus", errors);
+  if (player.status !== undefined && player.status !== null) {
+    validateEnum(player.status, PLAYER_STATUS_VALUES, "status", errors);
+  }
 
   return result(errors);
 }
