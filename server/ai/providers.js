@@ -64,6 +64,18 @@ const PROVIDER_SPECS = {
       image: process.env.NOTDND_GEMINI_IMAGE_MODEL || "imagen-3.0-generate-002",
       voice: process.env.NOTDND_GEMINI_VOICE_MODEL || "gemini-2.5-flash-preview-tts"
     }
+  },
+  fal: {
+    key: "fal",
+    label: "fal.ai",
+    type: "fal-image",
+    apiKeyEnv: "FAL_API_KEY",
+    endpointEnv: "NOTDND_FAL_ENDPOINT",
+    defaultEndpoint: "https://fal.run/fal-ai/flux/dev",
+    supports: ["image"],
+    models: {
+      image: process.env.NOTDND_FAL_IMAGE_MODEL || "fal-ai/flux/dev"
+    }
   }
 };
 
@@ -112,7 +124,7 @@ export function listAiProviders() {
       apiKeyEnv: config.apiKeyEnv || null,
       endpointEnv: config.endpointEnv || null,
       endpoint: config.type === "mock" ? null : config.endpoint,
-      supports: ["gm", "image", "voice"]
+      supports: config.supports || ["gm", "image", "voice"]
     };
   });
 }
@@ -335,4 +347,196 @@ export async function generateWithProvider({ provider = "placeholder", type = "g
     fetchImpl,
     configOverride
   });
+}
+
+// ---------------------------------------------------------------------------
+// Image generation path.
+//
+// Unlike generateWithProvider() (which returns text/url stubs for the GM/voice
+// flows), this returns real image *bytes* so callers can persist them to disk.
+// The image worker uses this exclusively — no provider endpoints are hardcoded
+// outside this module. Mock mode returns a tiny valid PNG so the pipeline is
+// exercisable offline and in tests without network or cost.
+// ---------------------------------------------------------------------------
+
+// 1x1 transparent PNG — a valid placeholder for mock/offline image generation.
+const MOCK_IMAGE_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+  "base64"
+);
+
+// fal.ai routes: base portraits use text-to-image; expression/reference variants
+// use the IP-Adapter face endpoint (image-to-image anchored on a reference).
+const FAL_TEXT_TO_IMAGE_ENDPOINT = process.env.NOTDND_FAL_ENDPOINT || "https://fal.run/fal-ai/flux/dev";
+const FAL_FACE_TO_IMAGE_ENDPOINT = process.env.NOTDND_FAL_FACE_ENDPOINT || "https://fal.run/fal-ai/ip-adapter-face-id";
+
+function imageMockForced() {
+  return String(process.env.NOTDND_MOCK_IMAGE || "").trim().toLowerCase() === "true";
+}
+
+function isMockImageProvider(provider) {
+  return provider === "mock" || provider === "placeholder" || provider === "local";
+}
+
+// Gate for expression-variant generation: providers listed here SKIP variants
+// entirely (the worker falls back to the base portrait for every expression).
+// Pollinations used to be here because it is txt2img-only (no IP-Adapter), but
+// it now generates variants via seed-locked prompt variation: the same per-NPC
+// identitySeed across every expression slot plus a prompt delta (", angry
+// expression") yields recognizably the same character with a different
+// expression — not IP-Adapter quality, but far better than a frozen face. The
+// set is empty for now; fal (true img2img) and the mock provider produce
+// variants too. (Name kept for back-compat; "reference" here means "generates
+// expression variants", whether via a reference image or seed-locked prompts.)
+const TXT2IMG_ONLY_IMAGE_PROVIDERS = new Set();
+export function providerSupportsReference(provider) {
+  return !TXT2IMG_ONLY_IMAGE_PROVIDERS.has(String(provider || "").trim().toLowerCase());
+}
+
+/**
+ * Resolves which image provider to use when a caller does not specify one.
+ * Honours NOTDND_MOCK_IMAGE, then NOTDND_IMAGE_PROVIDER, then falls back to
+ * fal when FAL_API_KEY is present, otherwise mock.
+ * @returns {string}
+ */
+export function resolveImageProvider() {
+  if (imageMockForced()) {
+    return "mock";
+  }
+  // Recognized image providers: "pollinations" (keyless, free txt2img),
+  // "fal" (keyed), "mock"/"placeholder"/"local". An explicit env value wins.
+  const configured = String(process.env.NOTDND_IMAGE_PROVIDER || "").trim().toLowerCase();
+  if (configured) {
+    return configured;
+  }
+  return String(process.env.FAL_API_KEY || "").trim() ? "fal" : "mock";
+}
+
+async function falImage({ prompt, referenceImageUrl, fetchImpl }) {
+  const config = resolveProviderConfig("fal");
+  if (!config.apiKey) {
+    throw makeProviderError("fal", "fal.ai is not configured. Missing FAL_API_KEY.", "MISSING_API_KEY", 400);
+  }
+
+  const endpoint = referenceImageUrl ? FAL_FACE_TO_IMAGE_ENDPOINT : FAL_TEXT_TO_IMAGE_ENDPOINT;
+  const body = referenceImageUrl ? { prompt, image_url: referenceImageUrl } : { prompt };
+
+  const response = await fetchImpl(endpoint, {
+    method: "POST",
+    headers: {
+      Authorization: `Key ${config.apiKey}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(body)
+  });
+  if (!response.ok) {
+    throw makeProviderError("fal", `fal.ai request failed (${response.status})`, "UPSTREAM_AI_ERROR", response.status);
+  }
+
+  const payload = await response.json();
+  const imageUrl = payload?.images?.[0]?.url || payload?.image?.url || payload?.url || null;
+  if (!imageUrl) {
+    throw makeProviderError("fal", "fal.ai response did not include an image url", "UPSTREAM_AI_ERROR", 502);
+  }
+
+  const imageResponse = await fetchImpl(imageUrl);
+  if (!imageResponse.ok) {
+    throw makeProviderError("fal", `fal.ai image download failed (${imageResponse.status})`, "UPSTREAM_AI_ERROR", imageResponse.status);
+  }
+
+  return {
+    provider: "fal",
+    mock: false,
+    bytes: Buffer.from(await imageResponse.arrayBuffer()),
+    url: imageUrl
+  };
+}
+
+// Pollinations.ai — keyless, free, text-to-image (FLUX). Zero auth: a GET
+// returns image bytes directly. No reference/IP-Adapter support, so it is a
+// base-portrait source only; expression variants fall back to fresh txt2img.
+const POLLINATIONS_BASE = process.env.NOTDND_POLLINATIONS_ENDPOINT || "https://image.pollinations.ai/prompt";
+const POLLINATIONS_MODEL = process.env.NOTDND_POLLINATIONS_MODEL || "flux";
+
+// Deterministic seed so a given prompt yields a stable image (cache-forever
+// friendly). Uses the caller's seed when provided, else a hash of the prompt.
+function pollinationsSeed(prompt, seed) {
+  if (Number.isFinite(Number(seed))) {
+    return Math.abs(Math.trunc(Number(seed)));
+  }
+  let hash = 0;
+  const text = String(prompt || "");
+  for (let i = 0; i < text.length; i += 1) {
+    hash = (hash * 31 + text.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash);
+}
+
+async function pollinationsImage({ prompt, seed, fetchImpl, width, height }) {
+  // Default to portrait (512x768) for faces; callers pass landscape (768x512)
+  // for location establishing shots via generateImage's width/height params.
+  // (Number(null) === 0, so guard on > 0 — not just isFinite — to keep defaults.)
+  const w = Number(width) > 0 ? Math.trunc(Number(width)) : 512;
+  const h = Number(height) > 0 ? Math.trunc(Number(height)) : 768;
+  const encoded = encodeURIComponent(String(prompt || "").trim() || "portrait");
+  const params = new URLSearchParams({
+    model: POLLINATIONS_MODEL,
+    width: String(w),
+    height: String(h),
+    seed: String(pollinationsSeed(prompt, seed)),
+    nologo: "true",
+    // Server-side LLM prompt enhancement: Pollinations expands the terse prompt
+    // into a richer, art-directed one before generation. Free quality lift on
+    // every image the app produces.
+    enhance: "true"
+  });
+  const url = `${POLLINATIONS_BASE}/${encoded}?${params.toString()}`;
+
+  const response = await fetchImpl(url);
+  if (!response.ok) {
+    throw makeProviderError("pollinations", `Pollinations request failed (${response.status})`, "UPSTREAM_AI_ERROR", response.status);
+  }
+
+  return {
+    provider: "pollinations",
+    mock: false,
+    bytes: Buffer.from(await response.arrayBuffer()),
+    url
+  };
+}
+
+/**
+ * Generates a single image and returns its bytes. The base portrait (no
+ * referenceImageUrl) is produced via text-to-image; expression/reference
+ * variants (with referenceImageUrl) via image-to-image / IP-Adapter where the
+ * provider supports it (Pollinations is txt2img only).
+ * @param {{ provider?: string, prompt?: string, referenceImageUrl?: string|null, style?: string, seed?: number|null, width?: number|null, height?: number|null, fetchImpl?: typeof fetch }} [args]
+ * @returns {Promise<{ provider: string, mock: boolean, bytes: Buffer, url: string|null }>}
+ */
+export async function generateImage({
+  provider = resolveImageProvider(),
+  prompt = "",
+  referenceImageUrl = null,
+  style = "",
+  seed = null,
+  width = null,
+  height = null,
+  fetchImpl = fetch
+} = {}) {
+  const resolvedProvider = provider || resolveImageProvider();
+  const styledPrompt = String(style || "").trim() ? `${prompt}, ${String(style).trim()} style` : prompt;
+
+  if (isMockImageProvider(resolvedProvider)) {
+    return { provider: "mock", mock: true, bytes: MOCK_IMAGE_PNG, url: null };
+  }
+
+  if (resolvedProvider === "pollinations") {
+    return pollinationsImage({ prompt: styledPrompt, seed, fetchImpl, width, height });
+  }
+
+  if (resolvedProvider === "fal") {
+    return falImage({ prompt: styledPrompt, referenceImageUrl, fetchImpl });
+  }
+
+  throw makeProviderError(resolvedProvider, `Unsupported image provider: ${resolvedProvider}`, "UNSUPPORTED_IMAGE_PROVIDER", 400);
 }

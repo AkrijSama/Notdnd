@@ -47,6 +47,8 @@ export function shouldUseRealGmProvider(options = {}) {
 
 export function buildProviderPromptMessages(gmInput, options = {}) {
   const location = gmInput.location || {};
+  const activeQuests = gmInput.activeQuests || [];
+  const questJustAdvanced = gmInput.questJustAdvanced || null;
   const sceneData = {
     runId: gmInput.runId,
     edition: gmInput.edition,
@@ -56,8 +58,18 @@ export function buildProviderPromptMessages(gmInput, options = {}) {
     availableMoves: gmInput.availableMoves || [],
     availableActions: gmInput.availableActions || [],
     recentTimeline: gmInput.recentTimeline || [],
-    relevantMemoryFacts: gmInput.relevantMemoryFacts || []
+    relevantMemoryFacts: gmInput.relevantMemoryFacts || [],
+    activeQuests,
+    questJustAdvanced
   };
+
+  // The current objective drives a "weave the goal in" prompt line; the quest
+  // engine — not the GM — owns activation/advancement/completion.
+  const objective = activeQuests.map((quest) => quest && quest.objective).find(Boolean) || null;
+  const advancedNote =
+    questJustAdvanced && questJustAdvanced.objective
+      ? `The player just made progress: "${questJustAdvanced.objective}". Acknowledge this in the fiction.`
+      : null;
 
   const system = [
     "You are the GM narrator for NotDND, a persistent solo AI-GM spatial sandbox.",
@@ -67,10 +79,15 @@ export function buildProviderPromptMessages(gmInput, options = {}) {
     "Strict constraints: do not mutate state, do not create durable canon, and do not invent persisted items, NPCs, quests, rewards, locations, relationships, inventory, hidden exits, or unavailable actions.",
     "Do not change relationship values, do not claim the player chose an action, and do not mention unavailable actions or moves.",
     "Respect the edition and policy profile. Never leak forbidden or blocked content into mainline scenes.",
+    objective ? `The player is pursuing: ${objective}. Weave this goal naturally into scene framing and dialogue.` : null,
+    advancedNote,
+    "Do NOT invent new quests or declare quests complete. Quest progress is decided only by the system.",
     "Return JSON only with this exact shape: {\"ok\":true,\"narration\":{\"title\":\"string\",\"body\":\"string\",\"tone\":\"neutral|tense|mysterious|warm|dangerous|comic|dramatic\",\"sensoryDetails\":[],\"focusEntityIds\":[]},\"suggestedActionLabels\":[],\"warnings\":[],\"stateMutations\":[]}.",
     "stateMutations must always be an empty array.",
     "Use plain text only. Do not include HTML, script tags, markdown tables, or raw JSON dumps in narration."
-  ].join("\n");
+  ]
+    .filter(Boolean)
+    .join("\n");
 
   return [
     {

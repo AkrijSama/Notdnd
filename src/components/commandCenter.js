@@ -39,10 +39,11 @@ function journalItems(state, campaignId) {
     .join("");
 }
 
-export function renderCommandCenter(state) {
+export function renderCommandCenter(state, options = {}) {
   const selectedCampaign = state.campaigns.find((campaign) => campaign.id === state.selectedCampaignId) || state.campaigns[0];
   const readiness = selectedCampaign?.readiness || 0;
   const campaignId = selectedCampaign?.id;
+  const pendingDeleteCampaignId = options.pendingDeleteCampaignId || null;
 
   return `
     <section class="module-card">
@@ -55,21 +56,48 @@ export function renderCommandCenter(state) {
       <div class="grid-two">
         <article class="module-card">
           <h3>Campaign Queue</h3>
+          ${
+            state.campaigns.length === 0
+              ? `<div class="empty-campaign-queue">
+                   <p class="small">No adventures yet. Generate a world and step into it.</p>
+                   <button data-action="start-new-adventure">Start a New Adventure</button>
+                 </div>`
+              : ""
+          }
           <ul class="list">
             ${state.campaigns
-              .map(
-                (campaign) => `
-                <li class="list-item">
+              .map((campaign) => {
+                const isSelected = campaign.id === state.selectedCampaignId;
+                const isPendingDelete = campaign.id === pendingDeleteCampaignId;
+                return `
+                <li class="list-item${isSelected ? " selected" : ""}">
                   <div class="inline">
                     <strong>${campaign.name}</strong>
                     <span class="tag">${campaign.status}</span>
+                    ${isSelected ? `<span class="tag">Selected</span>` : ""}
                   </div>
                   <div class="small">Setting: ${campaign.setting}</div>
                   <div class="small">Readiness: ${campaign.readiness || 0}% | Sessions: ${campaign.sessionCount || 0}</div>
-                  <button class="ghost" data-action="select-campaign" data-campaign-id="${campaign.id}">Open</button>
+                  <div class="inline">
+                    <button class="ghost" data-action="select-campaign" data-campaign-id="${campaign.id}" ${isSelected ? "disabled" : ""}>${isSelected ? "Selected" : "Open"}</button>
+                    <button class="ghost" data-action="delete-campaign" data-campaign-id="${campaign.id}" data-campaign-name="${campaign.name}">Delete</button>
+                  </div>
+                  ${
+                    isPendingDelete
+                      ? `
+                  <div class="campaign-delete-confirm" data-confirm-for="${campaign.id}">
+                    <p class="small">Delete <strong>${campaign.name}</strong>? This removes the campaign, its journals, maps, members, and memory. This cannot be undone.</p>
+                    <div class="inline">
+                      <button class="alt" data-action="confirm-delete-campaign" data-campaign-id="${campaign.id}">Yes, delete</button>
+                      <button class="ghost" data-action="cancel-delete-campaign" data-campaign-id="${campaign.id}">Cancel</button>
+                    </div>
+                  </div>
+                  `
+                      : ""
+                  }
                 </li>
-              `
-              )
+                `;
+              })
               .join("")}
           </ul>
         </article>
@@ -145,11 +173,49 @@ export function renderCommandCenter(state) {
   `;
 }
 
-export function bindCommandCenter(root, store) {
+export function bindCommandCenter(root, store, options = {}) {
+  const onSetPendingDelete = typeof options.onSetPendingDelete === "function" ? options.onSetPendingDelete : null;
+
   root.querySelectorAll('[data-action="select-campaign"]').forEach((button) => {
     button.addEventListener("click", () => {
       const campaignId = button.getAttribute("data-campaign-id");
       store.setSelectedCampaign(campaignId);
+    });
+  });
+
+  root.querySelectorAll('[data-action="delete-campaign"]').forEach((button) => {
+    button.addEventListener("click", () => {
+      const campaignId = button.getAttribute("data-campaign-id");
+      if (onSetPendingDelete) {
+        onSetPendingDelete(campaignId);
+      }
+    });
+  });
+
+  root.querySelectorAll('[data-action="cancel-delete-campaign"]').forEach((button) => {
+    button.addEventListener("click", () => {
+      if (onSetPendingDelete) {
+        onSetPendingDelete(null);
+      }
+    });
+  });
+
+  root.querySelectorAll('[data-action="confirm-delete-campaign"]').forEach((button) => {
+    button.addEventListener("click", async () => {
+      const campaignId = button.getAttribute("data-campaign-id");
+      button.disabled = true;
+      try {
+        await store.deleteCampaign(campaignId);
+        if (onSetPendingDelete) {
+          onSetPendingDelete(null);
+        }
+      } catch (error) {
+        store.pushChatLine({
+          speaker: "System",
+          text: `Delete failed: ${String(error.message || error)}`
+        });
+        button.disabled = false;
+      }
     });
   });
 

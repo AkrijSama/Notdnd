@@ -1,0 +1,55 @@
+On branch main
+Your branch is ahead of 'origin/main' by 15 commits.
+  (use "git push" to publish your local commits)
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   package.json
+	modified:   scripts/smoke.mjs
+	modified:   server/api/http.js
+	modified:   server/api/quickstartRoutes.js
+	modified:   server/db/repository.js
+	modified:   server/gm/memoryStore.js
+	modified:   server/gm/prompting.js
+	modified:   server/index.js
+	modified:   server/realtime/wsHub.js
+	modified:   server/solo/actions.js
+	modified:   server/solo/scene.js
+	modified:   src/api/client.js
+	modified:   src/components/soloSceneShell.js
+	modified:   src/main.js
+	modified:   src/realtime/client.js
+	modified:   src/state/store.js
+	modified:   src/styles.css
+	modified:   tests/gm-memory.test.js
+	modified:   tests/quickstart-build-fixtures.test.js
+	modified:   tests/quickstart-routes.test.js
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	.dockerignore
+	DEPLOYMENT.md
+	data/
+	fly.toml
+	notdnd/
+	pnpm-lock.yaml
+	railway.json
+	scripts/smoke-ai.mjs
+	server/ai/openrouter.js
+	server/campaign/onboarding-seeds/
+	server/campaign/onboarding.js
+	server/db/waitlist.json
+	server/gm/autoMemory.js
+	server/gm/playerMemory.js
+	server/gm/promptProfiles.js
+	server/gm/styleConfig.js
+	server/gm/stylePresets.js
+	server/gm/triggerParser.js
+	server/solo/attempt.js
+	shinobi-report.json
+	src/components/onboardingFlow.js
+	status.txt
+	tests/triggerParser.test.js
+
+no changes added to commit (use "git add" and/or "git commit -a")

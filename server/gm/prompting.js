@@ -1,80 +1,475 @@
-function summarizeCampaign(state, campaignId) {
-  const campaign = (state.campaigns || []).find((entry) => entry.id === campaignId) || null;
-  const packageData = state.campaignPackagesByCampaign?.[campaignId] || {
-    scenes: [],
-    npcs: [],
-    items: [],
-    rules: []
-  };
-  const recentChat = (state.chatLog || []).filter((line) => line.campaignId === campaignId).slice(-6);
-  const journals = state.journalsByCampaign?.[campaignId] || [];
+import { generateNarrative, generateRaw, generateUtility, getModelTiers } from "../ai/openrouter.js";
+import { getCampaignRuntimeState, getState, setCampaignRuntimeState } from "../db/repository.js";
+import { resolveSkillCheck, rollDiceExpression } from "../rules/engine.js";
+import { buildContextWindow, getEntity, getRelated, search, upsertEntity } from "./memoryStore.js";
+import { runAutoMemoryPipeline } from "./autoMemory.js";
+import { getPlayerContext, updatePlayerProfile } from "./playerMemory.js";
+import { getProfile } from "./promptProfiles.js";
+import { buildStylePromptBlock, getStyleConfig } from "./styleConfig.js";
+import { executeTriggers as executeParsedTriggers, parseTriggers as parseResponseTriggers } from "./triggerParser.js";
 
-  return {
-    campaign,
-    packageData,
-    recentChat,
-    journals,
-    mapCount: (state.maps || []).filter((entry) => entry.campaignId === campaignId).length,
-    encounterCount: (state.encounters || []).filter((entry) => entry.campaignId === campaignId).length,
-    characterCount: (state.characters || []).filter((entry) => entry.campaignId === campaignId).length
-  };
-}
+const CONTEXT_BUDGET = Number(process.env.NOTDND_CONTEXT_BUDGET || 1500);
 
-function renderMemorySnippets(snippets = []) {
-  if (!snippets.length) {
-    return "No matching memory snippets.";
-  }
-
-  return snippets
-    .map((snippet, idx) => `${idx + 1}. [${snippet.docKey} > ${snippet.heading}] ${snippet.text}`)
+function summarizeCharacters(characters = []) {
+  return characters
+    .map((character) => {
+      const stats = character.stats || {};
+      return `${character.name} (${character.className} ${character.level}) HP ${character.hp}, AC ${character.ac}, STR ${stats.str || 10}, DEX ${stats.dex || 10}, CON ${stats.con || 10}, INT ${stats.int || 10}, WIS ${stats.wis || 10}, CHA ${stats.cha || 10}`;
+    })
     .join("\n");
 }
 
-export function buildHumanGmAssistPrompt({ state, campaignId, message, memorySnippets = [] }) {
-  const snapshot = summarizeCampaign(state, campaignId);
-  return [
-    "You are a concise tabletop GM copilot helping a human game master run the session better.",
-    "Return practical advice, rulings support, pacing tips, and one strong next move.",
-    `Campaign: ${snapshot.campaign?.name || campaignId}`,
-    `Setting: ${snapshot.campaign?.setting || "Unknown"}`,
-    `Maps: ${snapshot.mapCount} | Encounters: ${snapshot.encounterCount} | Characters: ${snapshot.characterCount}`,
-    `Prepared scenes: ${(snapshot.packageData.scenes || []).map((scene) => scene.name).slice(0, 4).join(", ") || "None"}`,
-    `Prepared NPCs: ${(snapshot.packageData.npcs || []).map((npc) => npc.name).slice(0, 5).join(", ") || "None"}`,
-    `Prepared rules: ${(snapshot.packageData.rules || []).map((rule) => rule.name).slice(0, 5).join(", ") || "None"}`,
-    `Recent chat: ${snapshot.recentChat.map((line) => `${line.speaker}: ${line.text}`).join(" | ") || "None"}`,
-    `Recent journals: ${snapshot.journals.slice(0, 3).map((entry) => `${entry.title}: ${entry.body}`).join(" | ") || "None"}`,
-    `Memory snippets:\n${renderMemorySnippets(memorySnippets)}`,
-    `Human GM request: ${message}`
-  ].join("\n\n");
+function stringifyActivePlayers(activePlayers = []) {
+  return activePlayers
+    .map((player) => {
+      if (typeof player === "string") {
+        return player;
+      }
+      const name = String(player?.name || player?.displayName || player?.playerName || "Unknown Player");
+      const character = String(player?.characterSummary || player?.character || "").trim();
+      return character ? `${name}: ${character}` : name;
+    })
+    .join("\n");
 }
 
-export function buildAgentGmPrompt({ state, campaignId, message, memorySnippets = [] }) {
-  const snapshot = summarizeCampaign(state, campaignId);
-  return [
-    "You are the acting game master for a live tabletop session.",
-    "Respond in-world, be decisive, preserve continuity, and surface one concrete consequence or decision point.",
-    "Use the provided memory snippets first. Do not assume context outside the snippets and campaign summary.",
-    `Campaign: ${snapshot.campaign?.name || campaignId}`,
-    `Setting: ${snapshot.campaign?.setting || "Unknown"}`,
-    `Prepared scenes: ${(snapshot.packageData.scenes || []).map((scene) => `${scene.name} (${scene.objective})`).slice(0, 4).join(" | ") || "None"}`,
-    `Prepared NPCs: ${(snapshot.packageData.npcs || []).map((npc) => `${npc.name}=${npc.role}`).slice(0, 6).join(" | ") || "None"}`,
-    `Prepared items: ${(snapshot.packageData.items || []).map((item) => item.name).slice(0, 6).join(", ") || "None"}`,
-    `Prepared rules: ${(snapshot.packageData.rules || []).map((rule) => rule.name).slice(0, 6).join(", ") || "None"}`,
-    `Recent chat: ${snapshot.recentChat.map((line) => `${line.speaker}: ${line.text}`).join(" | ") || "None"}`,
-    `Memory snippets:\n${renderMemorySnippets(memorySnippets)}`,
-    `Player input: ${message}`
-  ].join("\n\n");
+function extractJsonArray(text = "") {
+  const source = String(text || "").trim();
+  const fenced = source.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const candidate = fenced ? fenced[1].trim() : source;
+  const bracketStart = candidate.indexOf("[");
+  const bracketEnd = candidate.lastIndexOf("]");
+  if (bracketStart !== -1 && bracketEnd !== -1 && bracketEnd > bracketStart) {
+    return candidate.slice(bracketStart, bracketEnd + 1);
+  }
+  return candidate;
 }
 
-export function buildFallbackHumanAdvice({ state, campaignId, message, memorySnippets = [] }) {
-  const snapshot = summarizeCampaign(state, campaignId);
-  const primaryScene = snapshot.packageData.scenes?.[0];
-  const primaryNpc = snapshot.packageData.npcs?.[0];
-  const snippetLead = memorySnippets[0];
+async function compressSessionHistory(chatLines = [], campaignId) {
+  const recent = chatLines.slice(-20);
+  if (recent.length === 0) {
+    return "None";
+  }
+
+  if (recent.length <= 8) {
+    return recent.map((line) => `${line.speaker}: ${line.text}`).join(" | ");
+  }
+
+  try {
+    const joined = recent.map((line) => `${line.speaker}: ${line.text}`).join("\n");
+    const response = await generateUtility(
+      [
+        { role: "system", content: "Summarize RPG chat logs for a GM in concise bullet points." },
+        { role: "user", content: `Compress this session history into at most 8 bullet points:\n\n${joined}` }
+      ],
+      campaignId
+    );
+    return String(response.content || "").trim() || joined;
+  } catch {
+    return recent.slice(-8).map((line) => `${line.speaker}: ${line.text}`).join(" | ");
+  }
+}
+
+function inferCompanionIntent(message = "") {
+  const lower = String(message || "").toLowerCase();
+  if (/what happened last session/.test(lower)) {
+    return "session_recap";
+  }
+  if (/tell me about\s+/.test(lower)) {
+    return "entity_lookup";
+  }
+  if (/write backstory/.test(lower) || /backstory/.test(lower)) {
+    return "backstory";
+  }
+  if (/help me plan/.test(lower) || /plan for next session/.test(lower)) {
+    return "planning";
+  }
+  if (/what does .* think of me/.test(lower)) {
+    return "relationship_lookup";
+  }
+  return "chat";
+}
+
+async function buildCompanionPlayerContext(campaignId, message, playerName, state) {
+  const playerCharacter = (state.characters || []).find(
+    (character) => normalizeCase(character.name) === normalizeCase(playerName)
+  );
+
+  const relationshipResults = await search(campaignId, `${playerName} relationship`, {
+    type: "relationship",
+    limit: 4
+  });
+
+  return {
+    playerSummary: playerCharacter
+      ? `${playerCharacter.name} (${playerCharacter.className} ${playerCharacter.level}) HP ${playerCharacter.hp}, AC ${playerCharacter.ac}`
+      : `Player: ${playerName || "Unknown"}`,
+    relationships: relationshipResults.map((entry) => `${entry.name}: ${entry.body}`).join("\n") || "No known relationship history.",
+    query: message
+  };
+}
+
+function normalizeCase(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase();
+}
+
+function withProfileSections(basePrompt, profile = {}) {
+  const triggerFormat = String(profile.triggerFormat || "").trim();
+  const responseStyle = String(profile.responseStyle || "").trim();
+  const structuredHints = String(profile.structuredHints || "").trim();
+
   return [
-    `Human GM Assist: focus the next beat around ${primaryScene?.name || "the current scene"}.`,
-    snippetLead ? `Relevant memory: ${snippetLead.heading} -> ${snippetLead.text.slice(0, 120)}` : "No strong memory match found, so stay with the current objective.",
-    `Surface ${primaryNpc?.name || "the lead NPC"} as the voice of urgency.`,
-    `Best next move: ask the table one sharp question tied to "${message}" and resolve it immediately.`
-  ].join(" ");
+    basePrompt,
+    triggerFormat ? `[TRIGGER FORMAT] ${triggerFormat}` : "",
+    responseStyle ? `[RESPONSE STYLE] ${responseStyle}` : "",
+    structuredHints ? `[STRUCTURED HINTS] ${structuredHints}` : ""
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+function profileCallOptions(profile, stream, onStream) {
+  const options = {};
+  if (stream) {
+    options.stream = true;
+    if (typeof onStream === "function") {
+      options.onStream = onStream;
+    }
+  }
+
+  if (Number.isFinite(Number(profile?.temperature))) {
+    options.temperature = Number(profile.temperature);
+  }
+  if (Number.isFinite(Number(profile?.maxResponseTokens))) {
+    options.maxResponseTokens = Number(profile.maxResponseTokens);
+  }
+  if (Array.isArray(profile?.stopSequences) && profile.stopSequences.length > 0) {
+    options.stopSequences = profile.stopSequences;
+  }
+
+  return options;
+}
+
+function resolveNarrativeModel(styleConfig, modelTiers) {
+  return String(styleConfig?.model?.preferredNarrativeModel || "").trim() || modelTiers.narrative;
+}
+
+function resolveUtilityModel(styleConfig, modelTiers) {
+  let model = String(styleConfig?.model?.preferredUtilityModel || "").trim() || modelTiers.utility;
+  const allowFree = styleConfig?.model?.allowFreeModels !== false;
+  if (!allowFree && /:free$/i.test(model)) {
+    const fallback = String(styleConfig?.model?.preferredNarrativeModel || "").trim() || modelTiers.narrative;
+    model = fallback;
+  }
+  return model;
+}
+
+function applyStyleModelOverrides(options, styleConfig) {
+  const next = { ...(options || {}) };
+  const override = styleConfig?.model?.maxTokensPerResponse;
+  if (override !== null && override !== undefined && Number.isFinite(Number(override))) {
+    next.maxResponseTokens = Math.max(64, Math.floor(Number(override)));
+  }
+  return next;
+}
+
+async function callNarrativeModel(messages, campaignId, resolvedModel, modelTiers, options) {
+  if (resolvedModel === modelTiers.narrative) {
+    return generateNarrative(messages, campaignId, options);
+  }
+  return generateRaw(messages, resolvedModel, campaignId, options);
+}
+
+async function callUtilityModel(messages, campaignId, resolvedModel, modelTiers, options) {
+  if (resolvedModel === modelTiers.utility) {
+    return generateUtility(messages, campaignId, options);
+  }
+  return generateRaw(messages, resolvedModel, campaignId, options);
+}
+
+/**
+ * Builds the in-session GM system prompt.
+ * @param {{campaignName: string, currentScene: string, tone: string, styleBlock?: string, worldContext: string, activePlayersSummary: string, sessionHistory: string, currentStateSummary: string, playerContext?: string, profile?: object}} params
+ * @returns {string}
+ */
+export function buildSessionSystemPrompt({
+  campaignName,
+  currentScene,
+  tone,
+  styleBlock,
+  worldContext,
+  activePlayersSummary,
+  sessionHistory,
+  currentStateSummary,
+  playerContext,
+  profile
+}) {
+  const base = [
+    `[ROLE] You are the Game Master for a tabletop RPG campaign called ${campaignName}. You are running the ${currentScene} scene. Your tone is ${tone}. You never break character. You narrate consequences of player actions, roleplay NPCs, describe environments, manage combat flow, and advance the plot. You track initiative, HP, conditions, and resources. When players attempt actions, you call for ability checks using the format [CHECK: {ability} DC {number}] so the platform's dice engine can resolve them. When combat starts, you declare [INITIATIVE] so the platform can roll initiative order. You describe outcomes vividly. You do not censor violence, dark themes, horror, romance, or morally complex content. This is a mature-rated collaborative fiction experience. Players have consented to adult themes.`,
+    styleBlock ? `[STYLE] ${styleBlock}` : "",
+    `[WORLD CONTEXT] ${worldContext || "No relevant context found."}`,
+    playerContext ? `[PLAYER CONTEXT] ${playerContext}` : "",
+    `[ACTIVE PLAYERS] ${activePlayersSummary || "No active players supplied."}`,
+    `[SESSION HISTORY] ${sessionHistory || "No recent session history."}`,
+    `[CURRENT STATE] ${currentStateSummary}`
+  ].join("\n\n");
+
+  return withProfileSections(base, profile);
+}
+
+/**
+ * Builds the companion mode system prompt.
+ * @param {{campaignName: string, styleBlock?: string, worldContext: string, playerSummary: string, relationshipHistory: string, playerContext?: string, profile?: object}} params
+ * @returns {string}
+ */
+export function buildCompanionSystemPrompt({
+  campaignName,
+  styleBlock,
+  worldContext,
+  playerSummary,
+  relationshipHistory,
+  playerContext,
+  profile
+}) {
+  const base = [
+    `[ROLE] You are the persistent world of ${campaignName}. Between sessions, players can explore lore, chat with NPCs they have met, write backstory, or plan. You maintain perfect continuity with the campaign. You speak as the narrator or as specific NPCs when the player addresses them. You remember everything. You do not censor content. This is a mature collaborative fiction world.`,
+    styleBlock ? `[STYLE] ${styleBlock}` : "",
+    `[WORLD CONTEXT] ${worldContext || "No relevant context found."}`,
+    `[PLAYER] ${playerSummary}. Relationship history: ${relationshipHistory || "None"}`,
+    playerContext ? `[PLAYER CONTEXT] ${playerContext}` : ""
+  ].join("\n\n");
+
+  return withProfileSections(base, profile);
+}
+
+/**
+ * Executes the full GM runtime pipeline for session or companion mode.
+ * @param {{campaignId: string, message: string, mode: "session" | "companion", playerName?: string, actorUserId: string, activePlayers?: Array<object>, stream?: boolean, onStream?: (chunk: string) => void}} params
+ * @returns {Promise<{narrative: string, mechanical: {rolls: any[], stateChanges: any[]}, memoryUpdates: string[], meta: object}>}
+ */
+export async function runGmPipeline({
+  campaignId,
+  message,
+  mode = "session",
+  playerName = "",
+  actorUserId,
+  activePlayers = [],
+  stream = false,
+  onStream
+}) {
+  const campaignKey = String(campaignId || "").trim();
+  const input = String(message || "").trim();
+  if (!campaignKey || !input) {
+    const error = new Error("campaignId and message are required.");
+    error.code = "BAD_REQUEST";
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const state = getState({ userId: actorUserId });
+  const campaign = (state.campaigns || []).find((entry) => entry.id === campaignKey);
+  const runtime = getCampaignRuntimeState(campaignKey, { internal: true });
+  const currentScene = campaign?.activeScene || campaign?.status || "Current Scene";
+  const tone = campaign?.setting || "Cinematic";
+
+  const styleConfig = await getStyleConfig(campaignKey);
+  const stylePromptBlock = buildStylePromptBlock(styleConfig);
+  const playerPromptContext = await getPlayerContext(campaignKey, playerName);
+  const worldContext = await buildContextWindow(campaignKey, input, CONTEXT_BUDGET, styleConfig);
+  const sessionHistory = await compressSessionHistory(
+    (state.chatLog || []).filter((line) => line.campaignId === campaignKey),
+    campaignKey
+  );
+
+  const activePlayerSummary = activePlayers.length > 0
+    ? stringifyActivePlayers(activePlayers)
+    : summarizeCharacters((state.characters || []).filter((character) => character.campaignId === campaignKey).slice(0, 4));
+
+  const currentStateSummary = `Scene: ${currentScene}, Initiative: ${runtime.initiativeOrder?.length ? runtime.initiativeOrder.map((entry) => `${entry.name}:${entry.initiative}`).join(", ") : "none"}, Active conditions: none`;
+
+  const modelTiers = getModelTiers();
+  let systemPrompt = "";
+  let messages = [];
+  let aiResult;
+  let companionIntent = "chat";
+  let selectedModel = resolveNarrativeModel(styleConfig, modelTiers);
+  let promptProfile = getProfile(selectedModel);
+  let modelOptions = applyStyleModelOverrides(profileCallOptions(promptProfile, stream, onStream), styleConfig);
+
+  if (mode === "companion") {
+    const intent = inferCompanionIntent(input);
+    companionIntent = intent;
+    const lookupIntent = new Set(["session_recap", "entity_lookup", "planning", "relationship_lookup"]);
+    const useUtility = intent === "session_recap" || lookupIntent.has(intent);
+    selectedModel = useUtility
+      ? resolveUtilityModel(styleConfig, modelTiers)
+      : resolveNarrativeModel(styleConfig, modelTiers);
+    promptProfile = getProfile(selectedModel);
+    modelOptions = applyStyleModelOverrides(profileCallOptions(promptProfile, stream, onStream), styleConfig);
+
+    const companionContext = await buildCompanionPlayerContext(campaignKey, input, playerName, state);
+    systemPrompt = buildCompanionSystemPrompt({
+      campaignName: campaign?.name || campaignKey,
+      styleBlock: stylePromptBlock,
+      worldContext,
+      playerSummary: companionContext.playerSummary,
+      relationshipHistory: companionContext.relationships,
+      playerContext: playerPromptContext,
+      profile: promptProfile
+    });
+
+    messages = [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: input }
+    ];
+
+    if (intent === "session_recap") {
+      const logs = await search(campaignKey, "session log", { type: "session_log", limit: 5 });
+      const compiled = logs.map((log) => `${log.name}: ${log.body}`).join("\n\n");
+      aiResult = await callUtilityModel(
+        [
+          { role: "system", content: systemPrompt },
+          {
+            role: "user",
+            content: `What happened last session? Summarize these session logs with continuity preserved:\n\n${compiled || "No session logs available."}`
+          }
+        ],
+        campaignKey,
+        selectedModel,
+        modelTiers,
+        modelOptions
+      );
+    } else if (lookupIntent.has(intent)) {
+      if (intent === "entity_lookup") {
+        const candidateName = input.replace(/.*tell me about\s+/i, "").trim();
+        const entity = candidateName ? await getEntity(campaignKey, candidateName) : null;
+        const related = entity ? await getRelated(campaignKey, entity.name, 1) : { entities: [] };
+        const context = [entity ? `${entity.name}: ${entity.body}` : "Entity not found.", ...(related.entities || []).map((entry) => `${entry.name}: ${entry.body}`)].join("\n\n");
+        aiResult = await callUtilityModel(
+          [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: `Answer this lookup with continuity and concise detail:\n\n${context}\n\nPlayer query: ${input}` }
+          ],
+          campaignKey,
+          selectedModel,
+          modelTiers,
+          modelOptions
+        );
+      } else {
+        aiResult = await callUtilityModel(messages, campaignKey, selectedModel, modelTiers, modelOptions);
+      }
+    } else {
+      aiResult = await callNarrativeModel(messages, campaignKey, selectedModel, modelTiers, modelOptions);
+    }
+  } else {
+    selectedModel = resolveNarrativeModel(styleConfig, modelTiers);
+    promptProfile = getProfile(selectedModel);
+    modelOptions = applyStyleModelOverrides(profileCallOptions(promptProfile, stream, onStream), styleConfig);
+
+    systemPrompt = buildSessionSystemPrompt({
+      campaignName: campaign?.name || campaignKey,
+      currentScene,
+      tone,
+      styleBlock: stylePromptBlock,
+      worldContext,
+      activePlayersSummary: activePlayerSummary,
+      sessionHistory,
+      currentStateSummary,
+      playerContext: playerPromptContext,
+      profile: promptProfile
+    });
+
+    messages = [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: input }
+    ];
+
+    aiResult = await callNarrativeModel(messages, campaignKey, selectedModel, modelTiers, modelOptions);
+  }
+
+  const rawNarrative = String(aiResult.content || "").trim();
+  const parsed = parseResponseTriggers(rawNarrative);
+  const triggerExecution = await executeParsedTriggers(
+    parsed.triggers,
+    campaignKey,
+    playerName,
+    {
+      getState,
+      setCampaignRuntimeState
+    },
+    {
+      resolveSkillCheck,
+      rollDiceExpression
+    },
+    {
+      upsertEntity,
+      getEntity
+    }
+  );
+  const sanitizedNarrative = String(parsed.narrative || rawNarrative).trim() || rawNarrative;
+
+  const autoMemory = await runAutoMemoryPipeline({
+    campaignId: campaignKey,
+    narrative: sanitizedNarrative,
+    playerMessage: input,
+    mode,
+    playerName
+  });
+
+  const memoryUpdates = [...new Set([...(triggerExecution.memoryUpdates || []), ...(autoMemory.updatedEntities || [])])];
+  if (mode === "companion" && companionIntent === "backstory" && playerName) {
+    const playerRecord = await upsertEntity(campaignKey, {
+      name: playerName,
+      type: "player_character",
+      tags: ["backstory", "companion"],
+      body: `Backstory update request: ${input}\\n\\nCompanion response:\\n${sanitizedNarrative}`
+    });
+    memoryUpdates.push(playerRecord.name);
+  }
+
+  if (playerName) {
+    try {
+      const profileUpdate = await updatePlayerProfile(campaignKey, playerName, sanitizedNarrative, input);
+      if (profileUpdate?.entityName) {
+        memoryUpdates.push(profileUpdate.entityName);
+      }
+    } catch {
+      // Keep the runtime response resilient if player profiling fails.
+    }
+  }
+
+  return {
+    narrative: sanitizedNarrative,
+    mechanical: triggerExecution.mechanical,
+    memoryUpdates: [...new Set(memoryUpdates)],
+    meta: {
+      mode,
+      model: aiResult.model,
+      requestedModel: selectedModel,
+      tokensUsed: aiResult.tokensUsed,
+      cost: aiResult.cost,
+      profile: {
+        temperature: promptProfile.temperature,
+        maxResponseTokens: promptProfile.maxResponseTokens
+      },
+      style: styleConfig,
+      triggerCount: parsed.triggers.length,
+      systemPrompt
+    }
+  };
+}
+
+/**
+ * Attempts to parse extracted entity arrays from model responses.
+ * @param {string} responseText
+ * @returns {Array<object>}
+ */
+export function parseExtractedEntities(responseText) {
+  try {
+    const parsed = JSON.parse(extractJsonArray(responseText));
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
 }

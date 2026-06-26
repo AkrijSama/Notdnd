@@ -24,12 +24,35 @@ export const FORBIDDEN_BLOCKED_TAGS = [
 ];
 
 const RUN_STATUSES = new Set(["active", "completed", "abandoned"]);
+// Minimal player condition set. "downed" is set when HP reaches 0 (see the
+// failed-attempt damage mechanic in attempt.js). Not full combat.
+const PLAYER_STATUS_VALUES = new Set(["active", "downed"]);
 const EDITION_VALUES = new Set(EDITIONS);
 const RULESET_VALUES = new Set(RULESET_IDS);
 const CONTENT_RATING_VALUES = new Set(CONTENT_RATINGS);
 const DISTRIBUTION_CHANNEL_VALUES = new Set(DISTRIBUTION_CHANNELS);
 const IMAGE_TARGET_TYPES = new Set(["location", "npc", "item", "playerAsset", "scene"]);
 const IMAGE_STATUSES = new Set(["placeholder", "queued", "generated", "failed"]);
+// Ordered set of NPC facial-expression variants. Each maps to its own image
+// asset; the lookup table lives on npc.expressionVariants (all null by default).
+export const NPC_EXPRESSIONS = ["neutral", "warm", "suspicious", "fearful", "surprised", "angry"];
+const NPC_EXPRESSION_SET = new Set(NPC_EXPRESSIONS);
+// How an NPC's identity came to be: fully AI-generated, fully user-defined, or
+// user-seeded with AI filling the gaps.
+export const NPC_ORIGINS = ["procedural", "user", "hybrid"];
+const NPC_ORIGIN_SET = new Set(NPC_ORIGINS);
+
+/**
+ * Builds an all-null expression-variant lookup table.
+ * @returns {Record<string, string | null>}
+ */
+export function createEmptyExpressionVariants() {
+  const variants = {};
+  for (const expression of NPC_EXPRESSIONS) {
+    variants[expression] = null;
+  }
+  return variants;
+}
 const PLAYER_ASSET_TYPES = new Set(["base", "fortress", "lab", "room", "structure", "other"]);
 const QUEST_STATUSES = new Set(["inactive", "active", "completed", "failed"]);
 const ITEM_EFFECT_TYPES = new Set(["message", "recover_resource", "reveal_note"]);
@@ -370,6 +393,19 @@ export function validatePlayerState(player) {
     }
   }
 
+  // Optional 5e character fields (Ticket 38). All nullable; the rich nested
+  // record (abilityScores/derivedStats/savingThrows/skills/etc.) is tolerated
+  // as supplementary data and not strictly shaped here.
+  validateOptionalString(player.race, "race", errors);
+  validateOptionalString(player.characterClass, "characterClass", errors);
+  validateOptionalString(player.background, "background", errors);
+  validateOptionalString(player.pronouns, "pronouns", errors);
+  validateOptionalString(player.portraitUri, "portraitUri", errors);
+  validateOptionalNumber(player.proficiencyBonus, "proficiencyBonus", errors);
+  if (player.status !== undefined && player.status !== null) {
+    validateEnum(player.status, PLAYER_STATUS_VALUES, "status", errors);
+  }
+
   return result(errors);
 }
 
@@ -393,6 +429,14 @@ export function validateWorldState(world) {
 
   validateObject(world.flags, "flags", errors);
   validateStringArray(world.tags, "tags", errors);
+
+  // Optional world-generator definition fields (Ticket 39). All nullable so
+  // existing/default worlds stay valid.
+  validateOptionalString(world.tone, "tone", errors);
+  validateOptionalString(world.startingLocationName, "startingLocationName", errors);
+  validateOptionalString(world.startingLocationType, "startingLocationType", errors);
+  validateOptionalString(world.flavor, "flavor", errors);
+  validateOptionalString(world.artStyle, "artStyle", errors);
 
   return result(errors);
 }
@@ -504,6 +548,27 @@ export function validateLocationGraph(locations, options = {}) {
   return result(errors);
 }
 
+// Optional. When present, expressionVariants must be an object whose keys are
+// known expression names and whose values are an image asset id or null.
+function validateExpressionVariants(value, path, errors) {
+  if (value === undefined || value === null) {
+    return;
+  }
+  if (!isPlainObject(value)) {
+    push(errors, path, "Expected object");
+    return;
+  }
+  for (const [key, assetId] of Object.entries(value)) {
+    if (!NPC_EXPRESSION_SET.has(key)) {
+      push(errors, `${path}.${key}`, "Unknown expression variant");
+      continue;
+    }
+    if (assetId !== null && !isString(assetId)) {
+      push(errors, `${path}.${key}`, "Expected image asset id string or null");
+    }
+  }
+}
+
 export function validateNpc(npc) {
   const errors = [];
   if (!isPlainObject(npc)) {
@@ -519,6 +584,19 @@ export function validateNpc(npc) {
   validateRequiredString(npc.status, "status", errors);
   validateStringArray(npc.memoryFactIds, "memoryFactIds", errors);
   validateOptionalString(npc.imageAssetId, "imageAssetId", errors);
+  validateExpressionVariants(npc.expressionVariants, "expressionVariants", errors);
+  // Procedural identity (all nullable — existing NPCs without these stay valid).
+  validateOptionalString(npc.generatedName, "generatedName", errors);
+  validateOptionalString(npc.appearance, "appearance", errors);
+  validateOptionalString(npc.personality, "personality", errors);
+  validateOptionalString(npc.portraitPrompt, "portraitPrompt", errors);
+  validateOptionalNumber(npc.identitySeed, "identitySeed", errors);
+  // Origin + memory-graph bridge (all nullable — existing NPCs stay valid).
+  if (npc.origin !== undefined && npc.origin !== null) {
+    validateEnum(npc.origin, NPC_ORIGIN_SET, "origin", errors);
+  }
+  validateOptionalString(npc.introInstructions, "introInstructions", errors);
+  validateOptionalString(npc.memoryDocId, "memoryDocId", errors);
   validateStringArray(npc.tags, "tags", errors);
   validateObject(npc.flags, "flags", errors);
   validateContentMetadata(npc, errors);
@@ -788,6 +866,10 @@ export function validateSoloRun(run) {
 
   validateRequiredString(run.runId, "runId", errors);
   validateOptionalString(run.userId, "userId", errors);
+  validateOptionalString(run.narration, "narration", errors);
+  if (run.battleMap !== undefined && run.battleMap !== null && !isPlainObject(run.battleMap)) {
+    push(errors, "battleMap", "Expected object");
+  }
   validateEnum(run.status, RUN_STATUSES, "status", errors);
   validateTimestamp(run.createdAt, "createdAt", errors);
   validateTimestamp(run.updatedAt, "updatedAt", errors);
@@ -939,15 +1021,16 @@ export function createDefaultLocationGraph(options = {}) {
     },
     second_location: {
       locationId: "second_location",
-      name: "Second Location",
-      description: "Neutral placeholder connected location.",
+      name: "Ashenmoor Market Square",
+      description:
+        "The square sits half-empty under curfew. Stalls are shuttered, the bell tower watches from above, and Ashen Watch patrols cut through the rain in pairs.",
       connectedLocationIds: ["start_location", "third_location"],
       state: {
         visited: false,
         discovered: true
       },
       memoryFactIds: [],
-      tags: ["placeholder"],
+      tags: ["ashenmoor", "market", "curfew"],
       edition: "mainline",
       policyProfileId: "mainline_default",
       contentTags: [],
@@ -963,15 +1046,16 @@ export function createDefaultLocationGraph(options = {}) {
     },
     third_location: {
       locationId: "third_location",
-      name: "Third Location",
-      description: "Neutral placeholder distant location.",
+      name: "The Ashen Watch Gatehouse",
+      description:
+        "The town gate stands shut. Gate logs are locked away, and the Ashen Watch turns travelers back with practiced indifference. The road beyond is where the missing shipment vanished.",
       connectedLocationIds: ["second_location"],
       state: {
         visited: false,
         discovered: false
       },
       memoryFactIds: [],
-      tags: ["placeholder"],
+      tags: ["ashenmoor", "ashen-watch", "gatehouse"],
       edition: "mainline",
       policyProfileId: "mainline_default",
       contentTags: [],
@@ -1070,8 +1154,8 @@ export function createDefaultSoloRun(options = {}) {
       field_ration: {
         itemId: "field_ration",
         templateId: "placeholder_field_ration",
-        name: "Field Ration",
-        description: "A neutral placeholder ration for simple recovery tests.",
+        name: "Trail Loaf",
+        description: "Hardtack and salted root wrapped in oilcloth, pressed into your hand by the tavern keeper before you left the Shattered Flagon.",
         quantity: 1,
         usable: true,
         consumable: true,

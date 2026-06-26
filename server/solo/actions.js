@@ -26,8 +26,13 @@ import {
   resolveUseItemAction,
   validateUseItemAction
 } from "./useItem.js";
+import {
+  resolveAttemptAction,
+  validateAttemptAction
+} from "./attempt.js";
+import { advanceQuests } from "./quests.js";
 
-const IMPLEMENTED_ACTION_TYPES = new Set(["move", "inspect", "search", "talk", "rest", "use_item"]);
+const IMPLEMENTED_ACTION_TYPES = new Set(["move", "inspect", "search", "talk", "rest", "use_item", "attempt"]);
 const FUTURE_ACTION_TYPES = new Set(["interact", "enter", "exit"]);
 const RECOGNIZED_ACTION_TYPES = new Set([...IMPLEMENTED_ACTION_TYPES, ...FUTURE_ACTION_TYPES]);
 
@@ -127,6 +132,9 @@ export function validateSoloAction(run, action) {
   if (normalized.type === "use_item") {
     return validateUseItemAction(run, normalized);
   }
+  if (normalized.type === "attempt") {
+    return validateAttemptAction(run, normalized);
+  }
 
   return notImplemented(normalized.type);
 }
@@ -191,8 +199,33 @@ export function getAvailableSoloActions(run, options = {}) {
       type: "search",
       label: "Search area",
       enabled: true
+    },
+    {
+      type: "attempt",
+      label: "Attempt",
+      enabled: true
     }
   ];
+}
+
+// After a resolver branch produces its success result, run the quest engine
+// against the post-action run and surface a win. The mutating actions carry the
+// updated run on result.run; read-only inspect has none, so fall back to the
+// original run (it can never satisfy a predicate, so this is a no-op there).
+function finalizeQuestProgress(originalRun, result) {
+  const activeRun = result.run || originalRun;
+  const { updated, wonQuest, completed } = advanceQuests(activeRun, result);
+  if (updated) {
+    result.run = activeRun; // persist the flipped quest status
+    // The quest that just advanced this turn (the win, or the first completed
+    // quest) so the GM can dramatize the progress in its narration.
+    result.questJustAdvanced = wonQuest || (Array.isArray(completed) ? completed[0] : null) || null;
+  }
+  if (wonQuest) {
+    result.runWon = true;
+    result.wonQuest = wonQuest;
+  }
+  return result;
 }
 
 export function resolveSoloAction(run, action, options = {}) {
@@ -218,7 +251,7 @@ export function resolveSoloAction(run, action, options = {}) {
       };
     }
 
-    return {
+    return finalizeQuestProgress(run, {
       ok: true,
       action: normalized,
       run: movement.run,
@@ -227,7 +260,7 @@ export function resolveSoloAction(run, action, options = {}) {
       availableMoves: getAvailableMoves(movement.run),
       availableActions: getAvailableSoloActions(movement.run),
       errors: []
-    };
+    });
   }
 
   if (normalized.type === "inspect") {
@@ -244,7 +277,7 @@ export function resolveSoloAction(run, action, options = {}) {
       };
     }
 
-    return {
+    return finalizeQuestProgress(run, {
       ok: true,
       action: normalized,
       entity: detail.entity,
@@ -252,7 +285,7 @@ export function resolveSoloAction(run, action, options = {}) {
       availableMoves: getAvailableMoves(run),
       availableActions: getAvailableSoloActions(run),
       errors: []
-    };
+    });
   }
 
   if (normalized.type === "search") {
@@ -266,7 +299,7 @@ export function resolveSoloAction(run, action, options = {}) {
       };
     }
 
-    return {
+    return finalizeQuestProgress(run, {
       ok: true,
       action: normalized,
       run: search.run,
@@ -276,7 +309,7 @@ export function resolveSoloAction(run, action, options = {}) {
       availableMoves: getAvailableMoves(search.run),
       availableActions: getAvailableSoloActions(search.run),
       errors: []
-    };
+    });
   }
 
   if (normalized.type === "talk") {
@@ -290,7 +323,7 @@ export function resolveSoloAction(run, action, options = {}) {
       };
     }
 
-    return {
+    return finalizeQuestProgress(run, {
       ok: true,
       action: normalized,
       run: talk.run,
@@ -300,7 +333,7 @@ export function resolveSoloAction(run, action, options = {}) {
       availableMoves: getAvailableMoves(talk.run),
       availableActions: getAvailableSoloActions(talk.run),
       errors: []
-    };
+    });
   }
 
   if (normalized.type === "rest") {
@@ -315,7 +348,7 @@ export function resolveSoloAction(run, action, options = {}) {
     }
 
     const actionRun = rest.run || run;
-    return {
+    return finalizeQuestProgress(run, {
       ok: true,
       action: normalized,
       run: rest.run,
@@ -325,7 +358,7 @@ export function resolveSoloAction(run, action, options = {}) {
       availableMoves: getAvailableMoves(actionRun),
       availableActions: getAvailableSoloActions(actionRun),
       errors: []
-    };
+    });
   }
 
   if (normalized.type === "use_item") {
@@ -340,7 +373,7 @@ export function resolveSoloAction(run, action, options = {}) {
     }
 
     const actionRun = useItem.run || run;
-    return {
+    return finalizeQuestProgress(run, {
       ok: true,
       action: normalized,
       run: useItem.run,
@@ -350,7 +383,31 @@ export function resolveSoloAction(run, action, options = {}) {
       availableMoves: getAvailableMoves(actionRun),
       availableActions: getAvailableSoloActions(actionRun),
       errors: []
-    };
+    });
+  }
+
+  if (normalized.type === "attempt") {
+    const attempt = resolveAttemptAction(run, normalized, options);
+    if (!attempt.ok) {
+      return {
+        ok: false,
+        code: "ACTION_INVALID",
+        actionType: "attempt",
+        errors: attempt.errors
+      };
+    }
+
+    return finalizeQuestProgress(run, {
+      ok: true,
+      action: normalized,
+      run: attempt.run,
+      event: attempt.event,
+      memoryFact: attempt.memoryFact,
+      attemptResult: attempt.attemptResult,
+      availableMoves: getAvailableMoves(attempt.run),
+      availableActions: getAvailableSoloActions(attempt.run),
+      errors: []
+    });
   }
 
   return notImplemented(normalized.type);

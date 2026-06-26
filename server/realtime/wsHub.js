@@ -120,10 +120,39 @@ function nowMs() {
   return Date.now();
 }
 
-export function createWsHub({ authenticateToken, canJoinCampaign, onClientMessage } = {}) {
+function normalizeName(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase();
+}
+
+function streamEnabled() {
+  return String(process.env.NOTDND_STREAM || "").trim().toLowerCase() === "true";
+}
+
+/**
+ * Creates the websocket hub used for campaign realtime sync and GM streaming.
+ * @param {object} [options]
+ * @param {(token: string) => object | null} [options.authenticateToken]
+ * @param {(user: object, campaignId: string) => boolean} [options.canJoinCampaign]
+ * @param {(message: object, client: object, helpers: object) => void} [options.onClientMessage]
+ * @param {(payload: object) => Promise<object>} [options.onGmPlayerMessage]
+ * @param {(campaignId: string) => object} [options.getCampaignRuntime]
+ * @param {(campaignId: string, patch: object) => object} [options.setCampaignRuntime]
+ * @returns {object}
+ */
+export function createWsHub({
+  authenticateToken,
+  canJoinCampaign,
+  onClientMessage,
+  onGmPlayerMessage,
+  getCampaignRuntime,
+  setCampaignRuntime
+} = {}) {
   const clients = new Map();
   const cursorsByCampaign = new Map();
   const locksByCampaign = new Map();
+  const typingByCampaign = new Map();
 
   function send(client, message) {
     if (!client.socket.destroyed) {
@@ -154,9 +183,47 @@ export function createWsHub({ authenticateToken, canJoinCampaign, onClientMessag
     broadcast(message, (client) => client.campaignId === campaignId && predicate(client));
   }
 
+  function getTypingMap(campaignId) {
+    if (!typingByCampaign.has(campaignId)) {
+      typingByCampaign.set(campaignId, new Map());
+    }
+    return typingByCampaign.get(campaignId);
+  }
+
+  function getRuntimeState(campaignId) {
+    try {
+      return getCampaignRuntime?.(campaignId) || {
+        mode: "freeform",
+        initiativeOrder: [],
+        turnPointer: 0,
+        waitingForGm: false
+      };
+    } catch {
+      return {
+        mode: "freeform",
+        initiativeOrder: [],
+        turnPointer: 0,
+        waitingForGm: false
+      };
+    }
+  }
+
+  function getActiveTurnName(runtime = {}) {
+    const order = Array.isArray(runtime.initiativeOrder) ? runtime.initiativeOrder : [];
+    if (order.length === 0) {
+      return "";
+    }
+    const pointer = Number(runtime.turnPointer || 0);
+    const idx = ((pointer % order.length) + order.length) % order.length;
+    return String(order[idx]?.name || "").trim();
+  }
+
   function presenceForCampaign(campaignId) {
     const users = [];
     const seen = new Set();
+    const typingMap = getTypingMap(campaignId);
+    const runtime = getRuntimeState(campaignId);
+
     for (const client of campaignClients(campaignId)) {
       if (!client.user) {
         continue;
@@ -168,7 +235,9 @@ export function createWsHub({ authenticateToken, canJoinCampaign, onClientMessag
       users.push({
         id: client.user.id,
         displayName: client.user.displayName,
-        email: client.user.email
+        email: client.user.email,
+        typing: Boolean(typingMap.get(client.user.id)),
+        waitingForGm: Boolean(runtime.waitingForGm)
       });
     }
     return users;
@@ -203,6 +272,7 @@ export function createWsHub({ authenticateToken, canJoinCampaign, onClientMessag
       type: "presence",
       campaignId,
       users: presenceForCampaign(campaignId),
+      runtime: getRuntimeState(campaignId),
       timestamp: nowMs()
     });
   }
@@ -289,6 +359,164 @@ export function createWsHub({ authenticateToken, canJoinCampaign, onClientMessag
     return getCampaignLockMap(campaignId).get(resource) || null;
   }
 
+  async function handleGmPlayerMessage(parsed, client) {
+    if (!onGmPlayerMessage) {
+      send(client, {
+        type: "ai_error",
+        campaignId: client.campaignId,
+        error: "GM pipeline unavailable",
+        timestamp: nowMs()
+      });
+      return;
+    }
+
+    const campaignId = client.campaignId;
+    const text = String(parsed?.text || parsed?.message || "").trim();
+    if (!text) {
+      return;
+    }
+
+    const runtime = getRuntimeState(campaignId);
+    const isCombat = runtime.mode === "combat";
+    const isOoc = Boolean(parsed?.ooc);
+    const expectedTurnName = getActiveTurnName(runtime);
+
+    const clientName = String(parsed?.playerName || client.user?.displayName || "").trim();
+    if (isCombat && !isOoc && expectedTurnName) {
+      const isAllowed = normalizeName(expectedTurnName) === normalizeName(clientName);
+      if (!isAllowed) {
+        send(client, {
+          type: "turn_blocked",
+          campaignId,
+          activePlayer: expectedTurnName,
+          yourName: clientName,
+          timestamp: nowMs()
+        });
+        return;
+      }
+    }
+
+    broadcastCampaign(
+      campaignId,
+      {
+        type: "player_message",
+        campaignId,
+        playerName: clientName,
+        text,
+        ooc: isOoc,
+        timestamp: nowMs()
+      },
+      (target) => target.id !== client.id
+    );
+
+    if (isOoc) {
+      return;
+    }
+
+    try {
+      setCampaignRuntime?.(campaignId, {
+        waitingForGm: true
+      });
+    } catch {
+      // Ignore runtime persistence failures here; response still continues.
+    }
+
+    publishPresence(campaignId);
+
+    broadcastCampaign(campaignId, {
+      type: "ai_thinking",
+      campaignId,
+      playerName: clientName,
+      timestamp: nowMs()
+    });
+
+    const streaming = streamEnabled();
+
+    try {
+      const response = await onGmPlayerMessage({
+        campaignId,
+        message: text,
+        mode: "session",
+        playerName: clientName,
+        actorUserId: client.user.id,
+        activePlayers: presenceForCampaign(campaignId).map((entry) => ({
+          name: entry.displayName
+        })),
+        stream: streaming,
+        onStream(chunk) {
+          broadcastCampaign(campaignId, {
+            type: "ai_stream",
+            campaignId,
+            chunk: String(chunk || ""),
+            timestamp: nowMs()
+          });
+        }
+      });
+
+      broadcastCampaign(campaignId, {
+        type: "ai_response",
+        campaignId,
+        narrative: response.narrative,
+        memoryUpdates: response.memoryUpdates || [],
+        meta: response.meta || {},
+        timestamp: nowMs()
+      });
+
+      broadcastCampaign(campaignId, {
+        type: "ai_mechanical",
+        campaignId,
+        mechanical: response.mechanical || { rolls: [], stateChanges: [] },
+        timestamp: nowMs()
+      });
+
+      if (isCombat && !isOoc) {
+        const latest = getRuntimeState(campaignId);
+        const order = Array.isArray(latest.initiativeOrder) ? latest.initiativeOrder : [];
+        if (order.length > 0) {
+          const nextPointer = ((Number(latest.turnPointer || 0) + 1) % order.length + order.length) % order.length;
+          let updated = latest;
+          try {
+            updated = setCampaignRuntime?.(campaignId, { turnPointer: nextPointer }) || {
+              ...latest,
+              turnPointer: nextPointer
+            };
+          } catch {
+            updated = {
+              ...latest,
+              turnPointer: nextPointer
+            };
+          }
+
+          const nextName = getActiveTurnName(updated);
+          broadcastCampaign(campaignId, {
+            type: "turn_change",
+            campaignId,
+            activePlayer: nextName,
+            turnPointer: Number(updated.turnPointer || 0),
+            initiativeOrder: updated.initiativeOrder || [],
+            timestamp: nowMs()
+          });
+        }
+      }
+    } catch (error) {
+      send(client, {
+        type: "ai_error",
+        campaignId,
+        error: String(error?.message || error),
+        timestamp: nowMs()
+      });
+    } finally {
+      try {
+        setCampaignRuntime?.(campaignId, {
+          waitingForGm: false
+        });
+      } catch {
+        // Ignore runtime persistence failures.
+      }
+      publishPresence(campaignId);
+    }
+  }
+
   function handleUpgrade(req, socket, head) {
     const token = parseTokenFromUrl(req);
     const user = authenticateToken ? authenticateToken(token) : null;
@@ -345,6 +573,7 @@ export function createWsHub({ authenticateToken, canJoinCampaign, onClientMessag
       clientId,
       campaignId: client.campaignId,
       user,
+      runtime: getRuntimeState(client.campaignId),
       timestamp: nowMs()
     });
 
@@ -395,6 +624,7 @@ export function createWsHub({ authenticateToken, canJoinCampaign, onClientMessag
           send(client, {
             type: "joined_campaign",
             campaignId: nextCampaignId,
+            runtime: getRuntimeState(nextCampaignId),
             timestamp: nowMs()
           });
 
@@ -402,6 +632,7 @@ export function createWsHub({ authenticateToken, canJoinCampaign, onClientMessag
             releaseAllResourcesOwnedBy(prevCampaign, client.user.id);
             const prevCursorMap = getCampaignCursorMap(prevCampaign);
             prevCursorMap.delete(client.user.id);
+            getTypingMap(prevCampaign).delete(client.user.id);
             publishPresence(prevCampaign);
             publishCursors(prevCampaign);
             publishLocks(prevCampaign);
@@ -410,6 +641,13 @@ export function createWsHub({ authenticateToken, canJoinCampaign, onClientMessag
             publishCursors(nextCampaignId);
             publishLocks(nextCampaignId);
           }
+          continue;
+        }
+
+        if (parsed?.type === "typing") {
+          const typingMap = getTypingMap(client.campaignId);
+          typingMap.set(client.user.id, Boolean(parsed.typing));
+          publishPresence(client.campaignId);
           continue;
         }
 
@@ -462,6 +700,11 @@ export function createWsHub({ authenticateToken, canJoinCampaign, onClientMessag
           continue;
         }
 
+        if (parsed?.type === "gm_player_message") {
+          void handleGmPlayerMessage(parsed, client);
+          continue;
+        }
+
         onClientMessage?.(parsed, client, {
           send,
           sendToClient,
@@ -486,6 +729,7 @@ export function createWsHub({ authenticateToken, canJoinCampaign, onClientMessag
 
       const cursorMap = getCampaignCursorMap(campaignId);
       cursorMap.delete(userId);
+      getTypingMap(campaignId).delete(userId);
       const lockChanged = releaseAllResourcesOwnedBy(campaignId, userId);
 
       publishPresence(campaignId);

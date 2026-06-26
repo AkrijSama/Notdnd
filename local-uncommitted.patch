@@ -1,0 +1,5548 @@
+diff --git a/package.json b/package.json
+index 6eb91cb..0479d0f 100644
+--- a/package.json
++++ b/package.json
+@@ -4,16 +4,21 @@
+   "private": true,
+   "type": "module",
+   "description": "Notdnd scaffold: Roll20 + D&D Beyond mechanics with AI GM placeholders",
++  "dependencies": {
++    "flexsearch": "^0.8.205"
++  },
+   "scripts": {
+     "dev": "node server/index.js",
+     "start": "node server/index.js",
+     "check": "for f in $(rg --files -g '*.js' -g '*.mjs' src server tests scripts); do node --check \"$f\" || exit 1; done",
+-    "test": "node --test tests/*.test.js",
+     "unit": "node --test tests/*.test.js",
+-    "verify": "npm run check && npm run test",
++    "verify": "npm run check && npm run unit",
+     "smoke": "node scripts/smoke.mjs",
++    "smoke:ai": "node scripts/smoke-ai.mjs",
+     "e2e": "node scripts/e2e.mjs",
+-    "verify:full": "npm run verify && npm run smoke && npm run e2e",
++    "test": "npm run verify && npm run smoke",
++    "test:full": "npm run verify && npm run smoke && npm run smoke:ai && npm run e2e",
++    "verify:full": "npm run test:full",
+     "backup": "bash scripts/backup-db.sh",
+     "restore": "bash scripts/restore-db.sh"
+   }
+diff --git a/scripts/smoke.mjs b/scripts/smoke.mjs
+index 9153773..e3c31fe 100644
+--- a/scripts/smoke.mjs
++++ b/scripts/smoke.mjs
+@@ -1,19 +1,43 @@
+ import crypto from "node:crypto";
+-import { spawn } from "node:child_process";
++import fs from "node:fs/promises";
+ import net from "node:net";
++import os from "node:os";
++import path from "node:path";
+ import process from "node:process";
++import { spawn } from "node:child_process";
+ 
+-const port = Number(process.env.SMOKE_PORT || process.env.PORT || 4273);
+ const host = process.env.NOTDND_HOST || process.env.HOST || "127.0.0.1";
++const port = Number(process.env.SMOKE_PORT || process.env.PORT || 4273);
+ const baseUrl = `http://${host}:${port}`;
+ 
++let passCount = 0;
++let failCount = 0;
++let waitlistDuplicateBehavior = "unknown";
++
+ function assert(condition, message) {
+   if (!condition) {
+     throw new Error(message);
+   }
+ }
+ 
+-async function request(path, { method = "GET", token = "", body } = {}) {
++async function runTest(name, fn) {
++  const started = Date.now();
++  try {
++    await fn();
++    passCount += 1;
++    console.log(`PASS ${name} (${Date.now() - started}ms)`);
++  } catch (error) {
++    failCount += 1;
++    console.error(`FAIL ${name} (${Date.now() - started}ms)`);
++    console.error(`  ${String(error?.stack || error?.message || error)}`);
++  }
++}
++
++function printGroup(name) {
++  console.log(`\n=== ${name} ===`);
++}
++
++async function httpRequest(pathname, { method = "GET", token = "", body, expectedStatus } = {}) {
+   const headers = {};
+   if (token) {
+     headers.Authorization = `Bearer ${token}`;
+@@ -22,25 +46,57 @@ async function request(path, { method = "GET", token = "", body } = {}) {
+     headers["Content-Type"] = "application/json";
+   }
+ 
+-  const response = await fetch(`${baseUrl}${path}`, {
++  const response = await fetch(`${baseUrl}${pathname}`, {
+     method,
+     headers,
+     body: body !== undefined ? JSON.stringify(body) : undefined
+   });
+-  const payload = await response.json();
+-  if (!response.ok || payload.ok === false) {
+-    throw new Error(`${method} ${path} failed: ${payload.error || response.status}`);
++
++  const text = await response.text();
++  let payload = {};
++  try {
++    payload = text ? JSON.parse(text) : {};
++  } catch {
++    payload = { raw: text };
++  }
++
++  if (expectedStatus !== undefined) {
++    assert(response.status === expectedStatus, `${method} ${pathname} expected ${expectedStatus}, got ${response.status}`);
++    return { response, payload };
++  }
++
++  if (!response.ok || payload?.ok === false) {
++    throw new Error(`${method} ${pathname} failed: ${payload?.error || response.status}`);
++  }
++
++  return { response, payload };
++}
++
++async function waitForHealth(timeoutMs = 15_000) {
++  const started = Date.now();
++  while (Date.now() - started < timeoutMs) {
++    try {
++      const response = await fetch(`${baseUrl}/api/health`);
++      if (response.ok) {
++        const payload = await response.json();
++        if (payload?.ok) {
++          return payload;
++        }
++      }
++    } catch {
++      // retry while server is starting
++    }
++    await new Promise((resolve) => setTimeout(resolve, 250));
+   }
+-  return payload;
++  throw new Error(`Server did not become healthy at ${baseUrl} within ${timeoutMs}ms`);
+ }
+ 
+ function encodeMaskedTextFrame(text) {
+   const payload = Buffer.from(text, "utf8");
+   const mask = crypto.randomBytes(4);
+   if (payload.length >= 126) {
+-    throw new Error("Smoke websocket payload too large");
++    throw new Error("WebSocket smoke payload too large");
+   }
+-
+   const header = Buffer.from([0x81, 0x80 | payload.length]);
+   const masked = Buffer.alloc(payload.length);
+   for (let i = 0; i < payload.length; i += 1) {
+@@ -57,20 +113,20 @@ function decodeFrames(buffer) {
+     const first = buffer[offset];
+     const second = buffer[offset + 1];
+     const opcode = first & 0x0f;
+-    let length = second & 0x7f;
++    let payloadLength = second & 0x7f;
+     let headerLength = 2;
+ 
+-    if (length === 126) {
++    if (payloadLength === 126) {
+       if (offset + 4 > buffer.length) {
+         break;
+       }
+-      length = buffer.readUInt16BE(offset + 2);
++      payloadLength = buffer.readUInt16BE(offset + 2);
+       headerLength = 4;
+     }
+ 
+     const masked = Boolean(second & 0x80);
+     const maskLength = masked ? 4 : 0;
+-    const totalLength = headerLength + maskLength + length;
++    const totalLength = headerLength + maskLength + payloadLength;
+     if (offset + totalLength > buffer.length) {
+       break;
+     }
+@@ -89,18 +145,56 @@ function decodeFrames(buffer) {
+   };
+ }
+ 
+-async function websocketSmoke({ token, campaignId }) {
++function makeWsClient({ token, campaignId }) {
+   const socket = net.createConnection({ host, port });
+   const key = crypto.randomBytes(16).toString("base64");
++
+   let stage = "handshake";
+   let handshakeBuffer = "";
+   let frameBuffer = Buffer.alloc(0);
+-  const messageTypes = [];
++  const events = [];
++  const waiters = [];
++
++  function deliver(event) {
++    for (let i = 0; i < waiters.length; i += 1) {
++      const waiter = waiters[i];
++      if (waiter.predicate(event)) {
++        waiters.splice(i, 1);
++        clearTimeout(waiter.timer);
++        waiter.resolve(event);
++        return;
++      }
++    }
++    events.push(event);
++  }
++
++  function waitFor(predicate, timeoutMs = 5000) {
++    for (let i = 0; i < events.length; i += 1) {
++      const event = events[i];
++      if (predicate(event)) {
++        events.splice(i, 1);
++        return Promise.resolve(event);
++      }
++    }
++
++    return new Promise((resolve, reject) => {
++      const timer = setTimeout(() => {
++        const timeoutError = new Error("WAIT_TIMEOUT");
++        timeoutError.code = "WAIT_TIMEOUT";
++        const idx = waiters.findIndex((entry) => entry.resolve === resolve);
++        if (idx !== -1) {
++          waiters.splice(idx, 1);
++        }
++        reject(timeoutError);
++      }, timeoutMs);
++      waiters.push({ predicate, resolve, reject, timer });
++    });
++  }
+ 
+-  await new Promise((resolve, reject) => {
++  const connectedPromise = new Promise((resolve, reject) => {
+     const timer = setTimeout(() => {
+       socket.destroy();
+-      reject(new Error("websocket smoke timeout"));
++      reject(new Error("WebSocket connect timeout"));
+     }, 5000);
+ 
+     socket.on("connect", () => {
+@@ -123,11 +217,18 @@ async function websocketSmoke({ token, campaignId }) {
+           return;
+         }
+ 
+-        const headerText = handshakeBuffer.slice(0, marker);
+-        assert(headerText.includes("101 Switching Protocols"), "websocket handshake failed");
++        const headers = handshakeBuffer.slice(0, marker);
++        if (!headers.includes("101 Switching Protocols")) {
++          clearTimeout(timer);
++          reject(new Error("WebSocket handshake failed"));
++          return;
++        }
++
+         const rest = Buffer.from(handshakeBuffer.slice(marker + 4), "binary");
+         frameBuffer = Buffer.concat([frameBuffer, rest]);
+         stage = "frames";
++        clearTimeout(timer);
++        resolve();
+       } else {
+         frameBuffer = Buffer.concat([frameBuffer, chunk]);
+       }
+@@ -136,15 +237,10 @@ async function websocketSmoke({ token, campaignId }) {
+         const decoded = decodeFrames(frameBuffer);
+         frameBuffer = decoded.remaining;
+         for (const raw of decoded.messages) {
+-          const payload = JSON.parse(raw);
+-          messageTypes.push(payload.type);
+-          if (payload.type === "connected") {
+-            socket.write(encodeMaskedTextFrame(JSON.stringify({ type: "cursor_update", x: 2, y: 3, label: "move" })));
+-          }
+-          if (payload.type === "cursor_state") {
+-            clearTimeout(timer);
+-            socket.end();
+-            resolve();
++          try {
++            deliver(JSON.parse(raw));
++          } catch {
++            // ignore malformed payloads
+           }
+         }
+       }
+@@ -156,145 +252,556 @@ async function websocketSmoke({ token, campaignId }) {
+     });
+   });
+ 
+-  return messageTypes;
++  return {
++    connectedPromise,
++    waitFor,
++    send(message) {
++      socket.write(encodeMaskedTextFrame(JSON.stringify(message)));
++    },
++    clearEvents() {
++      events.length = 0;
++    },
++    close() {
++      socket.end();
++    }
++  };
+ }
+ 
+-async function waitForHealth(timeoutMs = 15000) {
+-  const startedAt = Date.now();
+-  while (Date.now() - startedAt < timeoutMs) {
+-    try {
+-      const health = await request("/api/health");
+-      if (health.ok) {
+-        return health;
+-      }
+-    } catch {
+-      // retry until server is ready
++async function expectNoEvent(client, predicate, timeoutMs = 1500) {
++  try {
++    const event = await client.waitFor(predicate, timeoutMs);
++    throw new Error(`Unexpected event: ${String(event?.type || "unknown")}`);
++  } catch (error) {
++    if (error?.code === "WAIT_TIMEOUT") {
++      return;
+     }
+-    await new Promise((resolve) => setTimeout(resolve, 250));
++    throw error;
+   }
+-  throw new Error(`Server did not become healthy at ${baseUrl} within ${timeoutMs}ms`);
+ }
+ 
+-async function main() {
+-  const server = spawn(process.execPath, ["scripts/start-test-server.mjs"], {
++function startServer() {
++  const child = spawn(process.execPath, ["scripts/start-test-server.mjs"], {
+     cwd: process.cwd(),
+     env: {
+       ...process.env,
+       PORT: String(port),
+-      NOTDND_HOST: host
++      NOTDND_HOST: host,
++      NOTDND_MOCK_OPENROUTER: "true",
++      NOTDND_STREAM: "true"
+     },
+     stdio: ["ignore", "pipe", "pipe"]
+   });
+ 
+   let stdout = "";
+   let stderr = "";
+-  server.stdout.on("data", (chunk) => {
++  child.stdout.on("data", (chunk) => {
+     stdout += chunk.toString();
+   });
+-  server.stderr.on("data", (chunk) => {
++  child.stderr.on("data", (chunk) => {
+     stderr += chunk.toString();
+   });
+ 
+-  try {
+-    const health = await waitForHealth();
+-    assert(health.service === "notdnd-api", "health check failed");
++  return {
++    async stop() {
++      if (!child.killed) {
++        child.kill("SIGTERM");
++      }
++      await new Promise((resolve) => child.once("exit", resolve));
++      if (stderr.trim()) {
++        process.stderr.write(stderr);
++      }
++      if (stdout.trim()) {
++        process.stdout.write(stdout);
++      }
++    }
++  };
++}
++
++function mdEntity({ type, name, tags, relations, body }) {
++  const relationLines = (relations || [])
++    .map((relation) => `  - target: \"${relation.target}\"\n    type: ${relation.type}`)
++    .join("\n");
++
++  return [
++    "---",
++    `type: ${type}`,
++    `name: \"${name}\"`,
++    `tags: [${(tags || []).join(", ")}]`,
++    "relations:",
++    relationLines,
++    "lastAccessed: 2026-03-04T12:00:00Z",
++    "lastUpdated: 2026-03-04T12:00:00Z",
++    "accessCount: 1",
++    "confidence: 0.95",
++    "---",
++    "",
++    body,
++    ""
++  ].join("\n");
++}
++
++async function main() {
++  const localTmp = await fs.mkdtemp(path.join(os.tmpdir(), "notdnd-smoke-local-"));
++  const localDbPath = path.join(localTmp, "smoke.db.json");
++  const localMemoryRoot = path.join(localTmp, "memory");
++
++  process.env.NOTDND_DB_PATH = localDbPath;
++  process.env.NOTDND_MEMORY_ROOT = localMemoryRoot;
++  process.env.NOTDND_MOCK_OPENROUTER = "true";
++
++  const repository = await import("../server/db/repository.js");
++  const memoryStore = await import("../server/gm/memoryStore.js");
++  const triggerParser = await import("../server/gm/triggerParser.js");
++  const promptProfiles = await import("../server/gm/promptProfiles.js");
++  const onboarding = await import("../server/campaign/onboarding.js");
++  const prompting = await import("../server/gm/prompting.js");
++
++  repository.initializeDatabase();
++  repository.resetDatabase();
++
++  printGroup("Memory Store");
++  const memoryCampaignId = `cmp_smoke_memory_${Date.now()}`;
++  const memoryCampaignRoot = path.join(localMemoryRoot, memoryCampaignId);
++  const memoryDir = path.join(memoryCampaignRoot, "memory");
++
++  await runTest("1) create temp campaign and initialize index", async () => {
++    await fs.mkdir(memoryDir, { recursive: true });
++    await fs.writeFile(
++      path.join(memoryDir, "mira.md"),
++      mdEntity({
++        type: "npc",
++        name: "Mira",
++        tags: ["ashenmoor", "tavern-keeper", "quest-giver"],
++        relations: [
++          { target: "The Shattered Flagon", type: "resides_in" },
++          { target: "The Missing Shipment", type: "investigating" }
++        ],
++        body: "Mira tends bar in [[The Shattered Flagon]] and worries about [[The Missing Shipment]]."
++      }),
++      "utf8"
++    );
++    await fs.writeFile(
++      path.join(memoryDir, "the-shattered-flagon.md"),
++      mdEntity({
++        type: "location",
++        name: "The Shattered Flagon",
++        tags: ["ashenmoor", "tavern"],
++        relations: [{ target: "Ashenmoor", type: "located_in" }],
++        body: "A tavern in [[Ashenmoor]] where rumors move faster than ale. [[Mira]] runs the house."
++      }),
++      "utf8"
++    );
++    await fs.writeFile(
++      path.join(memoryDir, "the-missing-shipment.md"),
++      mdEntity({
++        type: "quest",
++        name: "The Missing Shipment",
++        tags: ["quest", "caravan"],
++        relations: [{ target: "Ashenmoor", type: "threatens" }],
++        body: "A caravan vanished on the road to [[Ashenmoor]]."
++      }),
++      "utf8"
++    );
++
++    const rebuilt = await memoryStore.rebuildCampaignIndex(memoryCampaignId);
++    assert(rebuilt.entities >= 3, "expected at least 3 entities indexed");
++  });
++
++  await runTest("2) search tavern finds location", async () => {
++    const results = await memoryStore.search(memoryCampaignId, "tavern", { limit: 5 });
++    assert(results.some((entry) => entry.name === "The Shattered Flagon"), "expected tavern result");
++  });
++
++  await runTest("3) type filter npc returns only NPC rows", async () => {
++    const results = await memoryStore.search(memoryCampaignId, "mira", { type: "npc", limit: 5 });
++    assert(results.length >= 1, "expected npc results");
++    assert(results.every((entry) => entry.type === "npc"), "type filter failed");
++  });
++
++  await runTest("4) getRelated(Mira, 1) traverses linked graph", async () => {
++    const related = await memoryStore.getRelated(memoryCampaignId, "Mira", 1);
++    const names = new Set((related.entities || []).map((entry) => entry.name));
++    assert(names.has("Mira"), "missing Mira root");
++    assert(names.has("The Shattered Flagon"), "missing linked tavern");
++  });
++
++  await runTest("5) upsertEntity creates new file with frontmatter", async () => {
++    const entity = await memoryStore.upsertEntity(memoryCampaignId, {
++      name: "Captain Rook",
++      type: "npc",
++      tags: ["smuggler"],
++      body: "A smuggler who keeps one eye on the river and one on the law.",
++      relations: [{ target: "Ashenmoor", type: "operates_in" }]
++    });
++
++    const filePath = path.join(memoryDir, entity.fileName);
++    const raw = await fs.readFile(filePath, "utf8");
++    assert(raw.includes("---"), "missing frontmatter boundary");
++    assert(raw.includes("name: \"Captain Rook\""), "missing frontmatter name");
++  });
+ 
+-    const login = await request("/api/auth/login", {
+-      method: "POST",
+-      body: { email: "demo@notdnd.local", password: "demo1234" }
++  await runTest("6) upsert existing entity updates without duplicates", async () => {
++    await memoryStore.upsertEntity(memoryCampaignId, {
++      name: "Mira",
++      type: "npc",
++      tags: ["updated"],
++      body: "Mira keeps the tavern ledger under lock and key.",
++      relations: [{ target: "The Shattered Flagon", type: "resides_in" }]
+     });
+-    assert(login.token, "login token missing");
+-    const token = login.token;
+-
+-    const state = await request("/api/state", { token });
+-    const campaignId = state.state.selectedCampaignId;
+-    assert(campaignId, "selected campaign missing");
+-
+-    const providers = await request("/api/ai/providers", { token });
+-    assert(providers.providers.some((entry) => entry.key === "local"), "local provider missing");
+-    assert(providers.providers.some((entry) => entry.key === "chatgpt"), "chatgpt provider missing");
+-
+-    const memoryDocs = await request(`/api/gm/memory?campaignId=${encodeURIComponent(campaignId)}`, { token });
+-    assert(memoryDocs.docs.length === 3, "expected 3 memory docs");
+-
+-    await request("/api/gm/memory", {
+-      method: "POST",
+-      token,
+-      body: {
+-        campaignId,
+-        docKey: "timeline",
+-        content: "# Shared Timeline\n\n## Smoke\nThe party recovered the ember key.\n"
++    const files = await fs.readdir(memoryDir);
++    const miraFiles = files.filter((file) => file.toLowerCase().includes("mira") && file.endsWith(".md"));
++    assert(miraFiles.length === 1, `expected one Mira file, got ${miraFiles.length}`);
++  });
++
++  await runTest("7) buildContextWindow respects proxy budget", async () => {
++    const context = await memoryStore.buildContextWindow(memoryCampaignId, "mira tavern shipment", 1500);
++    assert(context.length <= 6000, `expected <= 6000 chars, got ${context.length}`);
++  });
++
++  await runTest("8) buildContextWindow includes relevant and related entities", async () => {
++    const context = await memoryStore.buildContextWindow(memoryCampaignId, "mira tavern shipment", 1500);
++    assert(context.includes("Mira"), "expected Mira in context window");
++    assert(context.includes("The Shattered Flagon"), "expected tavern in context window");
++  });
++
++  await runTest("9) recordAccess bumps lastAccessed and accessCount", async () => {
++    const before = await memoryStore.getEntity(memoryCampaignId, "Mira");
++    await memoryStore.recordAccess(memoryCampaignId, "Mira");
++    const after = await memoryStore.getEntity(memoryCampaignId, "Mira");
++    assert(Number(after.accessCount) === Number(before.accessCount) + 1, "accessCount did not increment");
++    assert(new Date(after.lastAccessed).getTime() >= new Date(before.lastAccessed).getTime(), "lastAccessed did not advance");
++  });
++
++  await runTest("10) cleanup temp campaign directory", async () => {
++    await fs.rm(memoryCampaignRoot, { recursive: true, force: true });
++    await fs.access(memoryCampaignRoot).then(
++      () => {
++        throw new Error("campaign directory should be removed");
++      },
++      () => {}
++    );
++  });
++
++  printGroup("Trigger Parser");
++
++  await runTest("11) parse clean CHECK trigger", async () => {
++    const parsed = triggerParser.parseTriggers("You force the latch. [CHECK: Strength DC 14]");
++    assert(parsed.triggers.length === 1, "expected one trigger");
++    assert(parsed.triggers[0].type === "CHECK", "expected CHECK type");
++    assert(parsed.narrative === "You force the latch.", "expected clean narrative");
++  });
++
++  await runTest("12) parse INITIATIVE embedded in prose", async () => {
++    const parsed = triggerParser.parseTriggers("Steel flashes [INITIATIVE] around the room.");
++    assert(parsed.triggers.some((entry) => entry.type === "INITIATIVE"), "expected INITIATIVE trigger");
++  });
++
++  await runTest("13) parse multiple triggers in one response", async () => {
++    const parsed = triggerParser.parseTriggers("[CHECK: DEX DC 12] [DAMAGE: 1d8+3 slashing] [NEW_ENTITY: name=Garrick type=npc]");
++    assert(parsed.triggers.length === 3, "expected three triggers");
++    assert(parsed.triggers[0].type === "CHECK", "CHECK order mismatch");
++    assert(parsed.triggers[1].type === "DAMAGE", "DAMAGE order mismatch");
++    assert(parsed.triggers[2].type === "NEW_ENTITY", "NEW_ENTITY order mismatch");
++  });
++
++  await runTest("14) no triggers leaves narrative unchanged", async () => {
++    const source = "Mira watches the door while thunder rolls.";
++    const parsed = triggerParser.parseTriggers(source);
++    assert(parsed.triggers.length === 0, "expected zero triggers");
++    assert(parsed.narrative === source, "narrative changed unexpectedly");
++  });
++
++  await runTest("15) malformed CHECK without colon parses leniently", async () => {
++    const parsed = triggerParser.parseTriggers("[CHECK Strength DC14]");
++    assert(parsed.triggers.length === 1, "expected one trigger");
++    assert(parsed.triggers[0].type === "CHECK", "expected CHECK");
++    assert(parsed.triggers[0].parsed.dc === 14, "expected DC 14");
++  });
++
++  await runTest("16) variant trigger names parse correctly", async () => {
++    const parsed = triggerParser.parseTriggers("[SKILL CHECK: Dexterity DC 12] [ROLL INITIATIVE] [TREASURE: rare]");
++    const types = parsed.triggers.map((entry) => entry.type);
++    assert(types.includes("CHECK"), "missing CHECK variant");
++    assert(types.includes("INITIATIVE"), "missing INITIATIVE variant");
++    const loot = parsed.triggers.find((entry) => entry.type === "LOOT");
++    assert(loot?.parsed?.tier === "rare", "expected rare loot tier");
++  });
++
++  await runTest("17) DC clamp handles low/high bounds", async () => {
++    const low = triggerParser.parseTriggers("[CHECK: Strength DC 0]").triggers[0];
++    const high = triggerParser.parseTriggers("[CHECK: Strength DC 35]").triggers[0];
++    assert(low.parsed.dc === 1, "expected low clamp to 1");
++    assert(high.parsed.dc === 30, "expected high clamp to 30");
++  });
++
++  printGroup("Prompt Profiles");
++
++  await runTest("18) getProfile resolves grok prefix", async () => {
++    const profile = promptProfiles.getProfile("x-ai/grok-3");
++    assert(profile.maxResponseTokens === 600, "unexpected grok max tokens");
++    assert(String(profile.triggerFormat).includes("CRITICAL"), "missing grok trigger format");
++  });
++
++  await runTest("19) getProfile resolves venice prefix", async () => {
++    const profile = promptProfiles.getProfile("venice/uncensored:free");
++    assert(profile.maxResponseTokens === 400, "unexpected venice max tokens");
++    assert(String(profile.triggerFormat).includes("EXACT trigger syntax"), "missing venice trigger format");
++  });
++
++  await runTest("20) unknown model uses default meta-llama profile", async () => {
++    const unknown = promptProfiles.getProfile("unknown-model/v1");
++    const fallback = promptProfiles.getProfile("meta-llama/llama-3.3-70b-instruct:free");
++    assert(unknown.responseStyle === fallback.responseStyle, "unknown model did not fallback to meta-llama profile");
++  });
++
++  await runTest("21) all profiles expose required fields", async () => {
++    const catalog = promptProfiles.listProfiles();
++    const required = ["triggerFormat", "responseStyle", "structuredHints", "temperature", "maxResponseTokens", "stopSequences"];
++    for (const [prefix, profile] of Object.entries(catalog)) {
++      for (const key of required) {
++        assert(profile[key] !== undefined, `${prefix} missing ${key}`);
+       }
++      assert(Array.isArray(profile.stopSequences), `${prefix} stopSequences must be array`);
++    }
++  });
++
++  printGroup("Onboarding");
++
++  await runTest("22) createOnboardingCampaign seeds campaign and memory graph", async () => {
++    repository.resetDatabase();
++    const login = repository.loginUser({ email: "demo@notdnd.local", password: "demo1234" });
++    const campaignId = await onboarding.createOnboardingCampaign(login.user.id, {
++      characterName: "Nyx",
++      archetype: "a disgraced knight",
++      backstorySnippet: "I fled the capital after betraying my order."
++    });
++
++    const state = repository.getState({ userId: login.user.id });
++    assert(state.campaigns.some((entry) => entry.id === campaignId), "missing onboarding campaign");
++
++    const onboardingMemoryDir = path.join(localMemoryRoot, campaignId, "memory");
++    const seedFiles = (await fs.readdir(onboardingMemoryDir)).filter((entry) => entry.endsWith(".md"));
++    assert(seedFiles.length >= 9, `expected >=9 seed docs, got ${seedFiles.length}`);
++
++    const miraSeed = await fs.readFile(path.join(onboardingMemoryDir, "03-npc-mira.md"), "utf8");
++    assert(miraSeed.includes("type: npc"), "Mira seed frontmatter missing type");
++    assert(miraSeed.includes("[[The Shattered Flagon]]"), "Mira seed missing wiki links");
++
++    const playerEntity = await memoryStore.getEntity(campaignId, "Nyx");
++    assert(playerEntity, "player_character entity missing");
++    assert(/disgraced knight/i.test(playerEntity.body), "archetype missing from player entity");
++    assert(/fled the capital/i.test(playerEntity.body), "backstory snippet missing from player entity");
++
++    await fs.rm(path.join(localMemoryRoot, campaignId), { recursive: true, force: true });
++  });
++
++  printGroup("Server Smoke");
++  const server = startServer();
++
++  try {
++    await runTest("23) server health endpoint is available", async () => {
++      const health = await waitForHealth();
++      assert(health.service === "notdnd-api", "unexpected health service name");
++    });
++
++    let token = "";
++    let campaignId = "";
++
++    await runTest("24) login and fetch campaign id", async () => {
++      const login = await httpRequest("/api/auth/login", {
++        method: "POST",
++        body: { email: "demo@notdnd.local", password: "demo1234" }
++      });
++      token = login.payload.token;
++      assert(token, "missing auth token");
++      const state = await httpRequest("/api/state", { token });
++      campaignId = state.payload.state.selectedCampaignId;
++      assert(campaignId, "missing selected campaign");
++    });
++
++    printGroup("Waitlist");
++
++    await runTest("25) POST /api/waitlist accepts valid email", async () => {
++      const response = await httpRequest("/api/waitlist", {
++        method: "POST",
++        body: { email: "smoke.waitlist@example.com", interest: "All of it" }
++      });
++      assert(response.payload.success === true, "waitlist success missing");
+     });
+ 
+-    const memorySearch = await request("/api/gm/memory/search", {
+-      method: "POST",
+-      token,
+-      body: { campaignId, query: "ember key", limit: 5 }
++    await runTest("26) POST /api/waitlist rejects invalid email", async () => {
++      const response = await httpRequest("/api/waitlist", {
++        method: "POST",
++        body: { email: "invalid-email", interest: "AI Game Master" },
++        expectedStatus: 400
++      });
++      assert(response.payload.ok === false, "expected error response");
+     });
+-    assert(memorySearch.results.length >= 1, "memory search returned no results");
+-
+-    const humanResponse = await request("/api/gm/respond", {
+-      method: "POST",
+-      token,
+-      body: {
+-        campaignId,
+-        mode: "human",
+-        provider: "local",
+-        model: "local-gm-v1",
+-        message: "Need pacing help for the reveal."
++
++    await runTest("27) duplicate waitlist handling is documented", async () => {
++      await httpRequest("/api/waitlist", {
++        method: "POST",
++        body: { email: "smoke.duplicate@example.com", interest: "Multiplayer" }
++      });
++      await httpRequest("/api/waitlist", {
++        method: "POST",
++        body: { email: "smoke.duplicate@example.com", interest: "Never-Forget Memory" }
++      });
++
++      const list = await httpRequest("/api/waitlist", { token });
++      const matches = (list.payload.entries || []).filter((entry) => entry.email === "smoke.duplicate@example.com");
++      if (matches.length >= 2) {
++        waitlistDuplicateBehavior = "allow";
++      } else if (matches.length === 1) {
++        waitlistDuplicateBehavior = "dedupe";
++      } else {
++        throw new Error("duplicate email not persisted");
+       }
+     });
+-    assert(humanResponse.result.text, "human gm response missing text");
+-
+-    const quickstartParse = await request("/api/quickstart/parse", {
+-      method: "POST",
+-      token,
+-      body: {
+-        files: [
+-          {
+-            name: "smoke-homebrew.md",
+-            content: "# Harbor Siege\nLocation: Drowned Harbor\nNPC: Captain Vey\nMonster: Harbor Ghoul\nSpell: Salt Ward\nItem: Tideglass Key\nEncounter: Harbor Ambush\nRule: Flood Clock"
++
++    printGroup("API Routes");
++
++    await runTest("28) GET /api/ai/usage without auth returns 401", async () => {
++      const response = await httpRequest(`/api/ai/usage?campaignId=${encodeURIComponent(campaignId)}`, {
++        expectedStatus: 401
++      });
++      assert(response.payload.code === "UNAUTHORIZED", "expected UNAUTHORIZED code");
++    });
++
++    await runTest("29) GET /api/ai/usage with auth returns usage shape", async () => {
++      const response = await httpRequest(`/api/ai/usage?campaignId=${encodeURIComponent(campaignId)}`, { token });
++      assert(response.payload.usage, "missing usage payload");
++      assert(typeof response.payload.usage.promptTokens === "number", "promptTokens should be a number");
++      assert(response.payload.modelTiers?.narrative, "missing model tier mapping");
++    });
++
++    await runTest("30) POST /api/gm/respond companion hits pipeline and trigger parser", async () => {
++      const response = await httpRequest("/api/gm/respond", {
++        method: "POST",
++        token,
++        body: {
++          campaignId,
++          mode: "companion",
++          message: "I try to pick the lock behind the bar.",
++          playerName: "Demo GM"
++        }
++      });
++      assert(typeof response.payload.narrative === "string" && response.payload.narrative.length > 0, "missing narrative");
++      assert(Array.isArray(response.payload.mechanical?.rolls), "missing mechanical rolls");
++      assert(response.payload.mechanical.rolls.some((roll) => roll.type === "check"), "expected check roll result");
++      assert(!response.payload.narrative.includes("[CHECK"), "narrative should not include trigger tags");
++    });
++
++    await runTest("31) runGmPipeline builds profiled system prompt (direct)", async () => {
++      const login = repository.loginUser({ email: "demo@notdnd.local", password: "demo1234" });
++      const state = repository.getState({ userId: login.user.id });
++      const response = await prompting.runGmPipeline({
++        campaignId: state.selectedCampaignId,
++        message: "Tell me about Mira.",
++        mode: "companion",
++        playerName: "Demo GM",
++        actorUserId: login.user.id
++      });
++      assert(response.meta?.systemPrompt?.includes("[TRIGGER FORMAT]"), "missing trigger format prompt section");
++      assert(response.meta?.systemPrompt?.includes("[RESPONSE STYLE]"), "missing response style prompt section");
++      assert(typeof response.meta?.profile?.temperature === "number", "missing profile temperature metadata");
++    });
++
++    await runTest("32) GET /api/gm/memory returns entity list", async () => {
++      const response = await httpRequest(`/api/gm/memory?campaignId=${encodeURIComponent(campaignId)}`, { token });
++      assert(Array.isArray(response.payload.entities), "entities should be an array");
++    });
++
++    await runTest("33) POST /api/gm/memory/search routes through memoryStore", async () => {
++      await httpRequest("/api/gm/memory", {
++        method: "POST",
++        token,
++        body: {
++          campaignId,
++          entity: {
++            name: "Smoke Search Tavern",
++            type: "location",
++            tags: ["smoke", "tavern"],
++            body: "A test tavern for smoke route validation."
+           }
+-        ]
+-      }
++        }
++      });
++
++      const response = await httpRequest("/api/gm/memory/search", {
++        method: "POST",
++        token,
++        body: {
++          campaignId,
++          query: "smoke tavern",
++          limit: 5
++        }
++      });
++
++      assert(Array.isArray(response.payload.results), "results should be array");
++      assert(response.payload.results.some((entry) => entry.name === "Smoke Search Tavern"), "search did not return inserted entity");
+     });
+-    assert((quickstartParse.parsed.summary.scenes || 0) >= 1, "quickstart parse scenes missing");
+-
+-    const quickstartBuild = await request("/api/quickstart/build", {
+-      method: "POST",
+-      token,
+-      body: {
+-        campaignName: "Smoke Campaign",
+-        setting: "Storm Coast",
+-        players: ["Kai", "Rune"],
+-        parsed: quickstartParse.parsed
++
++    printGroup("WebSocket Session Sync");
++
++    await runTest("34) 2 WS clients sync player message + ai_thinking, OOC skips AI", async () => {
++      const clientA = makeWsClient({ token, campaignId });
++      const clientB = makeWsClient({ token, campaignId });
++
++      try {
++        await clientA.connectedPromise;
++        await clientB.connectedPromise;
++        await clientA.waitFor((event) => event.type === "connected", 5000);
++        await clientB.waitFor((event) => event.type === "connected", 5000);
++
++        clientA.send({
++          type: "gm_player_message",
++          message: "I step into the rain and draw steel.",
++          playerName: "Demo GM"
++        });
++
++        const echoed = await clientB.waitFor(
++          (event) => event.type === "player_message" && /draw steel/i.test(String(event.text || "")),
++          5000
++        );
++        assert(echoed.playerName === "Demo GM", "player message did not fan out");
++        await clientA.waitFor((event) => event.type === "ai_thinking", 5000);
++        await clientB.waitFor((event) => event.type === "ai_thinking", 5000);
++        await clientA.waitFor((event) => event.type === "ai_response", 5000);
++        await clientB.waitFor((event) => event.type === "ai_response", 5000);
++
++        clientA.clearEvents();
++        clientB.clearEvents();
++
++        clientA.send({
++          type: "gm_player_message",
++          message: "(OOC) quick table check",
++          playerName: "Demo GM",
++          ooc: true
++        });
++
++        await clientB.waitFor((event) => event.type === "player_message" && event.ooc === true, 5000);
++        await expectNoEvent(clientA, (event) => event.type === "ai_thinking" || event.type === "ai_response", 1500);
++        await expectNoEvent(clientB, (event) => event.type === "ai_thinking" || event.type === "ai_response", 1500);
++      } finally {
++        clientA.close();
++        clientB.close();
+       }
+     });
+-    assert(quickstartBuild.launch.campaignId, "quickstart build missing campaign id");
+-
+-    const wsMessages = await websocketSmoke({ token, campaignId });
+-    assert(wsMessages.includes("connected"), "websocket connected missing");
+-    assert(wsMessages.includes("cursor_state"), "websocket cursor_state missing");
+-
+-    console.log(JSON.stringify({
+-      ok: true,
+-      baseUrl,
+-      campaignId,
+-      builtCampaignId: quickstartBuild.launch.campaignId,
+-      wsMessages
+-    }, null, 2));
+   } finally {
+-    if (!server.killed) {
+-      server.kill("SIGTERM");
+-    }
+-    await new Promise((resolve) => server.once("exit", resolve));
+-    if (stderr.trim()) {
+-      process.stderr.write(stderr);
+-    }
+-    if (stdout.trim()) {
+-      process.stdout.write(stdout);
+-    }
++    await server.stop();
++  }
++
++  await fs.rm(localTmp, { recursive: true, force: true });
++
++  const total = passCount + failCount;
++  console.log("\n=== Smoke Summary ===");
++  console.log(`Passed: ${passCount}`);
++  console.log(`Failed: ${failCount}`);
++  console.log(`Total: ${total}`);
++  console.log(`Waitlist duplicate handling: ${waitlistDuplicateBehavior}`);
++
++  if (failCount > 0) {
++    process.exit(1);
+   }
+ }
+ 
+diff --git a/server/api/http.js b/server/api/http.js
+index 8cef91c..f3cf8b1 100644
+--- a/server/api/http.js
++++ b/server/api/http.js
+@@ -49,15 +49,39 @@ export function writeText(res, statusCode, text) {
+ export function serveStatic(req, res, rootDir) {
+   const requestPath = req.url === "/" ? "/index.html" : req.url;
+   const pathname = decodeURIComponent((requestPath || "/").split("?")[0]);
+-  const safePath = path.normalize(pathname).replace(/^\.\.(\/|\\|$)/, "");
+-  const absolutePath = path.join(rootDir, safePath);
++  const safePath = path.normalize(pathname).replace(/^(\.\.(\/|\\|$))+/, "");
++  const normalized = safePath.replace(/^[/\\]+/, "");
+ 
+-  if (!absolutePath.startsWith(rootDir)) {
+-    writeText(res, 403, "Forbidden");
+-    return;
++  const candidates = [path.join(rootDir, normalized)];
++  if (!path.extname(normalized)) {
++    candidates.push(path.join(rootDir, `${normalized}.html`));
++  }
++
++  let absolutePath = null;
++  for (const candidate of candidates) {
++    if (!candidate.startsWith(rootDir)) {
++      continue;
++    }
++    if (!fs.existsSync(candidate)) {
++      continue;
++    }
++
++    const stat = fs.statSync(candidate);
++    if (stat.isFile()) {
++      absolutePath = candidate;
++      break;
++    }
++
++    if (stat.isDirectory()) {
++      const indexPath = path.join(candidate, "index.html");
++      if (indexPath.startsWith(rootDir) && fs.existsSync(indexPath) && fs.statSync(indexPath).isFile()) {
++        absolutePath = indexPath;
++        break;
++      }
++    }
+   }
+ 
+-  if (!fs.existsSync(absolutePath) || fs.statSync(absolutePath).isDirectory()) {
++  if (!absolutePath) {
+     writeText(res, 404, "Not found");
+     return;
+   }
+diff --git a/server/api/quickstartRoutes.js b/server/api/quickstartRoutes.js
+index 7dc05f4..336348d 100644
+--- a/server/api/quickstartRoutes.js
++++ b/server/api/quickstartRoutes.js
+@@ -8,7 +8,7 @@ export function handleQuickstartParsePayload(payload = {}, deps = {}) {
+   return { parsed };
+ }
+ 
+-export function handleQuickstartBuildPayload(payload = {}, deps = {}) {
++export async function handleQuickstartBuildPayload(payload = {}, deps = {}) {
+   const parseFn = deps.parseHomebrewDocuments || parseHomebrewDocuments;
+   const buildFn = deps.createQuickstartCampaignFromParsed || createQuickstartCampaignFromParsed;
+   const stateFn = deps.getState || getState;
+@@ -17,7 +17,7 @@ export function handleQuickstartBuildPayload(payload = {}, deps = {}) {
+   const parsed = payload.parsed && typeof payload.parsed === "object" ? payload.parsed : parseFn(files);
+   const players = Array.isArray(payload.players) ? payload.players : [];
+ 
+-  const launch = buildFn({
++  const launch = await buildFn({
+     campaignName: payload.campaignName,
+     setting: payload.setting,
+     players,
+diff --git a/server/db/repository.js b/server/db/repository.js
+index 1caa7b5..b6297d7 100644
+--- a/server/db/repository.js
++++ b/server/db/repository.js
+@@ -2,7 +2,7 @@ import crypto from "node:crypto";
+ import fs from "node:fs";
+ import path from "node:path";
+ import { buildQuickstartBlueprint } from "../campaign/quickstart.js";
+-import { ensureCampaignMemoryDocs } from "../gm/memoryStore.js";
++import { ensureCampaignMemoryDocs, ensureCampaignMemoryDocsAsync } from "../gm/memoryStore.js";
+ import { formatRollSummary, resolveAttack, resolveSkillCheck, rollDiceExpression } from "../rules/engine.js";
+ import { createDefaultSoloRun, validateSoloRun } from "../solo/schema.js";
+ import { uid } from "../utils/ids.js";
+@@ -119,7 +119,13 @@ function ensureDefaults(target) {
+     target.campaignPackagesByCampaign && typeof target.campaignPackagesByCampaign === "object"
+       ? target.campaignPackagesByCampaign
+       : {};
+-  target.soloRuns = target.soloRuns && typeof target.soloRuns === "object" ? target.soloRuns : {};
++  target.campaignRuntimeByCampaign =
++    target.campaignRuntimeByCampaign && typeof target.campaignRuntimeByCampaign === "object"
++      ? target.campaignRuntimeByCampaign
++      : {};
++  target.soloRuns = target.soloRuns && typeof target.soloRuns === "object" && !Array.isArray(target.soloRuns)
++    ? target.soloRuns
++    : {};
+ 
+   target.selectedCampaignId = target.selectedCampaignId || target.campaigns?.[0]?.id || null;
+ 
+@@ -136,6 +142,17 @@ function ensureDefaults(target) {
+     target.gmSettingsByCampaign && typeof target.gmSettingsByCampaign === "object" ? target.gmSettingsByCampaign : {};
+ }
+ 
++function defaultCampaignRuntimeState() {
++  return {
++    mode: "freeform",
++    initiativeOrder: [],
++    turnPointer: 0,
++    waitingForGm: false,
++    typingByUser: {},
++    updatedAt: nowEpochSec()
++  };
++}
++
+ function loadFromDisk() {
+   ensureStoreDir();
+   if (!fs.existsSync(storePath())) {
+@@ -255,6 +272,12 @@ function ensureCampaignVersionSlot(campaignId) {
+   }
+ }
+ 
++function ensureCampaignRuntimeSlot(campaignId) {
++  if (!db.campaignRuntimeByCampaign[campaignId]) {
++    db.campaignRuntimeByCampaign[campaignId] = defaultCampaignRuntimeState();
++  }
++}
++
+ function pruneExpiredSessions() {
+   const now = nowEpochSec();
+   db.sessions = db.sessions.filter((session) => Number(session.expiresAt || 0) > now);
+@@ -485,6 +508,7 @@ function stateForUser(userId = null) {
+ 
+   const campaignVersions = {};
+   const campaignPackagesByCampaign = {};
++  const campaignRuntimeByCampaign = {};
+   for (const campaignId of visibleCampaignIds) {
+     campaignVersions[campaignId] = Number(db.campaignVersions[campaignId] || 0);
+     campaignPackagesByCampaign[campaignId] = db.campaignPackagesByCampaign?.[campaignId] || {
+@@ -497,6 +521,7 @@ function stateForUser(userId = null) {
+       rules: [],
+       starterOptions: []
+     };
++    campaignRuntimeByCampaign[campaignId] = db.campaignRuntimeByCampaign?.[campaignId] || defaultCampaignRuntimeState();
+   }
+ 
+   return {
+@@ -514,6 +539,7 @@ function stateForUser(userId = null) {
+     journalsByCampaign: deepClone(journalsByCampaign),
+     recentRollsByCampaign: deepClone(recentRollsByCampaign),
+     campaignPackagesByCampaign: deepClone(campaignPackagesByCampaign),
++    campaignRuntimeByCampaign: deepClone(campaignRuntimeByCampaign),
+     gmSettings: deepClone(gmSettings),
+     stateVersion: Number(db.stateVersion || 0),
+     campaignVersions,
+@@ -561,6 +587,7 @@ export function resetDatabase() {
+   db.userPrefsByUser = {};
+   db.campaignMembersByCampaign = {};
+   db.campaignVersions = {};
++  db.campaignRuntimeByCampaign = {};
+   db.soloRuns = {};
+   db.stateVersion = 0;
+ 
+@@ -770,6 +797,70 @@ export function getUserBySessionToken(token) {
+   return sanitizeUser(user);
+ }
+ 
++export function getCampaignRole(campaignId, context = {}) {
++  ensureDb();
++  assertActor(context);
++  return userRoleForCampaign(context.actorUserId, campaignId);
++}
++
++export function assertCampaignReadAccess(campaignId, context = {}) {
++  ensureDb();
++  assertActor(context);
++  assertCanReadCampaign(context.actorUserId, campaignId);
++}
++
++export function assertCampaignWriteAccess(campaignId, context = {}) {
++  ensureDb();
++  assertActor(context);
++  assertCanWriteCampaign(context.actorUserId, campaignId);
++}
++
++export function assertCampaignPlayAccess(campaignId, context = {}) {
++  ensureDb();
++  assertActor(context);
++  assertCanPlayCampaign(context.actorUserId, campaignId);
++}
++
++export function getCampaignRuntimeState(campaignId, context = {}) {
++  ensureDb();
++  if (!context.internal) {
++    assertActor(context);
++    assertCanReadCampaign(context.actorUserId, campaignId);
++  }
++  ensureCampaignRuntimeSlot(campaignId);
++  return deepClone(db.campaignRuntimeByCampaign[campaignId]);
++}
++
++export function setCampaignRuntimeState(campaignId, patch = {}, context = {}) {
++  ensureDb();
++  if (!context.internal) {
++    assertActor(context);
++    assertCanPlayCampaign(context.actorUserId, campaignId);
++  }
++  ensureCampaignRuntimeSlot(campaignId);
++
++  const prev = db.campaignRuntimeByCampaign[campaignId] || defaultCampaignRuntimeState();
++  const nextMode = patch.mode === "combat" ? "combat" : patch.mode === "freeform" ? "freeform" : prev.mode;
++  const nextInitiativeOrder = Array.isArray(patch.initiativeOrder) ? patch.initiativeOrder : prev.initiativeOrder;
++  const nextPointer = Number.isFinite(Number(patch.turnPointer)) ? Number(patch.turnPointer) : prev.turnPointer;
++  const nextTyping = patch.typingByUser && typeof patch.typingByUser === "object" ? patch.typingByUser : prev.typingByUser;
++
++  db.campaignRuntimeByCampaign[campaignId] = {
++    ...prev,
++    ...patch,
++    mode: nextMode,
++    initiativeOrder: nextInitiativeOrder,
++    turnPointer: Math.max(0, nextPointer),
++    waitingForGm: patch.waitingForGm !== undefined ? Boolean(patch.waitingForGm) : Boolean(prev.waitingForGm),
++    typingByUser: nextTyping,
++    updatedAt: nowEpochSec()
++  };
++
++  bumpStateVersion(campaignId);
++  writeToDisk();
++  return deepClone(db.campaignRuntimeByCampaign[campaignId]);
++}
++
+ export function listCampaignMembers(campaignId, context = {}) {
+   ensureDb();
+   assertActor(context);
+@@ -811,7 +902,7 @@ export function addCampaignMember({ campaignId, email, role }, context = {}) {
+   };
+ }
+ 
+-export function createQuickstartCampaignFromParsed({
++export async function createQuickstartCampaignFromParsed({
+   campaignName,
+   setting,
+   players,
+@@ -845,7 +936,8 @@ export function createQuickstartCampaignFromParsed({
+   db.campaigns.unshift(campaign);
+   db.selectedCampaignId = campaign.id;
+   ensureCampaignVersionSlot(campaign.id);
+-  ensureCampaignMemoryDocs(campaign.id, blueprint.memoryDocs || {});
++  ensureCampaignRuntimeSlot(campaign.id);
++  await ensureCampaignMemoryDocsAsync(campaign.id, blueprint.memoryDocs || {});
+ 
+   if (actorUserId) {
+     applyCampaignMembership(campaign.id, actorUserId, "owner");
+@@ -973,6 +1065,7 @@ export function applyOperation(op, payload = {}, context = {}) {
+       db.campaigns.unshift(campaign);
+       db.selectedCampaignId = id;
+       ensureCampaignVersionSlot(id);
++      ensureCampaignRuntimeSlot(id);
+       applyCampaignMembership(id, actorUserId, "owner");
+       db.userPrefsByUser[actorUserId] = { selectedCampaignId: id };
+ 
+@@ -1367,6 +1460,26 @@ export function applyOperation(op, payload = {}, context = {}) {
+       return { campaignId };
+     }
+ 
++    case "set_campaign_runtime_state": {
++      const campaignId = selectedCampaignId(payload, actorUserId, context);
++      if (!campaignId) {
++        throw makeError("BAD_REQUEST", "No campaign selected.", 400);
++      }
++      assertCanPlayCampaign(actorUserId, campaignId);
++      const runtime = setCampaignRuntimeState(
++        campaignId,
++        {
++          mode: payload.mode,
++          initiativeOrder: payload.initiativeOrder,
++          turnPointer: payload.turnPointer,
++          waitingForGm: payload.waitingForGm,
++          typingByUser: payload.typingByUser
++        },
++        { internal: true }
++      );
++      return { campaignId, runtime };
++    }
++
+     case "upsert_map": {
+       const id = payload.id || uid("map");
+       const campaignId = selectedCampaignId(payload, actorUserId, context);
+diff --git a/server/gm/memoryStore.js b/server/gm/memoryStore.js
+index be93f5f..5907667 100644
+--- a/server/gm/memoryStore.js
++++ b/server/gm/memoryStore.js
+@@ -1,174 +1,1189 @@
+-import fs from "node:fs";
++import fs from "node:fs/promises";
+ import path from "node:path";
++import { Document } from "flexsearch";
++import { generateUtility } from "../ai/openrouter.js";
++import { getStyleConfig } from "./styleConfig.js";
+ 
+-const DOC_FILES = {
+-  human: "human-gm.md",
+-  agent: "agent-gm.md",
+-  timeline: "shared-timeline.md"
+-};
++const DEFAULT_CONTEXT_BUDGET = Number(process.env.NOTDND_CONTEXT_BUDGET || 1500);
++const LEGACY_DOCS = [
++  { key: "human", fileName: "human-gm.md", title: "Human GM Guide" },
++  { key: "agent", fileName: "agent-gm.md", title: "Agent GM Guide" },
++  { key: "timeline", fileName: "shared-timeline.md", title: "Shared Timeline" }
++];
++const ENTITY_TYPES = new Set([
++  "npc",
++  "location",
++  "faction",
++  "event",
++  "item",
++  "lore",
++  "player_character",
++  "session_log",
++  "relationship",
++  "quest"
++]);
+ 
+-const DOC_TITLES = {
+-  human: "Human GM Guide",
+-  agent: "Agent GM Guide",
+-  timeline: "Shared Timeline"
+-};
++const campaignStores = new Map();
+ 
+ function memoryRoot() {
+   return process.env.NOTDND_MEMORY_ROOT
+     ? path.resolve(process.env.NOTDND_MEMORY_ROOT)
+-    : path.resolve(process.cwd(), "server/campaign-memory");
++    : path.resolve(process.cwd(), "data/campaigns");
+ }
+ 
+-function campaignDir(campaignId) {
++function campaignRoot(campaignId) {
+   return path.join(memoryRoot(), String(campaignId || "unknown-campaign"));
+ }
+ 
+-function docPath(campaignId, docKey) {
+-  const fileName = DOC_FILES[docKey];
+-  if (!fileName) {
+-    throw new Error(`Unsupported memory doc: ${docKey}`);
+-  }
+-  return path.join(campaignDir(campaignId), fileName);
++function memoryDir(campaignId) {
++  return path.join(campaignRoot(campaignId), "memory");
+ }
+ 
+-function ensureDir(campaignId) {
+-  fs.mkdirSync(campaignDir(campaignId), { recursive: true });
++function archiveDir(campaignId) {
++  return path.join(memoryDir(campaignId), "archive");
+ }
+ 
+-function defaultDocContent(campaignId, docKey) {
+-  const title = DOC_TITLES[docKey] || docKey;
+-  return `# ${title}\n\n- Campaign: ${campaignId}\n- Add plot devices, consequences, and new developments here.\n`;
++function normalizeName(value) {
++  return String(value || "")
++    .trim()
++    .toLowerCase();
+ }
+ 
+-function tokenize(value) {
++function normalizeTag(value) {
+   return String(value || "")
++    .trim()
++    .toLowerCase();
++}
++
++function slugifyName(value) {
++  return String(value || "entity")
+     .toLowerCase()
+-    .split(/[^a-z0-9']+/)
+-    .map((entry) => entry.trim())
+-    .filter((entry) => entry.length >= 3);
++    .replace(/[^a-z0-9]+/g, "-")
++    .replace(/^-+|-+$/g, "")
++    .slice(0, 90) || "entity";
+ }
+ 
+-function unique(values) {
+-  return [...new Set(values)];
++function dedupeStrings(values = []) {
++  return [...new Set(values.map((item) => String(item || "").trim()).filter(Boolean))];
+ }
+ 
+-function splitMarkdown(content) {
++function dedupeRelations(relations = []) {
++  const seen = new Set();
++  const deduped = [];
++  for (const relation of relations) {
++    const target = String(relation?.target || "").trim();
++    const type = String(relation?.type || "related_to").trim();
++    if (!target) {
++      continue;
++    }
++    const key = `${normalizeName(target)}::${normalizeName(type)}`;
++    if (seen.has(key)) {
++      continue;
++    }
++    seen.add(key);
++    deduped.push({ target, type });
++  }
++  return deduped;
++}
++
++function entityType(value) {
++  const normalized = normalizeName(value);
++  return ENTITY_TYPES.has(normalized) ? normalized : "lore";
++}
++
++function toIso(value, fallback = null) {
++  const parsed = new Date(value || fallback || Date.now());
++  if (Number.isNaN(parsed.getTime())) {
++    return new Date().toISOString();
++  }
++  return parsed.toISOString();
++}
++
++function parseScalar(raw) {
++  const trimmed = String(raw || "").trim();
++  if (!trimmed) {
++    return "";
++  }
++  if (trimmed === "true") {
++    return true;
++  }
++  if (trimmed === "false") {
++    return false;
++  }
++  if (trimmed === "null") {
++    return null;
++  }
++  if (/^-?\d+(\.\d+)?$/.test(trimmed)) {
++    return Number(trimmed);
++  }
++  if ((trimmed.startsWith("\"") && trimmed.endsWith("\"")) || (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
++    return trimmed.slice(1, -1);
++  }
++  return trimmed;
++}
++
++function parseInlineArray(raw) {
++  const inner = String(raw || "")
++    .trim()
++    .replace(/^\[/, "")
++    .replace(/\]$/, "");
++
++  if (!inner) {
++    return [];
++  }
++
++  return inner
++    .split(",")
++    .map((entry) => parseScalar(entry))
++    .map((entry) => String(entry || "").trim())
++    .filter(Boolean);
++}
++
++function extractLinks(body = "") {
++  const matches = String(body || "").matchAll(/\[\[([^\]]+)\]\]/g);
++  const links = [];
++  for (const match of matches) {
++    const value = String(match[1] || "").trim();
++    if (value) {
++      links.push(value);
++    }
++  }
++  return dedupeStrings(links);
++}
++
++function parseFrontmatter(rawFrontmatter = "") {
++  const lines = String(rawFrontmatter || "").split(/\r?\n/);
++  const result = {
++    type: "lore",
++    name: "",
++    tags: [],
++    relations: [],
++    lastAccessed: null,
++    lastUpdated: null,
++    accessCount: 0,
++    confidence: 1
++  };
++
++  let i = 0;
++  while (i < lines.length) {
++    const line = lines[i];
++    const match = line.match(/^([a-zA-Z_][a-zA-Z0-9_]*):\s*(.*)$/);
++    if (!match) {
++      i += 1;
++      continue;
++    }
++
++    const key = match[1];
++    const value = match[2];
++
++    if (key === "tags") {
++      if (value.trim().startsWith("[")) {
++        result.tags = parseInlineArray(value);
++        i += 1;
++        continue;
++      }
++      const tags = [];
++      i += 1;
++      while (i < lines.length && /^\s*\-\s+/.test(lines[i])) {
++        tags.push(parseScalar(lines[i].replace(/^\s*\-\s+/, "")));
++        i += 1;
++      }
++      result.tags = tags.map((tag) => String(tag || "").trim()).filter(Boolean);
++      continue;
++    }
++
++    if (key === "relations") {
++      const relations = [];
++      i += 1;
++      let current = null;
++      while (i < lines.length && /^\s{2,}\-\s+|^\s{4,}[a-zA-Z_]/.test(lines[i])) {
++        const relationLine = lines[i].trim();
++        const targetMatch = relationLine.match(/^-\s*target:\s*(.*)$/);
++        if (targetMatch) {
++          if (current?.target) {
++            relations.push(current);
++          }
++          current = { target: String(parseScalar(targetMatch[1]) || "").trim(), type: "related_to" };
++          i += 1;
++          continue;
++        }
++        const typeMatch = relationLine.match(/^type:\s*(.*)$/);
++        if (typeMatch) {
++          if (!current) {
++            current = { target: "", type: "related_to" };
++          }
++          current.type = String(parseScalar(typeMatch[1]) || "related_to").trim() || "related_to";
++          i += 1;
++          continue;
++        }
++        i += 1;
++      }
++      if (current?.target) {
++        relations.push(current);
++      }
++      result.relations = dedupeRelations(relations);
++      continue;
++    }
++
++    result[key] = parseScalar(value);
++    i += 1;
++  }
++
++  result.type = entityType(result.type);
++  result.name = String(result.name || "").trim();
++  result.tags = dedupeStrings(result.tags || []);
++  result.relations = dedupeRelations(result.relations || []);
++  result.lastAccessed = toIso(result.lastAccessed);
++  result.lastUpdated = toIso(result.lastUpdated);
++  result.accessCount = Math.max(0, Number(result.accessCount || 0));
++  result.confidence = Math.max(0, Math.min(1, Number(result.confidence ?? 1)));
++
++  return result;
++}
++
++function splitFrontmatter(content = "") {
+   const source = String(content || "");
+-  const lines = source.split(/\r?\n/);
+-  const chunks = [];
+-  let heading = "Document";
+-  let buffer = [];
+-
+-  function pushChunk() {
+-    const text = buffer.join("\n").trim();
+-    if (!text) {
+-      return;
++  if (!source.startsWith("---")) {
++    return {
++      frontmatter: "",
++      body: source
++    };
++  }
++
++  const endMarker = "\n---";
++  const endIndex = source.indexOf(endMarker, 3);
++  if (endIndex === -1) {
++    return {
++      frontmatter: "",
++      body: source
++    };
++  }
++
++  const frontmatter = source.slice(3, endIndex).trim();
++  const body = source.slice(endIndex + endMarker.length).replace(/^\s*\n/, "");
++
++  return {
++    frontmatter,
++    body
++  };
++}
++
++function serializeEntity(entity) {
++  const lines = [
++    "---",
++    `type: ${entity.type}`,
++    `name: \"${String(entity.name || "").replace(/\"/g, '\\\"')}\"`,
++    `tags: [${(entity.tags || []).map((tag) => JSON.stringify(String(tag))).join(", ")}]`,
++    "relations:"
++  ];
++
++  if (Array.isArray(entity.relations) && entity.relations.length > 0) {
++    for (const relation of entity.relations) {
++      lines.push(`  - target: ${JSON.stringify(String(relation.target || ""))}`);
++      lines.push(`    type: ${String(relation.type || "related_to")}`);
+     }
+-    chunks.push({
+-      heading,
+-      text,
+-      keywords: unique(tokenize(`${heading} ${text}`)).slice(0, 32)
+-    });
+   }
+ 
+-  for (const line of lines) {
+-    const match = line.match(/^\s{0,3}(#{1,3})\s+(.+)$/);
+-    if (match) {
+-      pushChunk();
+-      heading = match[2].trim();
+-      buffer = [];
++  lines.push(`lastAccessed: ${toIso(entity.lastAccessed)}`);
++  lines.push(`lastUpdated: ${toIso(entity.lastUpdated)}`);
++  lines.push(`accessCount: ${Math.max(0, Number(entity.accessCount || 0))}`);
++  lines.push(`confidence: ${Math.max(0, Math.min(1, Number(entity.confidence ?? 1)))}`);
++  lines.push("---", "", String(entity.body || "").trim(), "");
++
++  return `${lines.join("\n")}`;
++}
++
++function buildIndex() {
++  return new Document({
++    tokenize: "forward",
++    charset: "latin:balance",
++    document: {
++      id: "id",
++      index: ["name", "tags", "body", "type"],
++      store: ["id", "name", "type", "tags", "body", "confidence", "lastAccessed", "accessCount"]
++    }
++  });
++}
++
++function indexDocumentFor(entity) {
++  return {
++    id: entity.id,
++    name: entity.name,
++    type: entity.type,
++    tags: (entity.tags || []).join(" "),
++    body: entity.body || "",
++    confidence: entity.confidence,
++    lastAccessed: entity.lastAccessed,
++    accessCount: entity.accessCount
++  };
++}
++
++function recencyWeight(lastAccessed) {
++  const ts = new Date(lastAccessed || 0).getTime();
++  if (!Number.isFinite(ts) || ts <= 0) {
++    return 0.1;
++  }
++  const days = Math.max(0, (Date.now() - ts) / 86_400_000);
++  return Math.max(0.05, Math.exp(-days / 30));
++}
++
++function accessWeight(accessCount, maxAccessCount) {
++  const maxValue = Math.max(1, Number(maxAccessCount || 1));
++  const value = Math.max(0, Number(accessCount || 0));
++  return Math.min(1, Math.log1p(value) / Math.log1p(maxValue));
++}
++
++function hasTagOverlap(entityTags = [], configuredTags = []) {
++  if (!Array.isArray(entityTags) || entityTags.length === 0 || !Array.isArray(configuredTags) || configuredTags.length === 0) {
++    return false;
++  }
++  const normalizedEntityTags = new Set(entityTags.map((tag) => normalizeTag(tag)));
++  return configuredTags.some((tag) => normalizedEntityTags.has(normalizeTag(tag)));
++}
++
++function playerAffinityBoost(entity, playerFocusWeights = {}) {
++  if (!entity || !playerFocusWeights || typeof playerFocusWeights !== "object") {
++    return 1;
++  }
++
++  const relationTargets = new Set((entity.relations || []).map((relation) => normalizeName(relation.target)));
++  const normalizedName = normalizeName(entity.name);
++  const normalizedBody = normalizeName(entity.body || "");
++  const normalizedTags = new Set((entity.tags || []).map((tag) => normalizeName(tag)));
++
++  let strongestWeight = 0;
++  for (const [playerName, rawWeight] of Object.entries(playerFocusWeights)) {
++    const normalizedPlayer = normalizeName(playerName);
++    if (!normalizedPlayer) {
+       continue;
+     }
+-    buffer.push(line);
++    const weight = Math.max(0, Math.min(1, Number(rawWeight || 0)));
++    if (weight <= 0) {
++      continue;
++    }
++
++    const playerSlug = normalizedPlayer.replace(/\s+/g, "-");
++    const mentioned =
++      relationTargets.has(normalizedPlayer)
++      || normalizedName.includes(normalizedPlayer)
++      || normalizedBody.includes(normalizedPlayer)
++      || normalizedTags.has(playerSlug)
++      || normalizedTags.has(normalizedPlayer);
++
++    if (mentioned) {
++      strongestWeight = Math.max(strongestWeight, weight);
++    }
++  }
++
++  return strongestWeight > 0 ? 1 + strongestWeight : 1;
++}
++
++async function summarizeThreshold(campaignId, fallback = 2000) {
++  try {
++    const config = await getStyleConfig(campaignId);
++    const configured = Number(config?.memory?.autoSummarizeThreshold);
++    if (Number.isFinite(configured) && configured >= 300) {
++      return Math.floor(configured);
++    }
++    return fallback;
++  } catch {
++    return fallback;
+   }
++}
++
++function firstWords(text, count = 200) {
++  const words = String(text || "").trim().split(/\s+/).filter(Boolean);
++  return words.slice(0, count).join(" ");
++}
++
++function wordCount(text = "") {
++  return String(text || "").trim().split(/\s+/).filter(Boolean).length;
++}
++
++function storeFromCampaignId(campaignId) {
++  return campaignStores.get(String(campaignId || "unknown-campaign")) || null;
++}
+ 
+-  pushChunk();
+-  return chunks;
++async function ensureDirs(campaignId) {
++  await fs.mkdir(memoryDir(campaignId), { recursive: true });
++  await fs.mkdir(archiveDir(campaignId), { recursive: true });
++  await fs.mkdir(campaignRoot(campaignId), { recursive: true });
+ }
+ 
+-function scoreChunk(queryTokens, chunk) {
+-  const chunkTokenSet = new Set(chunk.keywords || []);
+-  let score = 0;
+-  for (const token of queryTokens) {
+-    if (chunkTokenSet.has(token)) {
+-      score += token.length >= 7 ? 4 : 2;
++async function readEntityFile(campaignId, fileName) {
++  const filePath = path.join(memoryDir(campaignId), fileName);
++  const raw = await fs.readFile(filePath, "utf8");
++  const { frontmatter, body } = splitFrontmatter(raw);
++  const parsed = parseFrontmatter(frontmatter);
++  const entityName = parsed.name || fileName.replace(/\.md$/i, "");
++
++  return {
++    id: `${campaignId}:${fileName}`,
++    campaignId: String(campaignId),
++    fileName,
++    filePath,
++    name: entityName,
++    type: parsed.type,
++    tags: dedupeStrings(parsed.tags || []),
++    relations: dedupeRelations(parsed.relations || []),
++    body: String(body || "").trim(),
++    links: extractLinks(body),
++    lastAccessed: toIso(parsed.lastAccessed),
++    lastUpdated: toIso(parsed.lastUpdated),
++    accessCount: Math.max(0, Number(parsed.accessCount || 0)),
++    confidence: Math.max(0, Math.min(1, Number(parsed.confidence ?? 1)))
++  };
++}
++
++function rebuildGraph(store) {
++  store.graph = new Map();
++
++  function linkBoth(leftName, rightName) {
++    const left = normalizeName(leftName);
++    const right = normalizeName(rightName);
++    if (!left || !right || left === right) {
++      return;
++    }
++
++    if (!store.graph.has(left)) {
++      store.graph.set(left, new Set());
+     }
+-    if (String(chunk.heading || "").toLowerCase().includes(token)) {
+-      score += 3;
++    if (!store.graph.has(right)) {
++      store.graph.set(right, new Set());
+     }
+-    if (String(chunk.text || "").toLowerCase().includes(token)) {
+-      score += 1;
++    store.graph.get(left).add(right);
++    store.graph.get(right).add(left);
++  }
++
++  for (const entity of store.entitiesById.values()) {
++    const source = normalizeName(entity.name);
++    if (!store.graph.has(source)) {
++      store.graph.set(source, new Set());
++    }
++
++    for (const relation of entity.relations || []) {
++      linkBoth(entity.name, relation.target);
++    }
++    for (const linkName of entity.links || []) {
++      linkBoth(entity.name, linkName);
+     }
+   }
+-  return score;
+ }
+ 
+-export function ensureCampaignMemoryDocs(campaignId, seedDocs = {}) {
+-  ensureDir(campaignId);
+-  for (const docKey of Object.keys(DOC_FILES)) {
+-    const targetPath = docPath(campaignId, docKey);
+-    if (!fs.existsSync(targetPath)) {
+-      fs.writeFileSync(targetPath, seedDocs[docKey] || defaultDocContent(campaignId, docKey), "utf8");
++function replaceInStore(store, entity, { rebuild = false } = {}) {
++  const normalized = normalizeName(entity.name);
++  const fileKey = normalizeName(entity.fileName);
++
++  const previousByNameId = store.idsByName.get(normalized);
++  if (previousByNameId && previousByNameId !== entity.id) {
++    const previous = store.entitiesById.get(previousByNameId);
++    if (previous) {
++      store.index.remove(previous.id);
++      store.entitiesById.delete(previous.id);
++    }
++  }
++
++  const previousByFileId = store.idsByFile.get(fileKey);
++  if (previousByFileId && previousByFileId !== entity.id) {
++    const previous = store.entitiesById.get(previousByFileId);
++    if (previous) {
++      store.index.remove(previous.id);
++      store.entitiesById.delete(previous.id);
+     }
+   }
++
++  const current = store.entitiesById.get(entity.id);
++  if (current) {
++    store.index.remove(entity.id);
++  }
++
++  store.entitiesById.set(entity.id, entity);
++  store.idsByName.set(normalized, entity.id);
++  store.idsByFile.set(fileKey, entity.id);
++  store.index.add(indexDocumentFor(entity));
++
++  if (rebuild) {
++    rebuildGraph(store);
++  }
+ }
+ 
+-export function listCampaignMemoryDocs(campaignId) {
+-  ensureCampaignMemoryDocs(campaignId);
+-  return Object.keys(DOC_FILES).map((docKey) => {
+-    const targetPath = docPath(campaignId, docKey);
+-    const stat = fs.statSync(targetPath);
+-    return {
+-      key: docKey,
+-      title: DOC_TITLES[docKey],
+-      path: targetPath,
+-      content: fs.readFileSync(targetPath, "utf8"),
+-      updatedAt: stat.mtimeMs
++async function loadCampaignStore(campaignId) {
++  const campaignKey = String(campaignId || "unknown-campaign");
++  await ensureDirs(campaignKey);
++
++  const files = await fs.readdir(memoryDir(campaignKey), { withFileTypes: true });
++  const mdFiles = files
++    .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith(".md"))
++    .map((entry) => entry.name)
++    .sort((a, b) => a.localeCompare(b));
++
++  const store = {
++    campaignId: campaignKey,
++    index: buildIndex(),
++    entitiesById: new Map(),
++    idsByName: new Map(),
++    idsByFile: new Map(),
++    graph: new Map()
++  };
++
++  for (const fileName of mdFiles) {
++    const entity = await readEntityFile(campaignKey, fileName);
++    replaceInStore(store, entity, { rebuild: false });
++  }
++
++  rebuildGraph(store);
++  campaignStores.set(campaignKey, store);
++
++  return store;
++}
++
++async function ensureStore(campaignId, { force = false } = {}) {
++  const campaignKey = String(campaignId || "unknown-campaign");
++  if (!force) {
++    const existing = storeFromCampaignId(campaignKey);
++    if (existing) {
++      return existing;
++    }
++  }
++  return loadCampaignStore(campaignKey);
++}
++
++function scoreResults(rawResults, store) {
++  const weightsByField = {
++    name: 1.3,
++    tags: 1.1,
++    body: 1,
++    type: 0.7
++  };
++
++  const scores = new Map();
++  const results = Array.isArray(rawResults) ? rawResults : [];
++
++  for (const fieldResult of results) {
++    const field = String(fieldResult?.field || "body");
++    const weight = weightsByField[field] || 1;
++    const list = Array.isArray(fieldResult?.result) ? fieldResult.result : [];
++    const total = Math.max(1, list.length);
++
++    for (let i = 0; i < list.length; i += 1) {
++      const item = list[i];
++      let id = null;
++      if (item && typeof item === "object") {
++        id = String(item.id || item.doc?.id || "");
++      } else if (typeof item === "string" || typeof item === "number") {
++        id = String(item);
++      }
++      if (!id) {
++        continue;
++      }
++
++      const base = (total - i) / total;
++      scores.set(id, (scores.get(id) || 0) + base * weight);
++    }
++  }
++
++  return [...scores.entries()]
++    .map(([id, score]) => ({ id, score, entity: store.entitiesById.get(id) }))
++    .filter((entry) => entry.entity)
++    .sort((left, right) => right.score - left.score);
++}
++
++function entitySummary(entity) {
++  return {
++    name: entity.name,
++    type: entity.type,
++    tags: [...(entity.tags || [])],
++    relations: [...(entity.relations || [])],
++    body: entity.body,
++    links: [...(entity.links || [])],
++    lastAccessed: entity.lastAccessed,
++    lastUpdated: entity.lastUpdated,
++    accessCount: entity.accessCount,
++    confidence: entity.confidence,
++    fileName: entity.fileName
++  };
++}
++
++async function writeEntityToDisk(campaignId, entity) {
++  await ensureDirs(campaignId);
++  const targetPath = path.join(memoryDir(campaignId), entity.fileName);
++  await fs.writeFile(targetPath, serializeEntity(entity), "utf8");
++  return targetPath;
++}
++
++async function appendFactsToEntity(entity, facts = []) {
++  const filtered = dedupeStrings(facts || []);
++  if (filtered.length === 0) {
++    return entity;
++  }
++
++  const additions = filtered.map((fact) => `- ${fact}`).join("\n");
++  const joined = [String(entity.body || "").trim(), additions].filter(Boolean).join("\n\n");
++  return {
++    ...entity,
++    body: joined
++  };
++}
++
++async function warmIndexesFromDisk() {
++  try {
++    const rootEntries = await fs.readdir(memoryRoot(), { withFileTypes: true });
++    const campaignDirs = rootEntries.filter((entry) => entry.isDirectory()).map((entry) => entry.name);
++    for (const campaignId of campaignDirs) {
++      try {
++        await ensureStore(campaignId);
++      } catch {
++        // Ignore warm-up errors for invalid campaign folders.
++      }
++    }
++  } catch {
++    // Ignore warm-up errors until first campaign use.
++  }
++}
++
++void warmIndexesFromDisk();
++
++/**
++ * Ensures the campaign memory directory exists and optionally seeds initial docs.
++ * @param {string} campaignId
++ * @param {Record<string, string>} [seedDocs]
++ * @returns {Promise<void>}
++ */
++export async function ensureCampaignMemoryDocsAsync(campaignId, seedDocs = {}) {
++  const campaignKey = String(campaignId || "unknown-campaign");
++  await ensureDirs(campaignKey);
++
++  const seeded = {};
++  for (const spec of LEGACY_DOCS) {
++    const content = String(seedDocs?.[spec.key] || "").trim();
++    seeded[spec.fileName] = {
++      fileName: spec.fileName,
++      name: spec.title,
++      body: content || `# ${spec.title}\n\n- Campaign: ${campaignKey}\n`
+     };
+-  });
++  }
++
++  for (const [name, body] of Object.entries(seedDocs || {})) {
++    if (LEGACY_DOCS.some((spec) => spec.key === name)) {
++      continue;
++    }
++    const fileName = `${slugifyName(name)}.md`;
++    seeded[fileName] = {
++      fileName,
++      name: String(name),
++      body: String(body || "").trim()
++    };
++  }
++
++  for (const item of Object.values(seeded)) {
++    const target = path.join(memoryDir(campaignKey), item.fileName);
++    try {
++      await fs.access(target);
++    } catch {
++      const now = new Date().toISOString();
++      const entity = {
++        campaignId: campaignKey,
++        fileName: item.fileName,
++        id: `${campaignKey}:${item.fileName}`,
++        name: item.name,
++        type: "lore",
++        tags: ["seed"],
++        relations: [],
++        body: item.body,
++        links: extractLinks(item.body),
++        lastAccessed: now,
++        lastUpdated: now,
++        accessCount: 0,
++        confidence: 1
++      };
++      await writeEntityToDisk(campaignKey, entity);
++    }
++  }
++
++  for (const spec of LEGACY_DOCS) {
++    const source = path.join(memoryDir(campaignKey), spec.fileName);
++    const legacyTarget = path.join(campaignRoot(campaignKey), spec.fileName);
++    try {
++      await fs.access(legacyTarget);
++    } catch {
++      try {
++        const content = await fs.readFile(source, "utf8");
++        await fs.writeFile(legacyTarget, content, "utf8");
++      } catch {
++        // Ignore legacy mirror write errors.
++      }
++    }
++  }
++
++  await ensureStore(campaignKey, { force: true });
+ }
+ 
+-export function writeCampaignMemoryDoc(campaignId, docKey, content) {
+-  ensureCampaignMemoryDocs(campaignId);
+-  const targetPath = docPath(campaignId, docKey);
+-  fs.writeFileSync(targetPath, String(content || ""), "utf8");
+-  const stat = fs.statSync(targetPath);
++/**
++ * Ensures campaign memory docs and directories exist.
++ * @param {string} campaignId
++ * @param {Record<string, string>} [seedDocs]
++ * @returns {void}
++ */
++export function ensureCampaignMemoryDocs(campaignId, seedDocs = {}) {
++  void ensureCampaignMemoryDocsAsync(campaignId, seedDocs).catch(() => {});
++}
++
++/**
++ * Rebuilds the in-memory index from markdown files on disk for a campaign.
++ * @param {string} campaignId
++ * @returns {Promise<{campaignId: string, entities: number}>}
++ */
++export async function rebuildCampaignIndex(campaignId) {
++  const store = await ensureStore(campaignId, { force: true });
+   return {
+-    key: docKey,
+-    title: DOC_TITLES[docKey],
+-    path: targetPath,
+-    content: fs.readFileSync(targetPath, "utf8"),
+-    updatedAt: stat.mtimeMs
++    campaignId: String(campaignId),
++    entities: store.entitiesById.size
+   };
+ }
+ 
+-export function searchCampaignMemory(campaignId, query, { docKey = null, limit = 5 } = {}) {
+-  ensureCampaignMemoryDocs(campaignId);
+-  const queryTokens = unique(tokenize(query));
+-  if (queryTokens.length === 0) {
++/**
++ * Lists entity summaries for a campaign.
++ * @param {string} campaignId
++ * @returns {Promise<Array<{name: string, type: string, tags: string[]}>>}
++ */
++export async function listEntities(campaignId) {
++  const store = await ensureStore(campaignId);
++  return [...store.entitiesById.values()]
++    .map((entity) => ({ name: entity.name, type: entity.type, tags: [...(entity.tags || [])] }))
++    .sort((left, right) => left.name.localeCompare(right.name));
++}
++
++/**
++ * Searches campaign memory using FlexSearch and ranks by relevance and recency.
++ * @param {string} campaignId
++ * @param {string} query
++ * @param {{type?: string, limit?: number, minConfidence?: number}} [options]
++ * @returns {Promise<Array<object>>}
++ */
++export async function search(campaignId, query, options = {}) {
++  const store = await ensureStore(campaignId);
++  const trimmed = String(query || "").trim();
++  if (!trimmed) {
+     return [];
+   }
+ 
+-  const docs = listCampaignMemoryDocs(campaignId).filter((doc) => !docKey || doc.key === docKey);
+-  const scored = [];
++  const limit = Math.max(1, Number(options.limit || 8));
++  const raw = store.index.search(trimmed, { enrich: true, suggest: true, limit: limit * 4 });
++  const scored = scoreResults(raw, store);
+ 
+-  for (const doc of docs) {
+-    for (const chunk of splitMarkdown(doc.content)) {
+-      const score = scoreChunk(queryTokens, chunk);
+-      if (score <= 0) {
+-        continue;
++  const typeFilter = options.type ? entityType(options.type) : null;
++  const minConfidence = Number(options.minConfidence ?? 0);
++
++  const ranked = scored
++    .map((entry) => {
++      const recency = recencyWeight(entry.entity.lastAccessed);
++      return {
++        ...entitySummary(entry.entity),
++        relevance: entry.score,
++        recency,
++        score: entry.score * recency
++      };
++    })
++    .filter((entry) => !typeFilter || entry.type === typeFilter)
++    .filter((entry) => entry.confidence >= minConfidence)
++    .sort((left, right) => right.score - left.score)
++    .slice(0, limit);
++
++  return ranked;
++}
++
++/**
++ * Gets an entity by exact name or filename.
++ * @param {string} campaignId
++ * @param {string} name
++ * @returns {Promise<object | null>}
++ */
++export async function getEntity(campaignId, name) {
++  const store = await ensureStore(campaignId);
++  const lookup = String(name || "").trim();
++  if (!lookup) {
++    return null;
++  }
++
++  const normalized = normalizeName(lookup);
++  const byNameId = store.idsByName.get(normalized);
++  if (byNameId && store.entitiesById.get(byNameId)) {
++    return entitySummary(store.entitiesById.get(byNameId));
++  }
++
++  const fileCandidate = lookup.toLowerCase().endsWith(".md") ? lookup : `${lookup}.md`;
++  const byFileId = store.idsByFile.get(normalizeName(fileCandidate));
++  if (byFileId && store.entitiesById.get(byFileId)) {
++    return entitySummary(store.entitiesById.get(byFileId));
++  }
++
++  return null;
++}
++
++/**
++ * Traverses related entities from a starting entity using relations and wiki links.
++ * @param {string} campaignId
++ * @param {string} entityName
++ * @param {number} [depth=1]
++ * @returns {Promise<{root: string, depth: number, entities: object[], edges: Array<{from: string, to: string}>}>}
++ */
++export async function getRelated(campaignId, entityName, depth = 1) {
++  const store = await ensureStore(campaignId);
++  const root = await getEntity(campaignId, entityName);
++  if (!root) {
++    return { root: String(entityName || ""), depth: 0, entities: [], edges: [] };
++  }
++
++  const maxDepth = Math.max(0, Number(depth || 1));
++  const queue = [{ key: normalizeName(root.name), level: 0 }];
++  const visited = new Set();
++  const included = new Set();
++  const edges = [];
++
++  while (queue.length > 0) {
++    const current = queue.shift();
++    if (!current || visited.has(current.key) || current.level > maxDepth) {
++      continue;
++    }
++    visited.add(current.key);
++
++    const id = store.idsByName.get(current.key);
++    if (id) {
++      included.add(id);
++    }
++
++    const neighbors = [...(store.graph.get(current.key) || [])];
++    for (const neighbor of neighbors) {
++      const fromName = store.entitiesById.get(id)?.name || root.name;
++      const toId = store.idsByName.get(neighbor);
++      const toName = toId ? store.entitiesById.get(toId)?.name || neighbor : neighbor;
++      edges.push({ from: fromName, to: toName });
++
++      if (!visited.has(neighbor) && current.level < maxDepth) {
++        queue.push({ key: neighbor, level: current.level + 1 });
++      }
++    }
++  }
++
++  return {
++    root: root.name,
++    depth: maxDepth,
++    entities: [...included]
++      .map((id) => store.entitiesById.get(id))
++      .filter(Boolean)
++      .map((entity) => entitySummary(entity)),
++    edges
++  };
++}
++
++/**
++ * Creates or updates a memory entity markdown file and re-indexes it.
++ * @param {string} campaignId
++ * @param {object} entity
++ * @returns {Promise<object>}
++ */
++export async function upsertEntity(campaignId, entity) {
++  const campaignKey = String(campaignId || "unknown-campaign");
++  const store = await ensureStore(campaignKey);
++
++  const name = String(entity?.name || "").trim();
++  if (!name) {
++    const error = new Error("entity.name is required.");
++    error.code = "BAD_REQUEST";
++    error.statusCode = 400;
++    throw error;
++  }
++
++  const existing = await getEntity(campaignKey, name);
++  const now = new Date().toISOString();
++  const fileName = existing?.fileName || String(entity?.fileName || "") || `${slugifyName(name)}.md`;
++  const mergedBody =
++    entity?.facts && Array.isArray(entity.facts)
++      ? (await appendFactsToEntity(existing || { body: String(entity?.body || "") }, entity.facts)).body
++      : String(entity?.body ?? existing?.body ?? "").trim();
++
++  const merged = {
++    id: `${campaignKey}:${fileName}`,
++    campaignId: campaignKey,
++    fileName,
++    filePath: path.join(memoryDir(campaignKey), fileName),
++    name,
++    type: entityType(entity?.type || existing?.type || "lore"),
++    tags: dedupeStrings([...(existing?.tags || []), ...(entity?.tags || [])].map(normalizeTag)),
++    relations: dedupeRelations([...(existing?.relations || []), ...(entity?.relations || [])]),
++    body: mergedBody,
++    links: extractLinks(mergedBody),
++    lastAccessed: toIso(existing?.lastAccessed || now),
++    lastUpdated: now,
++    accessCount: Math.max(0, Number(existing?.accessCount || 0)),
++    confidence: Math.max(0, Math.min(1, Number(entity?.confidence ?? existing?.confidence ?? 1)))
++  };
++
++  await writeEntityToDisk(campaignKey, merged);
++  replaceInStore(store, merged, { rebuild: true });
++
++  const threshold = await summarizeThreshold(campaignKey, 2000);
++  if (wordCount(merged.body) > threshold) {
++    return summarizeAndArchive(campaignKey, merged.name);
++  }
++
++  return entitySummary(merged);
++}
++
++/**
++ * Increments access metadata for an entity and updates index cache.
++ * @param {string} campaignId
++ * @param {string} entityName
++ * @returns {Promise<object | null>}
++ */
++export async function recordAccess(campaignId, entityName) {
++  const campaignKey = String(campaignId || "unknown-campaign");
++  const store = await ensureStore(campaignKey);
++  const existing = await getEntity(campaignKey, entityName);
++  if (!existing) {
++    return null;
++  }
++
++  const updated = {
++    ...existing,
++    id: `${campaignKey}:${existing.fileName}`,
++    campaignId: campaignKey,
++    filePath: path.join(memoryDir(campaignKey), existing.fileName),
++    lastAccessed: new Date().toISOString(),
++    accessCount: Math.max(0, Number(existing.accessCount || 0)) + 1
++  };
++
++  await writeEntityToDisk(campaignKey, updated);
++  replaceInStore(store, {
++    ...updated,
++    links: extractLinks(updated.body)
++  }, { rebuild: false });
++
++  return entitySummary(updated);
++}
++
++/**
++ * Soft-deletes an entity by moving its markdown file into archive.
++ * @param {string} campaignId
++ * @param {string} entityName
++ * @returns {Promise<{archived: boolean, archivePath: string | null}>}
++ */
++export async function archiveEntity(campaignId, entityName) {
++  const campaignKey = String(campaignId || "unknown-campaign");
++  const store = await ensureStore(campaignKey);
++  const entity = await getEntity(campaignKey, entityName);
++  if (!entity) {
++    return { archived: false, archivePath: null };
++  }
++
++  await ensureDirs(campaignKey);
++  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
++  const archiveName = `${entity.fileName.replace(/\.md$/i, "")}.${timestamp}.md`;
++  const source = path.join(memoryDir(campaignKey), entity.fileName);
++  const target = path.join(archiveDir(campaignKey), archiveName);
++
++  await fs.rename(source, target);
++
++  const id = `${campaignKey}:${entity.fileName}`;
++  store.index.remove(id);
++  store.entitiesById.delete(id);
++  store.idsByName.delete(normalizeName(entity.name));
++  store.idsByFile.delete(normalizeName(entity.fileName));
++  rebuildGraph(store);
++
++  return { archived: true, archivePath: target };
++}
++
++/**
++ * Summarizes and archives oversized memory docs, keeping a compressed active copy.
++ * @param {string} campaignId
++ * @param {string} entityName
++ * @returns {Promise<object | null>}
++ */
++export async function summarizeAndArchive(campaignId, entityName) {
++  const campaignKey = String(campaignId || "unknown-campaign");
++  const existing = await getEntity(campaignKey, entityName);
++  if (!existing) {
++    return null;
++  }
++
++  const threshold = await summarizeThreshold(campaignKey, 2000);
++  if (wordCount(existing.body) <= threshold) {
++    return existing;
++  }
++
++  let summary = "";
++  try {
++    const response = await generateUtility(
++      [
++        {
++          role: "system",
++          content:
++            "You summarize RPG campaign memory docs. Return only concise markdown preserving important facts, relationships, and unresolved hooks."
++        },
++        {
++          role: "user",
++          content: `Summarize this memory document in under 400 words:\n\n${existing.body}`
++        }
++      ],
++      campaignKey
++    );
++    summary = String(response.content || "").trim();
++  } catch {
++    summary = firstWords(existing.body, 400);
++  }
++
++  await archiveEntity(campaignKey, existing.name);
++
++  const now = new Date().toISOString();
++  const compressed = {
++    ...existing,
++    body: summary,
++    lastUpdated: now,
++    confidence: Math.max(0, Math.min(1, Number(existing.confidence || 1))),
++    tags: dedupeStrings([...(existing.tags || []), "compressed"]),
++    relations: dedupeRelations(existing.relations || [])
++  };
++
++  await upsertEntity(campaignKey, compressed);
++  return getEntity(campaignKey, existing.name);
++}
++
++/**
++ * Builds a constrained world-context block from relevant entities.
++ * @param {string} campaignId
++ * @param {string} query
++ * @param {number} [tokenBudget]
++ * @param {object} [styleConfig]
++ * @returns {Promise<string>}
++ */
++export async function buildContextWindow(campaignId, query, tokenBudget = DEFAULT_CONTEXT_BUDGET, styleConfig = null) {
++  const campaignKey = String(campaignId || "unknown-campaign");
++  const searchResults = await search(campaignKey, query, { limit: 8 });
++
++  const relevanceByName = new Map();
++  const candidates = new Map();
++
++  for (const result of searchResults) {
++    const key = normalizeName(result.name);
++    relevanceByName.set(key, Math.max(Number(result.relevance || result.score || 0), relevanceByName.get(key) || 0));
++    candidates.set(key, result);
++  }
++
++  for (const entry of searchResults.slice(0, 3)) {
++    const related = await getRelated(campaignKey, entry.name, 1);
++    for (const relatedEntity of related.entities || []) {
++      const key = normalizeName(relatedEntity.name);
++      if (!candidates.has(key)) {
++        candidates.set(key, relatedEntity);
+       }
+-      scored.push({
+-        docKey: doc.key,
+-        title: doc.title,
+-        path: doc.path,
+-        heading: chunk.heading,
+-        text: chunk.text.slice(0, 500),
+-        keywords: chunk.keywords.slice(0, 12),
+-        score
+-      });
++      if (!relevanceByName.has(key)) {
++        relevanceByName.set(key, 0.2);
++      }
++    }
++  }
++
++  const all = [...candidates.values()];
++  const maxAccessCount = all.reduce((maxValue, item) => Math.max(maxValue, Number(item.accessCount || 0)), 1);
++
++  const ranked = all
++    .map((entity) => {
++      const key = normalizeName(entity.name);
++      const baseRelevance = Number(relevanceByName.get(key) || 0.1);
++      const priorityMultiplier = hasTagOverlap(entity.tags, styleConfig?.memory?.priorityTags || []) ? 1.5 : 1;
++      const deprioritizedMultiplier = hasTagOverlap(entity.tags, styleConfig?.memory?.deprioritizedTags || []) ? 0.3 : 1;
++      const playerMultiplier = playerAffinityBoost(entity, styleConfig?.memory?.playerFocusWeights || {});
++      const relevance = baseRelevance * priorityMultiplier * deprioritizedMultiplier * playerMultiplier;
++      const recency = recencyWeight(entity.lastAccessed);
++      const access = accessWeight(entity.accessCount, maxAccessCount);
++      return {
++        ...entity,
++        relevance,
++        contextRank: relevance * 0.6 + recency * 0.3 + access * 0.1
++      };
++    })
++    .sort((left, right) => right.contextRank - left.contextRank);
++
++  const maxChars = Math.max(800, Number(tokenBudget || DEFAULT_CONTEXT_BUDGET) * 4);
++  const included = [];
++  let totalChars = 0;
++
++  for (const entity of ranked) {
++    const summary = firstWords(entity.body, 200);
++    const chunk = [
++      `[${entity.type}] ${entity.name}`,
++      `Tags: ${(entity.tags || []).join(", ") || "none"}`,
++      `Relations: ${(entity.relations || []).map((rel) => `${rel.type} -> ${rel.target}`).join("; ") || "none"}`,
++      `Summary: ${summary}`
++    ].join("\n");
++
++    if (totalChars + chunk.length > maxChars) {
++      continue;
+     }
++
++    included.push({ name: entity.name, text: chunk });
++    totalChars += chunk.length + 2;
+   }
+ 
+-  return scored.sort((left, right) => right.score - left.score).slice(0, Math.max(1, limit));
++  await Promise.all(included.map((item) => recordAccess(campaignKey, item.name)));
++
++  return included.map((entry) => entry.text).join("\n\n");
++}
++
++/**
++ * Legacy compatibility wrapper for listing campaign memory docs.
++ * @param {string} campaignId
++ * @returns {Promise<Array<{key: string, title: string, content: string, updatedAt: number}>>}
++ */
++export async function listCampaignMemoryDocs(campaignId) {
++  const store = await ensureStore(campaignId);
++  return [...store.entitiesById.values()].map((entity) => ({
++    key: entity.fileName.replace(/\.md$/i, ""),
++    title: entity.name,
++    path: entity.filePath,
++    content: entity.body,
++    updatedAt: new Date(entity.lastUpdated || Date.now()).getTime()
++  }));
++}
++
++/**
++ * Legacy compatibility wrapper to write memory content by doc key.
++ * @param {string} campaignId
++ * @param {string} docKey
++ * @param {string} content
++ * @returns {Promise<{key: string, title: string, path: string, content: string, updatedAt: number}>}
++ */
++export async function writeCampaignMemoryDoc(campaignId, docKey, content) {
++  const entity = await upsertEntity(campaignId, {
++    name: String(docKey || "Untitled").replace(/[-_]/g, " "),
++    type: "lore",
++    tags: [String(docKey || "legacy")],
++    body: String(content || "")
++  });
++  return {
++    key: entity.fileName.replace(/\.md$/i, ""),
++    title: entity.name,
++    path: path.join(memoryDir(campaignId), entity.fileName),
++    content: entity.body,
++    updatedAt: new Date(entity.lastUpdated || Date.now()).getTime()
++  };
++}
++
++/**
++ * Legacy compatibility wrapper for keyword search.
++ * @param {string} campaignId
++ * @param {string} query
++ * @param {{docKey?: string, limit?: number}} [options]
++ * @returns {Promise<Array<{docKey: string, title: string, text: string, score: number, heading: string}>>}
++ */
++export async function searchCampaignMemory(campaignId, query, options = {}) {
++  const type = options.docKey ? "lore" : undefined;
++  const results = await search(campaignId, query, { type, limit: Number(options.limit || 5) });
++  return results.map((entry) => ({
++    docKey: entry.fileName.replace(/\.md$/i, ""),
++    title: entry.name,
++    heading: entry.name,
++    text: firstWords(entry.body, 120),
++    score: entry.score
++  }));
+ }
+diff --git a/server/gm/prompting.js b/server/gm/prompting.js
+index 0415898..6ecadfe 100644
+--- a/server/gm/prompting.js
++++ b/server/gm/prompting.js
+@@ -1,80 +1,475 @@
+-function summarizeCampaign(state, campaignId) {
+-  const campaign = (state.campaigns || []).find((entry) => entry.id === campaignId) || null;
+-  const packageData = state.campaignPackagesByCampaign?.[campaignId] || {
+-    scenes: [],
+-    npcs: [],
+-    items: [],
+-    rules: []
+-  };
+-  const recentChat = (state.chatLog || []).filter((line) => line.campaignId === campaignId).slice(-6);
+-  const journals = state.journalsByCampaign?.[campaignId] || [];
++import { generateNarrative, generateRaw, generateUtility, getModelTiers } from "../ai/openrouter.js";
++import { getCampaignRuntimeState, getState, setCampaignRuntimeState } from "../db/repository.js";
++import { resolveSkillCheck, rollDiceExpression } from "../rules/engine.js";
++import { buildContextWindow, getEntity, getRelated, search, upsertEntity } from "./memoryStore.js";
++import { runAutoMemoryPipeline } from "./autoMemory.js";
++import { getPlayerContext, updatePlayerProfile } from "./playerMemory.js";
++import { getProfile } from "./promptProfiles.js";
++import { buildStylePromptBlock, getStyleConfig } from "./styleConfig.js";
++import { executeTriggers as executeParsedTriggers, parseTriggers as parseResponseTriggers } from "./triggerParser.js";
++
++const CONTEXT_BUDGET = Number(process.env.NOTDND_CONTEXT_BUDGET || 1500);
++
++function summarizeCharacters(characters = []) {
++  return characters
++    .map((character) => {
++      const stats = character.stats || {};
++      return `${character.name} (${character.className} ${character.level}) HP ${character.hp}, AC ${character.ac}, STR ${stats.str || 10}, DEX ${stats.dex || 10}, CON ${stats.con || 10}, INT ${stats.int || 10}, WIS ${stats.wis || 10}, CHA ${stats.cha || 10}`;
++    })
++    .join("\n");
++}
++
++function stringifyActivePlayers(activePlayers = []) {
++  return activePlayers
++    .map((player) => {
++      if (typeof player === "string") {
++        return player;
++      }
++      const name = String(player?.name || player?.displayName || player?.playerName || "Unknown Player");
++      const character = String(player?.characterSummary || player?.character || "").trim();
++      return character ? `${name}: ${character}` : name;
++    })
++    .join("\n");
++}
++
++function extractJsonArray(text = "") {
++  const source = String(text || "").trim();
++  const fenced = source.match(/```(?:json)?\s*([\s\S]*?)```/i);
++  const candidate = fenced ? fenced[1].trim() : source;
++  const bracketStart = candidate.indexOf("[");
++  const bracketEnd = candidate.lastIndexOf("]");
++  if (bracketStart !== -1 && bracketEnd !== -1 && bracketEnd > bracketStart) {
++    return candidate.slice(bracketStart, bracketEnd + 1);
++  }
++  return candidate;
++}
++
++async function compressSessionHistory(chatLines = [], campaignId) {
++  const recent = chatLines.slice(-20);
++  if (recent.length === 0) {
++    return "None";
++  }
++
++  if (recent.length <= 8) {
++    return recent.map((line) => `${line.speaker}: ${line.text}`).join(" | ");
++  }
++
++  try {
++    const joined = recent.map((line) => `${line.speaker}: ${line.text}`).join("\n");
++    const response = await generateUtility(
++      [
++        { role: "system", content: "Summarize RPG chat logs for a GM in concise bullet points." },
++        { role: "user", content: `Compress this session history into at most 8 bullet points:\n\n${joined}` }
++      ],
++      campaignId
++    );
++    return String(response.content || "").trim() || joined;
++  } catch {
++    return recent.slice(-8).map((line) => `${line.speaker}: ${line.text}`).join(" | ");
++  }
++}
++
++function inferCompanionIntent(message = "") {
++  const lower = String(message || "").toLowerCase();
++  if (/what happened last session/.test(lower)) {
++    return "session_recap";
++  }
++  if (/tell me about\s+/.test(lower)) {
++    return "entity_lookup";
++  }
++  if (/write backstory/.test(lower) || /backstory/.test(lower)) {
++    return "backstory";
++  }
++  if (/help me plan/.test(lower) || /plan for next session/.test(lower)) {
++    return "planning";
++  }
++  if (/what does .* think of me/.test(lower)) {
++    return "relationship_lookup";
++  }
++  return "chat";
++}
++
++async function buildCompanionPlayerContext(campaignId, message, playerName, state) {
++  const playerCharacter = (state.characters || []).find(
++    (character) => normalizeCase(character.name) === normalizeCase(playerName)
++  );
++
++  const relationshipResults = await search(campaignId, `${playerName} relationship`, {
++    type: "relationship",
++    limit: 4
++  });
+ 
+   return {
+-    campaign,
+-    packageData,
+-    recentChat,
+-    journals,
+-    mapCount: (state.maps || []).filter((entry) => entry.campaignId === campaignId).length,
+-    encounterCount: (state.encounters || []).filter((entry) => entry.campaignId === campaignId).length,
+-    characterCount: (state.characters || []).filter((entry) => entry.campaignId === campaignId).length
++    playerSummary: playerCharacter
++      ? `${playerCharacter.name} (${playerCharacter.className} ${playerCharacter.level}) HP ${playerCharacter.hp}, AC ${playerCharacter.ac}`
++      : `Player: ${playerName || "Unknown"}`,
++    relationships: relationshipResults.map((entry) => `${entry.name}: ${entry.body}`).join("\n") || "No known relationship history.",
++    query: message
+   };
+ }
+ 
+-function renderMemorySnippets(snippets = []) {
+-  if (!snippets.length) {
+-    return "No matching memory snippets.";
++function normalizeCase(value) {
++  return String(value || "")
++    .trim()
++    .toLowerCase();
++}
++
++function withProfileSections(basePrompt, profile = {}) {
++  const triggerFormat = String(profile.triggerFormat || "").trim();
++  const responseStyle = String(profile.responseStyle || "").trim();
++  const structuredHints = String(profile.structuredHints || "").trim();
++
++  return [
++    basePrompt,
++    triggerFormat ? `[TRIGGER FORMAT] ${triggerFormat}` : "",
++    responseStyle ? `[RESPONSE STYLE] ${responseStyle}` : "",
++    structuredHints ? `[STRUCTURED HINTS] ${structuredHints}` : ""
++  ]
++    .filter(Boolean)
++    .join("\n\n");
++}
++
++function profileCallOptions(profile, stream, onStream) {
++  const options = {};
++  if (stream) {
++    options.stream = true;
++    if (typeof onStream === "function") {
++      options.onStream = onStream;
++    }
+   }
+ 
+-  return snippets
+-    .map((snippet, idx) => `${idx + 1}. [${snippet.docKey} > ${snippet.heading}] ${snippet.text}`)
+-    .join("\n");
++  if (Number.isFinite(Number(profile?.temperature))) {
++    options.temperature = Number(profile.temperature);
++  }
++  if (Number.isFinite(Number(profile?.maxResponseTokens))) {
++    options.maxResponseTokens = Number(profile.maxResponseTokens);
++  }
++  if (Array.isArray(profile?.stopSequences) && profile.stopSequences.length > 0) {
++    options.stopSequences = profile.stopSequences;
++  }
++
++  return options;
+ }
+ 
+-export function buildHumanGmAssistPrompt({ state, campaignId, message, memorySnippets = [] }) {
+-  const snapshot = summarizeCampaign(state, campaignId);
+-  return [
+-    "You are a concise tabletop GM copilot helping a human game master run the session better.",
+-    "Return practical advice, rulings support, pacing tips, and one strong next move.",
+-    `Campaign: ${snapshot.campaign?.name || campaignId}`,
+-    `Setting: ${snapshot.campaign?.setting || "Unknown"}`,
+-    `Maps: ${snapshot.mapCount} | Encounters: ${snapshot.encounterCount} | Characters: ${snapshot.characterCount}`,
+-    `Prepared scenes: ${(snapshot.packageData.scenes || []).map((scene) => scene.name).slice(0, 4).join(", ") || "None"}`,
+-    `Prepared NPCs: ${(snapshot.packageData.npcs || []).map((npc) => npc.name).slice(0, 5).join(", ") || "None"}`,
+-    `Prepared rules: ${(snapshot.packageData.rules || []).map((rule) => rule.name).slice(0, 5).join(", ") || "None"}`,
+-    `Recent chat: ${snapshot.recentChat.map((line) => `${line.speaker}: ${line.text}`).join(" | ") || "None"}`,
+-    `Recent journals: ${snapshot.journals.slice(0, 3).map((entry) => `${entry.title}: ${entry.body}`).join(" | ") || "None"}`,
+-    `Memory snippets:\n${renderMemorySnippets(memorySnippets)}`,
+-    `Human GM request: ${message}`
++function resolveNarrativeModel(styleConfig, modelTiers) {
++  return String(styleConfig?.model?.preferredNarrativeModel || "").trim() || modelTiers.narrative;
++}
++
++function resolveUtilityModel(styleConfig, modelTiers) {
++  let model = String(styleConfig?.model?.preferredUtilityModel || "").trim() || modelTiers.utility;
++  const allowFree = styleConfig?.model?.allowFreeModels !== false;
++  if (!allowFree && /:free$/i.test(model)) {
++    const fallback = String(styleConfig?.model?.preferredNarrativeModel || "").trim() || modelTiers.narrative;
++    model = fallback;
++  }
++  return model;
++}
++
++function applyStyleModelOverrides(options, styleConfig) {
++  const next = { ...(options || {}) };
++  const override = styleConfig?.model?.maxTokensPerResponse;
++  if (override !== null && override !== undefined && Number.isFinite(Number(override))) {
++    next.maxResponseTokens = Math.max(64, Math.floor(Number(override)));
++  }
++  return next;
++}
++
++async function callNarrativeModel(messages, campaignId, resolvedModel, modelTiers, options) {
++  if (resolvedModel === modelTiers.narrative) {
++    return generateNarrative(messages, campaignId, options);
++  }
++  return generateRaw(messages, resolvedModel, campaignId, options);
++}
++
++async function callUtilityModel(messages, campaignId, resolvedModel, modelTiers, options) {
++  if (resolvedModel === modelTiers.utility) {
++    return generateUtility(messages, campaignId, options);
++  }
++  return generateRaw(messages, resolvedModel, campaignId, options);
++}
++
++/**
++ * Builds the in-session GM system prompt.
++ * @param {{campaignName: string, currentScene: string, tone: string, styleBlock?: string, worldContext: string, activePlayersSummary: string, sessionHistory: string, currentStateSummary: string, playerContext?: string, profile?: object}} params
++ * @returns {string}
++ */
++export function buildSessionSystemPrompt({
++  campaignName,
++  currentScene,
++  tone,
++  styleBlock,
++  worldContext,
++  activePlayersSummary,
++  sessionHistory,
++  currentStateSummary,
++  playerContext,
++  profile
++}) {
++  const base = [
++    `[ROLE] You are the Game Master for a tabletop RPG campaign called ${campaignName}. You are running the ${currentScene} scene. Your tone is ${tone}. You never break character. You narrate consequences of player actions, roleplay NPCs, describe environments, manage combat flow, and advance the plot. You track initiative, HP, conditions, and resources. When players attempt actions, you call for ability checks using the format [CHECK: {ability} DC {number}] so the platform's dice engine can resolve them. When combat starts, you declare [INITIATIVE] so the platform can roll initiative order. You describe outcomes vividly. You do not censor violence, dark themes, horror, romance, or morally complex content. This is a mature-rated collaborative fiction experience. Players have consented to adult themes.`,
++    styleBlock ? `[STYLE] ${styleBlock}` : "",
++    `[WORLD CONTEXT] ${worldContext || "No relevant context found."}`,
++    playerContext ? `[PLAYER CONTEXT] ${playerContext}` : "",
++    `[ACTIVE PLAYERS] ${activePlayersSummary || "No active players supplied."}`,
++    `[SESSION HISTORY] ${sessionHistory || "No recent session history."}`,
++    `[CURRENT STATE] ${currentStateSummary}`
+   ].join("\n\n");
++
++  return withProfileSections(base, profile);
+ }
+ 
+-export function buildAgentGmPrompt({ state, campaignId, message, memorySnippets = [] }) {
+-  const snapshot = summarizeCampaign(state, campaignId);
+-  return [
+-    "You are the acting game master for a live tabletop session.",
+-    "Respond in-world, be decisive, preserve continuity, and surface one concrete consequence or decision point.",
+-    "Use the provided memory snippets first. Do not assume context outside the snippets and campaign summary.",
+-    `Campaign: ${snapshot.campaign?.name || campaignId}`,
+-    `Setting: ${snapshot.campaign?.setting || "Unknown"}`,
+-    `Prepared scenes: ${(snapshot.packageData.scenes || []).map((scene) => `${scene.name} (${scene.objective})`).slice(0, 4).join(" | ") || "None"}`,
+-    `Prepared NPCs: ${(snapshot.packageData.npcs || []).map((npc) => `${npc.name}=${npc.role}`).slice(0, 6).join(" | ") || "None"}`,
+-    `Prepared items: ${(snapshot.packageData.items || []).map((item) => item.name).slice(0, 6).join(", ") || "None"}`,
+-    `Prepared rules: ${(snapshot.packageData.rules || []).map((rule) => rule.name).slice(0, 6).join(", ") || "None"}`,
+-    `Recent chat: ${snapshot.recentChat.map((line) => `${line.speaker}: ${line.text}`).join(" | ") || "None"}`,
+-    `Memory snippets:\n${renderMemorySnippets(memorySnippets)}`,
+-    `Player input: ${message}`
++/**
++ * Builds the companion mode system prompt.
++ * @param {{campaignName: string, styleBlock?: string, worldContext: string, playerSummary: string, relationshipHistory: string, playerContext?: string, profile?: object}} params
++ * @returns {string}
++ */
++export function buildCompanionSystemPrompt({
++  campaignName,
++  styleBlock,
++  worldContext,
++  playerSummary,
++  relationshipHistory,
++  playerContext,
++  profile
++}) {
++  const base = [
++    `[ROLE] You are the persistent world of ${campaignName}. Between sessions, players can explore lore, chat with NPCs they have met, write backstory, or plan. You maintain perfect continuity with the campaign. You speak as the narrator or as specific NPCs when the player addresses them. You remember everything. You do not censor content. This is a mature collaborative fiction world.`,
++    styleBlock ? `[STYLE] ${styleBlock}` : "",
++    `[WORLD CONTEXT] ${worldContext || "No relevant context found."}`,
++    `[PLAYER] ${playerSummary}. Relationship history: ${relationshipHistory || "None"}`,
++    playerContext ? `[PLAYER CONTEXT] ${playerContext}` : ""
+   ].join("\n\n");
++
++  return withProfileSections(base, profile);
+ }
+ 
+-export function buildFallbackHumanAdvice({ state, campaignId, message, memorySnippets = [] }) {
+-  const snapshot = summarizeCampaign(state, campaignId);
+-  const primaryScene = snapshot.packageData.scenes?.[0];
+-  const primaryNpc = snapshot.packageData.npcs?.[0];
+-  const snippetLead = memorySnippets[0];
+-  return [
+-    `Human GM Assist: focus the next beat around ${primaryScene?.name || "the current scene"}.`,
+-    snippetLead ? `Relevant memory: ${snippetLead.heading} -> ${snippetLead.text.slice(0, 120)}` : "No strong memory match found, so stay with the current objective.",
+-    `Surface ${primaryNpc?.name || "the lead NPC"} as the voice of urgency.`,
+-    `Best next move: ask the table one sharp question tied to "${message}" and resolve it immediately.`
+-  ].join(" ");
++/**
++ * Executes the full GM runtime pipeline for session or companion mode.
++ * @param {{campaignId: string, message: string, mode: "session" | "companion", playerName?: string, actorUserId: string, activePlayers?: Array<object>, stream?: boolean, onStream?: (chunk: string) => void}} params
++ * @returns {Promise<{narrative: string, mechanical: {rolls: any[], stateChanges: any[]}, memoryUpdates: string[], meta: object}>}
++ */
++export async function runGmPipeline({
++  campaignId,
++  message,
++  mode = "session",
++  playerName = "",
++  actorUserId,
++  activePlayers = [],
++  stream = false,
++  onStream
++}) {
++  const campaignKey = String(campaignId || "").trim();
++  const input = String(message || "").trim();
++  if (!campaignKey || !input) {
++    const error = new Error("campaignId and message are required.");
++    error.code = "BAD_REQUEST";
++    error.statusCode = 400;
++    throw error;
++  }
++
++  const state = getState({ userId: actorUserId });
++  const campaign = (state.campaigns || []).find((entry) => entry.id === campaignKey);
++  const runtime = getCampaignRuntimeState(campaignKey, { internal: true });
++  const currentScene = campaign?.activeScene || campaign?.status || "Current Scene";
++  const tone = campaign?.setting || "Cinematic";
++
++  const styleConfig = await getStyleConfig(campaignKey);
++  const stylePromptBlock = buildStylePromptBlock(styleConfig);
++  const playerPromptContext = await getPlayerContext(campaignKey, playerName);
++  const worldContext = await buildContextWindow(campaignKey, input, CONTEXT_BUDGET, styleConfig);
++  const sessionHistory = await compressSessionHistory(
++    (state.chatLog || []).filter((line) => line.campaignId === campaignKey),
++    campaignKey
++  );
++
++  const activePlayerSummary = activePlayers.length > 0
++    ? stringifyActivePlayers(activePlayers)
++    : summarizeCharacters((state.characters || []).filter((character) => character.campaignId === campaignKey).slice(0, 4));
++
++  const currentStateSummary = `Scene: ${currentScene}, Initiative: ${runtime.initiativeOrder?.length ? runtime.initiativeOrder.map((entry) => `${entry.name}:${entry.initiative}`).join(", ") : "none"}, Active conditions: none`;
++
++  const modelTiers = getModelTiers();
++  let systemPrompt = "";
++  let messages = [];
++  let aiResult;
++  let companionIntent = "chat";
++  let selectedModel = resolveNarrativeModel(styleConfig, modelTiers);
++  let promptProfile = getProfile(selectedModel);
++  let modelOptions = applyStyleModelOverrides(profileCallOptions(promptProfile, stream, onStream), styleConfig);
++
++  if (mode === "companion") {
++    const intent = inferCompanionIntent(input);
++    companionIntent = intent;
++    const lookupIntent = new Set(["session_recap", "entity_lookup", "planning", "relationship_lookup"]);
++    const useUtility = intent === "session_recap" || lookupIntent.has(intent);
++    selectedModel = useUtility
++      ? resolveUtilityModel(styleConfig, modelTiers)
++      : resolveNarrativeModel(styleConfig, modelTiers);
++    promptProfile = getProfile(selectedModel);
++    modelOptions = applyStyleModelOverrides(profileCallOptions(promptProfile, stream, onStream), styleConfig);
++
++    const companionContext = await buildCompanionPlayerContext(campaignKey, input, playerName, state);
++    systemPrompt = buildCompanionSystemPrompt({
++      campaignName: campaign?.name || campaignKey,
++      styleBlock: stylePromptBlock,
++      worldContext,
++      playerSummary: companionContext.playerSummary,
++      relationshipHistory: companionContext.relationships,
++      playerContext: playerPromptContext,
++      profile: promptProfile
++    });
++
++    messages = [
++      { role: "system", content: systemPrompt },
++      { role: "user", content: input }
++    ];
++
++    if (intent === "session_recap") {
++      const logs = await search(campaignKey, "session log", { type: "session_log", limit: 5 });
++      const compiled = logs.map((log) => `${log.name}: ${log.body}`).join("\n\n");
++      aiResult = await callUtilityModel(
++        [
++          { role: "system", content: systemPrompt },
++          {
++            role: "user",
++            content: `What happened last session? Summarize these session logs with continuity preserved:\n\n${compiled || "No session logs available."}`
++          }
++        ],
++        campaignKey,
++        selectedModel,
++        modelTiers,
++        modelOptions
++      );
++    } else if (lookupIntent.has(intent)) {
++      if (intent === "entity_lookup") {
++        const candidateName = input.replace(/.*tell me about\s+/i, "").trim();
++        const entity = candidateName ? await getEntity(campaignKey, candidateName) : null;
++        const related = entity ? await getRelated(campaignKey, entity.name, 1) : { entities: [] };
++        const context = [entity ? `${entity.name}: ${entity.body}` : "Entity not found.", ...(related.entities || []).map((entry) => `${entry.name}: ${entry.body}`)].join("\n\n");
++        aiResult = await callUtilityModel(
++          [
++            { role: "system", content: systemPrompt },
++            { role: "user", content: `Answer this lookup with continuity and concise detail:\n\n${context}\n\nPlayer query: ${input}` }
++          ],
++          campaignKey,
++          selectedModel,
++          modelTiers,
++          modelOptions
++        );
++      } else {
++        aiResult = await callUtilityModel(messages, campaignKey, selectedModel, modelTiers, modelOptions);
++      }
++    } else {
++      aiResult = await callNarrativeModel(messages, campaignKey, selectedModel, modelTiers, modelOptions);
++    }
++  } else {
++    selectedModel = resolveNarrativeModel(styleConfig, modelTiers);
++    promptProfile = getProfile(selectedModel);
++    modelOptions = applyStyleModelOverrides(profileCallOptions(promptProfile, stream, onStream), styleConfig);
++
++    systemPrompt = buildSessionSystemPrompt({
++      campaignName: campaign?.name || campaignKey,
++      currentScene,
++      tone,
++      styleBlock: stylePromptBlock,
++      worldContext,
++      activePlayersSummary: activePlayerSummary,
++      sessionHistory,
++      currentStateSummary,
++      playerContext: playerPromptContext,
++      profile: promptProfile
++    });
++
++    messages = [
++      { role: "system", content: systemPrompt },
++      { role: "user", content: input }
++    ];
++
++    aiResult = await callNarrativeModel(messages, campaignKey, selectedModel, modelTiers, modelOptions);
++  }
++
++  const rawNarrative = String(aiResult.content || "").trim();
++  const parsed = parseResponseTriggers(rawNarrative);
++  const triggerExecution = await executeParsedTriggers(
++    parsed.triggers,
++    campaignKey,
++    playerName,
++    {
++      getState,
++      setCampaignRuntimeState
++    },
++    {
++      resolveSkillCheck,
++      rollDiceExpression
++    },
++    {
++      upsertEntity,
++      getEntity
++    }
++  );
++  const sanitizedNarrative = String(parsed.narrative || rawNarrative).trim() || rawNarrative;
++
++  const autoMemory = await runAutoMemoryPipeline({
++    campaignId: campaignKey,
++    narrative: sanitizedNarrative,
++    playerMessage: input,
++    mode,
++    playerName
++  });
++
++  const memoryUpdates = [...new Set([...(triggerExecution.memoryUpdates || []), ...(autoMemory.updatedEntities || [])])];
++  if (mode === "companion" && companionIntent === "backstory" && playerName) {
++    const playerRecord = await upsertEntity(campaignKey, {
++      name: playerName,
++      type: "player_character",
++      tags: ["backstory", "companion"],
++      body: `Backstory update request: ${input}\\n\\nCompanion response:\\n${sanitizedNarrative}`
++    });
++    memoryUpdates.push(playerRecord.name);
++  }
++
++  if (playerName) {
++    try {
++      const profileUpdate = await updatePlayerProfile(campaignKey, playerName, sanitizedNarrative, input);
++      if (profileUpdate?.entityName) {
++        memoryUpdates.push(profileUpdate.entityName);
++      }
++    } catch {
++      // Keep the runtime response resilient if player profiling fails.
++    }
++  }
++
++  return {
++    narrative: sanitizedNarrative,
++    mechanical: triggerExecution.mechanical,
++    memoryUpdates: [...new Set(memoryUpdates)],
++    meta: {
++      mode,
++      model: aiResult.model,
++      requestedModel: selectedModel,
++      tokensUsed: aiResult.tokensUsed,
++      cost: aiResult.cost,
++      profile: {
++        temperature: promptProfile.temperature,
++        maxResponseTokens: promptProfile.maxResponseTokens
++      },
++      style: styleConfig,
++      triggerCount: parsed.triggers.length,
++      systemPrompt
++    }
++  };
++}
++
++/**
++ * Attempts to parse extracted entity arrays from model responses.
++ * @param {string} responseText
++ * @returns {Array<object>}
++ */
++export function parseExtractedEntities(responseText) {
++  try {
++    const parsed = JSON.parse(extractJsonArray(responseText));
++    return Array.isArray(parsed) ? parsed : [];
++  } catch {
++    return [];
++  }
+ }
+diff --git a/server/index.js b/server/index.js
+index c689daa..87c05a7 100644
+--- a/server/index.js
++++ b/server/index.js
+@@ -1,16 +1,24 @@
+ import http from "node:http";
++import fs from "node:fs/promises";
+ import path from "node:path";
+ import { fileURLToPath } from "node:url";
+ import { createAiJobProcessor } from "./ai/processor.js";
++import { generateNarrative, generateRaw, getCampaignUsage, getModelTiers } from "./ai/openrouter.js";
+ import { generateWithProvider, listAiProviders } from "./ai/providers.js";
+ import { readJsonBody, serveStatic, writeJson, writeText } from "./api/http.js";
+ import { handleQuickstartBuildPayload, handleQuickstartParsePayload } from "./api/quickstartRoutes.js";
+ import { tokenFromRequest } from "./auth/httpAuth.js";
++import { createOnboardingCampaign } from "./campaign/onboarding.js";
+ import {
+   addCampaignMember,
+   applyOperation,
+-  createSoloRun,
++  assertCampaignPlayAccess,
++  assertCampaignReadAccess,
++  assertCampaignWriteAccess,
+   createQuickstartCampaignFromParsed,
++  createSoloRun,
++  getCampaignRole,
++  getCampaignRuntimeState,
+   getCurrentStateVersion,
+   getMetrics,
+   getSoloRun,
+@@ -23,10 +31,22 @@ import {
+   logoutSessionToken,
+   registerUser,
+   resolveStorePath,
+-  saveSoloRun
++  saveSoloRun,
++  setCampaignRuntimeState
+ } from "./db/repository.js";
+-import { listCampaignMemoryDocs, searchCampaignMemory, writeCampaignMemoryDoc } from "./gm/memoryStore.js";
+-import { buildAgentGmPrompt, buildFallbackHumanAdvice, buildHumanGmAssistPrompt } from "./gm/prompting.js";
++import {
++  buildContextWindow,
++  archiveEntity,
++  getEntity,
++  listEntities,
++  rebuildCampaignIndex,
++  search,
++  upsertEntity
++} from "./gm/memoryStore.js";
++import { buildSessionSystemPrompt, runGmPipeline } from "./gm/prompting.js";
++import { getProfile } from "./gm/promptProfiles.js";
++import { applyPreset, getPresets } from "./gm/stylePresets.js";
++import { buildStylePromptBlock, getStyleConfig, updateStyleConfig, validateStyleUpdate } from "./gm/styleConfig.js";
+ import { parseHomebrewDocuments } from "./homebrew/parser.js";
+ import { fetchHomebrewUrl } from "./homebrew/urlImport.js";
+ import { createWsHub } from "./realtime/wsHub.js";
+@@ -38,9 +58,55 @@ import { buildSoloScenePayload } from "./solo/scene.js";
+ const __filename = fileURLToPath(import.meta.url);
+ const __dirname = path.dirname(__filename);
+ const repoRoot = path.resolve(__dirname, "..");
++const waitlistFilePath = process.env.NOTDND_WAITLIST_PATH
++  ? path.resolve(process.env.NOTDND_WAITLIST_PATH)
++  : path.join(__dirname, "db", "waitlist.json");
++const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
++const waitlistInterests = new Set([
++  "AI Game Master",
++  "Never-Forget Memory",
++  "Uncensored Content",
++  "Multiplayer",
++  "Homebrew Support",
++  "All of it"
++]);
++const previewRateByUser = new Map();
+ 
+ initializeDatabase();
+ 
++async function readWaitlistEntries() {
++  try {
++    const raw = await fs.readFile(waitlistFilePath, "utf8");
++    const parsed = raw.trim() ? JSON.parse(raw) : [];
++    return Array.isArray(parsed) ? parsed : [];
++  } catch (error) {
++    if (error?.code === "ENOENT") {
++      return [];
++    }
++    throw error;
++  }
++}
++
++async function writeWaitlistEntries(entries) {
++  await fs.mkdir(path.dirname(waitlistFilePath), { recursive: true });
++  await fs.writeFile(waitlistFilePath, `${JSON.stringify(entries, null, 2)}\n`, "utf8");
++}
++
++function normalizeWaitlistInterest(rawInterest) {
++  const value = String(rawInterest || "").trim();
++  if (!value) {
++    return "All of it";
++  }
++
++  for (const option of waitlistInterests) {
++    if (option.toLowerCase() === value.toLowerCase()) {
++      return option;
++    }
++  }
++
++  return value.slice(0, 120);
++}
++
+ function routeError(res, error) {
+   const statusCode = Number(error?.statusCode) || 400;
+   const payload = {
+@@ -63,6 +129,33 @@ function routeError(res, error) {
+   writeJson(res, statusCode, payload);
+ }
+ 
++function assertGmOrOwner(user, campaignId) {
++  const role = getCampaignRole(campaignId, { actorUserId: user.id });
++  if (user.isAdmin || role === "owner" || role === "gm") {
++    return role;
++  }
++  throw Object.assign(new Error("GM or owner access required."), {
++    code: "FORBIDDEN",
++    statusCode: 403
++  });
++}
++
++function enforcePreviewRateLimit(userId) {
++  const key = String(userId || "");
++  const now = Date.now();
++  const windowMs = 60_000;
++  const maxRequests = 3;
++  const bucket = (previewRateByUser.get(key) || []).filter((ts) => now - ts < windowMs);
++  if (bucket.length >= maxRequests) {
++    throw Object.assign(new Error("Preview rate limit exceeded. Max 3 previews per minute."), {
++      code: "RATE_LIMITED",
++      statusCode: 429
++    });
++  }
++  bucket.push(now);
++  previewRateByUser.set(key, bucket);
++}
++
+ function resolveAuthUser(req) {
+   const token = tokenFromRequest(req);
+   if (!token) {
+@@ -83,11 +176,12 @@ function requireAuth(req) {
+ }
+ 
+ function userCanAccessCampaign(userId, campaignId) {
+-  if (!campaignId || !userId) {
++  try {
++    assertCampaignReadAccess(campaignId, { actorUserId: userId });
++    return true;
++  } catch {
+     return false;
+   }
+-  const state = getState({ userId });
+-  return state.campaigns.some((campaign) => campaign.id === campaignId);
+ }
+ 
+ function inferCampaignIdForPayload(userId, payload = {}) {
+@@ -159,6 +253,48 @@ function broadcastAuthoritativeState(campaignId, reason, op) {
+   }
+ }
+ 
++function pushChatLine(campaignId, speaker, text, context = {}) {
++  applyOperation(
++    "push_chat_line",
++    {
++      campaignId,
++      speaker,
++      text
++    },
++    context
++  );
++}
++
++async function runAndPersistGmResponse({
++  campaignId,
++  message,
++  mode,
++  actorUserId,
++  playerName,
++  activePlayers = [],
++  stream = false,
++  onStream
++}) {
++  const response = await runGmPipeline({
++    campaignId,
++    message,
++    mode,
++    actorUserId,
++    playerName,
++    activePlayers,
++    stream,
++    onStream
++  });
++
++  const userState = getState({ userId: actorUserId });
++  const userName = userState.auth?.user?.displayName || playerName || "Player";
++
++  pushChatLine(campaignId, playerName || userName, message, { actorUserId });
++  pushChatLine(campaignId, mode === "companion" ? "Companion GM" : "Agent GM", response.narrative, { internal: true });
++
++  return response;
++}
++
+ const wsHub = createWsHub({
+   authenticateToken(token) {
+     return getUserBySessionToken(token);
+@@ -166,6 +302,20 @@ const wsHub = createWsHub({
+   canJoinCampaign(user, campaignId) {
+     return Boolean(user && userCanAccessCampaign(user.id, campaignId));
+   },
++  getCampaignRuntime(campaignId) {
++    return getCampaignRuntimeState(campaignId, { internal: true });
++  },
++  setCampaignRuntime(campaignId, patch) {
++    const runtime = setCampaignRuntimeState(campaignId, patch, { internal: true });
++    broadcastAuthoritativeState(campaignId, "runtime-update", "set_campaign_runtime_state");
++    return runtime;
++  },
++  async onGmPlayerMessage(payload) {
++    assertCampaignPlayAccess(payload.campaignId, { actorUserId: payload.actorUserId });
++    const result = await runAndPersistGmResponse(payload);
++    broadcastAuthoritativeState(payload.campaignId, "gm-response", "push_chat_line");
++    return result;
++  },
+   onClientMessage(message, client, { sendToClient }) {
+     if (message?.type !== "op" || !message?.op) {
+       return;
+@@ -218,6 +368,18 @@ const aiProcessor = createAiJobProcessor({
+   }
+ });
+ 
++function parseMemoryEntityFromPath(pathname) {
++  const prefix = "/api/gm/memory/";
++  if (!pathname.startsWith(prefix)) {
++    return null;
++  }
++  const raw = pathname.slice(prefix.length).trim();
++  if (!raw || raw === "search" || raw === "rebuild") {
++    return null;
++  }
++  return decodeURIComponent(raw);
++}
++
+ function parseSoloRunIdFromPath(pathname) {
+   const prefix = "/api/solo/runs/";
+   if (!pathname.startsWith(prefix)) {
+@@ -374,7 +536,6 @@ async function handleApi(req, res) {
+     return true;
+   }
+ 
+-
+   if (req.method === "POST" && url.pathname === "/api/solo/runs") {
+     try {
+       const user = requireAuth(req);
+@@ -437,6 +598,7 @@ async function handleApi(req, res) {
+         talkResult: resolved.talkResult,
+         restResult: resolved.restResult,
+         useItemResult: resolved.useItemResult,
++        attemptResult: resolved.attemptResult,
+         entity: resolved.entity,
+         details: resolved.details,
+         availableMoves: resolved.availableMoves,
+@@ -558,6 +720,282 @@ async function handleApi(req, res) {
+     return true;
+   }
+ 
++  if (req.method === "POST" && url.pathname === "/api/onboarding/start") {
++    try {
++      const user = requireAuth(req);
++      const payload = await readJsonBody(req);
++      const characterName = String(payload.characterName || "").trim();
++      const archetype = String(payload.archetype || "").trim();
++      const backstorySnippet = String(payload.backstorySnippet || "").trim();
++
++      if (!characterName) {
++        throw Object.assign(new Error("characterName is required."), {
++          code: "BAD_REQUEST",
++          statusCode: 400
++        });
++      }
++
++      const campaignId = await createOnboardingCampaign(user.id, {
++        characterName,
++        archetype,
++        backstorySnippet
++      });
++
++      const normalizedArchetype = archetype || "weathered wanderer";
++      const normalizedBackstory =
++        backstorySnippet || "They crossed too many roads to turn back now.";
++      const openingPrompt =
++        `The player has just arrived at The Shattered Flagon tavern in Ashenmoor. Their character is ${characterName}, a ${normalizedArchetype}. ${normalizedBackstory}. ` +
++        "Narrate their arrival. Describe the tavern atmosphere. Introduce Mira the tavern keeper naturally. End with Mira addressing the player character directly, asking them a question that invites roleplay.";
++
++      const opening = await runGmPipeline({
++        campaignId,
++        message: openingPrompt,
++        mode: "companion",
++        playerName: characterName,
++        actorUserId: user.id,
++        stream: true
++      });
++
++      if (opening?.narrative) {
++        pushChatLine(campaignId, "Mira", opening.narrative, { internal: true });
++      }
++
++      broadcastAuthoritativeState(campaignId, "onboarding-start", "push_chat_line");
++
++      writeJson(res, 200, {
++        ok: true,
++        campaignId,
++        firstMessage: String(opening?.narrative || "").trim()
++      });
++    } catch (error) {
++      routeError(res, error);
++    }
++    return true;
++  }
++
++  if (req.method === "POST" && url.pathname === "/api/waitlist") {
++    try {
++      const payload = await readJsonBody(req);
++      const email = String(payload?.email || "")
++        .trim()
++        .toLowerCase();
++      if (!emailPattern.test(email)) {
++        throw Object.assign(new Error("A valid email is required."), {
++          code: "BAD_REQUEST",
++          statusCode: 400
++        });
++      }
++
++      const interest = normalizeWaitlistInterest(payload?.interest);
++      const entries = await readWaitlistEntries();
++      entries.push({
++        email,
++        interest,
++        timestamp: new Date().toISOString()
++      });
++      await writeWaitlistEntries(entries);
++
++      writeJson(res, 200, { ok: true, success: true });
++    } catch (error) {
++      routeError(res, error);
++    }
++    return true;
++  }
++
++  if (req.method === "GET" && url.pathname === "/api/waitlist") {
++    try {
++      const user = requireAuth(req);
++      if (!user.isAdmin) {
++        throw Object.assign(new Error("Admin access required."), {
++          code: "FORBIDDEN",
++          statusCode: 403
++        });
++      }
++
++      const entries = await readWaitlistEntries();
++      writeJson(res, 200, {
++        ok: true,
++        success: true,
++        entries
++      });
++    } catch (error) {
++      routeError(res, error);
++    }
++    return true;
++  }
++
++  if (req.method === "GET" && url.pathname === "/api/campaign/style/presets") {
++    try {
++      requireAuth(req);
++      writeJson(res, 200, {
++        ok: true,
++        presets: getPresets()
++      });
++    } catch (error) {
++      routeError(res, error);
++    }
++    return true;
++  }
++
++  if (req.method === "POST" && url.pathname === "/api/campaign/style/presets/apply") {
++    try {
++      const user = requireAuth(req);
++      const payload = await readJsonBody(req);
++      const campaignId = String(payload.campaignId || "");
++      const presetName = String(payload.presetName || "").trim();
++      if (!campaignId || !presetName) {
++        throw Object.assign(new Error("campaignId and presetName are required."), {
++          code: "BAD_REQUEST",
++          statusCode: 400
++        });
++      }
++
++      assertGmOrOwner(user, campaignId);
++      const config = await applyPreset(campaignId, presetName);
++      writeJson(res, 200, { ok: true, config });
++    } catch (error) {
++      routeError(res, error);
++    }
++    return true;
++  }
++
++  if (req.method === "GET" && url.pathname === "/api/campaign/style") {
++    try {
++      const user = requireAuth(req);
++      const campaignId = String(url.searchParams.get("campaignId") || "");
++      if (!campaignId) {
++        throw Object.assign(new Error("campaignId query param is required."), {
++          code: "BAD_REQUEST",
++          statusCode: 400
++        });
++      }
++
++      assertGmOrOwner(user, campaignId);
++      const config = await getStyleConfig(campaignId);
++      writeJson(res, 200, { ok: true, config });
++    } catch (error) {
++      routeError(res, error);
++    }
++    return true;
++  }
++
++  if (req.method === "PUT" && url.pathname === "/api/campaign/style") {
++    try {
++      const user = requireAuth(req);
++      const payload = await readJsonBody(req);
++      const campaignId = String(payload.campaignId || "");
++      if (!campaignId) {
++        throw Object.assign(new Error("campaignId is required."), {
++          code: "BAD_REQUEST",
++          statusCode: 400
++        });
++      }
++      assertGmOrOwner(user, campaignId);
++
++      const partialUpdate = {
++        ...payload
++      };
++      delete partialUpdate.campaignId;
++      validateStyleUpdate(partialUpdate);
++
++      const config = await updateStyleConfig(campaignId, partialUpdate);
++      writeJson(res, 200, { ok: true, config });
++    } catch (error) {
++      routeError(res, error);
++    }
++    return true;
++  }
++
++  if (req.method === "POST" && url.pathname === "/api/campaign/style/preview") {
++    try {
++      const user = requireAuth(req);
++      enforcePreviewRateLimit(user.id);
++
++      const payload = await readJsonBody(req);
++      const campaignId = String(payload.campaignId || "");
++      const testMessage = String(payload.testMessage || "").trim();
++      if (!campaignId || !testMessage) {
++        throw Object.assign(new Error("campaignId and testMessage are required."), {
++          code: "BAD_REQUEST",
++          statusCode: 400
++        });
++      }
++
++      assertGmOrOwner(user, campaignId);
++
++      const config = await getStyleConfig(campaignId);
++      const styleBlock = buildStylePromptBlock(config);
++      const tiers = getModelTiers();
++      const resolvedModel = String(config?.model?.preferredNarrativeModel || "").trim() || tiers.narrative;
++      const profile = getProfile(resolvedModel);
++      const runtime = getCampaignRuntimeState(campaignId, { internal: true });
++      const state = getState({ userId: user.id });
++      const campaign = (state.campaigns || []).find((entry) => entry.id === campaignId);
++
++      const worldContext = await buildContextWindow(
++        campaignId,
++        testMessage,
++        Number(process.env.NOTDND_CONTEXT_BUDGET || 1500),
++        config
++      );
++
++      const activePlayersSummary = (state.characters || [])
++        .filter((character) => character.campaignId === campaignId)
++        .slice(0, 4)
++        .map((character) => `${character.name} (${character.className} ${character.level})`)
++        .join("\n");
++      const currentStateSummary = `Scene: ${campaign?.activeScene || campaign?.status || "Current Scene"}, Initiative: ${
++        runtime.initiativeOrder?.length
++          ? runtime.initiativeOrder.map((entry) => `${entry.name}:${entry.initiative}`).join(", ")
++          : "none"
++      }, Active conditions: none`;
++
++      const systemPrompt = buildSessionSystemPrompt({
++        campaignName: campaign?.name || campaignId,
++        currentScene: campaign?.activeScene || campaign?.status || "Current Scene",
++        tone: campaign?.setting || "Cinematic",
++        styleBlock,
++        worldContext,
++        activePlayersSummary,
++        sessionHistory: "Preview mode: summarize response style only.",
++        currentStateSummary,
++        profile
++      });
++
++      const options = {
++        temperature: profile.temperature,
++        maxResponseTokens:
++          config?.model?.maxTokensPerResponse !== null && config?.model?.maxTokensPerResponse !== undefined
++            ? Number(config.model.maxTokensPerResponse)
++            : profile.maxResponseTokens,
++        stopSequences: profile.stopSequences || []
++      };
++
++      const messages = [
++        { role: "system", content: systemPrompt },
++        { role: "user", content: testMessage }
++      ];
++
++      const result = resolvedModel === tiers.narrative
++        ? await generateNarrative(messages, campaignId, options)
++        : await generateRaw(messages, resolvedModel, campaignId, options);
++
++      writeJson(res, 200, {
++        ok: true,
++        response: result.content,
++        meta: {
++          model: result.model,
++          tokensUsed: result.tokensUsed,
++          cost: result.cost
++        }
++      });
++    } catch (error) {
++      routeError(res, error);
++    }
++    return true;
++  }
++
+   if (req.method === "GET" && url.pathname === "/api/campaign/members") {
+     try {
+       const user = requireAuth(req);
+@@ -595,9 +1033,48 @@ async function handleApi(req, res) {
+   if (req.method === "GET" && url.pathname === "/api/ai/providers") {
+     try {
+       requireAuth(req);
++      const tiers = getModelTiers();
++      writeJson(res, 200, {
++        ok: true,
++        providers: [
++          {
++            key: "openrouter",
++            label: "OpenRouter Unified",
++            type: "openai-chat-completions",
++            status: process.env.OPENROUTER_API_KEY ? "configured" : "missing-api-key",
++            models: {
++              gm: tiers.narrative,
++              utility: tiers.utility,
++              fallback: tiers.fallback
++            },
++            endpoint: "https://openrouter.ai/api/v1/chat/completions",
++            supports: ["gm"]
++          },
++          ...listAiProviders()
++        ]
++      });
++    } catch (error) {
++      routeError(res, error);
++    }
++    return true;
++  }
++
++  if (req.method === "GET" && url.pathname === "/api/ai/usage") {
++    try {
++      const user = requireAuth(req);
++      const campaignId = String(url.searchParams.get("campaignId") || "");
++      if (!campaignId) {
++        throw Object.assign(new Error("campaignId query param is required."), {
++          code: "BAD_REQUEST",
++          statusCode: 400
++        });
++      }
++      assertCampaignReadAccess(campaignId, { actorUserId: user.id });
+       writeJson(res, 200, {
+         ok: true,
+-        providers: listAiProviders()
++        campaignId,
++        usage: getCampaignUsage(campaignId),
++        modelTiers: getModelTiers()
+       });
+     } catch (error) {
+       routeError(res, error);
+@@ -622,7 +1099,7 @@ async function handleApi(req, res) {
+     return true;
+   }
+ 
+-  if (req.method === "GET" && url.pathname === "/api/gm/memory") {
++  if (req.method === "POST" && url.pathname === "/api/gm/memory/rebuild") {
+     try {
+       const user = requireAuth(req);
+       const campaignId = String(url.searchParams.get("campaignId") || "");
+@@ -632,43 +1109,38 @@ async function handleApi(req, res) {
+           statusCode: 400
+         });
+       }
+-      if (!userCanAccessCampaign(user.id, campaignId)) {
+-        throw Object.assign(new Error("Campaign access denied."), {
++
++      const role = getCampaignRole(campaignId, { actorUserId: user.id });
++      const canRebuild = user.isAdmin || role === "owner" || role === "gm";
++      if (!canRebuild) {
++        throw Object.assign(new Error("GM or admin access required."), {
+           code: "FORBIDDEN",
+           statusCode: 403
+         });
+       }
+-      writeJson(res, 200, {
+-        ok: true,
+-        docs: listCampaignMemoryDocs(campaignId)
+-      });
++
++      const rebuilt = await rebuildCampaignIndex(campaignId);
++      writeJson(res, 200, { ok: true, rebuilt });
+     } catch (error) {
+       routeError(res, error);
+     }
+     return true;
+   }
+ 
+-  if (req.method === "POST" && url.pathname === "/api/gm/memory") {
++  if (req.method === "GET" && url.pathname === "/api/gm/memory") {
+     try {
+       const user = requireAuth(req);
+-      const payload = await readJsonBody(req);
+-      const campaignId = String(payload.campaignId || "");
+-      const docKey = String(payload.docKey || "");
+-      if (!campaignId || !docKey) {
+-        throw Object.assign(new Error("campaignId and docKey are required."), {
++      const campaignId = String(url.searchParams.get("campaignId") || "");
++      if (!campaignId) {
++        throw Object.assign(new Error("campaignId query param is required."), {
+           code: "BAD_REQUEST",
+           statusCode: 400
+         });
+       }
+-      if (!userCanAccessCampaign(user.id, campaignId)) {
+-        throw Object.assign(new Error("Campaign access denied."), {
+-          code: "FORBIDDEN",
+-          statusCode: 403
+-        });
+-      }
++      assertCampaignReadAccess(campaignId, { actorUserId: user.id });
+       writeJson(res, 200, {
+         ok: true,
+-        doc: writeCampaignMemoryDoc(campaignId, docKey, payload.content || "")
++        entities: await listEntities(campaignId)
+       });
+     } catch (error) {
+       routeError(res, error);
+@@ -688,17 +1160,13 @@ async function handleApi(req, res) {
+           statusCode: 400
+         });
+       }
+-      if (!userCanAccessCampaign(user.id, campaignId)) {
+-        throw Object.assign(new Error("Campaign access denied."), {
+-          code: "FORBIDDEN",
+-          statusCode: 403
+-        });
+-      }
++      assertCampaignReadAccess(campaignId, { actorUserId: user.id });
+       writeJson(res, 200, {
+         ok: true,
+-        results: searchCampaignMemory(campaignId, query, {
+-          docKey: payload.docKey || null,
+-          limit: payload.limit || 5
++        results: await search(campaignId, query, {
++          type: payload.type,
++          limit: payload.limit,
++          minConfidence: payload.minConfidence
+         })
+       });
+     } catch (error) {
+@@ -707,73 +1175,135 @@ async function handleApi(req, res) {
+     return true;
+   }
+ 
++  if (req.method === "POST" && url.pathname === "/api/gm/memory") {
++    try {
++      const user = requireAuth(req);
++      const payload = await readJsonBody(req);
++      const campaignId = String(payload.campaignId || "");
++      if (!campaignId) {
++        throw Object.assign(new Error("campaignId is required."), {
++          code: "BAD_REQUEST",
++          statusCode: 400
++        });
++      }
++      assertCampaignWriteAccess(campaignId, { actorUserId: user.id });
++
++      const entity = payload.entity
++        ? payload.entity
++        : {
++            name: String(payload.docKey || "Untitled"),
++            type: "lore",
++            tags: [String(payload.docKey || "legacy")],
++            body: String(payload.content || "")
++          };
++
++      const saved = await upsertEntity(campaignId, entity);
++      writeJson(res, 200, { ok: true, entity: saved });
++    } catch (error) {
++      routeError(res, error);
++    }
++    return true;
++  }
++
++  const memoryEntityName = parseMemoryEntityFromPath(url.pathname);
++  if (memoryEntityName && req.method === "GET") {
++    try {
++      const user = requireAuth(req);
++      const campaignId = String(url.searchParams.get("campaignId") || "");
++      if (!campaignId) {
++        throw Object.assign(new Error("campaignId query param is required."), {
++          code: "BAD_REQUEST",
++          statusCode: 400
++        });
++      }
++      assertCampaignReadAccess(campaignId, { actorUserId: user.id });
++      const entity = await getEntity(campaignId, memoryEntityName);
++      if (!entity) {
++        throw Object.assign(new Error("Entity not found."), {
++          code: "NOT_FOUND",
++          statusCode: 404
++        });
++      }
++      writeJson(res, 200, { ok: true, entity });
++    } catch (error) {
++      routeError(res, error);
++    }
++    return true;
++  }
++
++  if (memoryEntityName && req.method === "DELETE") {
++    try {
++      const user = requireAuth(req);
++      const campaignId = String(url.searchParams.get("campaignId") || "");
++      if (!campaignId) {
++        throw Object.assign(new Error("campaignId query param is required."), {
++          code: "BAD_REQUEST",
++          statusCode: 400
++        });
++      }
++      assertCampaignWriteAccess(campaignId, { actorUserId: user.id });
++      const result = await archiveEntity(campaignId, memoryEntityName);
++      writeJson(res, 200, { ok: true, ...result });
++    } catch (error) {
++      routeError(res, error);
++    }
++    return true;
++  }
++
+   if (req.method === "POST" && url.pathname === "/api/gm/respond") {
+     try {
+       const user = requireAuth(req);
+       const payload = await readJsonBody(req);
+       const campaignId = String(payload.campaignId || "");
+       const message = String(payload.message || "").trim();
++      const mode = payload.mode === "companion" ? "companion" : "session";
++
+       if (!campaignId || !message) {
+         throw Object.assign(new Error("campaignId and message are required."), {
+           code: "BAD_REQUEST",
+           statusCode: 400
+         });
+       }
+-      if (!userCanAccessCampaign(user.id, campaignId)) {
+-        throw Object.assign(new Error("Campaign access denied."), {
+-          code: "FORBIDDEN",
+-          statusCode: 403
+-        });
++
++      if (mode === "session") {
++        assertCampaignPlayAccess(campaignId, { actorUserId: user.id });
++      } else {
++        assertCampaignReadAccess(campaignId, { actorUserId: user.id });
+       }
+ 
+-      const state = getState({ userId: user.id });
+-      const gmSettings = state.gmSettings || {};
+-      const mode = payload.mode === "agent" ? "agent" : payload.mode === "human" ? "human" : (gmSettings.gmMode === "agent" ? "agent" : "human");
+-      const provider = String(payload.provider || gmSettings.agentProvider || "local");
+-      const model = String(payload.model || gmSettings.agentModel || "");
+-      const memorySnippets = searchCampaignMemory(campaignId, message, { limit: 5 });
+-      const prompt = mode === "agent"
+-        ? buildAgentGmPrompt({ state, campaignId, message, memorySnippets })
+-        : buildHumanGmAssistPrompt({ state, campaignId, message, memorySnippets });
+-
+-      const result = provider === "placeholder" && mode === "human"
+-        ? {
+-            provider,
+-            model: model || "AI_GM_MODEL_VALUE",
+-            text: buildFallbackHumanAdvice({ state, campaignId, message, memorySnippets })
+-          }
+-        : await generateWithProvider({
+-            provider,
+-            type: "gm",
+-            prompt,
+-            model
+-          });
++      const response = await runAndPersistGmResponse({
++        campaignId,
++        message,
++        mode,
++        actorUserId: user.id,
++        playerName: String(payload.playerName || user.displayName || "Player"),
++        activePlayers: Array.isArray(payload.activePlayers) ? payload.activePlayers : [],
++        stream: Boolean(payload.stream)
++      });
+ 
+-      applyOperation(
+-        "push_chat_line",
+-        {
++      if (mode === "session") {
++        wsHub.broadcastCampaign(campaignId, {
++          type: "ai_response",
+           campaignId,
+-          speaker: user.displayName || "User",
+-          text: message
+-        },
+-        { actorUserId: user.id }
+-      );
+-      applyOperation(
+-        "push_chat_line",
+-        {
++          narrative: response.narrative,
++          memoryUpdates: response.memoryUpdates,
++          timestamp: Date.now()
++        });
++        wsHub.broadcastCampaign(campaignId, {
++          type: "ai_mechanical",
+           campaignId,
+-          speaker: mode === "agent" ? "Agent GM" : "GM Copilot",
+-          text: result.text || "No response text returned."
+-        },
+-        { internal: true }
+-      );
++          mechanical: response.mechanical,
++          timestamp: Date.now()
++        });
++      }
++
+       broadcastAuthoritativeState(campaignId, "gm-response", "push_chat_line");
+ 
+       writeJson(res, 200, {
+         ok: true,
+-        mode,
+-        result,
+-        memorySnippets
++        narrative: response.narrative,
++        mechanical: response.mechanical,
++        memoryUpdates: response.memoryUpdates
+       });
+     } catch (error) {
+       routeError(res, error);
+@@ -840,7 +1370,7 @@ async function handleApi(req, res) {
+           });
+         }
+       }
+-      const response = handleQuickstartBuildPayload(payload, {
++      const response = await handleQuickstartBuildPayload(payload, {
+         createQuickstartCampaignFromParsed(request) {
+           return createQuickstartCampaignFromParsed({
+             ...request,
+@@ -920,7 +1450,7 @@ server.on("upgrade", (req, socket, head) => {
+ });
+ 
+ const port = Number(process.env.PORT || 4173);
+-const host = process.env.NOTDND_HOST || process.env.HOST || "127.0.0.1";
++const host = process.env.NOTDND_HOST || process.env.HOST || "0.0.0.0";
+ server.on("error", (error) => {
+   // eslint-disable-next-line no-console
+   console.error(`Failed to start Notdnd server on ${host}:${port}:`, error.message || error);
+@@ -929,5 +1459,5 @@ server.on("error", (error) => {
+ 
+ server.listen(port, host, () => {
+   // eslint-disable-next-line no-console
+-  console.log(`Notdnd server listening on http://${host}:${port}`);
++  // Removed noisy debug output for production.
+ });
+diff --git a/server/realtime/wsHub.js b/server/realtime/wsHub.js
+index 0d11ac9..ac9d11c 100644
+--- a/server/realtime/wsHub.js
++++ b/server/realtime/wsHub.js
+@@ -120,10 +120,39 @@ function nowMs() {
+   return Date.now();
+ }
+ 
+-export function createWsHub({ authenticateToken, canJoinCampaign, onClientMessage } = {}) {
++function normalizeName(value) {
++  return String(value || "")
++    .trim()
++    .toLowerCase();
++}
++
++function streamEnabled() {
++  return String(process.env.NOTDND_STREAM || "").trim().toLowerCase() === "true";
++}
++
++/**
++ * Creates the websocket hub used for campaign realtime sync and GM streaming.
++ * @param {object} [options]
++ * @param {(token: string) => object | null} [options.authenticateToken]
++ * @param {(user: object, campaignId: string) => boolean} [options.canJoinCampaign]
++ * @param {(message: object, client: object, helpers: object) => void} [options.onClientMessage]
++ * @param {(payload: object) => Promise<object>} [options.onGmPlayerMessage]
++ * @param {(campaignId: string) => object} [options.getCampaignRuntime]
++ * @param {(campaignId: string, patch: object) => object} [options.setCampaignRuntime]
++ * @returns {object}
++ */
++export function createWsHub({
++  authenticateToken,
++  canJoinCampaign,
++  onClientMessage,
++  onGmPlayerMessage,
++  getCampaignRuntime,
++  setCampaignRuntime
++} = {}) {
+   const clients = new Map();
+   const cursorsByCampaign = new Map();
+   const locksByCampaign = new Map();
++  const typingByCampaign = new Map();
+ 
+   function send(client, message) {
+     if (!client.socket.destroyed) {
+@@ -154,9 +183,47 @@ export function createWsHub({ authenticateToken, canJoinCampaign, onClientMessag
+     broadcast(message, (client) => client.campaignId === campaignId && predicate(client));
+   }
+ 
++  function getTypingMap(campaignId) {
++    if (!typingByCampaign.has(campaignId)) {
++      typingByCampaign.set(campaignId, new Map());
++    }
++    return typingByCampaign.get(campaignId);
++  }
++
++  function getRuntimeState(campaignId) {
++    try {
++      return getCampaignRuntime?.(campaignId) || {
++        mode: "freeform",
++        initiativeOrder: [],
++        turnPointer: 0,
++        waitingForGm: false
++      };
++    } catch {
++      return {
++        mode: "freeform",
++        initiativeOrder: [],
++        turnPointer: 0,
++        waitingForGm: false
++      };
++    }
++  }
++
++  function getActiveTurnName(runtime = {}) {
++    const order = Array.isArray(runtime.initiativeOrder) ? runtime.initiativeOrder : [];
++    if (order.length === 0) {
++      return "";
++    }
++    const pointer = Number(runtime.turnPointer || 0);
++    const idx = ((pointer % order.length) + order.length) % order.length;
++    return String(order[idx]?.name || "").trim();
++  }
++
+   function presenceForCampaign(campaignId) {
+     const users = [];
+     const seen = new Set();
++    const typingMap = getTypingMap(campaignId);
++    const runtime = getRuntimeState(campaignId);
++
+     for (const client of campaignClients(campaignId)) {
+       if (!client.user) {
+         continue;
+@@ -168,7 +235,9 @@ export function createWsHub({ authenticateToken, canJoinCampaign, onClientMessag
+       users.push({
+         id: client.user.id,
+         displayName: client.user.displayName,
+-        email: client.user.email
++        email: client.user.email,
++        typing: Boolean(typingMap.get(client.user.id)),
++        waitingForGm: Boolean(runtime.waitingForGm)
+       });
+     }
+     return users;
+@@ -203,6 +272,7 @@ export function createWsHub({ authenticateToken, canJoinCampaign, onClientMessag
+       type: "presence",
+       campaignId,
+       users: presenceForCampaign(campaignId),
++      runtime: getRuntimeState(campaignId),
+       timestamp: nowMs()
+     });
+   }
+@@ -289,6 +359,164 @@ export function createWsHub({ authenticateToken, canJoinCampaign, onClientMessag
+     return getCampaignLockMap(campaignId).get(resource) || null;
+   }
+ 
++  async function handleGmPlayerMessage(parsed, client) {
++    if (!onGmPlayerMessage) {
++      send(client, {
++        type: "ai_error",
++        campaignId: client.campaignId,
++        error: "GM pipeline unavailable",
++        timestamp: nowMs()
++      });
++      return;
++    }
++
++    const campaignId = client.campaignId;
++    const text = String(parsed?.text || parsed?.message || "").trim();
++    if (!text) {
++      return;
++    }
++
++    const runtime = getRuntimeState(campaignId);
++    const isCombat = runtime.mode === "combat";
++    const isOoc = Boolean(parsed?.ooc);
++    const expectedTurnName = getActiveTurnName(runtime);
++
++    const clientName = String(parsed?.playerName || client.user?.displayName || "").trim();
++    if (isCombat && !isOoc && expectedTurnName) {
++      const isAllowed = normalizeName(expectedTurnName) === normalizeName(clientName);
++      if (!isAllowed) {
++        send(client, {
++          type: "turn_blocked",
++          campaignId,
++          activePlayer: expectedTurnName,
++          yourName: clientName,
++          timestamp: nowMs()
++        });
++        return;
++      }
++    }
++
++    broadcastCampaign(
++      campaignId,
++      {
++        type: "player_message",
++        campaignId,
++        playerName: clientName,
++        text,
++        ooc: isOoc,
++        timestamp: nowMs()
++      },
++      (target) => target.id !== client.id
++    );
++
++    if (isOoc) {
++      return;
++    }
++
++    try {
++      setCampaignRuntime?.(campaignId, {
++        waitingForGm: true
++      });
++    } catch {
++      // Ignore runtime persistence failures here; response still continues.
++    }
++
++    publishPresence(campaignId);
++
++    broadcastCampaign(campaignId, {
++      type: "ai_thinking",
++      campaignId,
++      playerName: clientName,
++      timestamp: nowMs()
++    });
++
++    const streaming = streamEnabled();
++
++    try {
++      const response = await onGmPlayerMessage({
++        campaignId,
++        message: text,
++        mode: "session",
++        playerName: clientName,
++        actorUserId: client.user.id,
++        activePlayers: presenceForCampaign(campaignId).map((entry) => ({
++          name: entry.displayName
++        })),
++        stream: streaming,
++        onStream(chunk) {
++          broadcastCampaign(campaignId, {
++            type: "ai_stream",
++            campaignId,
++            chunk: String(chunk || ""),
++            timestamp: nowMs()
++          });
++        }
++      });
++
++      broadcastCampaign(campaignId, {
++        type: "ai_response",
++        campaignId,
++        narrative: response.narrative,
++        memoryUpdates: response.memoryUpdates || [],
++        meta: response.meta || {},
++        timestamp: nowMs()
++      });
++
++      broadcastCampaign(campaignId, {
++        type: "ai_mechanical",
++        campaignId,
++        mechanical: response.mechanical || { rolls: [], stateChanges: [] },
++        timestamp: nowMs()
++      });
++
++      if (isCombat && !isOoc) {
++        const latest = getRuntimeState(campaignId);
++        const order = Array.isArray(latest.initiativeOrder) ? latest.initiativeOrder : [];
++        if (order.length > 0) {
++          const nextPointer = ((Number(latest.turnPointer || 0) + 1) % order.length + order.length) % order.length;
++          let updated = latest;
++          try {
++            updated = setCampaignRuntime?.(campaignId, { turnPointer: nextPointer }) || {
++              ...latest,
++              turnPointer: nextPointer
++            };
++          } catch {
++            updated = {
++              ...latest,
++              turnPointer: nextPointer
++            };
++          }
++
++          const nextName = getActiveTurnName(updated);
++          broadcastCampaign(campaignId, {
++            type: "turn_change",
++            campaignId,
++            activePlayer: nextName,
++            turnPointer: Number(updated.turnPointer || 0),
++            initiativeOrder: updated.initiativeOrder || [],
++            timestamp: nowMs()
++          });
++        }
++      }
++    } catch (error) {
++      send(client, {
++        type: "ai_error",
++        campaignId,
++        error: String(error?.message || error),
++        timestamp: nowMs()
++      });
++    } finally {
++      try {
++        setCampaignRuntime?.(campaignId, {
++          waitingForGm: false
++        });
++      } catch {
++        // Ignore runtime persistence failures.
++      }
++      publishPresence(campaignId);
++    }
++  }
++
+   function handleUpgrade(req, socket, head) {
+     const token = parseTokenFromUrl(req);
+     const user = authenticateToken ? authenticateToken(token) : null;
+@@ -345,6 +573,7 @@ export function createWsHub({ authenticateToken, canJoinCampaign, onClientMessag
+       clientId,
+       campaignId: client.campaignId,
+       user,
++      runtime: getRuntimeState(client.campaignId),
+       timestamp: nowMs()
+     });
+ 
+@@ -395,6 +624,7 @@ export function createWsHub({ authenticateToken, canJoinCampaign, onClientMessag
+           send(client, {
+             type: "joined_campaign",
+             campaignId: nextCampaignId,
++            runtime: getRuntimeState(nextCampaignId),
+             timestamp: nowMs()
+           });
+ 
+@@ -402,6 +632,7 @@ export function createWsHub({ authenticateToken, canJoinCampaign, onClientMessag
+             releaseAllResourcesOwnedBy(prevCampaign, client.user.id);
+             const prevCursorMap = getCampaignCursorMap(prevCampaign);
+             prevCursorMap.delete(client.user.id);
++            getTypingMap(prevCampaign).delete(client.user.id);
+             publishPresence(prevCampaign);
+             publishCursors(prevCampaign);
+             publishLocks(prevCampaign);
+@@ -413,6 +644,13 @@ export function createWsHub({ authenticateToken, canJoinCampaign, onClientMessag
+           continue;
+         }
+ 
++        if (parsed?.type === "typing") {
++          const typingMap = getTypingMap(client.campaignId);
++          typingMap.set(client.user.id, Boolean(parsed.typing));
++          publishPresence(client.campaignId);
++          continue;
++        }
++
+         if (parsed?.type === "cursor_update") {
+           const cursorMap = getCampaignCursorMap(client.campaignId);
+           cursorMap.set(client.user.id, {
+@@ -462,6 +700,11 @@ export function createWsHub({ authenticateToken, canJoinCampaign, onClientMessag
+           continue;
+         }
+ 
++        if (parsed?.type === "gm_player_message") {
++          void handleGmPlayerMessage(parsed, client);
++          continue;
++        }
++
+         onClientMessage?.(parsed, client, {
+           send,
+           sendToClient,
+@@ -486,6 +729,7 @@ export function createWsHub({ authenticateToken, canJoinCampaign, onClientMessag
+ 
+       const cursorMap = getCampaignCursorMap(campaignId);
+       cursorMap.delete(userId);
++      getTypingMap(campaignId).delete(userId);
+       const lockChanged = releaseAllResourcesOwnedBy(campaignId, userId);
+ 
+       publishPresence(campaignId);
+diff --git a/server/solo/actions.js b/server/solo/actions.js
+index 286bebf..0523cfb 100644
+--- a/server/solo/actions.js
++++ b/server/solo/actions.js
+@@ -26,8 +26,12 @@ import {
+   resolveUseItemAction,
+   validateUseItemAction
+ } from "./useItem.js";
++import {
++  resolveAttemptAction,
++  validateAttemptAction
++} from "./attempt.js";
+ 
+-const IMPLEMENTED_ACTION_TYPES = new Set(["move", "inspect", "search", "talk", "rest", "use_item"]);
++const IMPLEMENTED_ACTION_TYPES = new Set(["move", "inspect", "search", "talk", "rest", "use_item", "attempt"]);
+ const FUTURE_ACTION_TYPES = new Set(["interact", "enter", "exit"]);
+ const RECOGNIZED_ACTION_TYPES = new Set([...IMPLEMENTED_ACTION_TYPES, ...FUTURE_ACTION_TYPES]);
+ 
+@@ -127,6 +131,9 @@ export function validateSoloAction(run, action) {
+   if (normalized.type === "use_item") {
+     return validateUseItemAction(run, normalized);
+   }
++  if (normalized.type === "attempt") {
++    return validateAttemptAction(run, normalized);
++  }
+ 
+   return notImplemented(normalized.type);
+ }
+@@ -191,6 +198,11 @@ export function getAvailableSoloActions(run, options = {}) {
+       type: "search",
+       label: "Search area",
+       enabled: true
++    },
++    {
++      type: "attempt",
++      label: "Attempt",
++      enabled: true
+     }
+   ];
+ }
+@@ -353,5 +365,29 @@ export function resolveSoloAction(run, action, options = {}) {
+     };
+   }
+ 
++  if (normalized.type === "attempt") {
++    const attempt = resolveAttemptAction(run, normalized, options);
++    if (!attempt.ok) {
++      return {
++        ok: false,
++        code: "ACTION_INVALID",
++        actionType: "attempt",
++        errors: attempt.errors
++      };
++    }
++
++    return {
++      ok: true,
++      action: normalized,
++      run: attempt.run,
++      event: attempt.event,
++      memoryFact: attempt.memoryFact,
++      attemptResult: attempt.attemptResult,
++      availableMoves: getAvailableMoves(attempt.run),
++      availableActions: getAvailableSoloActions(attempt.run),
++      errors: []
++    };
++  }
++
+   return notImplemented(normalized.type);
+ }
+diff --git a/server/solo/scene.js b/server/solo/scene.js
+index 63696d6..d3080b7 100644
+--- a/server/solo/scene.js
++++ b/server/solo/scene.js
+@@ -123,6 +123,27 @@ function inventoryPayload(run, policyProfile) {
+   }));
+ }
+ 
++function attemptHistoryPayload(run, policyProfile, limit = 5) {
++  if (!Array.isArray(run?.timeline)) {
++    return [];
++  }
++  return run.timeline
++    .filter((event) => event?.type === "attempt" && policyAllows(event, policyProfile))
++    .slice(-limit)
++    .map((event) => ({
++      eventId: event.eventId,
++      createdAt: event.createdAt,
++      locationId: event.locationId || null,
++      summary: event.summary || "",
++      intent: event.payload?.intent || "",
++      targetId: event.payload?.targetId || null,
++      success: event.payload?.success === true,
++      checkResult: event.payload?.checkResult || null,
++      narration: event.payload?.narration || "",
++      warnings: event.payload?.warnings || []
++    }));
++}
++
+ function entityFactIds(entities) {
+   const ids = new Set();
+   for (const entity of entities) {
+@@ -305,6 +326,28 @@ export function validateSoloScenePayload(payload) {
+       });
+     }
+   }
++  if (payload.attemptHistory !== undefined) {
++    if (!Array.isArray(payload.attemptHistory)) {
++      push(errors, "attemptHistory", "Expected array");
++    } else {
++      payload.attemptHistory.forEach((entry, index) => {
++        if (!isPlainObject(entry)) {
++          push(errors, `attemptHistory.${index}`, "Expected object");
++          return;
++        }
++        if (!isString(entry.eventId)) {
++          push(errors, `attemptHistory.${index}.eventId`, "Expected non-empty string");
++        }
++        if (!isString(entry.intent)) {
++          push(errors, `attemptHistory.${index}.intent`, "Expected non-empty string");
++        }
++        if (typeof entry.success !== "boolean") {
++          push(errors, `attemptHistory.${index}.success`, "Expected boolean");
++        }
++        validateStringArray(entry.warnings || [], `attemptHistory.${index}.warnings`, errors);
++      });
++    }
++  }
+   if (!Array.isArray(payload.recentTimeline)) {
+     push(errors, "recentTimeline", "Expected array");
+   }
+@@ -381,6 +424,7 @@ export function buildSoloScenePayload(run, options = {}) {
+   }
+ 
+   const visibleEntities = getVisibleEntities(run, { policyProfile });
++  const attemptHistory = attemptHistoryPayload(run, policyProfile, options.attemptHistoryLimit);
+   const payload = {
+     ok: true,
+     runId: run.runId,
+@@ -401,6 +445,8 @@ export function buildSoloScenePayload(run, options = {}) {
+       return true;
+     }),
+     playerInventory: inventoryPayload(run, policyProfile),
++    latestAttemptResult: attemptHistory.length ? attemptHistory.at(-1) : null,
++    attemptHistory,
+     discoveredDetails: revealedSearchDetails(currentLocation, policyProfile),
+     recentTimeline: getRecentTimelineEvents(run, { policyProfile, limit: options.timelineLimit }),
+     relevantMemoryFacts: getRelevantMemoryFacts(run, {
+diff --git a/src/api/client.js b/src/api/client.js
+index af6acc8..534b4d6 100644
+--- a/src/api/client.js
++++ b/src/api/client.js
+@@ -117,6 +117,9 @@ export function createApiClient(baseUrl = "") {
+     async listAiProviders() {
+       return request("/api/ai/providers");
+     },
++    async getAiUsage(campaignId) {
++      return request(`/api/ai/usage?campaignId=${encodeURIComponent(campaignId)}`);
++    },
+     async generateAi(payload) {
+       return request("/api/ai/generate", {
+         method: "POST",
+@@ -129,13 +132,40 @@ export function createApiClient(baseUrl = "") {
+         body: JSON.stringify(payload)
+       });
+     },
++    async startOnboarding(payload) {
++      return request("/api/onboarding/start", {
++        method: "POST",
++        body: JSON.stringify(payload)
++      });
++    },
+     async getGmMemory(campaignId) {
+       return request(`/api/gm/memory?campaignId=${encodeURIComponent(campaignId)}`);
+     },
++    async getGmMemoryEntity(campaignId, entityName) {
++      return request(`/api/gm/memory/${encodeURIComponent(entityName)}?campaignId=${encodeURIComponent(campaignId)}`);
++    },
+     async saveGmMemory(payload) {
++      const campaignId = payload?.campaignId;
++      const entity = payload?.entity || {
++        name: payload?.docKey || "Untitled",
++        type: "lore",
++        tags: payload?.docKey ? [payload.docKey] : [],
++        body: payload?.content || ""
++      };
+       return request("/api/gm/memory", {
+         method: "POST",
+-        body: JSON.stringify(payload)
++        body: JSON.stringify({ campaignId, entity })
++      });
++    },
++    async upsertGmMemoryEntity(campaignId, entity) {
++      return request("/api/gm/memory", {
++        method: "POST",
++        body: JSON.stringify({ campaignId, entity })
++      });
++    },
++    async deleteGmMemoryEntity(campaignId, entityName) {
++      return request(`/api/gm/memory/${encodeURIComponent(entityName)}?campaignId=${encodeURIComponent(campaignId)}`, {
++        method: "DELETE"
+       });
+     },
+     async searchGmMemory(payload) {
+@@ -144,6 +174,12 @@ export function createApiClient(baseUrl = "") {
+         body: JSON.stringify(payload)
+       });
+     },
++    async rebuildGmMemory(campaignId) {
++      return request(`/api/gm/memory/rebuild?campaignId=${encodeURIComponent(campaignId)}`, {
++        method: "POST",
++        body: JSON.stringify({})
++      });
++    },
+     async buildQuickstartCampaign(payload) {
+       return request("/api/quickstart/build", {
+         method: "POST",
+diff --git a/src/components/soloSceneShell.js b/src/components/soloSceneShell.js
+index db7703b..5d508ca 100644
+--- a/src/components/soloSceneShell.js
++++ b/src/components/soloSceneShell.js
+@@ -121,6 +121,15 @@ export function createUseItemAction(itemOrAction = {}) {
+   };
+ }
+ 
++export function createAttemptAction(attempt = {}) {
++  return {
++    type: "attempt",
++    actorId: "player",
++    intent: attempt.intent || "",
++    targetId: attempt.targetId || null
++  };
++}
++
+ export function renderSceneHeader(scene = {}, state = {}) {
+   const location = scene.location || {};
+   const time = scene.world?.time || scene.time || {};
+@@ -355,7 +364,8 @@ export function renderSceneActionBar(scene = {}) {
+                     action.type === "search" ||
+                     action.type === "talk" ||
+                     action.type === "rest" ||
+-                    action.type === "use_item";
++                    action.type === "use_item" ||
++                    action.type === "attempt";
+                   const enabled = action.enabled !== false && implemented;
+                   return `
+                     <button
+@@ -599,6 +609,65 @@ export function renderUseItemResultPanel(useItemResult = null) {
+   `;
+ }
+ 
++export function renderAttemptPanel(scene = {}, attemptResult = null) {
++  const entities = Array.isArray(scene.visibleEntities) ? scene.visibleEntities.filter((entity) => entity.entityId) : [];
++  const history = Array.isArray(scene.attemptHistory) ? scene.attemptHistory : [];
++  return `
++    <section class="module-card solo-panel solo-attempt-panel">
++      <div class="module-header">
++        <h3>Attempt</h3>
++        <span class="small">Freeform server action</span>
++      </div>
++      <form class="solo-attempt-form" data-solo-attempt-form>
++        <label class="field">
++          <span class="small">What do you attempt?</span>
++          <textarea name="intent" rows="3" placeholder="Describe your intent..." required></textarea>
++        </label>
++        <label class="field">
++          <span class="small">Optional target</span>
++          <select name="targetId">
++            <option value="">No specific target</option>
++            ${entities
++              .map((entity) => `<option value="${escapeHtml(entity.entityId)}">${escapeHtml(entity.displayName || entity.entityId)}</option>`)
++              .join("")}
++          </select>
++        </label>
++        <button class="ghost" type="submit" data-solo-action="attempt">Attempt</button>
++      </form>
++      ${
++        attemptResult
++          ? `
++            <div class="solo-attempt-result ${attemptResult.success ? "found" : "empty"}">
++              <strong>${escapeHtml(attemptResult.success ? "Attempt succeeded" : "Attempt failed")}</strong>
++              <p>${escapeHtml(attemptResult.narration || attemptResult.summary || "The attempt resolves without further effect.")}</p>
++              <div class="small">Intent: ${escapeHtml(attemptResult.intent || "")}</div>
++              ${renderCheckResult(attemptResult.checkResult)}
++              ${
++                Array.isArray(attemptResult.warnings) && attemptResult.warnings.length
++                  ? `<div class="solo-tag-row">${attemptResult.warnings.map((warning) => `<span class="tag">${escapeHtml(warning)}</span>`).join("")}</div>`
++                  : ""
++              }
++            </div>
++          `
++          : renderEmpty("Type a custom intent. The server validates and adjudicates the result.")
++      }
++      ${
++        history.length
++          ? `<div class="solo-sheet-section">
++              <h5>Recent Attempts</h5>
++              ${renderCompactList(history.slice(-3), "No recent attempts.", (entry) => `
++                <div class="solo-compact-row">
++                  <strong>${escapeHtml(entry.success ? "Success" : "Failure")}</strong>
++                  <span>${escapeHtml(entry.intent || entry.summary || "")}</span>
++                </div>
++              `)}
++            </div>`
++          : ""
++      }
++    </section>
++  `;
++}
++
+ export function renderEntityDetailPanel(detail = null) {
+   if (!detail) {
+     return `
+@@ -774,6 +843,7 @@ export function renderSoloSceneShell(state = {}) {
+           ${renderTalkResultPanel(state.talkResult)}
+           ${renderRestResultPanel(state.restResult)}
+           ${renderUseItemResultPanel(state.useItemResult)}
++          ${renderAttemptPanel(scene, state.attemptResult)}
+           ${renderEntityDetailPanel(state.detail)}
+           ${renderSceneTimelinePanel(scene)}
+           ${renderSceneMemoryPanel(scene)}
+diff --git a/src/main.js b/src/main.js
+index 1031d2f..2aa75c7 100644
+--- a/src/main.js
++++ b/src/main.js
+@@ -5,6 +5,7 @@ import { renderCharacterVault, bindCharacterVault } from "./components/character
+ import { renderCommandCenter, bindCommandCenter } from "./components/commandCenter.js";
+ import { renderCompendium, bindCompendium } from "./components/compendium.js";
+ import { renderHomebrewStudio, bindHomebrewStudio } from "./components/homebrewStudio.js";
++import { renderOnboardingFlow, bindOnboardingFlow } from "./components/onboardingFlow.js";
+ import { renderSidebar } from "./components/sidebar.js";
+ import { mountSoloSceneShell } from "./components/soloSceneShell.js";
+ import { renderTopbar } from "./components/topbar.js";
+@@ -27,7 +28,19 @@ const uiState = {
+   campaignMembers: [],
+   presenceUsers: [],
+   cursorState: [],
+-  lockState: []
++  lockState: [],
++  onboarding: {
++    step: "inactive",
++    loading: false,
++    thinking: false,
++    error: "",
++    campaignId: "",
++    characterName: "",
++    archetype: "",
++    backstorySnippet: "",
++    messages: [],
++    exchanges: 0
++  }
+ };
+ 
+ const appRoot = document.querySelector("#app");
+@@ -170,6 +183,122 @@ async function loadCampaignMembers() {
+   }
+ }
+ 
++function shouldShowOnboarding(state) {
++  const user = state.auth?.user;
++  if (!user) {
++    return false;
++  }
++  if (uiState.onboarding.step === "arrival") {
++    return true;
++  }
++  if (uiState.onboarding.step === "completed") {
++    return false;
++  }
++  if (uiState.onboarding.step === "character") {
++    return true;
++  }
++  return (state.campaigns || []).length === 0;
++}
++
++async function startOnboarding(payload) {
++  uiState.onboarding = {
++    ...uiState.onboarding,
++    step: "character",
++    loading: true,
++    error: "",
++    characterName: payload.characterName,
++    archetype: payload.archetype,
++    backstorySnippet: payload.backstorySnippet
++  };
++  renderApp();
++
++  try {
++    const response = await store.startOnboarding(payload);
++    const firstMessage = String(response.firstMessage || "").trim();
++    uiState.onboarding = {
++      ...uiState.onboarding,
++      step: "arrival",
++      loading: false,
++      thinking: false,
++      error: "",
++      campaignId: response.campaignId,
++      messages: firstMessage ? [{ role: "assistant", text: firstMessage }] : [],
++      exchanges: 0
++    };
++    uiState.activeTab = "command";
++    await loadCampaignMembers();
++  } catch (error) {
++    uiState.onboarding = {
++      ...uiState.onboarding,
++      loading: false,
++      error: String(error?.message || error || "Failed to start onboarding.")
++    };
++  }
++
++  renderApp();
++}
++
++async function sendOnboardingMessage(message) {
++  const campaignId = uiState.onboarding.campaignId || store.getState().selectedCampaignId;
++  if (!campaignId) {
++    uiState.onboarding = {
++      ...uiState.onboarding,
++      error: "No onboarding campaign is active."
++    };
++    renderApp();
++    return;
++  }
++
++  const nextMessages = [...uiState.onboarding.messages, { role: "user", text: message }];
++  uiState.onboarding = {
++    ...uiState.onboarding,
++    messages: nextMessages,
++    thinking: true,
++    error: "",
++    exchanges: Number(uiState.onboarding.exchanges || 0) + 1
++  };
++  renderApp();
++
++  try {
++    const response = await store.requestGmResponse({
++      campaignId,
++      message,
++      mode: "companion",
++      stream: true
++    });
++
++    const narrative = String(response.narrative || "").trim();
++    uiState.onboarding = {
++      ...uiState.onboarding,
++      thinking: false,
++      messages: narrative
++        ? [...uiState.onboarding.messages, { role: "assistant", text: narrative }]
++        : uiState.onboarding.messages
++    };
++
++    await store.loadGmMemoryDocs(campaignId);
++  } catch (error) {
++    uiState.onboarding = {
++      ...uiState.onboarding,
++      thinking: false,
++      error: String(error?.message || error || "Companion response failed.")
++    };
++  }
++
++  renderApp();
++}
++
++function openOnboardingCampaignDashboard() {
++  uiState.onboarding = {
++    ...uiState.onboarding,
++    step: "completed",
++    thinking: false,
++    loading: false
++  };
++  uiState.activeTab = "command";
++  renderApp();
++}
++
+ async function handleAuthSubmit(form) {
+   const payload = new FormData(form);
+   const email = String(payload.get("email") || "").trim();
+@@ -186,6 +315,22 @@ async function handleAuthSubmit(form) {
+     const me = await apiClient.me();
+     realtimeClient.setToken(apiClient.getAuthToken());
+     await store.bootstrapRemote();
++    const nextState = store.getState();
++    if ((nextState.campaigns || []).length === 0) {
++      uiState.onboarding = {
++        ...uiState.onboarding,
++        step: "character",
++        error: ""
++      };
++    } else {
++      uiState.onboarding = {
++        ...uiState.onboarding,
++        step: "completed",
++        loading: false,
++        thinking: false,
++        error: ""
++      };
++    }
+     await loadCampaignMembers();
+     uiState.authMessage = `Signed in as ${me.user.displayName}`;
+     uiState.showAuthPanel = false;
+@@ -246,6 +391,16 @@ function bindAppEvents() {
+       }
+       realtimeClient.setToken("");
+       uiState.campaignMembers = [];
++      uiState.onboarding = {
++        ...uiState.onboarding,
++        step: "inactive",
++        loading: false,
++        thinking: false,
++        error: "",
++        messages: [],
++        exchanges: 0,
++        campaignId: ""
++      };
+       store.clearAuth();
+       uiState.authMessage = "Logged out.";
+       renderApp();
+@@ -337,37 +492,67 @@ function renderApp() {
+ 
+   const state = store.getState();
+   const user = state.auth?.user;
++  const onboardingVisible = shouldShowOnboarding(state);
++  if (onboardingVisible && uiState.onboarding.step === "inactive") {
++    uiState.onboarding.step = "character";
++  }
+ 
+   if (user && state.selectedCampaignId && state.selectedCampaignId !== uiState.activeRealtimeCampaignId) {
+     uiState.activeRealtimeCampaignId = state.selectedCampaignId;
+     realtimeClient.joinCampaign(state.selectedCampaignId);
+   }
+ 
+-  appRoot.innerHTML = `
+-    <div class="app-shell">
+-      ${renderTopbar(uiState.activeTab, user)}
+-      ${uiState.authMessage ? `<section class="module-card"><div class="small">${uiState.authMessage}</div></section>` : ""}
+-      ${renderAuthPanel(state)}
+-      <div class="layout">
+-        ${renderSidebar(state)}
+-        <main class="panel main">
+-          <section id="active-module">
+-            ${renderActiveTab(state)}
+-          </section>
+-          <section class="module-card">
+-            <div class="module-header">
+-              <h3>Scaffold Status</h3>
+-              <button class="ghost" data-action="reset-state">Reset Demo Data</button>
+-            </div>
+-            <div class="small">Secure auth + permissions + versioned sync + realtime collaboration + AI adapters are active.</div>
+-            <div class="footer-note">API: ${uiState.apiHealthy ? "Connected" : "Offline"} | Realtime: ${uiState.realtimeConnected ? "Connected" : "Disconnected"} | Presence: ${uiState.presenceUsers.length} | State v${state.stateVersion ?? 0}</div>
++  if (onboardingVisible) {
++    appRoot.innerHTML = `
++      <div class="app-shell">
++        ${renderTopbar(uiState.activeTab, user)}
++        ${uiState.authMessage ? `<section class="module-card"><div class="small">${uiState.authMessage}</div></section>` : ""}
++        ${renderAuthPanel(state)}
++        <main class="panel main onboarding-main">
++          <section id="onboarding-root">
++            ${renderOnboardingFlow(uiState.onboarding)}
+           </section>
+         </main>
+       </div>
+-    </div>
+-  `;
++    `;
++  } else {
++    appRoot.innerHTML = `
++      <div class="app-shell">
++        ${renderTopbar(uiState.activeTab, user)}
++        ${uiState.authMessage ? `<section class="module-card"><div class="small">${uiState.authMessage}</div></section>` : ""}
++        ${renderAuthPanel(state)}
++        <div class="layout">
++          ${renderSidebar(state)}
++          <main class="panel main">
++            <section id="active-module">
++              ${renderActiveTab(state)}
++            </section>
++            <section class="module-card">
++              <div class="module-header">
++                <h3>Scaffold Status</h3>
++                <button class="ghost" data-action="reset-state">Reset Demo Data</button>
++              </div>
++              <div class="small">Secure auth + permissions + versioned sync + realtime collaboration + AI adapters are active.</div>
++              <div class="footer-note">API: ${uiState.apiHealthy ? "Connected" : "Offline"} | Realtime: ${uiState.realtimeConnected ? "Connected" : "Disconnected"} | Presence: ${uiState.presenceUsers.length} | State v${state.stateVersion ?? 0}</div>
++            </section>
++          </main>
++        </div>
++      </div>
++    `;
++  }
+ 
+   bindAppEvents();
++
++  if (onboardingVisible) {
++    const onboardingRoot = appRoot.querySelector("#onboarding-root");
++    if (onboardingRoot) {
++      bindOnboardingFlow(onboardingRoot, {
++        onStart: startOnboarding,
++        onSendMessage: sendOnboardingMessage,
++        onOpenDashboard: openOnboardingCampaignDashboard
++      });
++    }
++  }
+ }
+ 
+ store.subscribe(() => {
+@@ -390,20 +575,13 @@ async function bootstrap() {
+     authenticated = false;
+   }
+ 
+-  if (!authenticated) {
+-    try {
+-      await apiClient.login({ email: "demo@notdnd.local", password: "demo1234" });
+-      authenticated = true;
+-      uiState.authMessage = "Signed in with bootstrap demo account.";
+-    } catch {
+-      authenticated = false;
+-    }
+-  }
+-
+   realtimeClient.setToken(authenticated ? apiClient.getAuthToken() : "");
+   await store.bootstrapRemote();
+   if (authenticated) {
+     await loadCampaignMembers();
++    if ((store.getState().campaigns || []).length === 0) {
++      uiState.onboarding.step = "character";
++    }
+   }
+ 
+   renderApp();
+diff --git a/src/realtime/client.js b/src/realtime/client.js
+index d2923c2..c01dc6e 100644
+--- a/src/realtime/client.js
++++ b/src/realtime/client.js
+@@ -8,7 +8,13 @@ export function createRealtimeClient({
+   onError,
+   onPresence,
+   onCursors,
+-  onLocks
++  onLocks,
++  onAiThinking,
++  onAiStream,
++  onAiResponse,
++  onAiMechanical,
++  onTurnChange,
++  onPlayerMessage
+ } = {}) {
+   let socket = null;
+   let reconnectTimer = null;
+@@ -62,6 +68,24 @@ export function createRealtimeClient({
+         if (message.type === "op_error") {
+           onError?.(message);
+         }
++        if (message.type === "ai_thinking") {
++          onAiThinking?.(message);
++        }
++        if (message.type === "ai_stream") {
++          onAiStream?.(message);
++        }
++        if (message.type === "ai_response") {
++          onAiResponse?.(message);
++        }
++        if (message.type === "ai_mechanical") {
++          onAiMechanical?.(message);
++        }
++        if (message.type === "turn_change") {
++          onTurnChange?.(message);
++        }
++        if (message.type === "player_message") {
++          onPlayerMessage?.(message);
++        }
+       } catch {
+         // Ignore malformed frames.
+       }
+@@ -130,6 +154,19 @@ export function createRealtimeClient({
+     return sendMessage({ type: "lock_release", resource });
+   }
+ 
++  function sendTyping(typing = true) {
++    return sendMessage({ type: "typing", typing: Boolean(typing) });
++  }
++
++  function sendGmPlayerMessage({ text, playerName = "", ooc = false }) {
++    return sendMessage({
++      type: "gm_player_message",
++      text,
++      playerName,
++      ooc: Boolean(ooc)
++    });
++  }
++
+   connect(campaignId);
+ 
+   return {
+@@ -139,6 +176,8 @@ export function createRealtimeClient({
+     setToken,
+     sendCursor,
+     acquireLock,
+-    releaseLock
++    releaseLock,
++    sendTyping,
++    sendGmPlayerMessage
+   };
+ }
+diff --git a/src/state/store.js b/src/state/store.js
+index badc185..052f78f 100644
+--- a/src/state/store.js
++++ b/src/state/store.js
+@@ -168,15 +168,16 @@ export function createStore({ apiClient = null } = {}) {
+       return [];
+     }
+     const response = await apiClient.getGmMemory(campaignId);
++    const docs = response.entities || response.docs || [];
+     state = {
+       ...state,
+       gmMemoryDocsByCampaign: {
+         ...state.gmMemoryDocsByCampaign,
+-        [campaignId]: response.docs || []
++        [campaignId]: docs
+       }
+     };
+     notify();
+-    return response.docs || [];
++    return docs;
+   }
+ 
+   async function saveGmMemoryDoc({ campaignId = state.selectedCampaignId, docKey, content }) {
+@@ -184,16 +185,19 @@ export function createStore({ apiClient = null } = {}) {
+       throw new Error("API client is required for GM memory");
+     }
+     const response = await apiClient.saveGmMemory({ campaignId, docKey, content });
+-    const docs = (state.gmMemoryDocsByCampaign[campaignId] || []).filter((entry) => entry.key !== docKey);
++    const saved = response.entity || response.doc;
++    const docs = (state.gmMemoryDocsByCampaign[campaignId] || []).filter((entry) => entry.name !== saved?.name);
+     state = {
+       ...state,
+       gmMemoryDocsByCampaign: {
+         ...state.gmMemoryDocsByCampaign,
+-        [campaignId]: [response.doc, ...docs].sort((left, right) => left.title.localeCompare(right.title))
++        [campaignId]: [saved, ...docs].sort((left, right) =>
++          String(left.name || left.title || "").localeCompare(String(right.name || right.title || ""))
++        )
+       }
+     };
+     notify();
+-    return response.doc;
++    return saved;
+   }
+ 
+   async function searchGmMemory({ campaignId = state.selectedCampaignId, query, docKey = null, limit = 5 }) {
+@@ -209,24 +213,46 @@ export function createStore({ apiClient = null } = {}) {
+     return response.results || [];
+   }
+ 
+-  async function requestGmResponse({ campaignId = state.selectedCampaignId, message, mode, provider, model }) {
++  async function requestGmResponse({ campaignId = state.selectedCampaignId, message, mode, provider, model, stream }) {
+     if (!apiClient || !campaignId) {
+       throw new Error("API client is required for GM responses");
+     }
+-    const response = await apiClient.respondAsGm({ campaignId, message, mode, provider, model });
+-    if (response.memorySnippets) {
++    const response = await apiClient.respondAsGm({ campaignId, message, mode, provider, model, stream });
++    state = {
++      ...state,
++      gmLastResponseMeta: {
++        mode: mode || "session",
++        memoryUpdates: response.memoryUpdates || [],
++        rolls: response.mechanical?.rolls || []
++      }
++    };
++    notify();
++    await hydrateFromServer();
++    return response;
++  }
++
++  async function startOnboarding({ characterName, archetype, backstorySnippet }) {
++    if (!apiClient) {
++      throw new Error("API client is required for onboarding.");
++    }
++
++    const response = await apiClient.startOnboarding({
++      characterName,
++      archetype,
++      backstorySnippet
++    });
++
++    await hydrateFromServer();
++
++    if (response?.campaignId) {
+       state = {
+         ...state,
+-        gmMemorySearchResults: response.memorySnippets,
+-        gmLastResponseMeta: {
+-          mode: response.mode,
+-          provider: response.result?.provider,
+-          model: response.result?.model
+-        }
++        selectedCampaignId: response.campaignId
+       };
+       notify();
++      await loadGmMemoryDocs(response.campaignId);
+     }
+-    await hydrateFromServer();
++
+     return response;
+   }
+ 
+@@ -516,8 +542,11 @@ export function createStore({ apiClient = null } = {}) {
+     async searchGmMemory({ campaignId = state.selectedCampaignId, query, docKey = null, limit = 5 }) {
+       return searchGmMemory({ campaignId, query, docKey, limit });
+     },
+-    async requestGmResponse({ campaignId = state.selectedCampaignId, message, mode, provider, model }) {
+-      return requestGmResponse({ campaignId, message, mode, provider, model });
++    async requestGmResponse({ campaignId = state.selectedCampaignId, message, mode, provider, model, stream }) {
++      return requestGmResponse({ campaignId, message, mode, provider, model, stream });
++    },
++    async startOnboarding({ characterName, archetype, backstorySnippet }) {
++      return startOnboarding({ characterName, archetype, backstorySnippet });
+     },
+     async rollDice({ expression, label, actor }) {
+       return syncOperationWithResult("roll_dice", {
+diff --git a/src/styles.css b/src/styles.css
+index e84f2ba..6ed4e99 100644
+--- a/src/styles.css
++++ b/src/styles.css
+@@ -364,47 +364,192 @@ button.alt {
+   color: var(--muted);
+ }
+ 
+-@keyframes fade-up {
+-  from {
+-    opacity: 0;
+-    transform: translateY(8px);
+-  }
++.onboarding-main {
++  padding: 0;
++  overflow: hidden;
++}
+ 
+-  to {
+-    opacity: 1;
+-    transform: translateY(0);
+-  }
++.onboarding-shell {
++  position: relative;
++  overflow: hidden;
++  min-height: 72vh;
++  padding: 22px;
++  border-radius: 18px;
++  border: 1px solid rgba(88, 129, 188, 0.28);
++  background:
++    radial-gradient(circle at 15% 20%, rgba(46, 90, 172, 0.35), transparent 38%),
++    radial-gradient(circle at 85% 10%, rgba(17, 100, 102, 0.33), transparent 40%),
++    linear-gradient(160deg, #0b1427 0%, #101a2f 45%, #131c25 100%);
++  color: #e8f0ff;
++  display: grid;
++  gap: 14px;
+ }
+ 
+-@media (max-width: 1120px) {
+-  .layout {
+-    grid-template-columns: 1fr;
+-  }
++.onboarding-shell::before {
++  content: "";
++  position: absolute;
++  inset: 0;
++  pointer-events: none;
++  background:
++    linear-gradient(rgba(150, 187, 255, 0.08) 1px, transparent 1px),
++    linear-gradient(90deg, rgba(150, 187, 255, 0.08) 1px, transparent 1px);
++  background-size: 26px 26px;
++  mask-image: radial-gradient(circle at center, black 20%, transparent 80%);
++}
+ 
+-  .sidebar {
+-    grid-template-columns: repeat(2, minmax(0, 1fr));
+-  }
++.onboarding-header {
++  position: relative;
++  z-index: 1;
++  display: grid;
++  gap: 8px;
+ }
+ 
+-@media (max-width: 780px) {
+-  #app {
+-    padding: 10px;
+-  }
++.onboarding-header h2 {
++  color: #ffffff;
++}
+ 
+-  .grid-two,
+-  .grid-three,
+-  .sidebar,
+-  .metric-grid {
+-    grid-template-columns: 1fr;
+-  }
++.onboarding-header p {
++  margin: 0;
++  color: #c5d5ef;
++}
+ 
+-  .topbar {
+-    align-items: start;
+-    flex-direction: column;
+-    gap: 10px;
+-  }
++.onboarding-form {
++  position: relative;
++  z-index: 1;
++  display: grid;
++  gap: 10px;
++  max-width: 740px;
++}
++
++.onboarding-form label {
++  display: grid;
++  gap: 6px;
++  color: #dce8fb;
++  font-size: 13px;
+ }
+ 
++.onboarding-form input,
++.onboarding-form textarea {
++  border: 1px solid rgba(153, 185, 238, 0.35);
++  border-radius: 12px;
++  padding: 10px 12px;
++  background: rgba(9, 15, 31, 0.74);
++  color: #f4f8ff;
++}
++
++.onboarding-form textarea {
++  min-height: 88px;
++  resize: vertical;
++}
++
++.onboarding-form input::placeholder,
++.onboarding-form textarea::placeholder {
++  color: rgba(213, 225, 247, 0.6);
++}
++
++.onboarding-form button {
++  justify-self: start;
++  background: linear-gradient(135deg, #2e5aac 0%, #1f9d9f 100%);
++  color: #f5fbff;
++  box-shadow: 0 10px 28px rgba(24, 127, 176, 0.35);
++}
++
++.onboarding-chat-log {
++  position: relative;
++  z-index: 1;
++  display: grid;
++  gap: 10px;
++  border: 1px solid rgba(140, 173, 223, 0.28);
++  border-radius: 14px;
++  padding: 12px;
++  max-height: 52vh;
++  overflow-y: auto;
++  background: rgba(6, 12, 25, 0.72);
++}
++
++.onboarding-message {
++  display: grid;
++  gap: 4px;
++  padding: 10px 12px;
++  border-radius: 12px;
++  border: 1px solid rgba(133, 166, 218, 0.2);
++  background: rgba(21, 36, 68, 0.45);
++}
++
++.onboarding-message.user {
++  margin-left: 18%;
++  background: rgba(26, 60, 76, 0.55);
++  border-color: rgba(105, 197, 199, 0.35);
++}
++
++.onboarding-message-role {
++  font-size: 11px;
++  text-transform: uppercase;
++  letter-spacing: 0.08em;
++  color: #a8c2ee;
++}
++
++.onboarding-message-text {
++  color: #ebf4ff;
++  line-height: 1.45;
++  white-space: pre-wrap;
++}
++
++.onboarding-thinking {
++  position: relative;
++  z-index: 1;
++  display: inline-flex;
++  align-items: center;
++  gap: 8px;
++  font-size: 13px;
++  color: #c7dbfa;
++}
++
++.onboarding-empty {
++  color: #c7d8f5;
++  font-size: 13px;
++}
++
++.onboarding-hint {
++  position: relative;
++  z-index: 1;
++  display: flex;
++  justify-content: space-between;
++  align-items: center;
++  gap: 12px;
++  padding: 10px 12px;
++  border-radius: 12px;
++  border: 1px solid rgba(126, 169, 230, 0.3);
++  background: rgba(16, 27, 49, 0.72);
++}
++
++.onboarding-hint p {
++  margin: 0;
++  color: #d6e5ff;
++  font-size: 13px;
++}
++
++.onboarding-memory-note {
++  position: relative;
++  z-index: 1;
++  padding: 10px 12px;
++  border-radius: 12px;
++  border: 1px solid rgba(101, 187, 194, 0.42);
++  background: rgba(11, 38, 47, 0.72);
++  color: #d5f1f3;
++  font-size: 13px;
++}
++
++.onboarding-error {
++  position: relative;
++  z-index: 1;
++  color: #ffe2dd;
++  background: rgba(129, 44, 36, 0.65);
++  border: 1px solid rgba(230, 112, 99, 0.5);
++  border-radius: 10px;
++  padding: 8px 10px;
++  font-size: 13px;
++}
+ 
+ .solo-scene-shell {
+   display: grid;
+@@ -535,13 +680,6 @@ button:disabled {
+   box-shadow: none;
+ }
+ 
+-@media (max-width: 1120px) {
+-  .solo-scene-grid,
+-  .solo-location-card {
+-    grid-template-columns: 1fr;
+-  }
+-}
+-
+ .solo-scene-shell-polished {
+   --scene-bg: rgba(255, 249, 237, 0.94);
+   --scene-panel: #fffdf8;
+@@ -744,7 +882,60 @@ button:disabled {
+   flex-wrap: wrap;
+ }
+ 
++@keyframes fade-up {
++  from {
++    opacity: 0;
++    transform: translateY(8px);
++  }
++
++  to {
++    opacity: 1;
++    transform: translateY(0);
++  }
++}
++
++@media (max-width: 1120px) {
++  .layout {
++    grid-template-columns: 1fr;
++  }
++
++  .solo-scene-grid,
++  .solo-location-card {
++    grid-template-columns: 1fr;
++  }
++
++  .sidebar {
++    grid-template-columns: repeat(2, minmax(0, 1fr));
++  }
++}
++
+ @media (max-width: 780px) {
++  #app {
++    padding: 10px;
++  }
++
++  .grid-two,
++  .grid-three,
++  .sidebar,
++  .metric-grid {
++    grid-template-columns: 1fr;
++  }
++
++  .topbar {
++    align-items: start;
++    flex-direction: column;
++    gap: 10px;
++  }
++
++  .onboarding-message.user {
++    margin-left: 6%;
++  }
++
++  .onboarding-hint {
++    align-items: start;
++    flex-direction: column;
++  }
++
+   .solo-scene-shell {
+     min-height: auto;
+   }
+diff --git a/tests/gm-memory.test.js b/tests/gm-memory.test.js
+index 9e96598..8152190 100644
+--- a/tests/gm-memory.test.js
++++ b/tests/gm-memory.test.js
+@@ -3,28 +3,49 @@ import fs from "node:fs";
+ import os from "node:os";
+ import path from "node:path";
+ import test from "node:test";
+-import { ensureCampaignMemoryDocs, listCampaignMemoryDocs, searchCampaignMemory, writeCampaignMemoryDoc } from "../server/gm/memoryStore.js";
++import {
++  buildContextWindow,
++  ensureCampaignMemoryDocsAsync,
++  getEntity,
++  listEntities,
++  search,
++  upsertEntity
++} from "../server/gm/memoryStore.js";
+ 
+-test("campaign memory docs are created, writable, and searchable by keyword", () => {
++test("campaign memory entities are persisted, searchable, and context-windowed", async () => {
+   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "notdnd-memory-tests-"));
+   process.env.NOTDND_MEMORY_ROOT = tmpDir;
+ 
+-  ensureCampaignMemoryDocs("cmp_test", {
+-    human: "# Human GM Guide\n\n## Plot Device\nThe obsidian key opens the drowned archive.\n",
+-    agent: "# Agent GM Guide\n\n## Villain Plan\nCaptain Vey prepares the harbor ambush.\n",
+-    timeline: "# Shared Timeline\n\n## Session 1\nThe party secured the lighthouse beacon.\n"
++  await ensureCampaignMemoryDocsAsync("cmp_test");
++
++  await upsertEntity("cmp_test", {
++    name: "Kael the Blacksmith",
++    type: "npc",
++    tags: ["thornwall", "blacksmith"],
++    body: "Kael runs the only smithy in Thornwall. He secretly supports the Iron Pact and knows about the Undercrypt entrance.",
++    relations: [{ target: "Thornwall", type: "located_in" }]
++  });
++
++  await upsertEntity("cmp_test", {
++    name: "Thornwall",
++    type: "location",
++    tags: ["town"],
++    body: "A fortified river town known for steelwork and river trade.",
++    relations: []
+   });
+ 
+-  const docs = listCampaignMemoryDocs("cmp_test");
+-  assert.equal(docs.length, 3);
+-  assert.ok(docs.some((doc) => doc.key === "human"));
++  const listed = await listEntities("cmp_test");
++  assert.ok(listed.some((entity) => entity.name === "Kael the Blacksmith"));
+ 
+-  const saved = writeCampaignMemoryDoc("cmp_test", "timeline", "# Shared Timeline\n\n## Session 2\nThe party recovered the obsidian key.\n");
+-  assert.match(saved.content, /obsidian key/);
++  const fetched = await getEntity("cmp_test", "Kael the Blacksmith");
++  assert.match(fetched.body, /smithy/i);
+ 
+-  const results = searchCampaignMemory("cmp_test", "obsidian key harbor", { limit: 3 });
++  const results = await search("cmp_test", "iron pact undercrypt", { limit: 3 });
+   assert.ok(results.length >= 1);
+-  assert.ok(results.some((entry) => entry.text.includes("obsidian key")));
++  assert.ok(results.some((entry) => entry.name === "Kael the Blacksmith"));
++
++  const context = await buildContextWindow("cmp_test", "ask kael about undercrypt", 400);
++  assert.match(context, /Kael the Blacksmith/i);
+ 
+   fs.rmSync(tmpDir, { recursive: true, force: true });
+ });
+diff --git a/tests/quickstart-build-fixtures.test.js b/tests/quickstart-build-fixtures.test.js
+index f693ec6..afe9997 100644
+--- a/tests/quickstart-build-fixtures.test.js
++++ b/tests/quickstart-build-fixtures.test.js
+@@ -21,11 +21,11 @@ process.env.NOTDND_MEMORY_ROOT = path.join(tmpDir, "memory");
+ const manifest = loadFixtureManifest().filter((entry) => entry.shouldParse);
+ 
+ for (const entry of manifest) {
+-  test(`quickstart build route fixture: ${entry.file}`, () => {
++  test(`quickstart build route fixture: ${entry.file}`, async () => {
+     initializeDatabase();
+     resetDatabase();
+ 
+-    const response = handleQuickstartBuildPayload(
++    const response = await handleQuickstartBuildPayload(
+       {
+         campaignName: `Fixture ${entry.file}`,
+         setting: "Fixture Setting",
+diff --git a/tests/quickstart-routes.test.js b/tests/quickstart-routes.test.js
+index 2719de7..ba995fa 100644
+--- a/tests/quickstart-routes.test.js
++++ b/tests/quickstart-routes.test.js
+@@ -15,9 +15,9 @@ test("parse route payload returns parser output", () => {
+   assert.deepEqual(response, { parsed: { summary: { documents: 1 } } });
+ });
+ 
+-test("build route parses files when parsed payload is missing", () => {
++test("build route parses files when parsed payload is missing", async () => {
+   let parseCalled = false;
+-  const response = handleQuickstartBuildPayload(
++  const response = await handleQuickstartBuildPayload(
+     {
+       campaignName: "Quick",
+       setting: "Setting",
+@@ -44,7 +44,7 @@ test("build route parses files when parsed payload is missing", () => {
+   assert.equal(response.state.selectedCampaignId, "cmp_x");
+ });
+ 
+-test("build route uses supplied parsed payload when provided", () => {
++test("build route uses supplied parsed payload when provided", async () => {
+   let parseCalled = false;
+   const parsed = {
+     books: [{ title: "B" }],
+@@ -52,7 +52,7 @@ test("build route uses supplied parsed payload when provided", () => {
+     summary: { documents: 1 }
+   };
+ 
+-  const response = handleQuickstartBuildPayload(
++  const response = await handleQuickstartBuildPayload(
+     {
+       campaignName: "Quick",
+       setting: "Setting",

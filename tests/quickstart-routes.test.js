@@ -15,9 +15,9 @@ test("parse route payload returns parser output", () => {
   assert.deepEqual(response, { parsed: { summary: { documents: 1 } } });
 });
 
-test("build route parses files when parsed payload is missing", () => {
+test("build route parses files when parsed payload is missing", async () => {
   let parseCalled = false;
-  const response = handleQuickstartBuildPayload(
+  const response = await handleQuickstartBuildPayload(
     {
       campaignName: "Quick",
       setting: "Setting",
@@ -44,7 +44,7 @@ test("build route parses files when parsed payload is missing", () => {
   assert.equal(response.state.selectedCampaignId, "cmp_x");
 });
 
-test("build route uses supplied parsed payload when provided", () => {
+test("build route uses supplied parsed payload when provided", async () => {
   let parseCalled = false;
   const parsed = {
     books: [{ title: "B" }],
@@ -52,7 +52,7 @@ test("build route uses supplied parsed payload when provided", () => {
     summary: { documents: 1 }
   };
 
-  const response = handleQuickstartBuildPayload(
+  const response = await handleQuickstartBuildPayload(
     {
       campaignName: "Quick",
       setting: "Setting",

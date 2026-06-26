@@ -1,0 +1,12 @@
+.git
+.github
+node_modules
+npm-debug.log
+pnpm-debug.log
+.DS_Store
+*.local
+backups
+data
+tests
+scripts
+README.md

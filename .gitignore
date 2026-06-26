@@ -6,3 +6,7 @@ server/db/notdnd.sqlite-shm
 server/db/notdnd.sqlite-wal
 server/db/notdnd.db.json
 backups/
+.env
+
+# Generated NPC portrait / image assets (never commit binaries)
+data/assets/

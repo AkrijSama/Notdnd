@@ -1,18 +1,24 @@
 :root {
-  --bg: #f0ece1;
-  --panel: #fff9ed;
-  --panel-alt: #f7f2e8;
-  --ink: #1a1e26;
-  --muted: #5a606b;
-  --accent: #116466;
-  --accent-2: #d95d39;
-  --accent-3: #2e5aac;
-  --line: #d7cab4;
-  --good: #2e7d32;
-  --warn: #b45309;
+  --bg: #14100c;
+  --panel: #221a13;
+  --panel-alt: #2a2018;
+  --surface: #1c1610;
+  --surface-strong: #271e16;
+  --input-bg: #100c08;
+  --ink: #ece1c7;
+  --muted: #95897a;
+  --accent: #c89a4b;
+  --accent-2: #b94c2d;
+  --accent-3: #6f8fc4;
+  --line: #3d2f22;
+  --line-strong: #503f2e;
+  --good: #7faf60;
+  --warn: #d9a23d;
+  --pill-good-bg: rgba(127, 175, 96, 0.18);
+  --pill-warn-bg: rgba(217, 162, 61, 0.18);
   --radius-lg: 20px;
   --radius-md: 12px;
-  --shadow: 0 14px 34px rgba(20, 23, 29, 0.08);
+  --shadow: 0 14px 34px rgba(0, 0, 0, 0.55);
 }
 
 * {
@@ -25,9 +31,35 @@ body {
   color: var(--ink);
   min-height: 100vh;
   background:
-    radial-gradient(circle at top right, rgba(217, 93, 57, 0.18), transparent 40%),
-    radial-gradient(circle at 10% 20%, rgba(17, 100, 102, 0.25), transparent 35%),
-    linear-gradient(140deg, #ece4d8 5%, #f5efe6 50%, #f1e8dc 100%);
+    radial-gradient(circle at top right, rgba(185, 76, 45, 0.22), transparent 42%),
+    radial-gradient(circle at 10% 20%, rgba(200, 154, 75, 0.16), transparent 38%),
+    linear-gradient(140deg, #0d0a07 5%, #16110d 50%, #1b1410 100%);
+}
+
+* {
+  scrollbar-color: var(--line-strong) transparent;
+  scrollbar-width: thin;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--accent);
+  background-clip: padding-box;
 }
 
 h1,
@@ -37,6 +69,7 @@ h4 {
   margin: 0;
   font-family: "Sora", sans-serif;
   letter-spacing: -0.02em;
+  color: var(--ink);
 }
 
 button,
@@ -51,25 +84,37 @@ button {
   border-radius: 999px;
   padding: 10px 16px;
   background: var(--accent);
-  color: #ffffff;
+  color: #1a1208;
   cursor: pointer;
-  transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+  font-weight: 600;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease, color 0.18s ease;
 }
 
 button:hover {
   transform: translateY(-1px);
-  box-shadow: 0 8px 18px rgba(17, 100, 102, 0.26);
+  box-shadow: 0 8px 18px rgba(200, 154, 75, 0.28);
+  background: #d9ad5e;
 }
 
 button.ghost {
-  background: #fff;
+  background: transparent;
   color: var(--ink);
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   box-shadow: none;
+}
+
+button.ghost:hover {
+  background: var(--surface-strong);
+  border-color: var(--accent);
 }
 
 button.alt {
   background: var(--accent-2);
+  color: #fbeee5;
+}
+
+button.alt:hover {
+  background: #cc5a38;
 }
 
 #app {
@@ -81,19 +126,54 @@ button.alt {
 .app-shell {
   display: grid;
   gap: 14px;
-  animation: fade-up 0.4s ease;
 }
 
 .topbar {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: rgba(255, 249, 237, 0.9);
+  background: rgba(34, 26, 19, 0.92);
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   padding: 14px 18px;
   box-shadow: var(--shadow);
   backdrop-filter: blur(6px);
+}
+
+.account-menu {
+  position: relative;
+  display: inline-block;
+}
+
+.account-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 50;
+  min-width: 168px;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-strong, rgba(34, 26, 19, 0.98));
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.account-dropdown-item {
+  background: transparent;
+  color: var(--ink);
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  text-align: left;
+  padding: 10px 14px;
+  font: inherit;
+}
+
+.account-dropdown-item:hover {
+  background: var(--accent);
+  color: #2a1d10;
 }
 
 .brand {
@@ -117,16 +197,20 @@ button.alt {
 
 .nav-tab {
   background: transparent;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   color: var(--ink);
   border-radius: 999px;
   padding: 8px 12px;
 }
 
+.nav-tab:hover {
+  background: var(--surface-strong);
+}
+
 .nav-tab.active {
-  background: var(--ink);
-  color: #fff;
-  border-color: var(--ink);
+  background: var(--accent);
+  color: #1a1208;
+  border-color: var(--accent);
 }
 
 .layout {
@@ -136,7 +220,7 @@ button.alt {
 }
 
 .panel {
-  background: rgba(255, 249, 237, 0.9);
+  background: rgba(34, 26, 19, 0.92);
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow);
@@ -159,12 +243,13 @@ button.alt {
   padding: 12px;
   border-radius: var(--radius-md);
   border: 1px solid var(--line);
-  background: linear-gradient(180deg, #fffefb 0%, #f8f1e4 100%);
+  background: linear-gradient(180deg, #2b2118 0%, #1f1810 100%);
 }
 
 .metric-value {
   font-family: "Sora", sans-serif;
   font-size: 24px;
+  color: var(--accent);
 }
 
 .small {
@@ -185,7 +270,6 @@ button.alt {
   padding: 14px;
   display: grid;
   gap: 10px;
-  animation: fade-up 0.38s ease;
 }
 
 .module-header {
@@ -222,10 +306,24 @@ button.alt {
 .field input,
 .field select,
 .field textarea {
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 10px;
   padding: 9px 10px;
-  background: #fff;
+  background: var(--input-bg);
+  color: var(--ink);
+}
+
+.field input:focus,
+.field select:focus,
+.field textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(200, 154, 75, 0.18);
+}
+
+.field input::placeholder,
+.field textarea::placeholder {
+  color: rgba(236, 225, 199, 0.35);
 }
 
 .field textarea {
@@ -255,7 +353,7 @@ button.alt {
 .list-item {
   border: 1px solid var(--line);
   border-radius: 10px;
-  background: #fffdf8;
+  background: var(--surface);
   padding: 9px 10px;
 }
 
@@ -263,10 +361,11 @@ button.alt {
   display: inline-block;
   padding: 3px 8px;
   border-radius: 999px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   font-size: 11px;
   margin-right: 6px;
-  background: #fff;
+  background: var(--surface-strong);
+  color: var(--ink);
 }
 
 .map-board {
@@ -275,13 +374,13 @@ button.alt {
   overflow: hidden;
   display: grid;
   grid-template-columns: repeat(10, 1fr);
-  background: linear-gradient(180deg, #f3eadf 0%, #f8f2e8 100%);
+  background: linear-gradient(180deg, #1a130c 0%, #221a12 100%);
 }
 
 .map-cell {
   aspect-ratio: 1;
-  border-right: 1px solid rgba(26, 30, 38, 0.08);
-  border-bottom: 1px solid rgba(26, 30, 38, 0.08);
+  border-right: 1px solid rgba(236, 225, 199, 0.06);
+  border-bottom: 1px solid rgba(236, 225, 199, 0.06);
   font-size: 11px;
   display: flex;
   align-items: center;
@@ -290,12 +389,12 @@ button.alt {
 }
 
 .map-cell.fogged {
-  background: rgba(15, 20, 27, 0.82);
-  color: rgba(255, 255, 255, 0.45);
+  background: rgba(7, 5, 3, 0.88);
+  color: rgba(236, 225, 199, 0.35);
 }
 
 .map-cell.fogged .token {
-  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.55);
+  box-shadow: 0 0 0 2px rgba(236, 225, 199, 0.45);
 }
 
 .map-cell:nth-child(10n) {
@@ -322,7 +421,8 @@ button.alt {
   overflow: auto;
   display: grid;
   gap: 8px;
-  background: #fff;
+  background: var(--input-bg);
+  color: var(--ink);
 }
 
 .chat-line {
@@ -331,32 +431,36 @@ button.alt {
 
 .chat-line b {
   font-family: "Sora", sans-serif;
+  color: var(--accent);
 }
 
 .status-pill {
   padding: 4px 8px;
   border-radius: 999px;
   font-size: 12px;
-  background: #e7f4e8;
+  background: var(--pill-good-bg);
   color: var(--good);
+  border: 1px solid rgba(127, 175, 96, 0.4);
 }
 
 .status-pill.warn {
-  background: #fdf0d8;
+  background: var(--pill-warn-bg);
   color: var(--warn);
+  border-color: rgba(217, 162, 61, 0.45);
 }
 
 .progress {
   height: 10px;
-  background: #ebdfcf;
+  background: #2a2018;
   border-radius: 999px;
   overflow: hidden;
+  border: 1px solid var(--line);
 }
 
 .progress > span {
   display: block;
   height: 100%;
-  background: linear-gradient(90deg, var(--accent), var(--accent-3));
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
 }
 
 .footer-note {
@@ -364,47 +468,228 @@ button.alt {
   color: var(--muted);
 }
 
-@keyframes fade-up {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+.onboarding-main {
+  padding: 0;
+  overflow: hidden;
 }
 
-@media (max-width: 1120px) {
-  .layout {
-    grid-template-columns: 1fr;
-  }
-
-  .sidebar {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+.onboarding-shell {
+  position: relative;
+  overflow: hidden;
+  min-height: 72vh;
+  padding: 22px;
+  border-radius: 18px;
+  border: 1px solid rgba(200, 154, 75, 0.28);
+  background:
+    radial-gradient(circle at 15% 20%, rgba(185, 76, 45, 0.28), transparent 38%),
+    radial-gradient(circle at 85% 10%, rgba(200, 154, 75, 0.22), transparent 40%),
+    linear-gradient(160deg, #100b07 0%, #1a130d 45%, #14100b 100%);
+  color: #ece1c7;
+  display: grid;
+  gap: 14px;
 }
 
-@media (max-width: 780px) {
-  #app {
-    padding: 10px;
-  }
-
-  .grid-two,
-  .grid-three,
-  .sidebar,
-  .metric-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .topbar {
-    align-items: start;
-    flex-direction: column;
-    gap: 10px;
-  }
+.onboarding-shell::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(rgba(200, 154, 75, 0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(200, 154, 75, 0.07) 1px, transparent 1px);
+  background-size: 26px 26px;
+  mask-image: radial-gradient(circle at center, black 20%, transparent 80%);
 }
 
+.onboarding-header {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 8px;
+}
+
+.onboarding-header h2 {
+  color: var(--accent);
+}
+
+.onboarding-header p {
+  margin: 0;
+  color: #d6c8a8;
+}
+
+.onboarding-form {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 10px;
+  max-width: 740px;
+}
+
+.onboarding-form label {
+  display: grid;
+  gap: 6px;
+  color: #d6c8a8;
+  font-size: 13px;
+}
+
+.onboarding-form input,
+.onboarding-form textarea {
+  border: 1px solid rgba(200, 154, 75, 0.32);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: rgba(8, 6, 4, 0.78);
+  color: #f4ead0;
+}
+
+.onboarding-form input:focus,
+.onboarding-form textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.onboarding-form textarea {
+  min-height: 88px;
+  resize: vertical;
+}
+
+.onboarding-form input::placeholder,
+.onboarding-form textarea::placeholder {
+  color: rgba(236, 225, 199, 0.4);
+}
+
+.onboarding-form button {
+  justify-self: start;
+  background: linear-gradient(135deg, var(--accent-2) 0%, var(--accent) 100%);
+  color: #1a1208;
+  box-shadow: 0 10px 28px rgba(185, 76, 45, 0.35);
+}
+
+.onboarding-chat-log {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 10px;
+  border: 1px solid rgba(200, 154, 75, 0.22);
+  border-radius: 14px;
+  padding: 12px;
+  max-height: 52vh;
+  overflow-y: auto;
+  background: rgba(6, 4, 2, 0.72);
+}
+
+.onboarding-message {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(200, 154, 75, 0.18);
+  background: rgba(40, 30, 21, 0.55);
+}
+
+.onboarding-message.user {
+  margin-left: 18%;
+  background: rgba(60, 38, 22, 0.6);
+  border-color: rgba(185, 76, 45, 0.4);
+}
+
+.onboarding-message-role {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+}
+
+.onboarding-message-text {
+  color: #ece1c7;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.onboarding-thinking {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #d6c8a8;
+}
+
+.onboarding-empty {
+  color: #c4b690;
+  font-size: 13px;
+}
+
+.onboarding-loading {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.onboarding-loading-phrase {
+  font-size: 13px;
+  color: #d6c8a8;
+  transition: opacity 200ms ease;
+}
+
+.onboarding-progress {
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.onboarding-progress-bar {
+  height: 100%;
+  width: 0%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #b8924a, #e7c878);
+  transition: width 160ms ease;
+}
+
+.onboarding-hint {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(200, 154, 75, 0.3);
+  background: rgba(20, 14, 9, 0.78);
+}
+
+.onboarding-hint p {
+  margin: 0;
+  color: #d6c8a8;
+  font-size: 13px;
+}
+
+.onboarding-memory-note {
+  position: relative;
+  z-index: 1;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(127, 175, 96, 0.4);
+  background: rgba(20, 32, 14, 0.6);
+  color: #d3e8c1;
+  font-size: 13px;
+}
+
+.onboarding-error {
+  position: relative;
+  z-index: 1;
+  color: #ffd9cf;
+  background: rgba(120, 38, 26, 0.65);
+  border: 1px solid rgba(220, 95, 70, 0.55);
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: 13px;
+}
 
 .solo-scene-shell {
   display: grid;
@@ -420,7 +705,7 @@ button.alt {
   padding: 14px 16px;
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
-  background: rgba(255, 249, 237, 0.94);
+  background: rgba(34, 26, 19, 0.94);
   box-shadow: var(--shadow);
 }
 
@@ -450,16 +735,16 @@ button.alt {
 
 .solo-location-image {
   min-height: 260px;
-  border: 1px dashed rgba(26, 30, 38, 0.24);
+  border: 1px dashed rgba(200, 154, 75, 0.28);
   border-radius: 14px;
   display: grid;
   place-items: center;
   padding: 18px;
   color: var(--muted);
   background:
-    linear-gradient(rgba(26, 30, 38, 0.04) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(26, 30, 38, 0.04) 1px, transparent 1px),
-    #fffdf8;
+    linear-gradient(rgba(200, 154, 75, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(200, 154, 75, 0.05) 1px, transparent 1px),
+    var(--surface);
   background-size: 22px 22px;
 }
 
@@ -507,9 +792,10 @@ button.alt {
   border: 1px solid var(--line);
   border-radius: 12px;
   padding: 10px;
-  background: #fffdf8;
+  background: var(--surface);
   display: grid;
   gap: 8px;
+  color: var(--ink);
 }
 
 .solo-entity-card p,
@@ -528,28 +814,186 @@ button.alt {
   box-shadow: var(--shadow);
 }
 
+/* ---- Death screen (run conclusion: outcome "died") -------------------- */
+.solo-death-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  background: radial-gradient(120% 90% at 50% 0%, #1a0d0a, #0a0605 70%);
+}
+.solo-death-card {
+  max-width: 520px;
+  width: 100%;
+  margin: auto;
+  padding: 36px 32px;
+  text-align: center;
+  border: 1px solid var(--line, #3d2f22);
+  border-radius: var(--radius-lg, 20px);
+  background: var(--panel, #221a13);
+  box-shadow: var(--shadow, 0 14px 34px rgba(0, 0, 0, 0.55));
+}
+.solo-death-kicker {
+  font-size: 13px;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  color: var(--accent-2, #b94c2d);
+  margin-bottom: 10px;
+}
+.solo-death-title {
+  font-family: var(--font-display, Georgia, serif);
+  font-size: 28px;
+  color: var(--ink, #ece1c7);
+  margin: 0 0 8px;
+}
+.solo-death-sub {
+  color: var(--muted, #95897a);
+  margin: 0 0 22px;
+}
+.solo-death-summary {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 26px;
+  text-align: left;
+}
+.solo-death-summary > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 12px;
+  border: 1px solid var(--border, #2e2420);
+  border-radius: 8px;
+  background: var(--card-dim, #160f09);
+}
+.solo-death-summary dt {
+  color: var(--muted, #95897a);
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.solo-death-summary dd {
+  margin: 0;
+  color: var(--ink, #ece1c7);
+  font-weight: 600;
+}
+.solo-death-home {
+  font-size: 1.02rem;
+  padding: 12px 26px;
+}
+
+/* ---- Victory screen (run conclusion: main quest completed) ------------ */
+/* Mirrors the death screen layout with a gold scheme instead of red. */
+.solo-victory-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  background: radial-gradient(120% 90% at 50% 0%, #1c150a, #0a0805 70%);
+}
+.solo-victory-card {
+  max-width: 520px;
+  width: 100%;
+  margin: auto;
+  padding: 36px 32px;
+  text-align: center;
+  border: 1px solid var(--accent, #c89a4b);
+  border-radius: var(--radius-lg, 20px);
+  background: var(--panel, #221a13);
+  box-shadow: 0 0 0 1px rgba(200, 154, 75, 0.35) inset, var(--shadow, 0 14px 34px rgba(0, 0, 0, 0.55));
+}
+.solo-victory-kicker {
+  font-size: 13px;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  color: var(--accent, #c89a4b);
+  margin-bottom: 10px;
+}
+.solo-victory-title {
+  font-family: var(--font-display, Georgia, serif);
+  font-size: 28px;
+  color: var(--accent, #c89a4b);
+  margin: 0 0 8px;
+}
+.solo-victory-narration {
+  color: var(--ink, #ece1c7);
+  font-style: italic;
+  line-height: 1.5;
+  min-height: 1.5em;
+  margin: 0 0 18px;
+}
+.solo-victory-sub {
+  color: var(--ink, #ece1c7);
+  margin: 0 0 22px;
+}
+.solo-victory-sub strong {
+  color: var(--accent, #c89a4b);
+}
+.solo-victory-summary {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 26px;
+  text-align: left;
+}
+.solo-victory-summary > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 12px;
+  border: 1px solid rgba(200, 154, 75, 0.35);
+  border-radius: 8px;
+  background: var(--card-dim, #160f09);
+}
+.solo-victory-summary dt {
+  color: var(--muted, #95897a);
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.solo-victory-summary dd {
+  margin: 0;
+  color: var(--ink, #ece1c7);
+  font-weight: 600;
+}
+.solo-victory-home {
+  font-size: 1.02rem;
+  padding: 12px 26px;
+}
+
+/* ---- Quest objective (Journal panel + scene-header hint) -------------- */
+.solo-quest-title {
+  display: block;
+  color: var(--accent, #c89a4b);
+  font-size: 15px;
+}
+.solo-quest-objective {
+  margin-top: 4px;
+}
+.solo-quest-stage {
+  margin-top: 6px;
+  color: var(--accent, #c89a4b);
+  letter-spacing: 0.04em;
+}
+.solo-game-objective {
+  margin-top: 4px;
+  color: var(--accent, #c89a4b);
+  letter-spacing: 0.02em;
+}
+
 button:disabled {
   cursor: not-allowed;
-  opacity: 0.55;
+  opacity: 0.45;
   transform: none;
   box-shadow: none;
 }
 
-@media (max-width: 1120px) {
-  .solo-scene-grid,
-  .solo-location-card {
-    grid-template-columns: 1fr;
-  }
-}
-
 .solo-scene-shell-polished {
-  --scene-bg: rgba(255, 249, 237, 0.94);
-  --scene-panel: #fffdf8;
-  --scene-panel-alt: #f7f2e8;
+  --scene-bg: rgba(34, 26, 19, 0.94);
+  --scene-panel: var(--surface);
+  --scene-panel-alt: var(--panel-alt);
   --scene-border: var(--line);
   --scene-muted: var(--muted);
   --scene-accent: var(--accent);
-  --scene-selected: rgba(46, 90, 172, 0.12);
+  --scene-selected: rgba(200, 154, 75, 0.14);
 }
 
 .solo-scene-title {
@@ -559,6 +1003,7 @@ button:disabled {
 
 .solo-scene-title h2 {
   font-size: 28px;
+  color: var(--accent);
 }
 
 .solo-scene-badges {
@@ -627,8 +1072,8 @@ button:disabled {
 
 .solo-entity-card.inspectable:hover,
 .solo-entity-card.inspectable:focus {
-  border-color: rgba(46, 90, 172, 0.38);
-  box-shadow: 0 8px 20px rgba(46, 90, 172, 0.12);
+  border-color: rgba(200, 154, 75, 0.5);
+  box-shadow: 0 8px 20px rgba(200, 154, 75, 0.14);
   outline: none;
 }
 
@@ -672,7 +1117,7 @@ button:disabled {
 
 .solo-detail-portrait {
   min-height: 96px;
-  border: 1px dashed rgba(26, 30, 38, 0.22);
+  border: 1px dashed rgba(200, 154, 75, 0.26);
   border-radius: 12px;
   background: var(--scene-panel);
   color: var(--scene-muted);
@@ -744,7 +1189,60 @@ button:disabled {
   flex-wrap: wrap;
 }
 
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 1120px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+
+  .solo-scene-grid,
+  .solo-location-card {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 780px) {
+  #app {
+    padding: 10px;
+  }
+
+  .grid-two,
+  .grid-three,
+  .sidebar,
+  .metric-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .topbar {
+    align-items: start;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .onboarding-message.user {
+    margin-left: 6%;
+  }
+
+  .onboarding-hint {
+    align-items: start;
+    flex-direction: column;
+  }
+
   .solo-scene-shell {
     min-height: auto;
   }
@@ -770,3 +1268,1413 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 }
+
+/* =========================================================================
+   Solo themed game screen (skins, fonts, character sidebar, tabs, right rail)
+   Imported from the "NotDND Game Screen" design. All colors flow from the
+   CSS custom properties set on .solo-game-shell so skins retint everything.
+   ========================================================================= */
+.solo-game-shell {
+  position: relative;
+  min-height: 100vh;
+  box-sizing: border-box;
+  /* Full-bleed: break out of #app's 1400px max-width so the shell fills the
+     whole viewport on wide / ultrawide monitors. */
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
+  padding: 16px clamp(16px, 2.4vw, 56px) 18px;
+  background: var(--bg, #1c1510);
+  color: var(--text, #e8dcc8);
+  font-family: var(--font-body, Georgia, "Times New Roman", serif);
+}
+
+/* ---- Theme settings tucked behind a ⚙ button (top-right) ---- */
+.solo-settings {
+  position: absolute;
+  top: 14px;
+  right: clamp(16px, 2.4vw, 56px);
+  z-index: 30;
+}
+.solo-settings-btn {
+  list-style: none;
+  cursor: pointer;
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  font-size: 17px;
+  line-height: 1;
+  border-radius: 9px;
+  background: var(--inset, #120c07);
+  border: 1px solid var(--border, #2e2420);
+  color: var(--text-2, #b3a48c);
+}
+.solo-settings-btn::-webkit-details-marker,
+.solo-settings-btn::marker { display: none; content: ""; }
+.solo-settings[open] .solo-settings-btn {
+  color: var(--accent, #c8922a);
+  border-color: var(--accent, #c8922a);
+}
+.solo-settings-menu {
+  position: absolute;
+  top: 46px;
+  right: 0;
+  min-width: 260px;
+  padding: 16px 18px;
+  background: var(--panel, #171009);
+  border: 1px solid var(--border, #2e2420);
+  border-radius: 12px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.55);
+}
+
+.solo-theme-switcher {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.solo-theme-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.solo-theme-kicker {
+  font-size: 12px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-muted, #9a8b76);
+  font-weight: 700;
+}
+.solo-theme-premium {
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent-2, #e0b352);
+  border: 1px solid var(--accent, #c8922a);
+  background: var(--inset, #120c07);
+  border-radius: 4px;
+  padding: 3px 7px;
+  font-weight: 700;
+}
+.solo-theme-buttons {
+  display: flex;
+  gap: 9px;
+  flex-wrap: wrap;
+}
+.solo-theme-buttons button {
+  font-family: inherit;
+}
+
+/* Column wrapper: stacks the three-column frame above the full-width bottom
+   tab bar so the bar sticks to the bottom of the available height. */
+.solo-game-layout {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  min-height: 0;
+}
+.solo-game-frame {
+  display: flex;
+  gap: 0;
+  align-items: stretch;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--border, #2e2420);
+  min-height: 620px;
+}
+
+/* ---- Left character sidebar ---- */
+.solo-game-sidebar {
+  width: clamp(260px, 18vw, 340px);
+  flex: none;
+  overflow-y: auto;
+  background: var(--panel, #171009);
+  background-image: var(--texture, none);
+  background-size: var(--texture-size, auto);
+  border-right: 1px solid var(--border, #2e2420);
+  display: flex;
+  flex-direction: column;
+}
+.solo-portrait {
+  height: 150px;
+  flex: none;
+  border-bottom: 1px solid var(--border, #2e2420);
+  background:
+    radial-gradient(46px 56px at 50% 96%, #0a0705 60%, transparent 62%),
+    radial-gradient(120% 95% at 50% 18%, #2a1f14, var(--inset, #120c07) 70%);
+}
+.solo-sidebar-identity {
+  padding: 16px 18px 14px;
+  border-bottom: 1px solid var(--border, #2e2420);
+}
+.solo-char-name {
+  font-family: var(--font-display, Georgia, serif);
+  font-size: 19px;
+  color: var(--text-bright, #f0e6d4);
+  line-height: 1.2;
+}
+.solo-char-sub {
+  font-size: 12px;
+  color: var(--text-muted, #9a8b76);
+  margin-top: 5px;
+}
+.solo-sidebar-block {
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--border, #2e2420);
+}
+.solo-stat-kicker {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted, #9a8b76);
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+.solo-hp-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 8px;
+}
+.solo-hp-row .solo-stat-kicker { margin-bottom: 0; }
+.solo-hp-value {
+  font-family: var(--font-body, Georgia, serif);
+  font-size: 15px;
+  color: var(--text, #e8dcc8);
+}
+.solo-hp-value span { color: var(--text-faint, #7a6c58); font-size: 12px; }
+.solo-hp-track {
+  height: 9px;
+  background: var(--inset, #0e0a06);
+  border-radius: 5px;
+  border: 1px solid var(--border, #2e2420);
+  overflow: hidden;
+}
+.solo-hp-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #4f7a32, #6b9a3e);
+  border-radius: 4px;
+}
+.solo-mini-stats { display: flex; gap: 10px; margin-top: 14px; }
+.solo-mini-stat {
+  flex: 1;
+  background: var(--inset, #120c07);
+  border: 1px solid var(--border, #2e2420);
+  border-radius: 6px;
+  padding: 9px 0;
+  text-align: center;
+}
+.solo-mini-val {
+  font-family: var(--font-body, Georgia, serif);
+  font-size: 20px;
+  color: var(--text, #e8dcc8);
+}
+.solo-mini-label {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-label, #8a7c68);
+  margin-top: 2px;
+}
+.solo-ability-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+.solo-ability-cell {
+  background: var(--inset, #120c07);
+  border: 1px solid var(--border, #2e2420);
+  border-radius: 6px;
+  padding: 8px 0;
+  text-align: center;
+}
+.solo-ability-key {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--text-label, #8a7c68);
+  font-weight: 600;
+}
+.solo-ability-mod {
+  font-family: var(--font-body, Georgia, serif);
+  font-size: 18px;
+  color: var(--text, #e8dcc8);
+  margin-top: 1px;
+}
+.solo-ability-mod.accent { color: var(--accent, #c8922a); }
+.solo-ability-score { font-size: 10px; color: var(--text-faint, #6e6150); }
+.solo-passive-block { border-bottom: none; }
+.solo-passive-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 5px 0;
+  font-size: 12px;
+}
+.solo-passive-row span:first-child { color: var(--text-muted, #9a8b76); }
+.solo-passive-row span:last-child {
+  color: var(--text, #e8dcc8);
+  font-family: var(--font-body, Georgia, serif);
+}
+
+/* ---- Main column ---- */
+.solo-game-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg, #1c1510);
+}
+.solo-game-header {
+  padding: 20px 28px 0;
+  border-bottom: 1px solid var(--border, #2e2420);
+  background: var(--card, #1a130c);
+}
+.solo-breadcrumb {
+  font-size: 11px;
+  color: var(--text-label, #8a7c68);
+  margin-bottom: 6px;
+}
+.solo-breadcrumb span { color: var(--text-faint, #5a4f40); }
+.solo-game-title {
+  font-family: var(--font-display, Georgia, serif);
+  font-size: 28px;
+  color: var(--text-bright, #f0e6d4);
+  line-height: 1.1;
+  margin-bottom: 14px;
+}
+/* Full-width bottom tab bar spanning all three columns (designer spec). The
+   bar is a sibling of .solo-game-frame inside .solo-game-layout, pinned to the
+   bottom of the game frame. */
+.solo-game-tabs {
+  width: 100%;
+  display: flex;
+  border-top: 1px solid var(--border, #2e2420);
+  background: var(--bg-card, var(--card, #1a130c));
+  padding: 0 24px;
+  gap: 0;
+}
+.solo-game-tab {
+  flex: 1;
+  text-align: center;
+  padding: 14px 0;
+  font-size: 12.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  background: none;
+  border: none;
+  border-bottom: none;
+  border-top: 3px solid transparent;
+  color: var(--text-label, #8a7c68);
+  cursor: pointer;
+  font-family: inherit;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.solo-game-tab.active {
+  color: var(--text-bright, #f0e6d4);
+  border-top-color: var(--accent, #c8922a);
+}
+.solo-game-content { flex: 1; overflow-y: auto; }
+.solo-tab-panel[hidden] { display: none; }
+
+/* ---- Scene tab visual flourishes ---- */
+.solo-scene-art {
+  position: relative;
+  flex: none;
+  height: clamp(180px, 24vh, 320px);
+  overflow: hidden;
+  background: linear-gradient(180deg, #120c08, #1a120b 55%, #0d0907);
+}
+.solo-scene-art-glow {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(130% 90% at 50% 108%, rgba(200, 146, 42, 0.24), rgba(200, 146, 42, 0.05) 45%, transparent 72%);
+}
+.solo-scene-art-window {
+  position: absolute;
+  top: 16%;
+  left: 7%;
+  width: 160px;
+  height: 100px;
+  background: linear-gradient(180deg, #26323b, #141b22);
+  border: 3px solid #0a0705;
+  box-shadow: inset 0 0 26px rgba(0, 0, 0, 0.75);
+}
+.solo-scene-art-hearth {
+  position: absolute;
+  bottom: 20%;
+  left: 60%;
+  width: 200px;
+  height: 200px;
+  background: radial-gradient(circle, rgba(255, 196, 90, 0.46), rgba(200, 120, 30, 0.1) 42%, transparent 70%);
+}
+.solo-scene-art-floor {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 42%;
+  background: linear-gradient(180deg, transparent, #0a0705 78%);
+}
+.solo-scene-art-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.solo-scene-art-pending {
+  position: absolute;
+  bottom: 10px;
+  right: 14px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(240, 228, 204, 0.72);
+  background: rgba(10, 7, 5, 0.55);
+  padding: 4px 9px;
+  border-radius: 5px;
+}
+.solo-scene-input { padding: 18px 28px 22px; max-width: none; }
+.solo-scene-input-row { display: flex; gap: 12px; align-items: stretch; }
+.solo-scene-field {
+  flex: 1;
+  background: var(--inset, #120c07);
+  border: 1px solid var(--border-strong, #3a2e22);
+  border-radius: 7px;
+  padding: 0 18px;
+  height: 52px;
+  color: var(--text-bright, #f0e6d4);
+  font-size: 15px;
+  font-family: var(--font-body, Georgia, serif);
+  outline: none;
+}
+.solo-attempt-submit {
+  flex: none;
+  padding: 0 30px;
+  height: 52px;
+  background: linear-gradient(180deg, var(--accent-grad-a, #d29b32), var(--accent-grad-b, #bd8420));
+  border: 1px solid var(--accent-2, #e0b352);
+  border-radius: 7px;
+  color: var(--on-accent, #1c1308);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.solo-scene-chips { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+.solo-scene-chip {
+  padding: 9px 16px;
+  background: none;
+  border: 1px solid var(--border-strong, #3a2e22);
+  border-radius: 6px;
+  color: var(--text-2, #b3a48c);
+  font-size: 13px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+/* ---- Character sheet tab ---- */
+.solo-character-sheet {
+  padding: 28px 40px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 34px;
+  max-width: 900px;
+}
+.solo-sheet-list { display: flex; flex-direction: column; }
+.solo-sheet-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--border-faint, #221a13);
+  font-size: 13px;
+  color: var(--text-2, #b3a48c);
+}
+.solo-sheet-row span:last-child { font-family: var(--font-body, Georgia, serif); color: var(--text, #e8dcc8); }
+.solo-sheet-row .proficient { color: var(--accent, #c8922a); }
+.solo-dot { color: var(--accent, #c8922a); font-size: 10px; }
+.solo-combat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.solo-combat-card {
+  background: var(--card, #1a130c);
+  border: 1px solid var(--border, #2e2420);
+  border-radius: 6px;
+  padding: 12px;
+}
+.solo-combat-val {
+  font-family: var(--font-body, Georgia, serif);
+  font-size: 22px;
+  color: var(--text, #e8dcc8);
+  margin-top: 3px;
+}
+.solo-proficiencies { font-size: 13px; line-height: 1.8; color: var(--text-2, #b3a48c); }
+
+/* ---- Map tab ---- */
+.solo-map-tab {
+  margin: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.solo-map-toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.solo-map-board {
+  display: grid;
+  gap: 1px;
+  background: var(--border, #2e2420);
+  border: 1px solid var(--border, #2e2420);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.solo-map-cell {
+  background: linear-gradient(180deg, #161009, #100b07);
+  aspect-ratio: 1 / 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+}
+.solo-token {
+  width: 86%;
+  height: 86%;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  overflow: hidden;
+  border: 2px solid transparent;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+}
+.solo-token img { width: 100%; height: 100%; object-fit: cover; }
+.solo-token-player { background: var(--accent, #c8922a); color: #1c1308; border-color: #f0e4cc; }
+.solo-token-npc { background: #3a4654; color: #f0e4cc; border-color: #6e6150; }
+.solo-map-legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 13px; }
+.solo-map-legend-item { display: inline-flex; align-items: center; gap: 6px; }
+.solo-map-legend-item .solo-token { width: 22px; height: 22px; }
+.solo-map-tab:focus { outline: none; }
+.solo-map-tab:focus-visible { outline: 1px solid var(--accent, #c8922a); outline-offset: 2px; }
+.solo-map-status { margin-left: auto; }
+.solo-map-undo { padding: 4px 12px; }
+.solo-token { cursor: grab; }
+.solo-token:active { cursor: grabbing; }
+.solo-token-selected { outline: 2px solid var(--accent, #c8922a); outline-offset: 1px; box-shadow: 0 0 0 2px rgba(200, 146, 42, 0.4), 0 1px 4px rgba(0, 0, 0, 0.5); }
+.solo-map-cell.legal { background: linear-gradient(180deg, #1d2a1c, #16231a); box-shadow: inset 0 0 0 1px rgba(127, 175, 96, 0.45); cursor: pointer; }
+.solo-map-cell.legal:hover { background: linear-gradient(180deg, #25361f, #1b2a1d); }
+.solo-map-sub { font-size: 13px; color: var(--text-faint, #6e6150); margin-top: 8px; }
+
+/* ---- Map tab as a center-column lens ----
+   The battle grid renders in the same center column the scene uses; the left
+   stats rail and right cast rail stay put on both sides (the map is NOT a
+   full-screen takeover). The board is height-constrained so the 12x10 grid
+   fits without overflowing, and centered. The movement (Exits) column is the
+   only action surface in map view — the attempt input belongs to the scene
+   tab and never appears here. */
+.solo-map-view {
+  display: flex;
+  gap: 18px;
+  align-items: flex-start;
+  padding: 16px;
+  height: 100%;
+  box-sizing: border-box;
+}
+.solo-map-view .solo-map-tab {
+  flex: 1;
+  min-width: 0;
+  margin: 0; /* the view owns the outer padding now */
+}
+.solo-map-view .solo-map-board {
+  /* Fit the square-ish board to the available height so the whole grid is
+     visible; cap at the column width and centre it. */
+  width: min(100%, calc((100vh - 230px) * 1.2));
+  margin: 0 auto;
+}
+.solo-map-aside {
+  flex: none;
+  width: clamp(190px, 24%, 280px);
+}
+@media (max-width: 1080px) {
+  /* Stack the movement column under the board on narrow screens. */
+  .solo-map-view { flex-direction: column; }
+  .solo-map-aside { width: auto; }
+  .solo-map-view .solo-map-board { width: 100%; }
+}
+
+/* ---- Right rail ---- */
+.solo-game-rail {
+  width: clamp(200px, 15vw, 280px);
+  flex: none;
+  background: var(--panel, #171009);
+  background-image: var(--texture, none);
+  background-size: var(--texture-size, auto);
+  border-left: 1px solid var(--border, #2e2420);
+  overflow-y: auto;
+}
+.solo-rail-block { padding: 18px 20px; border-bottom: 1px solid var(--border, #2e2420); }
+.solo-condition {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--inset, #120c07);
+  border: 1px solid var(--border, #2e2420);
+  border-radius: 6px;
+  padding: 11px 14px;
+}
+.solo-condition-dot { width: 8px; height: 8px; border-radius: 50%; background: #3a6a82; flex: none; }
+.solo-condition-name { font-size: 13px; color: var(--text, #e8dcc8); }
+.solo-condition-note { font-size: 11px; color: var(--text-label, #8a7c68); }
+.solo-roll {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--inset, #120c07);
+  border: 1px solid var(--border, #2e2420);
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-bottom: 9px;
+}
+.solo-roll:last-child { margin-bottom: 0; }
+.solo-roll-name { font-size: 12px; color: var(--text-2, #b3a48c); }
+.solo-roll-detail { font-size: 11px; color: var(--text-faint, #6e6150); }
+.solo-roll-total { font-family: var(--font-body, Georgia, serif); font-size: 17px; }
+.solo-roll-total.good { color: #6b9a3e; }
+.solo-roll-total.accent { color: var(--accent, #c8922a); }
+.solo-relationship {
+  background: var(--inset, #120c07);
+  border: 1px solid var(--border, #2e2420);
+  border-radius: 6px;
+  padding: 14px;
+}
+.solo-relationship-head { margin-bottom: 12px; }
+.solo-relationship-name { font-size: 14px; color: var(--text, #e8dcc8); font-family: var(--font-body, Georgia, serif); }
+.solo-relationship-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0;
+  font-size: 12px;
+  color: var(--text-muted, #9a8b76);
+}
+.solo-pips { letter-spacing: 3px; font-size: 11px; }
+.solo-pips b { font-weight: 400; color: var(--border, #2e2420); }
+.solo-pips b.good { color: #6b9a3e; }
+.solo-pips b.accent { color: var(--accent, #c8922a); }
+
+/* ---- Retint the reused functional panels to match the active skin ---- */
+.solo-game-shell .module-card,
+.solo-game-shell .solo-panel,
+.solo-game-shell .solo-location-card,
+.solo-game-shell .solo-gm-placeholder,
+.solo-game-shell .solo-detail-sheet {
+  background: var(--card, #1a130c);
+  border-color: var(--border, #2e2420);
+  color: var(--text, #e8dcc8);
+}
+.solo-game-shell .solo-tab-panel > .solo-panel,
+.solo-game-shell .solo-tab-panel > .module-card { margin: 22px 40px; }
+.solo-game-shell .solo-location-card { margin: 0; border: none; background: transparent; }
+.solo-game-shell .solo-location-copy { padding: 18px 28px 8px; }
+
+/* =========================================================================
+   Player-facing cleanup — hide developer/debug chrome from the game screen.
+   Everything stays in the DOM (tests + screen readers keep access); it is
+   only visually suppressed for the player.
+   ========================================================================= */
+/* Per-panel "Server actions / Server result / N visible" sub-labels. */
+.solo-game-shell .module-header .small { display: none; }
+/* GM provider/eval/mode debug panel and the "NEUTRAL GM NARRATION" kicker. */
+.solo-game-shell .solo-gm-status-panel { display: none; }
+.solo-game-shell .solo-gm-placeholder > span { display: none; }
+/* The literal "Image asset: …" / "No image assigned yet." text box — the
+   atmospheric scene art stands in as the location image. */
+.solo-game-shell .solo-location-image { display: none; }
+/* Entity type tags (location object / exit / player) and image-status meta. */
+.solo-game-shell .solo-entity-topline .tag { display: none; }
+.solo-game-shell .solo-entity-meta { display: none; }
+
+/* =========================================================================
+   Scene tab — 4-zone layout: [character | scene-center | NPCs | rail].
+   The character sidebar and right rail come from the outer frame; the scene
+   tab itself splits into a flexible centre column and a fixed NPC column.
+   ========================================================================= */
+.solo-scene-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(280px, 22vw, 360px);
+  min-height: 0;
+  height: 100%;
+}
+.solo-scene-center {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border-right: 1px solid var(--border, #2e2420);
+}
+/* Location copy is the flexible middle band; the input bar pins to the bottom. */
+.solo-scene-center .solo-location-card {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: block;
+}
+.solo-scene-center .solo-location-copy h3 {
+  font-family: var(--font-display, Georgia, serif);
+  color: var(--text-bright, #f0e6d4);
+}
+/* Narrative is capped to ~4 lines so it never pushes the input off-screen. */
+.solo-scene-center .solo-location-copy > p,
+.solo-scene-center .solo-gm-narration p {
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.solo-scene-center .solo-scene-input {
+  flex: none;
+  margin-top: auto;
+  border-top: 1px solid var(--border, #2e2420);
+  background: var(--card, #1a130c);
+}
+
+/* NPC column — entities with atmospheric portraits, exits beneath. */
+.solo-scene-npc {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+  background: var(--panel, #171009);
+  background-image: var(--texture, none);
+  background-size: var(--texture-size, auto);
+}
+.solo-scene-npc .module-card {
+  margin: 0;
+  border: none;
+  border-bottom: 1px solid var(--border, #2e2420);
+  border-radius: 0;
+  background: transparent;
+}
+.solo-scene-npc .solo-entity-grid { grid-template-columns: 1fr; }
+.solo-scene-npc .solo-button-grid { grid-template-columns: 1fr; }
+
+/* Atmospheric placeholder portrait at the top of every entity card. */
+.solo-game-shell .solo-entity-card::before {
+  content: "";
+  display: block;
+  height: 84px;
+  margin-bottom: 8px;
+  border-radius: 8px;
+  border: 1px solid var(--border-faint, #221a13);
+  background:
+    radial-gradient(58% 60% at 50% 40%, rgba(200, 146, 42, 0.20), transparent 70%),
+    radial-gradient(130% 95% at 50% 8%, #2a1f14, var(--inset, #120c07) 72%);
+}
+
+/* Right-rail result panels sit flush inside their rail blocks. */
+.solo-game-rail .module-card {
+  margin: 0;
+  border: none;
+  background: transparent;
+  padding: 0;
+}
+
+/* =========================================================================
+   Desktop ( >1080px ): fill the viewport, no vertical scroll on the scene.
+   Each column owns its own overflow so the frame height stays locked to the
+   viewport and the action input is always visible above the fold.
+   ========================================================================= */
+@media (min-width: 1081px) {
+  .solo-game-shell { height: 100vh; overflow: hidden; }
+  /* The layout (frame + bottom tab bar) fills the padded shell; the frame
+     flexes to leave the tab bar its natural height pinned at the bottom. */
+  .solo-game-layout { height: calc(100vh - 34px); }
+  .solo-game-frame { flex: 1; min-height: 0; }
+  .solo-game-main { min-height: 0; }
+  .solo-game-content { min-height: 0; overflow: hidden; }
+  /* Tabs scroll internally. The scene tab must NOT be overflow:hidden — after
+     the tab bar moved to a full-width bottom bar (19c8c38) the frame shrank and
+     hidden overflow clipped the scene's attempt-input bar below the fold,
+     making it unreachable/unfocusable. Allow vertical scroll instead. */
+  .solo-tab-panel { height: 100%; box-sizing: border-box; }
+  .solo-tab-panel[data-solo-tabpanel="scene"] { overflow-y: auto; }
+  .solo-tab-panel:not([data-solo-tabpanel="scene"]) { overflow-y: auto; }
+}
+
+/* Ultrawide ( >1600px ): give the centre column more breathing room. */
+@media (min-width: 1600px) {
+  .solo-game-shell { padding-left: clamp(40px, 5vw, 160px); padding-right: clamp(40px, 5vw, 160px); }
+  .solo-settings { right: clamp(40px, 5vw, 160px); }
+  .solo-scene-center .solo-location-copy { padding-left: 48px; padding-right: 48px; }
+}
+
+@media (max-width: 1080px) {
+  .solo-game-frame { flex-direction: column; min-height: 0; }
+  .solo-game-sidebar,
+  .solo-game-rail { width: auto; border: none; border-bottom: 1px solid var(--border, #2e2420); }
+  /* Stack the scene's centre and NPC columns on narrow screens. */
+  .solo-scene-layout { grid-template-columns: 1fr; height: auto; }
+  .solo-scene-center { border-right: none; border-bottom: 1px solid var(--border, #2e2420); }
+  .solo-scene-center .solo-location-copy > p,
+  .solo-scene-center .solo-gm-narration p { -webkit-line-clamp: unset; }
+}
+
+/* =========================================================================
+   Visual-novel dialogue overlay
+   A focused, backdrop-dimmed panel that takes over the lower screen when the
+   player talks to an NPC: gold speaker name, a 180x240 expression portrait
+   (with atmospheric placeholder while the art worker runs), a ~30ms/char
+   typewriter reveal, click-to-skip, and a NEXT button to dismiss.
+   ========================================================================= */
+.solo-vn-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0 0 clamp(18px, 4vh, 56px);
+}
+.solo-vn-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(6, 4, 2, 0.62);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  cursor: pointer;
+  animation: solo-vn-dim 200ms ease-out;
+}
+.solo-vn-panel {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  gap: 20px;
+  width: min(880px, 94vw);
+  padding: 18px 22px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, var(--card, #1a130c), var(--panel, #171009));
+  border: 1px solid var(--accent-border, #4a3a1e);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+  cursor: pointer;
+  animation: solo-vn-rise 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.solo-vn-portrait {
+  position: relative;
+  width: 180px;
+  height: 240px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--inset, #120c07);
+  border: 1px solid var(--border, #2e2420);
+  /* Crossfade whenever a fresh portrait element is rendered (expression change). */
+  animation: solo-vn-fade 200ms ease-out;
+}
+.solo-vn-portrait-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.solo-vn-portrait-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: radial-gradient(120% 80% at 50% 0, rgba(200, 146, 42, 0.16), transparent 60%), var(--inset, #120c07);
+  color: var(--text-faint, #6e6150);
+}
+.solo-vn-portrait-placeholder span {
+  font-family: var(--font-display, Georgia, serif);
+  font-size: 54px;
+  line-height: 1;
+  color: var(--accent, #c8922a);
+  opacity: 0.7;
+}
+.solo-vn-portrait-placeholder small {
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.solo-vn-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.solo-vn-speaker {
+  font-family: var(--font-display, Georgia, serif);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--accent-2, #e0b352);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.5);
+  margin-bottom: 10px;
+}
+.solo-vn-text {
+  flex: 1;
+  min-height: 96px;
+  font-size: 16px;
+  line-height: 1.55;
+  color: var(--text, #e8dcc8);
+  white-space: pre-wrap;
+}
+/* Blinking caret while the line is still being revealed. */
+.solo-vn-text:not(.is-complete)::after {
+  content: "▍";
+  margin-left: 1px;
+  color: var(--accent, #c8922a);
+  animation: solo-vn-caret 900ms step-end infinite;
+}
+.solo-vn-controls {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+.solo-vn-next {
+  cursor: pointer;
+  padding: 8px 20px;
+  border-radius: 9px;
+  font-family: var(--font-display, Georgia, serif);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  background: linear-gradient(180deg, var(--accent-grad-a, #d29b32), var(--accent-grad-b, #bd8420));
+  border: 1px solid var(--accent-2, #e0b352);
+  color: var(--on-accent, #1c1308);
+}
+.solo-vn-next:hover {
+  filter: brightness(1.06);
+}
+@keyframes solo-vn-dim {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes solo-vn-rise {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes solo-vn-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes solo-vn-caret {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+/* Mobile: the dialogue takes the full screen, portrait stacked above the text. */
+@media (max-width: 640px) {
+  .solo-vn-overlay {
+    padding: 0;
+    align-items: stretch;
+  }
+  .solo-vn-panel {
+    grid-template-columns: 1fr;
+    gap: 14px;
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    border-radius: 0;
+    align-content: start;
+    overflow-y: auto;
+  }
+  .solo-vn-portrait {
+    width: 100%;
+    height: 40vh;
+  }
+}
+
+/* Respect reduced-motion: drop the overlay animations. */
+@media (prefers-reduced-motion: reduce) {
+  .solo-vn-backdrop,
+  .solo-vn-panel,
+  .solo-vn-portrait { animation: none; }
+  .solo-vn-text:not(.is-complete)::after { animation: none; }
+}
+
+/* ---- In-scene "bring someone in" trigger + confirmation ---- */
+.solo-scene-tools { display: flex; gap: 10px; margin-top: 10px; }
+.solo-bring-in {
+  appearance: none;
+  border: 1px dashed var(--accent-border, #4a3a1e);
+  background: transparent;
+  color: var(--ink-soft, #d8c7a6);
+  border-radius: 10px;
+  padding: 8px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 140ms ease, border-color 140ms ease;
+}
+.solo-bring-in:hover {
+  background: rgba(120, 90, 40, 0.16);
+  border-color: var(--accent, #c79a4e);
+}
+.solo-npc-confirm {
+  margin-top: 10px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgba(80, 120, 70, 0.18);
+  border: 1px solid rgba(120, 170, 110, 0.4);
+  color: var(--ink-soft, #d8c7a6);
+  font-size: 13px;
+}
+
+/* ---- Cast roster (right rail) ---- */
+.solo-cast-list { display: flex; flex-direction: column; gap: 10px; }
+.solo-cast-card {
+  display: grid;
+  grid-template-columns: 40px 1fr auto;
+  align-items: center;
+  gap: 10px;
+}
+.solo-cast-thumb {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--inset, #120c07);
+  border: 1px solid var(--accent-border, #4a3a1e);
+  color: var(--ink-soft, #d8c7a6);
+  font-weight: 600;
+}
+.solo-cast-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.solo-cast-name { font-weight: 600; }
+.solo-cast-away { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.6; }
+.solo-cast-role { font-size: 12px; opacity: 0.75; }
+.solo-cast-bringback {
+  appearance: none;
+  border: 1px solid var(--accent-border, #4a3a1e);
+  background: transparent;
+  color: var(--ink-soft, #d8c7a6);
+  border-radius: 8px;
+  padding: 5px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.solo-cast-bringback:hover { background: rgba(120, 90, 40, 0.16); }
+
+/* ---- NPC creator modal (lightweight, centered card) ---- */
+.solo-npc-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.solo-npc-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(6, 4, 2, 0.62);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  cursor: pointer;
+}
+.solo-npc-modal {
+  position: relative;
+  z-index: 1;
+  width: min(440px, 94vw);
+  max-height: 90vh;
+  overflow: auto;
+  padding: 20px 22px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, var(--card, #1a130c), var(--panel, #171009));
+  border: 1px solid var(--accent-border, #4a3a1e);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  animation: solo-vn-rise 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.solo-npc-modal-head { display: flex; align-items: center; justify-content: space-between; }
+.solo-npc-modal-head h3 { margin: 0; font-size: 18px; }
+.solo-npc-modal-x {
+  appearance: none;
+  background: transparent;
+  border: none;
+  color: var(--ink-soft, #d8c7a6);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+.solo-npc-field { display: flex; flex-direction: column; gap: 8px; }
+.solo-npc-label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; opacity: 0.75; }
+.solo-npc-portrait-row { display: grid; grid-template-columns: 72px 1fr; gap: 14px; align-items: start; }
+.solo-npc-thumb {
+  width: 72px;
+  height: 72px;
+  border-radius: 10px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--inset, #120c07);
+  border: 1px solid var(--accent-border, #4a3a1e);
+  color: var(--ink-soft, #d8c7a6);
+  font-weight: 600;
+}
+.solo-npc-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.solo-npc-portrait-controls { display: flex; flex-direction: column; gap: 6px; }
+.solo-npc-upload {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.solo-npc-upload.is-disabled { opacity: 0.45; cursor: not-allowed; }
+.solo-npc-checkbox { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
+.solo-npc-hint { font-size: 11px; opacity: 0.6; }
+.solo-npc-input,
+.solo-npc-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 9px 11px;
+  border-radius: 9px;
+  background: var(--inset, #120c07);
+  border: 1px solid var(--accent-border, #4a3a1e);
+  color: var(--ink, #f0e4cc);
+  font: inherit;
+  resize: vertical;
+}
+.solo-npc-error {
+  padding: 8px 12px;
+  border-radius: 9px;
+  background: rgba(150, 60, 50, 0.18);
+  border: 1px solid rgba(190, 90, 80, 0.45);
+  font-size: 13px;
+}
+.solo-npc-loading { font-size: 13px; opacity: 0.8; font-style: italic; }
+.solo-npc-actions { display: flex; justify-content: flex-end; gap: 10px; }
+.solo-npc-submit {
+  appearance: none;
+  border: 1px solid var(--accent, #c79a4e);
+  background: var(--accent, #c79a4e);
+  color: #1a130c;
+  border-radius: 9px;
+  padding: 9px 16px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.solo-npc-submit[disabled] { opacity: 0.55; cursor: progress; }
+
+@media (prefers-reduced-motion: reduce) {
+  .solo-npc-modal { animation: none; }
+}
+
+/* ---- World generator onboarding (Ticket 39) ---- */
+.onb-world { display: flex; flex-direction: column; gap: 16px; }
+.onb-disclaimer { font-style: italic; opacity: 0.75; }
+.onb-field { display: flex; flex-direction: column; gap: 8px; }
+.onb-field > label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; opacity: 0.75; }
+.onb-field input, .onb-field textarea {
+  width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: 9px;
+  background: var(--inset, #120c07); border: 1px solid var(--border, #2e2420);
+  color: var(--text, #f0e4cc); font: inherit; resize: vertical;
+}
+.onb-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.onb-chip {
+  appearance: none; border: 1px solid var(--border, #2e2420); background: var(--inset, #120c07);
+  color: var(--text-2, #b3a48c); border-radius: 999px; padding: 6px 12px; font-size: 13px; cursor: pointer;
+}
+.onb-chip.active { background: var(--accent, #c8922a); border-color: var(--accent-2, #e0b352); color: var(--on-accent, #1c1308); }
+.onb-art-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.onb-art-card {
+  appearance: none; cursor: pointer; text-align: left; padding: 0 0 10px; overflow: hidden;
+  border: 2px solid var(--border, #2e2420); border-radius: 12px; background: var(--inset, #120c07); color: var(--text, #f0e4cc);
+}
+.onb-art-card.active { border-color: var(--accent, #c8922a); }
+.onb-art-prev { height: 84px; }
+.onb-art-illustrated { background: linear-gradient(135deg, #3a2a14, #6b4a1f); }
+.onb-art-anime { background: linear-gradient(135deg, #2a2440, #6a4f86); }
+.onb-art-cinematic { background: linear-gradient(135deg, #14181f, #3a4654); }
+.onb-art-label { font-weight: 600; padding: 8px 10px 2px; }
+.onb-art-blurb { font-size: 12px; opacity: 0.7; padding: 0 10px; }
+.onb-primary {
+  appearance: none; border: 1px solid var(--accent, #c8922a); background: var(--accent, #c8922a);
+  color: var(--on-accent, #1c1308); border-radius: 10px; padding: 12px 18px; font-weight: 700; cursor: pointer;
+}
+.onb-primary[disabled] { opacity: 0.6; cursor: progress; }
+.onb-preview { display: flex; flex-direction: column; gap: 14px; }
+.onb-preview-block {
+  padding: 14px 16px; border-radius: 12px; background: var(--inset, #120c07); border: 1px solid var(--border, #2e2420);
+}
+.onb-kicker { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.7; margin-bottom: 6px; }
+.onb-preview-meta { display: flex; gap: 8px; flex-wrap: wrap; }
+.onb-regen, .onb-regen-text {
+  appearance: none; border: 1px solid var(--border, #2e2420); background: transparent; color: var(--text-2, #b3a48c);
+  border-radius: 8px; padding: 4px 8px; font-size: 12px; cursor: pointer;
+}
+.onb-regen-text { margin-top: 8px; }
+.onb-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+@media (max-width: 640px) { .onb-art-grid { grid-template-columns: 1fr; } }
+
+/* ---- Solo scene settings cog menu ---- */
+.solo-settings.open .solo-settings-btn { color: var(--accent, #c8922a); border-color: var(--accent, #c8922a); }
+.solo-cog-menu { min-width: 200px; padding: 8px; display: flex; flex-direction: column; gap: 2px; }
+.solo-cog-item {
+  appearance: none; text-align: left; width: 100%; cursor: pointer;
+  background: transparent; border: none; border-radius: 8px;
+  color: var(--text, #f0e4cc); padding: 9px 11px; font-size: 14px;
+}
+.solo-cog-item:hover { background: var(--inset, #120c07); }
+.solo-cog-note { padding: 6px 11px; font-size: 12px; font-style: italic; opacity: 0.7; }
+
+/* ---- Character creation wizard (Ticket 38) ---- */
+.cw-progress { display: flex; flex-wrap: wrap; gap: 6px; }
+.cw-step { font-size: 12px; padding: 5px 10px; border-radius: 999px; border: 1px solid var(--line, #3d2f22); color: var(--muted, #95897a); }
+.cw-step.active { background: var(--accent, #c89a4b); color: #1a1208; border-color: var(--accent, #c89a4b); }
+.cw-step.done { color: var(--ink, #ece1c7); border-color: var(--line-strong, #503f2e); }
+.cw-body { display: flex; flex-direction: column; gap: 14px; }
+.onb-hint { font-size: 12px; opacity: 0.6; }
+.cw-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+.cw-card {
+  appearance: none; cursor: pointer; text-align: left; display: flex; flex-direction: column; gap: 4px;
+  padding: 12px; border-radius: 12px; border: 2px solid var(--line, #3d2f22);
+  background: var(--surface, #1c1610); color: var(--ink, #ece1c7);
+}
+.cw-card.active { border-color: var(--accent, #c89a4b); }
+.cw-card-title { font-weight: 700; font-family: "Sora", sans-serif; }
+.cw-card-meta { font-size: 12px; color: var(--accent, #c89a4b); }
+.cw-card-sub { font-size: 12px; opacity: 0.8; }
+.cw-card-traits { font-size: 11px; opacity: 0.6; }
+.cw-abilities { display: flex; flex-direction: column; gap: 8px; }
+.cw-ability-row { display: flex; align-items: center; gap: 10px; }
+.cw-ab { width: 42px; font-weight: 700; }
+.cw-ab-val { min-width: 24px; text-align: center; }
+.cw-step-btn { padding: 2px 10px; border-radius: 8px; }
+.cw-mod { opacity: 0.7; font-size: 13px; }
+.cw-remaining, .cw-pool { font-size: 13px; opacity: 0.85; }
+.cw-derived { display: flex; flex-wrap: wrap; gap: 14px; padding: 10px 12px; border-radius: 10px; background: var(--surface, #1c1610); border: 1px solid var(--line, #3d2f22); }
+.cw-derived span b { color: var(--accent, #c89a4b); margin-right: 4px; }
+/* Inline "what's still required" hint above the gated Enter the World button. */
+.cw-validation {
+  margin: 4px 0 10px;
+  color: var(--warn, #d9a23d);
+  font-size: 13px;
+  text-align: right;
+}
+.cw-nav { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.cw-review { display: flex; flex-direction: column; gap: 12px; }
+.cw-review-head { display: flex; align-items: center; gap: 12px; }
+.cw-portrait-ph { width: 56px; height: 56px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: 700; background: var(--input-bg, #100c08); border: 1px solid var(--line-strong, #503f2e); }
+.cw-review-name { font-size: 20px; font-family: "Sora", sans-serif; }
+.cw-review-sub { font-size: 13px; opacity: 0.8; }
+.cw-ability-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
+.cw-ab-cell { text-align: center; padding: 8px 4px; border-radius: 10px; background: var(--surface, #1c1610); border: 1px solid var(--line, #3d2f22); }
+.cw-ab-key { font-size: 11px; opacity: 0.7; }
+.cw-ab-score { font-size: 20px; font-weight: 700; }
+.cw-ab-mod { font-size: 12px; color: var(--accent, #c89a4b); }
+.cw-review-block { display: flex; flex-direction: column; gap: 4px; }
+.cw-review-row { display: flex; flex-wrap: wrap; gap: 8px; font-size: 13px; }
+.cw-review-row .prof { color: var(--accent, #c89a4b); font-weight: 600; }
+@media (max-width: 640px) { .cw-ability-grid { grid-template-columns: repeat(3, 1fr); } }
+
+/* ---- Player portrait (solo sidebar) ---- */
+.solo-portrait { overflow: hidden; }
+.solo-portrait-img { width: 100%; height: auto; object-fit: cover; display: block; }
+
+/* Portrait still generating: fill the same box (no layout shift) with a label. */
+.solo-portrait-pending {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--text-muted, #b8a98f);
+  font-size: 12px;
+  text-align: center;
+}
+.solo-portrait-spinner {
+  width: 22px;
+  height: 22px;
+  border: 2px solid var(--line-strong, #503f2e);
+  border-top-color: var(--accent, #c89a4b);
+  border-radius: 50%;
+  animation: solo-spin 0.9s linear infinite;
+}
+.solo-cast-thumb-pending { position: relative; }
+.solo-cast-thumb-pending::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, transparent, rgba(200, 154, 75, 0.18), transparent);
+  background-size: 200% 100%;
+  animation: solo-shimmer 1.4s ease-in-out infinite;
+}
+@keyframes solo-spin { to { transform: rotate(360deg); } }
+@keyframes solo-shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .solo-portrait-spinner, .solo-cast-thumb-pending::after { animation: none; }
+}
+
+/* ---- Async feedback: error banner, lag indicator, busy lock ---- */
+.solo-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 12px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--accent-2, #b94c2d);
+  background: rgba(185, 76, 45, 0.16);
+  color: var(--text-bright, #f0e6d4);
+  font-size: 14px;
+}
+.solo-banner-msg { flex: 1; }
+.solo-banner-dismiss {
+  flex: none;
+  background: none;
+  border: none;
+  color: inherit;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+  opacity: 0.8;
+}
+.solo-banner-dismiss:hover { opacity: 1; }
+
+/* Subtle "the GM is thinking…" / "loading scene…" strip in the narration area. */
+.solo-thinking {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line-strong, #503f2e);
+  background: var(--inset, #120c07);
+  color: var(--text-muted, #b8a98f);
+  font-size: 13px;
+  font-style: italic;
+}
+.solo-thinking::before {
+  content: "";
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--line-strong, #503f2e);
+  border-top-color: var(--accent, #c89a4b);
+  border-radius: 50%;
+  animation: solo-spin 0.9s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .solo-thinking::before { animation: none; }
+}
+
+/* While an action is in flight, dim and lock the interactive surfaces so the
+   player can't double-submit. The handler also guards re-entry, but this makes
+   the wait visible. The cog menu and banner dismiss stay clickable. */
+.solo-scene-shell.is-busy .solo-scene-chip,
+.solo-scene-shell.is-busy .solo-action-button,
+.solo-scene-shell.is-busy .solo-move-button,
+.solo-scene-shell.is-busy .solo-entity-card button,
+.solo-scene-shell.is-busy .solo-bring-in,
+.solo-scene-shell.is-busy .solo-cast-bringback {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+/* ---- Resume-adventure banner (home screen after explicit exit) ---- */
+.resume-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  border: 1px solid var(--accent, #c89a4b);
+}
+.resume-banner-copy { display: flex; flex-direction: column; gap: 2px; }
+
+/* ---- Battle map fog of war (Phase 3) ---- */
+.solo-map-cell.fogged {
+  background: #0b0805;
+  box-shadow: inset 0 0 14px rgba(0, 0, 0, 0.85);
+}
+.solo-map-cell.fogged.legal { background: #14160f; }
+
+/* ---- Solo home (post-login / post-exit destination) ------------------- */
+.solo-topbar {
+  justify-content: space-between;
+}
+.solo-home-main {
+  display: flex;
+  justify-content: center;
+}
+.solo-home {
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 16px 0;
+}
+.solo-home-hero {
+  text-align: center;
+}
+.solo-home-start {
+  display: flex;
+  justify-content: center;
+}
+.solo-home-start button {
+  font-size: 1.05rem;
+  padding: 12px 28px;
+}
+.solo-home-run-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.solo-home-run-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 18px;
+  border: 1px solid var(--border, #2e2420);
+  border-radius: 10px;
+  background: var(--card-dim, #160f09);
+}
+.solo-home-run-card.primary {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent) inset;
+}
+.solo-home-run-card.finished {
+  opacity: 0.55;
+  filter: grayscale(0.6);
+  background: var(--card, #14100c);
+}
+.solo-home-run-card.finished strong {
+  text-decoration: line-through;
+  text-decoration-color: rgba(149, 137, 122, 0.6);
+}
+.solo-home-run-badge {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted, #95897a);
+  border: 1px solid var(--border, #2e2420);
+  border-radius: 999px;
+  padding: 4px 12px;
+  white-space: nowrap;
+}
+.solo-home-run-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.solo-login-card {
+  max-width: 480px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+/* Entity Sheet portrait image (player portrait surfaced via portraitUri) */
+.solo-detail-portrait-img { width: 100%; height: 100%; object-fit: cover; border-radius: 8px; display: block; }

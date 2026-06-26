@@ -1,0 +1,23 @@
+97bb7ce (HEAD -> main) feat: add solo use item action
+ce0ca82 feat: add solo rest action
+d4c331c feat: add solo talk action
+c688051 feat: add solo ruleset ability checks
+5881fa5 feat: add solo search area action
+df69152 feat: show GM narration runtime status
+54b839c test: configure safe GM provider smoke
+e3162de feat: add safe GM provider smoke
+acebe33 feat: add GM narration evaluation harness
+add2d1b feat: add feature-flagged GM provider adapter
+c55e854 feat: expose placeholder GM narration
+832f1d6 feat: add AI GM scene framing contract
+0bfa1dd feat: polish solo scene shell
+3216da2 feat: add minimal solo scene UI shell
+71ded1f feat: add solo scene foundation
+45edbd8 (origin/main) Add CI smoke and E2E coverage plus roadmap update
+1db1567 Add live smoke and browser E2E automation
+ff273f0 Harden localhost binding and provider endpoint fallback
+64e47fb Expand quickstart pipeline and add GM memory runtime
+09959b1 Add authoritative realtime sync with presence and resource locks
+9076527 Add gameplay mechanics, fog/journal systems, and URL-based homebrew import
+c793085 Add auth/permissions, versioned sync, ops hardening, and completion tooling
+07f3636 Add canonical homebrew schema, parse-review quickstart flow, and full fixture test suite

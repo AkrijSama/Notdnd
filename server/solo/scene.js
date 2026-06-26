@@ -1,9 +1,12 @@
+import { providerSupportsReference, resolveImageProvider } from "../ai/providers.js";
 import { getAvailableSoloActions } from "./actions.js";
 import { getVisibleEntities, validateVisibleEntity } from "./entities.js";
 import { generatePlaceholderGmNarration, validateGmSceneOutput } from "./gm.js";
 import { getAvailableMoves } from "./movement.js";
+import { getQuestPayload } from "./quests.js";
 import { getUsableInventoryItems } from "./useItem.js";
 import {
+  NPC_EXPRESSIONS,
   createDefaultForbiddenPolicyProfile,
   createDefaultMainlinePolicyProfile,
   validateEntityAgainstPolicy,
@@ -123,6 +126,27 @@ function inventoryPayload(run, policyProfile) {
   }));
 }
 
+function attemptHistoryPayload(run, policyProfile, limit = 5) {
+  if (!Array.isArray(run?.timeline)) {
+    return [];
+  }
+  return run.timeline
+    .filter((event) => event?.type === "attempt" && policyAllows(event, policyProfile))
+    .slice(-limit)
+    .map((event) => ({
+      eventId: event.eventId,
+      createdAt: event.createdAt,
+      locationId: event.locationId || null,
+      summary: event.summary || "",
+      intent: event.payload?.intent || "",
+      targetId: event.payload?.targetId || null,
+      success: event.payload?.success === true,
+      checkResult: event.payload?.checkResult || null,
+      narration: event.payload?.narration || "",
+      warnings: event.payload?.warnings || []
+    }));
+}
+
 function entityFactIds(entities) {
   const ids = new Set();
   for (const entity of entities) {
@@ -237,6 +261,31 @@ export function validateSoloScenePayload(payload) {
   } else {
     payload.visibleEntities.forEach((entity, index) => appendNestedErrors(errors, `visibleEntities.${index}`, validateVisibleEntity(entity)));
   }
+  if (payload.player !== undefined) {
+    if (!isPlainObject(payload.player)) {
+      push(errors, "player", "Expected object");
+    } else if (!isString(payload.player.displayName)) {
+      push(errors, "player.displayName", "Expected non-empty string");
+    }
+  }
+  if (payload.cast !== undefined) {
+    if (!Array.isArray(payload.cast)) {
+      push(errors, "cast", "Expected array");
+    } else {
+      payload.cast.forEach((entry, index) => {
+        if (!isPlainObject(entry)) {
+          push(errors, `cast.${index}`, "Expected object");
+          return;
+        }
+        if (!isString(entry.npcId)) {
+          push(errors, `cast.${index}.npcId`, "Expected non-empty string");
+        }
+        if (!isString(entry.displayName)) {
+          push(errors, `cast.${index}.displayName`, "Expected non-empty string");
+        }
+      });
+    }
+  }
   if (!Array.isArray(payload.availableMoves)) {
     push(errors, "availableMoves", "Expected array");
   }
@@ -305,6 +354,28 @@ export function validateSoloScenePayload(payload) {
       });
     }
   }
+  if (payload.attemptHistory !== undefined) {
+    if (!Array.isArray(payload.attemptHistory)) {
+      push(errors, "attemptHistory", "Expected array");
+    } else {
+      payload.attemptHistory.forEach((entry, index) => {
+        if (!isPlainObject(entry)) {
+          push(errors, `attemptHistory.${index}`, "Expected object");
+          return;
+        }
+        if (!isString(entry.eventId)) {
+          push(errors, `attemptHistory.${index}.eventId`, "Expected non-empty string");
+        }
+        if (!isString(entry.intent)) {
+          push(errors, `attemptHistory.${index}.intent`, "Expected non-empty string");
+        }
+        if (typeof entry.success !== "boolean") {
+          push(errors, `attemptHistory.${index}.success`, "Expected boolean");
+        }
+        validateStringArray(entry.warnings || [], `attemptHistory.${index}.warnings`, errors);
+      });
+    }
+  }
   if (!Array.isArray(payload.recentTimeline)) {
     push(errors, "recentTimeline", "Expected array");
   }
@@ -345,6 +416,210 @@ export function summarizeSceneForUi(payload) {
   };
 }
 
+// Returns the raw ids of visible NPCs whose portrait art is incomplete. Used by
+// the scene route to decide which image jobs to enqueue. Expression variants
+// only count toward "incomplete" when the active provider can actually generate
+// consistent ones (img2img / IP-Adapter); under a txt2img-only provider
+// (Pollinations) only the base portrait is required, which avoids a perpetual
+// re-enqueue loop for variants that will never be generated there.
+export function collectNpcsNeedingArt(run, visibleEntities = null) {
+  if (!isPlainObject(run) || !isPlainObject(run.npcs)) {
+    return [];
+  }
+  const entities = Array.isArray(visibleEntities) ? visibleEntities : getVisibleEntities(run);
+  const assets = isPlainObject(run.imageAssets) ? run.imageAssets : {};
+  const variantsMatter = providerSupportsReference(resolveImageProvider());
+  const needing = [];
+
+  for (const entity of entities) {
+    if (entity?.entityType !== "npc" || !isString(entity.entityId)) {
+      continue;
+    }
+    const npcId = entity.entityId.split(":").slice(1).join(":") || entity.entityId;
+    const npc = run.npcs[npcId];
+    if (!npc) {
+      continue;
+    }
+
+    const variants = isPlainObject(npc.expressionVariants) ? npc.expressionVariants : {};
+    const generated = (assetId) => isString(assetId) && assets[assetId]?.status === "generated";
+    const baseReady = generated(npc.imageAssetId);
+    const variantsReady = !variantsMatter || NPC_EXPRESSIONS.every((expression) => generated(variants[expression]));
+
+    if (!baseReady || !variantsReady) {
+      needing.push(npcId);
+    }
+  }
+
+  return needing;
+}
+
+// Pure. Returns the raw ids of visible NPCs that still lack a generated
+// identity (generatedName missing). Used by the scene route to enqueue async
+// identity generation on first encounter.
+export function collectNpcsNeedingIdentity(run, visibleEntities = null) {
+  if (!isPlainObject(run) || !isPlainObject(run.npcs)) {
+    return [];
+  }
+  const entities = Array.isArray(visibleEntities) ? visibleEntities : getVisibleEntities(run);
+  const needing = [];
+
+  for (const entity of entities) {
+    if (entity?.entityType !== "npc" || !isString(entity.entityId)) {
+      continue;
+    }
+    const npcId = entity.entityId.split(":").slice(1).join(":") || entity.entityId;
+    const npc = run.npcs[npcId];
+    if (!npc) {
+      continue;
+    }
+    if (!isString(npc.generatedName)) {
+      needing.push(npcId);
+    }
+  }
+
+  return needing;
+}
+
+// Pure. Returns the npcIds of NPCs that still have unconsumed intro
+// instructions (a user directive on how the GM should introduce them).
+export function collectNpcsWithPendingIntro(run) {
+  if (!isPlainObject(run) || !isPlainObject(run.npcs)) {
+    return [];
+  }
+  return Object.values(run.npcs)
+    .filter((npc) => isPlainObject(npc) && isString(npc.introInstructions))
+    .map((npc) => npc.npcId)
+    .filter((npcId) => isString(npcId));
+}
+
+// Pure. Builds a one-time GM directive describing how to introduce any NPCs
+// that carry user-supplied intro instructions. Returns "" when there are none.
+export function buildNpcIntroDirective(run) {
+  if (!isPlainObject(run) || !isPlainObject(run.npcs)) {
+    return "";
+  }
+  const pending = Object.values(run.npcs).filter(
+    (npc) => isPlainObject(npc) && isString(npc.introInstructions)
+  );
+  if (pending.length === 0) {
+    return "";
+  }
+  const lines = pending.map((npc) => {
+    const name = isString(npc.generatedName)
+      ? npc.generatedName
+      : isString(npc.displayName)
+        ? npc.displayName
+        : npc.role;
+    return `- ${name} (${npc.role}): ${String(npc.introInstructions).trim()}`;
+  });
+  return `Introduce the following custom NPC(s) naturally into the scene, following each directive:\n${lines.join("\n")}`;
+}
+
+// Pure. Builds the full NPC roster (every NPC in run.npcs, policy-filtered) with
+// resolved portrait/expression URIs, so the client cast list isn't limited to
+// the current location. A URI is included only when its asset is generated.
+export function buildCastRoster(run, policyProfile) {
+  if (!isPlainObject(run) || !isPlainObject(run.npcs)) {
+    return [];
+  }
+  const assets = isPlainObject(run.imageAssets) ? run.imageAssets : {};
+  const uriFor = (assetId) => {
+    const asset = assetId ? assets[assetId] : null;
+    return asset && asset.status === "generated" && isString(asset.uri) ? asset.uri : null;
+  };
+
+  return Object.values(run.npcs)
+    .filter((npc) => isPlainObject(npc) && policyAllows(npc, policyProfile))
+    .map((npc) => {
+      const variants = isPlainObject(npc.expressionVariants) ? npc.expressionVariants : {};
+      const expressionVariants = {};
+      for (const [expression, assetId] of Object.entries(variants)) {
+        const uri = uriFor(assetId);
+        if (uri) {
+          expressionVariants[expression] = uri;
+        }
+      }
+      return {
+        npcId: npc.npcId,
+        displayName: npc.generatedName || npc.displayName || npc.role || npc.npcId,
+        role: npc.role || "",
+        origin: npc.origin || null,
+        known: npc.known !== false,
+        currentLocationId: npc.currentLocationId || null,
+        present: npc.currentLocationId === run.currentLocationId,
+        portraitUri: uriFor(npc.imageAssetId),
+        expressionVariants
+      };
+    });
+}
+
+// Pure. Projects run.player into the fields the character sidebar needs.
+// run.player tracks HP via resources.hitPoints and the six D&D abilities; it
+// does not track AC/speed, so those come back null and the client defaults them.
+export function buildPlayerPayload(run) {
+  const player = isPlainObject(run?.player) ? run.player : {};
+  const hp = isPlainObject(player.resources?.hitPoints) ? player.resources.hitPoints : null;
+  const character = isPlainObject(player.character) ? player.character : null;
+  const derived = isPlainObject(character?.derivedStats) ? character.derivedStats : null;
+  return {
+    displayName: isString(player.displayName) ? player.displayName : "Adventurer",
+    className: isString(player.className) ? player.className : "Adventurer",
+    race: isString(player.race) ? player.race : (character?.race ?? null),
+    background: isString(player.background) ? player.background : (character?.background ?? null),
+    level: typeof player.level === "number" ? player.level : 1,
+    hitPoints: {
+      current: hp && typeof hp.current === "number" ? hp.current : (typeof player.health === "number" ? player.health : 0),
+      max: hp && typeof hp.max === "number" ? hp.max : (typeof player.maxHealth === "number" ? player.maxHealth : 0)
+    },
+    // Prefer the 5e derived stats when a full character is present.
+    armorClass: typeof derived?.armorClass === "number" ? derived.armorClass : (typeof player.ac === "number" ? player.ac : null),
+    speed: typeof derived?.speed === "number" ? derived.speed : (typeof player.speed === "number" ? player.speed : null),
+    abilities: isPlainObject(player.abilities) ? { ...player.abilities } : {},
+    stats: isPlainObject(player.stats) ? { ...player.stats } : {},
+    skills: isPlainObject(player.skills) ? { ...player.skills } : {},
+    portraitUri: isString(player.portraitUri) ? player.portraitUri : null,
+    // Lifecycle status (e.g. "downed" at 0 HP); drives the run-conclusion /
+    // death-screen flow on the client. Null when the run carries no status.
+    status: isString(player.status) ? player.status : null,
+    // Full 5e record (or null) for the character sheet tab.
+    character
+  };
+}
+
+// Pure. True when the player has a full 5e character but no generated portrait
+// yet — used by the scene route to enqueue a one-off player-portrait job.
+export function playerNeedsPortrait(run) {
+  const player = isPlainObject(run?.player) ? run.player : null;
+  if (!player || !isPlainObject(player.character)) {
+    return false;
+  }
+  return !isString(player.portraitUri);
+}
+
+// Pure. The deterministic imageAsset id for a location's background image.
+function locationImageAssetId(location) {
+  return location?.imageAssetId || (location?.locationId ? `img_location_${location.locationId}` : null);
+}
+
+// Pure. Resolves a location's generated background-image URI from run.imageAssets,
+// or null when it has not been generated yet.
+export function resolveLocationImageUri(run, location) {
+  const assets = isPlainObject(run?.imageAssets) ? run.imageAssets : {};
+  const assetId = locationImageAssetId(location);
+  const asset = assetId ? assets[assetId] : null;
+  return asset && asset.status === "generated" && isString(asset.uri) ? asset.uri : null;
+}
+
+// Pure. True when the current location still lacks a generated background image —
+// used by the scene route to enqueue a one-off location-image job on entry/move.
+export function locationNeedsImage(run, location) {
+  if (!isPlainObject(run) || !isPlainObject(location)) {
+    return false;
+  }
+  return !resolveLocationImageUri(run, location);
+}
+
 export function buildSoloScenePayload(run, options = {}) {
   const runValidation = validateSoloRun(run);
   if (!runValidation.ok) {
@@ -381,14 +656,25 @@ export function buildSoloScenePayload(run, options = {}) {
   }
 
   const visibleEntities = getVisibleEntities(run, { policyProfile });
+  const attemptHistory = attemptHistoryPayload(run, policyProfile, options.attemptHistoryLimit);
   const payload = {
     ok: true,
     runId: run.runId,
     edition: run.edition,
     policyProfileId: run.policyProfileId,
     location: locationPayload(currentLocation),
+    // Generated location background image (null until the worker produces it;
+    // the client shows a "Generating scene art…" placeholder meanwhile).
+    locationImageUri: resolveLocationImageUri(run, currentLocation),
     rest: restPayload(currentLocation, policyProfile),
+    player: buildPlayerPayload(run),
     visibleEntities,
+    cast: buildCastRoster(run, policyProfile),
+    // Phase 2 battle map: persisted token positions (null until the player
+    // moves a token). The client falls back to deterministic placement.
+    battleMap: isPlainObject(run.battleMap) ? run.battleMap : null,
+    // MVP quest engine: active quests + the main quest (or null) for this run.
+    quests: getQuestPayload(run),
     availableMoves: getAvailableMoves(run).filter((move) => {
       const destination = run.locations[move.locationId];
       return destination ? policyAllows(destination, policyProfile) : false;
@@ -401,6 +687,8 @@ export function buildSoloScenePayload(run, options = {}) {
       return true;
     }),
     playerInventory: inventoryPayload(run, policyProfile),
+    latestAttemptResult: attemptHistory.length ? attemptHistory.at(-1) : null,
+    attemptHistory,
     discoveredDetails: revealedSearchDetails(currentLocation, policyProfile),
     recentTimeline: getRecentTimelineEvents(run, { policyProfile, limit: options.timelineLimit }),
     relevantMemoryFacts: getRelevantMemoryFacts(run, {
@@ -420,6 +708,56 @@ export function buildSoloScenePayload(run, options = {}) {
 
   if (options.includePlaceholderGm === true) {
     payload.gmNarration = generatePlaceholderGmNarration(payload, options.gmOptions || {});
+  }
+
+  // Opt-in, fire-and-forget image generation trigger. Off by default so the
+  // builder stays pure for tests; the live scene route injects the enqueuer.
+  // Must never block scene delivery or throw.
+  if (typeof options.enqueueImages === "function") {
+    try {
+      const npcIds = collectNpcsNeedingArt(run, visibleEntities);
+      if (npcIds.length > 0) {
+        options.enqueueImages(npcIds);
+      }
+    } catch {
+      // Best-effort only.
+    }
+  }
+
+  // Opt-in, fire-and-forget location background image. Generated once per
+  // location, on entry or when the player moves here. Never blocks delivery.
+  if (typeof options.enqueueLocationImage === "function") {
+    try {
+      if (locationNeedsImage(run, currentLocation)) {
+        options.enqueueLocationImage(currentLocation.locationId);
+      }
+    } catch {
+      // Best-effort only.
+    }
+  }
+
+  // Opt-in, fire-and-forget player-portrait generation. Never blocks delivery.
+  if (typeof options.enqueuePlayerPortrait === "function") {
+    try {
+      if (playerNeedsPortrait(run)) {
+        options.enqueuePlayerPortrait();
+      }
+    } catch {
+      // Best-effort only.
+    }
+  }
+
+  // Opt-in, fire-and-forget identity generation for any visible NPC that still
+  // lacks a generated name (first-encounter path). Never blocks scene delivery.
+  if (typeof options.enqueueIdentities === "function") {
+    try {
+      const npcIds = collectNpcsNeedingIdentity(run, visibleEntities);
+      if (npcIds.length > 0) {
+        options.enqueueIdentities(npcIds);
+      }
+    } catch {
+      // Best-effort only.
+    }
   }
 
   const payloadValidation = validateSoloScenePayload(payload);

@@ -109,6 +109,10 @@ function playerEntity(player, currentLocationId) {
     visible: true,
     inspectable: true,
     imageAssetId: null,
+    // The player portrait is stored as a URI on run.player (not an imageAsset),
+    // so surface it here for the Entity Sheet — otherwise inspecting the player
+    // always reads imageAssetId:null and shows "No image assigned".
+    portraitUri: typeof player.portraitUri === "string" ? player.portraitUri : null,
     memoryFactIds: [],
     actionTypes: ["inspect"],
     contentTags: [],
@@ -117,7 +121,15 @@ function playerEntity(player, currentLocationId) {
   };
 }
 
-function npcEntity(npc, relationshipId = null) {
+function npcEntity(npc, relationshipId = null, imageAssets = {}) {
+  // NPC portraits are stored as imageAsset records (referenced by imageAssetId),
+  // not as a direct URI like the player. Resolve the served URI here the same
+  // way the cast roster does (a generated asset with a uri) so the Entity Sheet
+  // can render an <img> instead of printing the raw asset id as text.
+  const asset =
+    isString(npc.imageAssetId) && isPlainObject(imageAssets) ? imageAssets[npc.imageAssetId] : null;
+  const portraitUri =
+    asset && asset.status === "generated" && isString(asset.uri) ? asset.uri : null;
   return {
     entityId: `npc:${npc.npcId}`,
     entityType: "npc",
@@ -127,6 +139,7 @@ function npcEntity(npc, relationshipId = null) {
     visible: npc.known !== false,
     inspectable: true,
     imageAssetId: npc.imageAssetId ?? null,
+    portraitUri,
     relationshipId,
     memoryFactIds: npc.memoryFactIds || [],
     actionTypes: ["inspect", "talk"],
@@ -246,7 +259,7 @@ export function getVisibleEntities(run, options = {}) {
 
   for (const npc of Object.values(run.npcs || {})) {
     if (npc.currentLocationId === run.currentLocationId) {
-      entities.push(npcEntity(npc, relationshipIdForNpc(run, npc.npcId)));
+      entities.push(npcEntity(npc, relationshipIdForNpc(run, npc.npcId), run.imageAssets));
     }
   }
 

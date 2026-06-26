@@ -2,9 +2,9 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { buildQuickstartBlueprint } from "../campaign/quickstart.js";
-import { ensureCampaignMemoryDocs } from "../gm/memoryStore.js";
+import { ensureCampaignMemoryDocs, ensureCampaignMemoryDocsAsync } from "../gm/memoryStore.js";
 import { formatRollSummary, resolveAttack, resolveSkillCheck, rollDiceExpression } from "../rules/engine.js";
-import { createDefaultSoloRun, validateSoloRun } from "../solo/schema.js";
+import { NPC_EXPRESSIONS, createDefaultSoloRun, validateSoloRun } from "../solo/schema.js";
 import { uid } from "../utils/ids.js";
 import { createSeedState } from "./seedState.js";
 
@@ -119,7 +119,13 @@ function ensureDefaults(target) {
     target.campaignPackagesByCampaign && typeof target.campaignPackagesByCampaign === "object"
       ? target.campaignPackagesByCampaign
       : {};
-  target.soloRuns = target.soloRuns && typeof target.soloRuns === "object" ? target.soloRuns : {};
+  target.campaignRuntimeByCampaign =
+    target.campaignRuntimeByCampaign && typeof target.campaignRuntimeByCampaign === "object"
+      ? target.campaignRuntimeByCampaign
+      : {};
+  target.soloRuns = target.soloRuns && typeof target.soloRuns === "object" && !Array.isArray(target.soloRuns)
+    ? target.soloRuns
+    : {};
 
   target.selectedCampaignId = target.selectedCampaignId || target.campaigns?.[0]?.id || null;
 
@@ -134,6 +140,17 @@ function ensureDefaults(target) {
   target.aiJobs = Array.isArray(target.aiJobs) ? target.aiJobs : [];
   target.gmSettingsByCampaign =
     target.gmSettingsByCampaign && typeof target.gmSettingsByCampaign === "object" ? target.gmSettingsByCampaign : {};
+}
+
+function defaultCampaignRuntimeState() {
+  return {
+    mode: "freeform",
+    initiativeOrder: [],
+    turnPointer: 0,
+    waitingForGm: false,
+    typingByUser: {},
+    updatedAt: nowEpochSec()
+  };
 }
 
 function loadFromDisk() {
@@ -252,6 +269,12 @@ function bumpStateVersion(campaignId = null) {
 function ensureCampaignVersionSlot(campaignId) {
   if (!db.campaignVersions[campaignId]) {
     db.campaignVersions[campaignId] = 0;
+  }
+}
+
+function ensureCampaignRuntimeSlot(campaignId) {
+  if (!db.campaignRuntimeByCampaign[campaignId]) {
+    db.campaignRuntimeByCampaign[campaignId] = defaultCampaignRuntimeState();
   }
 }
 
@@ -485,6 +508,7 @@ function stateForUser(userId = null) {
 
   const campaignVersions = {};
   const campaignPackagesByCampaign = {};
+  const campaignRuntimeByCampaign = {};
   for (const campaignId of visibleCampaignIds) {
     campaignVersions[campaignId] = Number(db.campaignVersions[campaignId] || 0);
     campaignPackagesByCampaign[campaignId] = db.campaignPackagesByCampaign?.[campaignId] || {
@@ -497,6 +521,7 @@ function stateForUser(userId = null) {
       rules: [],
       starterOptions: []
     };
+    campaignRuntimeByCampaign[campaignId] = db.campaignRuntimeByCampaign?.[campaignId] || defaultCampaignRuntimeState();
   }
 
   return {
@@ -514,6 +539,7 @@ function stateForUser(userId = null) {
     journalsByCampaign: deepClone(journalsByCampaign),
     recentRollsByCampaign: deepClone(recentRollsByCampaign),
     campaignPackagesByCampaign: deepClone(campaignPackagesByCampaign),
+    campaignRuntimeByCampaign: deepClone(campaignRuntimeByCampaign),
     gmSettings: deepClone(gmSettings),
     stateVersion: Number(db.stateVersion || 0),
     campaignVersions,
@@ -561,6 +587,7 @@ export function resetDatabase() {
   db.userPrefsByUser = {};
   db.campaignMembersByCampaign = {};
   db.campaignVersions = {};
+  db.campaignRuntimeByCampaign = {};
   db.soloRuns = {};
   db.stateVersion = 0;
 
@@ -627,6 +654,380 @@ export function deleteSoloRun(runId) {
   bumpStateVersion();
   writeToDisk();
   return true;
+}
+
+/**
+ * Narrow write: concludes a solo run by moving it out of the "active" status and
+ * recording how it ended. The outcome (e.g. "died", "exited"/"abandoned",
+ * "completed_quest") maps to a terminal status — "abandoned" for a voluntary
+ * exit, "completed" otherwise — and is stored verbatim on run.outcome alongside
+ * run.completedAt. Idempotent: a run that is already concluded is returned
+ * unchanged (so a later abandon can't overwrite a death). Returns the concluded
+ * run (deep clone), or null if the run does not exist.
+ * @param {string} runId
+ * @param {string} [outcome]
+ * @returns {object|null}
+ */
+export function completeSoloRun(runId, outcome = "completed") {
+  ensureDb();
+  const run = db.soloRuns[String(runId || "").trim()];
+  if (!run) {
+    return null;
+  }
+  if (run.status === "active") {
+    const cleaned = typeof outcome === "string" && outcome.trim() ? outcome.trim() : "completed";
+    run.status = cleaned === "abandoned" || cleaned === "exited" ? "abandoned" : "completed";
+    run.outcome = cleaned;
+    run.completedAt = nowIso();
+    run.updatedAt = run.completedAt;
+    bumpStateVersion();
+    writeToDisk();
+  }
+  return deepClone(run);
+}
+
+// ---------------------------------------------------------------------------
+// Image-asset writes (narrow, surgical).
+//
+// These deliberately do NOT go through saveSoloRun: that path deep-clones and
+// fully re-validates the entire run, and writes the whole run back. The image
+// worker runs asynchronously alongside live gameplay, so using saveSoloRun for
+// its write-backs risks clobbering concurrent gameplay state with a stale
+// full-run snapshot. Instead we mutate only the targeted asset record in place
+// and persist. (writeToDisk still serialises the whole db — inherent to this
+// JSON store — but we avoid the deep-clone / full-run overwrite race.)
+// ---------------------------------------------------------------------------
+
+/**
+ * Ensures an NPC has queued image-asset records for its base portrait and every
+ * expression variant, linking them onto the NPC. Idempotent: existing records
+ * and links are left untouched. Returns the resolved asset id map, or null if
+ * the run/NPC does not exist.
+ * @param {string} runId
+ * @param {string} npcId
+ * @param {{ style?: string, expressions?: string[] }} [options]
+ * @returns {{ base: string, variants: Record<string, string> } | null}
+ */
+export function ensureNpcImageAssets(runId, npcId, options = {}) {
+  ensureDb();
+  const runKey = String(runId || "").trim();
+  const run = db.soloRuns[runKey];
+  if (!run) {
+    return null;
+  }
+  const npc = run.npcs && run.npcs[npcId];
+  if (!npc) {
+    return null;
+  }
+
+  run.imageAssets = run.imageAssets && typeof run.imageAssets === "object" ? run.imageAssets : {};
+  const expressions = Array.isArray(options.expressions) ? options.expressions : NPC_EXPRESSIONS;
+  const style = typeof options.style === "string" ? options.style : null;
+  const now = nowIso();
+
+  const ensureAsset = (assetId) => {
+    if (!run.imageAssets[assetId]) {
+      run.imageAssets[assetId] = {
+        assetId,
+        targetType: "npc",
+        targetId: npcId,
+        status: "queued",
+        promptSummary: style ? `style:${style}` : null,
+        uri: null,
+        version: 1,
+        createdAt: now,
+        updatedAt: now,
+        tags: [],
+        flags: {},
+        edition: run.edition ?? null,
+        policyProfileId: run.policyProfileId ?? null,
+        contentTags: []
+      };
+    }
+    return assetId;
+  };
+
+  const baseAssetId = ensureAsset(`img_${npcId}_base`);
+  if (!npc.imageAssetId) {
+    npc.imageAssetId = baseAssetId;
+  }
+
+  npc.expressionVariants = npc.expressionVariants && typeof npc.expressionVariants === "object" ? npc.expressionVariants : {};
+  const variants = {};
+  for (const expression of expressions) {
+    const assetId = ensureAsset(`img_${npcId}_${expression}`);
+    if (!npc.expressionVariants[expression]) {
+      npc.expressionVariants[expression] = assetId;
+    }
+    variants[expression] = assetId;
+  }
+
+  bumpStateVersion();
+  writeToDisk();
+  return { base: baseAssetId, variants };
+}
+
+/**
+ * Ensures a single location-background image asset exists on the run (keyed by a
+ * deterministic id) and links it onto the location. Mirrors the generate-once
+ * pattern used for portraits; idempotent. Returns { assetId } or null when the
+ * run/location does not exist.
+ * @param {string} runId
+ * @param {string} locationId
+ * @param {{ promptSummary?: string }} [options]
+ * @returns {{ assetId: string } | null}
+ */
+export function ensureLocationImageAsset(runId, locationId, options = {}) {
+  ensureDb();
+  const run = db.soloRuns[String(runId || "").trim()];
+  if (!run) {
+    return null;
+  }
+  const location = run.locations && run.locations[locationId];
+  if (!location) {
+    return null;
+  }
+
+  run.imageAssets = run.imageAssets && typeof run.imageAssets === "object" ? run.imageAssets : {};
+  const assetId = `img_location_${locationId}`;
+  if (!run.imageAssets[assetId]) {
+    const now = nowIso();
+    run.imageAssets[assetId] = {
+      assetId,
+      targetType: "location",
+      targetId: locationId,
+      status: "queued",
+      promptSummary: typeof options.promptSummary === "string" ? options.promptSummary : null,
+      uri: null,
+      version: 1,
+      createdAt: now,
+      updatedAt: now,
+      tags: [],
+      flags: {},
+      edition: run.edition ?? null,
+      policyProfileId: run.policyProfileId ?? null,
+      contentTags: []
+    };
+  }
+  if (!location.imageAssetId) {
+    location.imageAssetId = assetId;
+  }
+
+  bumpStateVersion();
+  writeToDisk();
+  return { assetId };
+}
+
+/**
+ * Surgically updates a single image asset's status (and uri) without
+ * re-validating or rewriting the whole run. Returns false if the run or asset
+ * does not exist.
+ * @param {string} runId
+ * @param {string} assetId
+ * @param {"placeholder"|"queued"|"generated"|"failed"} status
+ * @param {string|null} [uri]
+ * @returns {boolean}
+ */
+export function updateImageAssetStatus(runId, assetId, status, uri = null) {
+  ensureDb();
+  const run = db.soloRuns[String(runId || "").trim()];
+  if (!run || !run.imageAssets || !run.imageAssets[assetId]) {
+    return false;
+  }
+  const asset = run.imageAssets[assetId];
+  asset.status = status;
+  if (uri !== undefined && uri !== null) {
+    asset.uri = String(uri);
+  }
+  asset.updatedAt = nowIso();
+  bumpStateVersion();
+  writeToDisk();
+  return true;
+}
+
+/**
+ * Surgically writes a generated identity onto an NPC without re-validating or
+ * rewriting the whole run. Stores only string/number fields (never raw
+ * generation output beyond these), and promotes generatedName to displayName so
+ * the name surfaces through existing rendering. Returns false if the run or NPC
+ * does not exist.
+ * @param {string} runId
+ * @param {string} npcId
+ * @param {{ generatedName?: string, appearance?: string, personality?: string, portraitPrompt?: string, identitySeed?: number }} identity
+ * @returns {boolean}
+ */
+export function updateNpcIdentity(runId, npcId, identity = {}) {
+  ensureDb();
+  const run = db.soloRuns[String(runId || "").trim()];
+  const npc = run?.npcs?.[npcId];
+  if (!npc) {
+    return false;
+  }
+
+  if (typeof identity.generatedName === "string" && identity.generatedName.trim()) {
+    npc.generatedName = identity.generatedName.trim();
+    npc.displayName = npc.generatedName;
+  }
+  if (typeof identity.appearance === "string") {
+    npc.appearance = identity.appearance;
+  }
+  if (typeof identity.personality === "string") {
+    npc.personality = identity.personality;
+  }
+  if (typeof identity.portraitPrompt === "string") {
+    npc.portraitPrompt = identity.portraitPrompt;
+  }
+  if (Number.isFinite(Number(identity.identitySeed))) {
+    npc.identitySeed = Number(identity.identitySeed);
+  }
+  if (typeof identity.memoryDocId === "string" && identity.memoryDocId.trim()) {
+    npc.memoryDocId = identity.memoryDocId.trim();
+  }
+
+  bumpStateVersion();
+  writeToDisk();
+  return true;
+}
+
+/**
+ * Narrow write that marks an NPC's intro instructions consumed (the GM has
+ * introduced them). Clears introInstructions so the directive fires only once.
+ * Returns false if the run or NPC does not exist.
+ * @param {string} runId
+ * @param {string} npcId
+ * @returns {boolean}
+ */
+/**
+ * Narrow write: stores the player's generated portrait URI on run.player.
+ * Bytes live on disk; only the string URI is persisted. Returns false if the
+ * run/player does not exist.
+ * @param {string} runId
+ * @param {string|null} uri
+ * @returns {boolean}
+ */
+export function updatePlayerPortrait(runId, uri) {
+  ensureDb();
+  const run = db.soloRuns[String(runId || "").trim()];
+  if (!run || !run.player) {
+    return false;
+  }
+  run.player.portraitUri = typeof uri === "string" && uri ? uri : null;
+  bumpStateVersion();
+  writeToDisk();
+  return true;
+}
+
+/**
+ * Narrow write: stores the current scene narrative on run.narration. Used by the
+ * action loop + world-entry opening so /gm-scene reflects real GM prose as the
+ * player acts. Returns false if the run does not exist.
+ * @param {string} runId
+ * @param {string|null} narration
+ * @returns {boolean}
+ */
+export function updateSoloRunNarration(runId, narration) {
+  ensureDb();
+  const run = db.soloRuns[String(runId || "").trim()];
+  if (!run) {
+    return false;
+  }
+  run.narration = typeof narration === "string" && narration.trim() ? narration : null;
+  bumpStateVersion();
+  writeToDisk();
+  return true;
+}
+
+/**
+ * Narrow write: persists the solo battle-map token positions on run.battleMap so
+ * they survive reloads. Shape: { width, height, positions: { tokenId: {x,y} } }.
+ * Returns false if the run does not exist.
+ * @param {string} runId
+ * @param {object|null} battleMap
+ * @returns {boolean}
+ */
+export function updateSoloRunBattleMap(runId, battleMap) {
+  ensureDb();
+  const run = db.soloRuns[String(runId || "").trim()];
+  if (!run) {
+    return false;
+  }
+  run.battleMap = battleMap && typeof battleMap === "object" && !Array.isArray(battleMap) ? battleMap : null;
+  bumpStateVersion();
+  writeToDisk();
+  return true;
+}
+
+export function markNpcIntroduced(runId, npcId) {
+  ensureDb();
+  const run = db.soloRuns[String(runId || "").trim()];
+  const npc = run?.npcs?.[npcId];
+  if (!npc) {
+    return false;
+  }
+  npc.introInstructions = null;
+  bumpStateVersion();
+  writeToDisk();
+  return true;
+}
+
+/**
+ * Creates a custom NPC on a solo run from user input and persists it (full-run
+ * validate). Identity is left for the fill-gaps generator/bridge to complete.
+ * Origin "user" is coerced to "hybrid" until image upload exists (Ticket 34);
+ * with no name/description it defaults to "procedural". Returns { runId, npcId }
+ * or null if the run does not exist.
+ * @param {string} runId
+ * @param {{ name?: string, description?: string, introInstructions?: string, origin?: string }} input
+ * @returns {{ runId: string, npcId: string } | null}
+ */
+export function createSoloNpc(runId, input = {}) {
+  ensureDb();
+  const run = db.soloRuns[String(runId || "").trim()];
+  if (!run) {
+    return null;
+  }
+
+  const name = String(input.name || "").trim();
+  const description = String(input.description || "").trim();
+  const introInstructions = String(input.introInstructions || "").trim();
+
+  // Portrait upload exists now, so "user" is a valid origin (a portrait is
+  // uploaded in a follow-up request). Unknown/empty origins default by intent.
+  let origin = String(input.origin || "").trim().toLowerCase();
+  if (origin !== "procedural" && origin !== "hybrid" && origin !== "user") {
+    origin = name || description ? "hybrid" : "procedural";
+  }
+
+  const role = (description || "wanderer").slice(0, 80);
+  const npcId = uid("npc");
+  const npc = {
+    npcId,
+    displayName: name || role,
+    role,
+    currentLocationId: run.currentLocationId,
+    known: true,
+    status: "present",
+    memoryFactIds: [],
+    tags: [],
+    flags: {},
+    edition: run.edition ?? null,
+    policyProfileId: run.policyProfileId ?? null,
+    contentTags: [],
+    origin
+  };
+  if (name) {
+    npc.generatedName = name;
+  }
+  if (introInstructions) {
+    npc.introInstructions = introInstructions;
+  }
+
+  run.npcs = run.npcs && typeof run.npcs === "object" ? run.npcs : {};
+  run.npcs[npcId] = npc;
+  validateSoloRunOrThrow(run);
+  bumpStateVersion();
+  writeToDisk();
+  return { runId: run.runId, npcId };
 }
 
 export function getState(options = {}) {
@@ -770,6 +1171,70 @@ export function getUserBySessionToken(token) {
   return sanitizeUser(user);
 }
 
+export function getCampaignRole(campaignId, context = {}) {
+  ensureDb();
+  assertActor(context);
+  return userRoleForCampaign(context.actorUserId, campaignId);
+}
+
+export function assertCampaignReadAccess(campaignId, context = {}) {
+  ensureDb();
+  assertActor(context);
+  assertCanReadCampaign(context.actorUserId, campaignId);
+}
+
+export function assertCampaignWriteAccess(campaignId, context = {}) {
+  ensureDb();
+  assertActor(context);
+  assertCanWriteCampaign(context.actorUserId, campaignId);
+}
+
+export function assertCampaignPlayAccess(campaignId, context = {}) {
+  ensureDb();
+  assertActor(context);
+  assertCanPlayCampaign(context.actorUserId, campaignId);
+}
+
+export function getCampaignRuntimeState(campaignId, context = {}) {
+  ensureDb();
+  if (!context.internal) {
+    assertActor(context);
+    assertCanReadCampaign(context.actorUserId, campaignId);
+  }
+  ensureCampaignRuntimeSlot(campaignId);
+  return deepClone(db.campaignRuntimeByCampaign[campaignId]);
+}
+
+export function setCampaignRuntimeState(campaignId, patch = {}, context = {}) {
+  ensureDb();
+  if (!context.internal) {
+    assertActor(context);
+    assertCanPlayCampaign(context.actorUserId, campaignId);
+  }
+  ensureCampaignRuntimeSlot(campaignId);
+
+  const prev = db.campaignRuntimeByCampaign[campaignId] || defaultCampaignRuntimeState();
+  const nextMode = patch.mode === "combat" ? "combat" : patch.mode === "freeform" ? "freeform" : prev.mode;
+  const nextInitiativeOrder = Array.isArray(patch.initiativeOrder) ? patch.initiativeOrder : prev.initiativeOrder;
+  const nextPointer = Number.isFinite(Number(patch.turnPointer)) ? Number(patch.turnPointer) : prev.turnPointer;
+  const nextTyping = patch.typingByUser && typeof patch.typingByUser === "object" ? patch.typingByUser : prev.typingByUser;
+
+  db.campaignRuntimeByCampaign[campaignId] = {
+    ...prev,
+    ...patch,
+    mode: nextMode,
+    initiativeOrder: nextInitiativeOrder,
+    turnPointer: Math.max(0, nextPointer),
+    waitingForGm: patch.waitingForGm !== undefined ? Boolean(patch.waitingForGm) : Boolean(prev.waitingForGm),
+    typingByUser: nextTyping,
+    updatedAt: nowEpochSec()
+  };
+
+  bumpStateVersion(campaignId);
+  writeToDisk();
+  return deepClone(db.campaignRuntimeByCampaign[campaignId]);
+}
+
 export function listCampaignMembers(campaignId, context = {}) {
   ensureDb();
   assertActor(context);
@@ -811,7 +1276,7 @@ export function addCampaignMember({ campaignId, email, role }, context = {}) {
   };
 }
 
-export function createQuickstartCampaignFromParsed({
+export async function createQuickstartCampaignFromParsed({
   campaignName,
   setting,
   players,
@@ -845,7 +1310,8 @@ export function createQuickstartCampaignFromParsed({
   db.campaigns.unshift(campaign);
   db.selectedCampaignId = campaign.id;
   ensureCampaignVersionSlot(campaign.id);
-  ensureCampaignMemoryDocs(campaign.id, blueprint.memoryDocs || {});
+  ensureCampaignRuntimeSlot(campaign.id);
+  await ensureCampaignMemoryDocsAsync(campaign.id, blueprint.memoryDocs || {});
 
   if (actorUserId) {
     applyCampaignMembership(campaign.id, actorUserId, "owner");
@@ -973,6 +1439,7 @@ export function applyOperation(op, payload = {}, context = {}) {
       db.campaigns.unshift(campaign);
       db.selectedCampaignId = id;
       ensureCampaignVersionSlot(id);
+      ensureCampaignRuntimeSlot(id);
       applyCampaignMembership(id, actorUserId, "owner");
       db.userPrefsByUser[actorUserId] = { selectedCampaignId: id };
 
@@ -1003,6 +1470,55 @@ export function applyOperation(op, payload = {}, context = {}) {
       bumpStateVersion(id);
       writeToDisk();
       return { id };
+    }
+
+    case "delete_campaign": {
+      const campaignId = String(payload.campaignId || "").trim();
+      if (!campaignId) {
+        throw makeError("BAD_REQUEST", "campaignId is required", 400);
+      }
+      const role = userRoleForCampaign(actorUserId, campaignId);
+      if (role !== "owner") {
+        throw makeError("FORBIDDEN", "Only the campaign owner can delete it.", 403);
+      }
+      const exists = db.campaigns.some((entry) => entry.id === campaignId);
+      if (!exists) {
+        throw makeError("NOT_FOUND", "Campaign not found.", 404);
+      }
+
+      db.campaigns = db.campaigns.filter((entry) => entry.id !== campaignId);
+      db.characters = (db.characters || []).filter((entry) => entry.campaignId !== campaignId);
+      db.encounters = (db.encounters || []).filter((entry) => entry.campaignId !== campaignId);
+      const removedMapIds = new Set(
+        (db.maps || []).filter((entry) => entry.campaignId === campaignId).map((entry) => entry.id)
+      );
+      db.maps = (db.maps || []).filter((entry) => entry.campaignId !== campaignId);
+      if (db.tokensByMap && typeof db.tokensByMap === "object") {
+        for (const mapId of removedMapIds) {
+          delete db.tokensByMap[mapId];
+        }
+      }
+      db.chatLog = (db.chatLog || []).filter((entry) => entry.campaignId !== campaignId);
+      db.aiJobs = (db.aiJobs || []).filter((entry) => entry.campaignId !== campaignId);
+      delete db.campaignMembersByCampaign[campaignId];
+      delete db.gmSettingsByCampaign[campaignId];
+      delete db.journalsByCampaign[campaignId];
+      delete db.recentRollsByCampaign[campaignId];
+      delete db.campaignPackagesByCampaign[campaignId];
+      delete db.campaignRuntimeByCampaign[campaignId];
+      delete db.campaignVersions[campaignId];
+
+      for (const [userId, prefs] of Object.entries(db.userPrefsByUser || {})) {
+        if (prefs?.selectedCampaignId === campaignId) {
+          db.userPrefsByUser[userId] = { selectedCampaignId: null };
+        }
+      }
+      if (db.selectedCampaignId === campaignId) {
+        db.selectedCampaignId = db.campaigns[0]?.id || null;
+      }
+
+      writeToDisk();
+      return { ok: true, campaignId };
     }
 
     case "increment_campaign_readiness": {
@@ -1365,6 +1881,26 @@ export function applyOperation(op, payload = {}, context = {}) {
       bumpStateVersion(campaignId);
       writeToDisk();
       return { campaignId };
+    }
+
+    case "set_campaign_runtime_state": {
+      const campaignId = selectedCampaignId(payload, actorUserId, context);
+      if (!campaignId) {
+        throw makeError("BAD_REQUEST", "No campaign selected.", 400);
+      }
+      assertCanPlayCampaign(actorUserId, campaignId);
+      const runtime = setCampaignRuntimeState(
+        campaignId,
+        {
+          mode: payload.mode,
+          initiativeOrder: payload.initiativeOrder,
+          turnPointer: payload.turnPointer,
+          waitingForGm: payload.waitingForGm,
+          typingByUser: payload.typingByUser
+        },
+        { internal: true }
+      );
+      return { campaignId, runtime };
     }
 
     case "upsert_map": {
