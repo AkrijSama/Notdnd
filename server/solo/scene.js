@@ -640,6 +640,9 @@ export function buildSoloScenePayload(run, options = {}) {
     player: buildPlayerPayload(run),
     visibleEntities,
     cast: buildCastRoster(run, policyProfile),
+    // Phase 2 battle map: persisted token positions (null until the player
+    // moves a token). The client falls back to deterministic placement.
+    battleMap: isPlainObject(run.battleMap) ? run.battleMap : null,
     availableMoves: getAvailableMoves(run).filter((move) => {
       const destination = run.locations[move.locationId];
       return destination ? policyAllows(destination, policyProfile) : false;

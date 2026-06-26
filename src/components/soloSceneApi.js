@@ -26,3 +26,16 @@ export async function postSoloAction(apiClient, runId, action) {
   }
   return apiClient.postSoloAction(requireRunId(runId), action);
 }
+
+// Best-effort persistence of battle-map token positions (Phase 2). Never throws
+// to the caller — a failed save just means positions reset on next reload.
+export async function saveSoloBattleMap(apiClient, runId, battleMap) {
+  if (!apiClient || typeof apiClient.saveSoloBattleMap !== "function") {
+    return null;
+  }
+  try {
+    return await apiClient.saveSoloBattleMap(requireRunId(runId), battleMap);
+  } catch {
+    return null;
+  }
+}

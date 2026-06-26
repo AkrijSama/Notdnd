@@ -1,4 +1,5 @@
-import { fetchSoloGmScene, fetchSoloScene, postSoloAction } from "./soloSceneApi.js";
+import { fetchSoloGmScene, fetchSoloScene, postSoloAction, saveSoloBattleMap } from "./soloSceneApi.js";
+import { computeReachable, isLegalMove, moveCost, tilesForSpeed } from "./battleMapEngine.js";
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -1272,6 +1273,7 @@ export function buildSoloMapTokens(scene = {}, options = {}) {
       label: soloTokenInitials(name),
       portraitUri: typeof npc.portraitUri === "string" ? npc.portraitUri : "",
       faction: "npc",
+      speed: typeof npc.speed === "number" ? npc.speed : 30,
       ...place(Math.min(width - 1, (index + 1) * spacing), 1)
     });
   });
@@ -1279,25 +1281,49 @@ export function buildSoloMapTokens(scene = {}, options = {}) {
   return tokens;
 }
 
-function renderSoloMapToken(token) {
+function renderSoloMapToken(token, selected = false) {
   const inner = token.portraitUri
     ? `<img src="${escapeHtml(token.portraitUri)}" alt="${escapeHtml(token.displayName)}" />`
     : escapeHtml(token.label);
-  return `<span class="solo-token solo-token-${escapeHtml(token.kind)}" title="${escapeHtml(token.displayName)}" data-token-id="${escapeHtml(token.id)}" data-entity-id="${escapeHtml(token.entityId)}" data-entity-kind="${escapeHtml(token.kind)}">${inner}</span>`;
+  return `<span class="solo-token solo-token-${escapeHtml(token.kind)} ${selected ? "solo-token-selected" : ""}" draggable="true" title="${escapeHtml(token.displayName)}" data-token-id="${escapeHtml(token.id)}" data-entity-id="${escapeHtml(token.entityId)}" data-entity-kind="${escapeHtml(token.kind)}">${inner}</span>`;
 }
 
-export function renderSoloMapTab(scene = {}) {
+// Pure. Resolves the base tokens (Phase 1) with any persisted/in-progress
+// positions from the battle-map state. Returns tokens (with x,y) + a positions
+// map keyed by token id (for the movement engine).
+export function resolveBattleTokens(scene = {}, mapState = {}) {
+  const base = buildSoloMapTokens(scene, { width: SOLO_MAP_WIDTH, height: SOLO_MAP_HEIGHT });
+  const saved = mapState && mapState.positions ? mapState.positions : {};
+  const tokens = base.map((token) => {
+    const pos = saved[token.id];
+    return pos && Number.isFinite(pos.x) && Number.isFinite(pos.y) ? { ...token, x: pos.x, y: pos.y } : token;
+  });
+  const positionsById = {};
+  for (const token of tokens) {
+    positionsById[token.id] = { x: token.x, y: token.y };
+  }
+  return { tokens, positionsById };
+}
+
+export function renderSoloMapTab(scene = {}, mapState = {}) {
   const width = SOLO_MAP_WIDTH;
   const height = SOLO_MAP_HEIGHT;
-  const tokens = buildSoloMapTokens(scene, { width, height });
+  const { tokens, positionsById } = resolveBattleTokens(scene, mapState);
+  const selectedId = mapState.selectedTokenId || null;
+  const selected = tokens.find((token) => token.id === selectedId) || null;
+  const budget = selected ? Math.max(0, tilesForSpeed(selected.speed) - (mapState.movedTiles || 0)) : 0;
+  const reachable = selected
+    ? computeReachable({ width, height, positions: positionsById, tokenId: selectedId }, budget)
+    : new Set();
   const tokenByCell = new Map(tokens.map((token) => [`${token.x},${token.y}`, token]));
 
   const cells = [];
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
       const token = tokenByCell.get(`${x},${y}`);
+      const legal = reachable.has(`${x},${y}`);
       cells.push(
-        `<div class="solo-map-cell" data-cell="${x},${y}">${token ? renderSoloMapToken(token) : ""}</div>`
+        `<div class="solo-map-cell${legal ? " legal" : ""}" data-cell="${x},${y}">${token ? renderSoloMapToken(token, token.id === selectedId) : ""}</div>`
       );
     }
   }
@@ -1309,11 +1335,18 @@ export function renderSoloMapTab(scene = {}) {
     )
     .join("");
 
+  const canUndo = Array.isArray(mapState.history) && mapState.history.length > 0;
+  const status = selected
+    ? `${escapeHtml(selected.displayName)} — ${budget * SOLO_MAP_TILE_FEET} ft of movement left`
+    : "Select a token, then drag it or use arrow keys to move (legal tiles glow).";
+
   return `
-    <div class="solo-map-tab">
+    <div class="solo-map-tab" tabindex="0" data-solo-map data-map-width="${width}" data-map-height="${height}">
       <div class="solo-map-toolbar">
         <span class="tag">${width}×${height} grid</span>
-        <span class="small">1 tile = ${SOLO_MAP_TILE_FEET} ft · ${width * SOLO_MAP_TILE_FEET}ft × ${height * SOLO_MAP_TILE_FEET}ft</span>
+        <span class="small">1 tile = ${SOLO_MAP_TILE_FEET} ft</span>
+        <span class="small solo-map-status">${status}</span>
+        <button type="button" class="ghost solo-map-undo" data-map-undo ${canUndo ? "" : "disabled"}>Undo</button>
       </div>
       <div class="solo-map-board" style="grid-template-columns: repeat(${width}, minmax(0, 1fr));" data-map-width="${width}" data-map-height="${height}">
         ${cells.join("")}
@@ -1640,7 +1673,7 @@ export function renderSoloSceneShell(state = {}) {
                 ${renderUseItemResultPanel(state.useItemResult)}
               `
             )}
-            ${panel("map", renderSoloMapTab(scene))}
+            ${panel("map", renderSoloMapTab(scene, state.battleMap))}
             ${panel(
               "journal",
               `
@@ -1672,6 +1705,66 @@ export function bindSoloSceneShell(root, handlers = {}) {
   });
   root.querySelectorAll("[data-solo-cog]").forEach((button) => {
     button.addEventListener("click", () => handlers.onCogPlaceholder?.(button.getAttribute("data-solo-cog")));
+  });
+
+  // ---- Battle map (Phase 2): select / drag / click-move / arrow keys / undo ----
+  const parseCell = (value) => {
+    const [x, y] = String(value || "").split(",").map((n) => Number(n));
+    return { x, y };
+  };
+  root.querySelectorAll("[data-token-id]").forEach((tokenEl) => {
+    const tokenId = tokenEl.getAttribute("data-token-id");
+    tokenEl.addEventListener("click", (event) => {
+      if (event && typeof event.stopPropagation === "function") {
+        event.stopPropagation();
+      }
+      handlers.onMapSelectToken?.(tokenId);
+    });
+    tokenEl.addEventListener("dragstart", (event) => {
+      if (event?.dataTransfer && typeof event.dataTransfer.setData === "function") {
+        event.dataTransfer.setData("text/plain", tokenId);
+      }
+      handlers.onMapSelectToken?.(tokenId);
+    });
+  });
+  root.querySelectorAll("[data-cell]").forEach((cellEl) => {
+    cellEl.addEventListener("click", () => {
+      const { x, y } = parseCell(cellEl.getAttribute("data-cell"));
+      handlers.onMapMoveTo?.(x, y);
+    });
+    cellEl.addEventListener("dragover", (event) => {
+      if (event && typeof event.preventDefault === "function") {
+        event.preventDefault();
+      }
+    });
+    cellEl.addEventListener("drop", (event) => {
+      if (event && typeof event.preventDefault === "function") {
+        event.preventDefault();
+      }
+      const { x, y } = parseCell(cellEl.getAttribute("data-cell"));
+      handlers.onMapMoveTo?.(x, y);
+    });
+  });
+  root.querySelectorAll("[data-map-undo]").forEach((button) => {
+    button.addEventListener("click", () => handlers.onMapUndo?.());
+  });
+  const ARROW_DELTAS = {
+    ArrowUp: [0, -1],
+    ArrowDown: [0, 1],
+    ArrowLeft: [-1, 0],
+    ArrowRight: [1, 0]
+  };
+  root.querySelectorAll("[data-solo-map]").forEach((mapEl) => {
+    mapEl.addEventListener("keydown", (event) => {
+      const delta = ARROW_DELTAS[event?.key];
+      if (!delta) {
+        return;
+      }
+      if (typeof event.preventDefault === "function") {
+        event.preventDefault();
+      }
+      handlers.onMapArrow?.(delta[0], delta[1]);
+    });
   });
 
   root.querySelectorAll("[data-solo-action='move']").forEach((button) => {
@@ -1933,6 +2026,7 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     attemptDraft: "",
     menuOpen: false,
     cogNote: "",
+    battleMap: { positions: {}, selectedTokenId: null, movedTiles: 0, history: [] },
     dialogueActive: false,
     dialogueTyped: false,
     gmMode: "placeholder",
@@ -1950,6 +2044,10 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       onExit: handleExit,
       onMenuToggle: handleMenuToggle,
       onCogPlaceholder: handleCogPlaceholder,
+      onMapSelectToken: handleMapSelectToken,
+      onMapMoveTo: handleMapMoveTo,
+      onMapArrow: handleMapArrow,
+      onMapUndo: handleMapUndo,
       onMove: handleMove,
       onInspect: handleInspect,
       onSearch: handleSearch,
@@ -2077,6 +2175,81 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
   function handleMenuToggle() {
     state.menuOpen = !state.menuOpen;
     state.cogNote = "";
+    render();
+  }
+
+  // ---- Battle map (Phase 2) ----
+  function ensureBattlePositions() {
+    if (!state.battleMap.positions || Object.keys(state.battleMap.positions).length === 0) {
+      const { positionsById } = resolveBattleTokens(state.scene || {}, state.battleMap);
+      state.battleMap.positions = positionsById;
+    }
+  }
+
+  function persistBattleMap() {
+    saveSoloBattleMap(apiClient, runId, {
+      width: SOLO_MAP_WIDTH,
+      height: SOLO_MAP_HEIGHT,
+      positions: state.battleMap.positions
+    });
+  }
+
+  function handleMapSelectToken(tokenId) {
+    ensureBattlePositions();
+    state.battleMap.selectedTokenId = tokenId || null;
+    state.battleMap.movedTiles = 0; // new activation
+    render();
+  }
+
+  function handleMapMoveTo(x, y) {
+    const selectedId = state.battleMap.selectedTokenId;
+    if (!selectedId) {
+      return;
+    }
+    ensureBattlePositions();
+    const { tokens, positionsById } = resolveBattleTokens(state.scene || {}, state.battleMap);
+    const token = tokens.find((entry) => entry.id === selectedId);
+    if (!token) {
+      return;
+    }
+    const grid = { width: SOLO_MAP_WIDTH, height: SOLO_MAP_HEIGHT, positions: positionsById, tokenId: selectedId };
+    const budget = Math.max(0, tilesForSpeed(token.speed) - state.battleMap.movedTiles);
+    if (!isLegalMove(grid, budget, x, y)) {
+      return; // illegal (too far / occupied / out of bounds) — ignore
+    }
+    const cost = moveCost(grid, x, y);
+    const from = positionsById[selectedId];
+    state.battleMap.history.push({ tokenId: selectedId, from: { ...from }, to: { x, y }, cost });
+    state.battleMap.positions = { ...positionsById, [selectedId]: { x, y } };
+    state.battleMap.movedTiles += cost;
+    persistBattleMap();
+    render();
+  }
+
+  function handleMapArrow(dx, dy) {
+    const selectedId = state.battleMap.selectedTokenId;
+    if (!selectedId) {
+      return;
+    }
+    ensureBattlePositions();
+    const current = state.battleMap.positions[selectedId];
+    if (!current) {
+      return;
+    }
+    handleMapMoveTo(current.x + dx, current.y + dy); // single step; legality enforced inside
+  }
+
+  function handleMapUndo() {
+    const history = state.battleMap.history;
+    if (!history || history.length === 0) {
+      return;
+    }
+    const last = history.pop();
+    state.battleMap.positions = { ...state.battleMap.positions, [last.tokenId]: { ...last.from } };
+    if (last.tokenId === state.battleMap.selectedTokenId) {
+      state.battleMap.movedTiles = Math.max(0, state.battleMap.movedTiles - (last.cost || 0));
+    }
+    persistBattleMap();
     render();
   }
 
@@ -2225,6 +2398,10 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
         // Surface the player's real character (falls back to the sample only
         // when the payload genuinely lacks a player).
         state.character = characterFromScenePlayer(state.scene.player);
+      }
+      // Adopt persisted battle-map positions (Phase 2) if the run has them.
+      if (state.scene?.battleMap?.positions && typeof state.scene.battleMap.positions === "object") {
+        state.battleMap.positions = { ...state.scene.battleMap.positions };
       }
       try {
         const gmScene = await fetchSoloGmScene(apiClient, runId, { mode: state.gmMode });

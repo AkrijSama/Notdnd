@@ -856,6 +856,26 @@ export function updateSoloRunNarration(runId, narration) {
   return true;
 }
 
+/**
+ * Narrow write: persists the solo battle-map token positions on run.battleMap so
+ * they survive reloads. Shape: { width, height, positions: { tokenId: {x,y} } }.
+ * Returns false if the run does not exist.
+ * @param {string} runId
+ * @param {object|null} battleMap
+ * @returns {boolean}
+ */
+export function updateSoloRunBattleMap(runId, battleMap) {
+  ensureDb();
+  const run = db.soloRuns[String(runId || "").trim()];
+  if (!run) {
+    return false;
+  }
+  run.battleMap = battleMap && typeof battleMap === "object" && !Array.isArray(battleMap) ? battleMap : null;
+  bumpStateVersion();
+  writeToDisk();
+  return true;
+}
+
 export function markNpcIntroduced(runId, npcId) {
   ensureDb();
   const run = db.soloRuns[String(runId || "").trim()];

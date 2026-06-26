@@ -107,6 +107,12 @@ export function createApiClient(baseUrl = "") {
         body: JSON.stringify({ action })
       });
     },
+    async saveSoloBattleMap(runId, battleMap) {
+      return request(`/api/solo/runs/${encodeURIComponent(runId)}/map`, {
+        method: "POST",
+        body: JSON.stringify(battleMap || {})
+      });
+    },
     async createNpc(runId, { name, description, introInstructions, origin } = {}) {
       return request(`/api/solo/runs/${encodeURIComponent(runId)}/npcs`, {
         method: "POST",

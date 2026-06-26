@@ -1544,6 +1544,15 @@ button:disabled {
 .solo-map-legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 13px; }
 .solo-map-legend-item { display: inline-flex; align-items: center; gap: 6px; }
 .solo-map-legend-item .solo-token { width: 22px; height: 22px; }
+.solo-map-tab:focus { outline: none; }
+.solo-map-tab:focus-visible { outline: 1px solid var(--accent, #c8922a); outline-offset: 2px; }
+.solo-map-status { margin-left: auto; }
+.solo-map-undo { padding: 4px 12px; }
+.solo-token { cursor: grab; }
+.solo-token:active { cursor: grabbing; }
+.solo-token-selected { outline: 2px solid var(--accent, #c8922a); outline-offset: 1px; box-shadow: 0 0 0 2px rgba(200, 146, 42, 0.4), 0 1px 4px rgba(0, 0, 0, 0.5); }
+.solo-map-cell.legal { background: linear-gradient(180deg, #1d2a1c, #16231a); box-shadow: inset 0 0 0 1px rgba(127, 175, 96, 0.45); cursor: pointer; }
+.solo-map-cell.legal:hover { background: linear-gradient(180deg, #25361f, #1b2a1d); }
 .solo-map-sub { font-size: 13px; color: var(--text-faint, #6e6150); margin-top: 8px; }
 
 /* ---- Right rail ---- */

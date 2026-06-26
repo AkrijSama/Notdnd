@@ -64,6 +64,7 @@ import {
   saveSoloRun,
   setCampaignRuntimeState,
   updateImageAssetStatus,
+  updateSoloRunBattleMap,
   updateSoloRunNarration
 } from "./db/repository.js";
 import {
@@ -445,6 +446,18 @@ function parseSoloRunScenePath(pathname) {
     return null;
   }
   const raw = pathname.slice(prefix.length, -"/scene".length).replace(/\/+$/, "").trim();
+  if (!raw || raw.includes("/")) {
+    return null;
+  }
+  return decodeURIComponent(raw);
+}
+
+function parseSoloRunMapPath(pathname) {
+  const prefix = "/api/solo/runs/";
+  if (!pathname.startsWith(prefix) || !pathname.endsWith("/map")) {
+    return null;
+  }
+  const raw = pathname.slice(prefix.length, -"/map".length).replace(/\/+$/, "").trim();
   if (!raw || raw.includes("/")) {
     return null;
   }
@@ -978,6 +991,40 @@ async function handleApi(req, res) {
         });
       }
       writeJson(res, 200, scene);
+    } catch (error) {
+      routeError(res, error);
+    }
+    return true;
+  }
+
+  // Phase 2 battle map: persist token positions (best-effort, sanitized).
+  const soloMapRunId = parseSoloRunMapPath(url.pathname);
+  if (soloMapRunId && req.method === "POST") {
+    try {
+      const user = requireAuth(req);
+      const run = getSoloRun(soloMapRunId);
+      if (!run) {
+        throw Object.assign(new Error("Solo run not found."), { code: "NOT_FOUND", statusCode: 404 });
+      }
+      assertSoloRunAccess(user, run);
+      const payload = await readJsonBody(req);
+      const width = Number.isFinite(payload?.width) ? Math.floor(payload.width) : run.battleMap?.width || 12;
+      const height = Number.isFinite(payload?.height) ? Math.floor(payload.height) : run.battleMap?.height || 10;
+      const rawPositions = payload?.positions && typeof payload.positions === "object" ? payload.positions : {};
+      const positions = {};
+      for (const [tokenId, pos] of Object.entries(rawPositions)) {
+        if (!pos || typeof pos !== "object") {
+          continue;
+        }
+        const x = Math.floor(Number(pos.x));
+        const y = Math.floor(Number(pos.y));
+        if (Number.isFinite(x) && Number.isFinite(y) && x >= 0 && y >= 0 && x < width && y < height) {
+          positions[String(tokenId)] = { x, y };
+        }
+      }
+      const battleMap = { width, height, positions };
+      updateSoloRunBattleMap(soloMapRunId, battleMap);
+      writeJson(res, 200, { ok: true, battleMap });
     } catch (error) {
       routeError(res, error);
     }
