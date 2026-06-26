@@ -1663,6 +1663,43 @@ button:disabled {
 .solo-map-cell.legal:hover { background: linear-gradient(180deg, #25361f, #1b2a1d); }
 .solo-map-sub { font-size: 13px; color: var(--text-faint, #6e6150); margin-top: 8px; }
 
+/* ---- Map tab as a center-column lens ----
+   The battle grid renders in the same center column the scene uses; the left
+   stats rail and right cast rail stay put on both sides (the map is NOT a
+   full-screen takeover). The board is height-constrained so the 12x10 grid
+   fits without overflowing, and centered. The movement (Exits) column is the
+   only action surface in map view — the attempt input belongs to the scene
+   tab and never appears here. */
+.solo-map-view {
+  display: flex;
+  gap: 18px;
+  align-items: flex-start;
+  padding: 16px;
+  height: 100%;
+  box-sizing: border-box;
+}
+.solo-map-view .solo-map-tab {
+  flex: 1;
+  min-width: 0;
+  margin: 0; /* the view owns the outer padding now */
+}
+.solo-map-view .solo-map-board {
+  /* Fit the square-ish board to the available height so the whole grid is
+     visible; cap at the column width and centre it. */
+  width: min(100%, calc((100vh - 230px) * 1.2));
+  margin: 0 auto;
+}
+.solo-map-aside {
+  flex: none;
+  width: clamp(190px, 24%, 280px);
+}
+@media (max-width: 1080px) {
+  /* Stack the movement column under the board on narrow screens. */
+  .solo-map-view { flex-direction: column; }
+  .solo-map-aside { width: auto; }
+  .solo-map-view .solo-map-board { width: 100%; }
+}
+
 /* ---- Right rail ---- */
 .solo-game-rail {
   width: clamp(200px, 15vw, 280px);

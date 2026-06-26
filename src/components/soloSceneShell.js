@@ -1810,7 +1810,17 @@ export function renderSoloSceneShell(state = {}) {
                 ${renderUseItemResultPanel(state.useItemResult)}
               `
             )}
-            ${panel("map", renderSoloMapTab(scene, state.battleMap))}
+            ${panel(
+              "map",
+              `
+                <div class="solo-map-view">
+                  ${renderSoloMapTab(scene, state.battleMap)}
+                  <aside class="solo-map-aside">
+                    ${renderMovementPanel(scene)}
+                  </aside>
+                </div>
+              `
+            )}
             ${panel(
               "journal",
               `
@@ -1859,60 +1869,78 @@ export function bindSoloSceneShell(root, handlers = {}) {
     const [x, y] = String(value || "").split(",").map((n) => Number(n));
     return { x, y };
   };
-  root.querySelectorAll("[data-token-id]").forEach((tokenEl) => {
-    const tokenId = tokenEl.getAttribute("data-token-id");
-    tokenEl.addEventListener("click", (event) => {
-      if (event && typeof event.stopPropagation === "function") {
-        event.stopPropagation();
-      }
-      handlers.onMapSelectToken?.(tokenId);
-    });
-    tokenEl.addEventListener("dragstart", (event) => {
-      if (event?.dataTransfer && typeof event.dataTransfer.setData === "function") {
-        event.dataTransfer.setData("text/plain", tokenId);
-      }
-      handlers.onMapSelectToken?.(tokenId);
-    });
-  });
-  root.querySelectorAll("[data-cell]").forEach((cellEl) => {
-    cellEl.addEventListener("click", () => {
-      const { x, y } = parseCell(cellEl.getAttribute("data-cell"));
-      handlers.onMapMoveTo?.(x, y);
-    });
-    cellEl.addEventListener("dragover", (event) => {
-      if (event && typeof event.preventDefault === "function") {
-        event.preventDefault();
-      }
-    });
-    cellEl.addEventListener("drop", (event) => {
-      if (event && typeof event.preventDefault === "function") {
-        event.preventDefault();
-      }
-      const { x, y } = parseCell(cellEl.getAttribute("data-cell"));
-      handlers.onMapMoveTo?.(x, y);
-    });
-  });
-  root.querySelectorAll("[data-map-undo]").forEach((button) => {
-    button.addEventListener("click", () => handlers.onMapUndo?.());
-  });
   const ARROW_DELTAS = {
     ArrowUp: [0, -1],
     ArrowDown: [0, 1],
     ArrowLeft: [-1, 0],
     ArrowRight: [1, 0]
   };
-  root.querySelectorAll("[data-solo-map]").forEach((mapEl) => {
+  // One delegated listener set on the map container instead of per-token /
+  // per-cell handlers. Two reasons:
+  //   1. Tokens + cells are rebuilt on every render(); a single container
+  //      listener covers freshly-rendered children via event.target.closest().
+  //   2. The drag bug: dragstart used to call onMapSelectToken -> render(),
+  //      which rebuilt the DOM and destroyed the very node being dragged, so the
+  //      browser cancelled the drag. dragstart now routes through onMapDragStart,
+  //      which selects WITHOUT re-rendering; drop performs the move (and renders)
+  //      once the drag has completed.
+  const closestMatch = (node, selector) =>
+    node && typeof node.closest === "function" ? node.closest(selector) : null;
+  const mapEl = root.querySelectorAll("[data-solo-map]")[0] || null;
+  if (mapEl && typeof mapEl.addEventListener === "function") {
+    mapEl.addEventListener("click", (event) => {
+      const target = event?.target;
+      if (closestMatch(target, "[data-map-undo]")) {
+        handlers.onMapUndo?.();
+        return;
+      }
+      const tokenEl = closestMatch(target, "[data-token-id]");
+      if (tokenEl) {
+        event.stopPropagation?.();
+        handlers.onMapSelectToken?.(tokenEl.getAttribute("data-token-id"));
+        return;
+      }
+      const cellEl = closestMatch(target, "[data-cell]");
+      if (cellEl) {
+        const { x, y } = parseCell(cellEl.getAttribute("data-cell"));
+        handlers.onMapMoveTo?.(x, y);
+      }
+    });
+    mapEl.addEventListener("dragstart", (event) => {
+      const tokenEl = closestMatch(event?.target, "[data-token-id]");
+      if (!tokenEl) {
+        return;
+      }
+      const tokenId = tokenEl.getAttribute("data-token-id");
+      if (event?.dataTransfer && typeof event.dataTransfer.setData === "function") {
+        event.dataTransfer.setData("text/plain", tokenId);
+      }
+      // Select for the drag WITHOUT a re-render so the dragged node survives.
+      handlers.onMapDragStart?.(tokenId);
+    });
+    mapEl.addEventListener("dragover", (event) => {
+      if (closestMatch(event?.target, "[data-cell]")) {
+        event.preventDefault?.();
+      }
+    });
+    mapEl.addEventListener("drop", (event) => {
+      const cellEl = closestMatch(event?.target, "[data-cell]");
+      if (!cellEl) {
+        return;
+      }
+      event.preventDefault?.();
+      const { x, y } = parseCell(cellEl.getAttribute("data-cell"));
+      handlers.onMapMoveTo?.(x, y);
+    });
     mapEl.addEventListener("keydown", (event) => {
       const delta = ARROW_DELTAS[event?.key];
       if (!delta) {
         return;
       }
-      if (typeof event.preventDefault === "function") {
-        event.preventDefault();
-      }
+      event.preventDefault?.();
       handlers.onMapArrow?.(delta[0], delta[1]);
     });
-  });
+  }
 
   root.querySelectorAll("[data-solo-action='move']").forEach((button) => {
     button.addEventListener("click", () => {
@@ -2208,6 +2236,7 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       onMenuToggle: handleMenuToggle,
       onCogPlaceholder: handleCogPlaceholder,
       onMapSelectToken: handleMapSelectToken,
+      onMapDragStart: handleMapDragStart,
       onMapMoveTo: handleMapMoveTo,
       onMapArrow: handleMapArrow,
       onMapUndo: handleMapUndo,
@@ -2504,6 +2533,17 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     state.battleMap.selectedTokenId = tokenId || null;
     state.battleMap.movedTiles = 0; // new activation
     render();
+  }
+
+  // Selection at the start of a drag: identical to a click-select but WITHOUT a
+  // re-render. Rebuilding the DOM during dragstart removes the node being
+  // dragged and the browser aborts the drag — the root cause of "tokens are not
+  // draggable". The legal-move highlight simply appears on drop (which renders).
+  function handleMapDragStart(tokenId) {
+    ensureBattlePositions();
+    state.battleMap.selectedTokenId = tokenId || null;
+    state.battleMap.movedTiles = 0;
+    // Intentionally no render() here.
   }
 
   function handleMapMoveTo(x, y) {
