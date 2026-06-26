@@ -1156,14 +1156,25 @@ export function renderSoloSceneInputBar(state = {}) {
   `;
 }
 
-export function renderSoloSceneArt() {
-  // Decorative scene banner matching the design's firelit tavern vignette.
+export function renderSoloSceneArt(locationImageUri = null) {
+  const uri = typeof locationImageUri === "string" ? locationImageUri.trim() : "";
+  if (uri) {
+    // Generated location background fills the banner area (object-fit: cover).
+    return `
+      <div class="solo-scene-art" data-scene-art>
+        <img class="solo-scene-art-img" src="${escapeHtml(uri)}" alt="Location background" />
+      </div>
+    `;
+  }
+  // No image yet: decorative firelit vignette + a subtle generating label,
+  // mirroring the portrait-placeholder pattern.
   return `
-    <div class="solo-scene-art">
+    <div class="solo-scene-art" data-scene-art>
       <div class="solo-scene-art-glow"></div>
       <div class="solo-scene-art-window"></div>
       <div class="solo-scene-art-hearth"></div>
       <div class="solo-scene-art-floor"></div>
+      <div class="solo-scene-art-pending">Generating scene art…</div>
     </div>
   `;
 }
@@ -1714,7 +1725,7 @@ export function renderSoloSceneShell(state = {}) {
               `
                 <div class="solo-scene-layout">
                   <div class="solo-scene-center">
-                    ${renderSoloSceneArt()}
+                    ${renderSoloSceneArt(scene.locationImageUri)}
                     ${renderLocationPanel(location, scene.gmNarration, scene.gmStatus, selectedGmMode)}
                     ${
                       state.gmThinking || state.sceneReloading
@@ -2513,6 +2524,17 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     );
   }
 
+  // Location background image still pending? (generated async like portraits)
+  function locationImageMissing() {
+    const scene = state.scene;
+    return Boolean(scene && scene.location) && !(typeof scene.locationImageUri === "string" && scene.locationImageUri);
+  }
+
+  // Anything in the scene still waiting on async art (portraits or background)?
+  function sceneArtPending() {
+    return castHasMissingPortraits() || locationImageMissing();
+  }
+
   function stopCastPoll() {
     if (castPollTimer) {
       clearTimeout(castPollTimer);
@@ -2558,10 +2580,31 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     });
   }
 
+  // Targeted update: swap a newly-generated location background into the scene
+  // banner in place (mirrors applyPortraitUpdates — no full re-render).
+  function applySceneArtUpdate(rootEl, scene) {
+    const uri = typeof scene?.locationImageUri === "string" ? scene.locationImageUri.trim() : "";
+    if (!uri || !rootEl || typeof rootEl.querySelector !== "function") {
+      return;
+    }
+    const art = rootEl.querySelector("[data-scene-art]");
+    if (!art) {
+      return;
+    }
+    const img = typeof art.querySelector === "function" ? art.querySelector("img.solo-scene-art-img") : null;
+    if (img) {
+      if (img.getAttribute("src") !== uri) {
+        img.setAttribute("src", uri);
+      }
+    } else {
+      art.innerHTML = `<img class="solo-scene-art-img" src="${escapeHtml(uri)}" alt="Location background" />`;
+    }
+  }
+
   function scheduleCastPoll() {
     stopCastPoll();
     castPollAttempts = 0;
-    if (!castHasMissingPortraits() || typeof setTimeout !== "function") {
+    if (!sceneArtPending() || typeof setTimeout !== "function") {
       return;
     }
     const arm = () => {
@@ -2576,7 +2619,7 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       // Never tear down the DOM while the cog menu is open — a full re-render
       // would destroy the open menu and eat in-flight clicks.
       if (state.menuOpen) {
-        if (castHasMissingPortraits() && castPollAttempts < 3) {
+        if (sceneArtPending() && castPollAttempts < 3) {
           arm();
         }
         return;
@@ -2591,13 +2634,15 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
         if (refreshed?.player) {
           state.character = characterFromScenePlayer(refreshed.player);
         }
-        // Targeted update: only swap newly-available portraits in place rather
-        // than rebuilding the whole shell (which flickers and drops clicks).
+        // Targeted update: only swap newly-available portraits + the location
+        // background in place rather than rebuilding the whole shell (which
+        // flickers and drops clicks).
         applyPortraitUpdates(root, state.scene);
+        applySceneArtUpdate(root, state.scene);
       } catch {
         // best-effort; keep trying until the attempt budget is spent
       }
-      if (castHasMissingPortraits() && castPollAttempts < 3) {
+      if (sceneArtPending() && castPollAttempts < 3) {
         arm();
       }
     };

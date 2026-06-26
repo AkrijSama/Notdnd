@@ -2,7 +2,13 @@ import fs from "node:fs";
 import path from "node:path";
 import { generateImage, providerSupportsReference, resolveImageProvider } from "../ai/providers.js";
 import { detectImageExt } from "../api/http.js";
-import { ensureNpcImageAssets, getSoloRun, updateImageAssetStatus, updatePlayerPortrait } from "../db/repository.js";
+import {
+  ensureLocationImageAsset,
+  ensureNpcImageAssets,
+  getSoloRun,
+  updateImageAssetStatus,
+  updatePlayerPortrait
+} from "../db/repository.js";
 import { NPC_EXPRESSIONS } from "./schema.js";
 
 // ---------------------------------------------------------------------------
@@ -237,6 +243,79 @@ export async function runPlayerImageJob(job = {}) {
   }
 }
 
+// Fallback prompt when the caller did not supply one: location name + world
+// tone, as a wide establishing shot with no people.
+function buildLocationPromptFallback(run, location, locationId) {
+  const name = location && typeof location.name === "string" && location.name ? location.name : locationId;
+  const tone = run?.world?.tone || "dark fantasy";
+  return `${name}, ${tone}, atmospheric, wide establishing shot, no people`;
+}
+
+/**
+ * Generates a location's background establishing image and stores its URI as an
+ * imageAsset on the run (keyed by the deterministic location asset id).
+ * Generate-once / cache-forever: skips when the asset is already generated.
+ * Awaitable; never throws. The location is not an NPC, so this uses a single
+ * text-to-image generation (no expression variants).
+ * @param {{ runId: string, locationId: string, style?: string, basePrompt?: string, seed?: number }} job
+ */
+export async function runLocationImageJob(job = {}) {
+  const runId = String(job.runId || "").trim();
+  const locationId = String(job.locationId || "").trim();
+  if (!runId || !locationId) {
+    return { ok: false, reason: "missing runId or locationId" };
+  }
+
+  const linked = ensureLocationImageAsset(runId, locationId, {
+    promptSummary: job.style ? `style:${job.style}` : null
+  });
+  if (!linked) {
+    return { ok: false, reason: "run or location not found" };
+  }
+
+  const run = getSoloRun(runId);
+  const asset = run?.imageAssets?.[linked.assetId] || null;
+  if (asset && asset.status === "generated" && typeof asset.uri === "string" && asset.uri) {
+    return { ok: true, skipped: true };
+  }
+
+  const location = run?.locations?.[locationId] || null;
+  const style = job.style ? String(job.style).trim() : "";
+  const seed = Number.isFinite(Number(job.seed)) ? Number(job.seed) : null;
+  const prompt = String(job.basePrompt || buildLocationPromptFallback(run, location, locationId)).trim();
+  // Filesystem-safe folder segment for this location's assets.
+  const folder = `location_${locationId}`;
+
+  try {
+    const result = await generateImage({ prompt, style, seed });
+    const bytes = result?.bytes;
+    if (!bytes || !bytes.length) {
+      throw new Error("image provider returned no bytes");
+    }
+    const ext = detectImageExt(bytes) || "png";
+    const target = diskPathFor(runId, folder, "base", ext);
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, bytes);
+    const uri = servedUriFor(runId, folder, "base", ext);
+    updateImageAssetStatus(runId, linked.assetId, "generated", uri);
+    return { ok: true, uri };
+  } catch (error) {
+    updateImageAssetStatus(runId, linked.assetId, "failed", null);
+    logWorker(`location image failed for ${runId}/${locationId}`, error);
+    return { ok: false };
+  }
+}
+
+function dispatchJob(job) {
+  if (job && job.kind === "player") {
+    return runPlayerImageJob(job);
+  }
+  if (job && job.kind === "location") {
+    return runLocationImageJob(job);
+  }
+  return runImageJob(job);
+}
+
 async function drainQueue() {
   if (processing) {
     return;
@@ -247,7 +326,7 @@ async function drainQueue() {
       const job = queue.shift();
       try {
         // eslint-disable-next-line no-await-in-loop
-        await (job && job.kind === "player" ? runPlayerImageJob(job) : runImageJob(job));
+        await dispatchJob(job);
       } catch (error) {
         logWorker("job crashed", error);
       }
@@ -280,6 +359,26 @@ export function enqueuePlayerImageJob(job = {}) {
     return;
   }
   queue.push({ kind: "player", runId: job.runId });
+  Promise.resolve().then(drainQueue).catch((error) => logWorker("drain failed", error));
+}
+
+/**
+ * Enqueues a location background-image job. Fire-and-forget; safe from a
+ * request path. Never throws.
+ * @param {{ runId: string, locationId: string, style?: string, basePrompt?: string, seed?: number }} job
+ */
+export function enqueueLocationImageJob(job = {}) {
+  if (!job || !job.runId || !job.locationId) {
+    return;
+  }
+  queue.push({
+    kind: "location",
+    runId: job.runId,
+    locationId: job.locationId,
+    style: job.style,
+    basePrompt: job.basePrompt,
+    seed: job.seed
+  });
   Promise.resolve().then(drainQueue).catch((error) => logWorker("drain failed", error));
 }
 

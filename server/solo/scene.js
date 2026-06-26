@@ -593,6 +593,29 @@ export function playerNeedsPortrait(run) {
   return !isString(player.portraitUri);
 }
 
+// Pure. The deterministic imageAsset id for a location's background image.
+function locationImageAssetId(location) {
+  return location?.imageAssetId || (location?.locationId ? `img_location_${location.locationId}` : null);
+}
+
+// Pure. Resolves a location's generated background-image URI from run.imageAssets,
+// or null when it has not been generated yet.
+export function resolveLocationImageUri(run, location) {
+  const assets = isPlainObject(run?.imageAssets) ? run.imageAssets : {};
+  const assetId = locationImageAssetId(location);
+  const asset = assetId ? assets[assetId] : null;
+  return asset && asset.status === "generated" && isString(asset.uri) ? asset.uri : null;
+}
+
+// Pure. True when the current location still lacks a generated background image —
+// used by the scene route to enqueue a one-off location-image job on entry/move.
+export function locationNeedsImage(run, location) {
+  if (!isPlainObject(run) || !isPlainObject(location)) {
+    return false;
+  }
+  return !resolveLocationImageUri(run, location);
+}
+
 export function buildSoloScenePayload(run, options = {}) {
   const runValidation = validateSoloRun(run);
   if (!runValidation.ok) {
@@ -636,6 +659,9 @@ export function buildSoloScenePayload(run, options = {}) {
     edition: run.edition,
     policyProfileId: run.policyProfileId,
     location: locationPayload(currentLocation),
+    // Generated location background image (null until the worker produces it;
+    // the client shows a "Generating scene art…" placeholder meanwhile).
+    locationImageUri: resolveLocationImageUri(run, currentLocation),
     rest: restPayload(currentLocation, policyProfile),
     player: buildPlayerPayload(run),
     visibleEntities,
@@ -686,6 +712,18 @@ export function buildSoloScenePayload(run, options = {}) {
       const npcIds = collectNpcsNeedingArt(run, visibleEntities);
       if (npcIds.length > 0) {
         options.enqueueImages(npcIds);
+      }
+    } catch {
+      // Best-effort only.
+    }
+  }
+
+  // Opt-in, fire-and-forget location background image. Generated once per
+  // location, on entry or when the player moves here. Never blocks delivery.
+  if (typeof options.enqueueLocationImage === "function") {
+    try {
+      if (locationNeedsImage(run, currentLocation)) {
+        options.enqueueLocationImage(currentLocation.locationId);
       }
     } catch {
       // Best-effort only.

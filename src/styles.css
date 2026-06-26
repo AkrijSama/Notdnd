@@ -1447,6 +1447,26 @@ button:disabled {
   height: 42%;
   background: linear-gradient(180deg, transparent, #0a0705 78%);
 }
+.solo-scene-art-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.solo-scene-art-pending {
+  position: absolute;
+  bottom: 10px;
+  right: 14px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(240, 228, 204, 0.72);
+  background: rgba(10, 7, 5, 0.55);
+  padding: 4px 9px;
+  border-radius: 5px;
+}
 .solo-scene-input { padding: 18px 28px 22px; max-width: none; }
 .solo-scene-input-row { display: flex; gap: 12px; align-items: stretch; }
 .solo-scene-field {

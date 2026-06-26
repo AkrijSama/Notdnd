@@ -738,6 +738,57 @@ export function ensureNpcImageAssets(runId, npcId, options = {}) {
 }
 
 /**
+ * Ensures a single location-background image asset exists on the run (keyed by a
+ * deterministic id) and links it onto the location. Mirrors the generate-once
+ * pattern used for portraits; idempotent. Returns { assetId } or null when the
+ * run/location does not exist.
+ * @param {string} runId
+ * @param {string} locationId
+ * @param {{ promptSummary?: string }} [options]
+ * @returns {{ assetId: string } | null}
+ */
+export function ensureLocationImageAsset(runId, locationId, options = {}) {
+  ensureDb();
+  const run = db.soloRuns[String(runId || "").trim()];
+  if (!run) {
+    return null;
+  }
+  const location = run.locations && run.locations[locationId];
+  if (!location) {
+    return null;
+  }
+
+  run.imageAssets = run.imageAssets && typeof run.imageAssets === "object" ? run.imageAssets : {};
+  const assetId = `img_location_${locationId}`;
+  if (!run.imageAssets[assetId]) {
+    const now = nowIso();
+    run.imageAssets[assetId] = {
+      assetId,
+      targetType: "location",
+      targetId: locationId,
+      status: "queued",
+      promptSummary: typeof options.promptSummary === "string" ? options.promptSummary : null,
+      uri: null,
+      version: 1,
+      createdAt: now,
+      updatedAt: now,
+      tags: [],
+      flags: {},
+      edition: run.edition ?? null,
+      policyProfileId: run.policyProfileId ?? null,
+      contentTags: []
+    };
+  }
+  if (!location.imageAssetId) {
+    location.imageAssetId = assetId;
+  }
+
+  bumpStateVersion();
+  writeToDisk();
+  return { assetId };
+}
+
+/**
  * Surgically updates a single image asset's status (and uri) without
  * re-validating or rewriting the whole run. Returns false if the run or asset
  * does not exist.

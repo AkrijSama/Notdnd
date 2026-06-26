@@ -87,7 +87,7 @@ import { createWsHub } from "./realtime/wsHub.js";
 import { resolveSoloAction } from "./solo/actions.js";
 import { resolveGmNarration } from "./solo/gmProvider.js";
 import { buildGmRuntimeStatus } from "./solo/gmSmoke.js";
-import { enqueueImageJob, enqueuePlayerImageJob, writeUploadedBasePortrait } from "./solo/imageWorker.js";
+import { enqueueImageJob, enqueueLocationImageJob, enqueuePlayerImageJob, writeUploadedBasePortrait } from "./solo/imageWorker.js";
 import { enqueueIdentityJob, runIdentityJob } from "./solo/npcIdentity.js";
 import { buildNpcIntroDirective, buildSoloScenePayload, collectNpcsWithPendingIntro } from "./solo/scene.js";
 
@@ -539,6 +539,30 @@ function makeSceneImageEnqueuer(run) {
   };
 }
 
+// Builds the establishing-shot prompt for a location's background image from
+// the location name + world tone (e.g. "Ashenmoor Market Square, dark fantasy,
+// atmospheric, wide establishing shot, no people").
+function buildLocationBasePrompt(run, locationId) {
+  const location = run?.locations?.[locationId] || {};
+  const name = String(location.name || locationId).trim();
+  const tone = String(run?.world?.tone || run?.world?.setting || "dark fantasy").trim();
+  return `${name}, ${tone}, atmospheric, wide establishing shot, no people`;
+}
+
+// Returns a fire-and-forget enqueuer for the current location's background
+// image. Generated once per location; never blocks the scene response.
+function makeSceneLocationImageEnqueuer(run) {
+  const style = String(run?.flags?.artStyle || "illustrated");
+  return (locationId) => {
+    enqueueLocationImageJob({
+      runId: run.runId,
+      locationId,
+      style,
+      basePrompt: buildLocationBasePrompt(run, locationId)
+    });
+  };
+}
+
 // Real GM narration for the solo Attempt loop. The solo UI is HTTP-only (no
 // WebSocket), so narration is delivered in the action response via a *bounded*
 // await: if the free GM model answers within the budget it replaces the canned
@@ -981,7 +1005,8 @@ async function handleApi(req, res) {
       const scene = buildSoloScenePayload(run, {
         enqueueImages: makeSceneImageEnqueuer(run),
         enqueueIdentities: makeSceneIdentityEnqueuer(run),
-        enqueuePlayerPortrait: () => enqueuePlayerImageJob({ runId: run.runId })
+        enqueuePlayerPortrait: () => enqueuePlayerImageJob({ runId: run.runId }),
+        enqueueLocationImage: makeSceneLocationImageEnqueuer(run)
       });
       if (!scene.ok) {
         throw Object.assign(new Error("Solo scene could not be built."), {
