@@ -505,10 +505,73 @@ async function pollinationsImage({ prompt, seed, fetchImpl, width, height }) {
   };
 }
 
+// Cloudflare Workers AI — FLUX-1-schnell. Failover provider #2: keyed
+// (CF_ACCOUNT_ID + CF_API_TOKEN), a single POST that returns the generated image
+// bytes directly (not a URL). flux-1-schnell accepts num_steps but NOT
+// width/height — it generates at a fixed resolution, so those args are ignored.
+const CLOUDFLARE_FLUX_MODEL = "@cf/black-forest-labs/flux-1-schnell";
+
+async function cloudflareImage({ prompt, seed, width, height, fetchImpl }) {
+  const accountId = String(process.env.CF_ACCOUNT_ID || "").trim();
+  const apiToken = String(process.env.CF_API_TOKEN || "").trim();
+  if (!accountId || !apiToken) {
+    throw makeProviderError(
+      "cloudflare",
+      "Cloudflare Workers AI is not configured. Missing CF_ACCOUNT_ID or CF_API_TOKEN.",
+      "MISSING_API_KEY",
+      400
+    );
+  }
+  // width/height are intentionally ignored — flux-1-schnell has a fixed output
+  // size and rejects/ignores dimension params.
+  void width;
+  void height;
+
+  const endpoint = `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(accountId)}/ai/run/${CLOUDFLARE_FLUX_MODEL}`;
+  // Reuse the deterministic prompt-seed so an NPC's identitySeed keeps the same
+  // character consistent here too (and so failover from Pollinations is stable).
+  const body = { prompt: String(prompt || "").trim() || "portrait", num_steps: 8, seed: pollinationsSeed(prompt, seed) };
+
+  const response = await fetchImpl(endpoint, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiToken}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(body)
+  });
+  if (!response.ok) {
+    throw makeProviderError("cloudflare", `Cloudflare request failed (${response.status})`, "UPSTREAM_AI_ERROR", response.status);
+  }
+
+  // flux-1-schnell returns the image bytes directly. Defensive: some Workers AI
+  // image responses instead wrap a base64 image in JSON ({"result":{"image":"…"}});
+  // decode that so we always persist real image bytes, never JSON text.
+  const buf = Buffer.from(await response.arrayBuffer());
+  const contentType = String(response.headers?.get?.("content-type") || "").toLowerCase();
+  if (contentType.includes("application/json")) {
+    try {
+      const json = JSON.parse(buf.toString("utf8"));
+      const b64 = json?.result?.image || json?.image || null;
+      if (b64) {
+        return { provider: "cloudflare", mock: false, bytes: Buffer.from(b64, "base64"), url: null };
+      }
+    } catch {
+      // not JSON after all — fall through to the raw bytes below
+    }
+  }
+
+  return {
+    provider: "cloudflare",
+    mock: false,
+    bytes: buf,
+    url: null
+  };
+}
+
 // Failover order tried after the primary/resolved provider (deduped against it).
-// "cloudflare" is a placeholder for the next task — it is not wired in
-// dispatchImageProvider yet, so the loop skips it automatically; wiring it up
-// there gives it failover for free.
+// "cloudflare" is wired below; the loop only attempts it when its keys are set
+// (isWiredImageProvider), otherwise it is skipped with no attempt/delay.
 //
 // Mock is deliberately NOT in this chain: it never fails, so including it would
 // cache a 1x1 placeholder forever on a real outage. Instead, when every real
@@ -523,10 +586,14 @@ function sleep(ms) {
   });
 }
 
-// True for providers dispatchImageProvider knows how to call. Unwired providers
-// (e.g. cloudflare for now) are skipped by the failover loop without an attempt.
+// True for providers dispatchImageProvider knows how to call. Cloudflare is only
+// "wired" once both of its keys are present, so the failover loop skips it (no
+// attempt/delay) when it is unconfigured.
 function isWiredImageProvider(provider) {
   const p = String(provider || "").trim().toLowerCase();
+  if (p === "cloudflare") {
+    return Boolean(String(process.env.CF_ACCOUNT_ID || "").trim() && String(process.env.CF_API_TOKEN || "").trim());
+  }
   return p === "pollinations" || p === "fal" || isMockImageProvider(p);
 }
 
@@ -548,6 +615,15 @@ async function dispatchImageProvider(provider, args) {
   }
   if (p === "fal") {
     return falImage({ prompt: args.prompt, referenceImageUrl: args.referenceImageUrl, fetchImpl: args.fetchImpl });
+  }
+  if (p === "cloudflare") {
+    return cloudflareImage({
+      prompt: args.prompt,
+      seed: args.seed,
+      width: args.width,
+      height: args.height,
+      fetchImpl: args.fetchImpl
+    });
   }
   throw makeProviderError(p, `Image provider not wired yet: ${p}`, "PROVIDER_NOT_WIRED", 501);
 }
