@@ -2247,6 +2247,111 @@ button:disabled {
 .solo-portrait { overflow: hidden; }
 .solo-portrait-img { width: 100%; height: auto; object-fit: cover; display: block; }
 
+/* Portrait still generating: fill the same box (no layout shift) with a label. */
+.solo-portrait-pending {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--text-muted, #b8a98f);
+  font-size: 12px;
+  text-align: center;
+}
+.solo-portrait-spinner {
+  width: 22px;
+  height: 22px;
+  border: 2px solid var(--line-strong, #503f2e);
+  border-top-color: var(--accent, #c89a4b);
+  border-radius: 50%;
+  animation: solo-spin 0.9s linear infinite;
+}
+.solo-cast-thumb-pending { position: relative; }
+.solo-cast-thumb-pending::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, transparent, rgba(200, 154, 75, 0.18), transparent);
+  background-size: 200% 100%;
+  animation: solo-shimmer 1.4s ease-in-out infinite;
+}
+@keyframes solo-spin { to { transform: rotate(360deg); } }
+@keyframes solo-shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .solo-portrait-spinner, .solo-cast-thumb-pending::after { animation: none; }
+}
+
+/* ---- Async feedback: error banner, lag indicator, busy lock ---- */
+.solo-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 12px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--accent-2, #b94c2d);
+  background: rgba(185, 76, 45, 0.16);
+  color: var(--text-bright, #f0e6d4);
+  font-size: 14px;
+}
+.solo-banner-msg { flex: 1; }
+.solo-banner-dismiss {
+  flex: none;
+  background: none;
+  border: none;
+  color: inherit;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+  opacity: 0.8;
+}
+.solo-banner-dismiss:hover { opacity: 1; }
+
+/* Subtle "the GM is thinking…" / "loading scene…" strip in the narration area. */
+.solo-thinking {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line-strong, #503f2e);
+  background: var(--inset, #120c07);
+  color: var(--text-muted, #b8a98f);
+  font-size: 13px;
+  font-style: italic;
+}
+.solo-thinking::before {
+  content: "";
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--line-strong, #503f2e);
+  border-top-color: var(--accent, #c89a4b);
+  border-radius: 50%;
+  animation: solo-spin 0.9s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .solo-thinking::before { animation: none; }
+}
+
+/* While an action is in flight, dim and lock the interactive surfaces so the
+   player can't double-submit. The handler also guards re-entry, but this makes
+   the wait visible. The cog menu and banner dismiss stay clickable. */
+.solo-scene-shell.is-busy .solo-scene-chip,
+.solo-scene-shell.is-busy .solo-action-button,
+.solo-scene-shell.is-busy .solo-move-button,
+.solo-scene-shell.is-busy .solo-entity-card button,
+.solo-scene-shell.is-busy .solo-bring-in,
+.solo-scene-shell.is-busy .solo-cast-bringback {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
 /* ---- Resume-adventure banner (home screen after explicit exit) ---- */
 .resume-banner {
   display: flex;

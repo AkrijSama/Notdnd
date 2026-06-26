@@ -1075,7 +1075,7 @@ export function renderSoloCharacterSidebar(character = SOLO_SAMPLE_CHARACTER) {
 
   return `
     <aside class="solo-game-sidebar">
-      <div class="solo-portrait" data-portrait-for="player" data-portrait-img-class="solo-portrait-img">${character.portraitUri ? `<img class="solo-portrait-img" src="${escapeHtml(character.portraitUri)}" alt="${escapeHtml(character.name || "Character")} portrait" />` : ""}</div>
+      <div class="solo-portrait" data-portrait-for="player" data-portrait-img-class="solo-portrait-img">${character.portraitUri ? `<img class="solo-portrait-img" src="${escapeHtml(character.portraitUri)}" alt="${escapeHtml(character.name || "Character")} portrait" />` : `<div class="solo-portrait-pending"><span class="solo-portrait-spinner" aria-hidden="true"></span><small>Portrait generating…</small></div>`}</div>
       <div class="solo-sidebar-identity">
         <div class="solo-char-name">${escapeHtml(character.name)}</div>
         <div class="solo-char-sub">${escapeHtml(character.className)} · Level ${escapeHtml(character.level)}</div>
@@ -1137,11 +1137,15 @@ export function renderSoloSceneInputBar(state = {}) {
 
   const confirmation = typeof state.npcCreatorConfirmation === "string" ? state.npcCreatorConfirmation : "";
 
+  // While any action is in flight, disable the input + submit (prevents
+  // double-submit) and surface the wait in the button label.
+  const busy = Boolean(state.busy);
+
   return `
     <div class="solo-scene-input">
       <div class="solo-scene-input-row">
-        <input type="text" class="solo-scene-field" data-solo-attempt-input placeholder="What do you do?" value="${escapeHtml(state.attemptDraft || "")}" />
-        <button type="button" class="solo-attempt-submit" data-solo-attempt-submit>Attempt</button>
+        <input type="text" class="solo-scene-field" data-solo-attempt-input placeholder="What do you do?" value="${escapeHtml(state.attemptDraft || "")}" ${busy ? "disabled" : ""} />
+        <button type="button" class="solo-attempt-submit" data-solo-attempt-submit ${busy ? "disabled" : ""}>${busy ? "Thinking…" : "Attempt"}</button>
       </div>
       <div class="solo-scene-tools">
         <button type="button" class="solo-bring-in" data-solo-npc-create>＋ Bring someone in</button>
@@ -1420,7 +1424,7 @@ export function renderSoloRightRail(state = {}) {
           const initial = String(name).trim().slice(0, 1).toUpperCase() || "?";
           const thumb = portraitUri
             ? `<img src="${escapeHtml(portraitUri)}" alt="${escapeHtml(name)}" />`
-            : `<span>${escapeHtml(initial)}</span>`;
+            : `<span class="solo-cast-thumb-pending" title="Portrait generating…">${escapeHtml(initial)}</span>`;
           const away = member.present === false ? ` <span class="solo-cast-away">away</span>` : "";
           return `
             <div class="solo-cast-card">
@@ -1647,8 +1651,9 @@ export function renderSoloSceneShell(state = {}) {
 
   return `
     <section
-      class="solo-scene-shell solo-scene-shell-polished solo-game-shell"
+      class="solo-scene-shell solo-scene-shell-polished solo-game-shell${state.busy ? " is-busy" : ""}"
       data-run-id="${escapeHtml(scene.runId || state.runId || "")}"
+      data-solo-busy="${state.busy ? "true" : ""}"
       data-solo-skin="${skin}"
       data-solo-font="${fontSet}"
       style="${soloThemeVarString(skin, fontSet)}"
@@ -1673,6 +1678,14 @@ export function renderSoloSceneShell(state = {}) {
             <div class="solo-game-title">${escapeHtml(title)}</div>
           </div>
           <div class="solo-game-content">
+            ${
+              state.banner
+                ? `<div class="solo-banner" role="alert">
+                    <span class="solo-banner-msg">${escapeHtml(state.banner)}</span>
+                    <button type="button" class="solo-banner-dismiss" data-solo-banner-dismiss aria-label="Dismiss">×</button>
+                  </div>`
+                : ""
+            }
             ${panel(
               "scene",
               `
@@ -1680,6 +1693,11 @@ export function renderSoloSceneShell(state = {}) {
                   <div class="solo-scene-center">
                     ${renderSoloSceneArt()}
                     ${renderLocationPanel(location, scene.gmNarration, scene.gmStatus, selectedGmMode)}
+                    ${
+                      state.gmThinking || state.sceneReloading
+                        ? `<div class="solo-thinking" role="status">${state.gmThinking ? "The GM is thinking…" : "Loading scene…"}</div>`
+                        : ""
+                    }
                     ${renderSoloSceneInputBar(state)}
                   </div>
                   <div class="solo-scene-npc">
@@ -1728,6 +1746,10 @@ export function renderSoloSceneShell(state = {}) {
 export function bindSoloSceneShell(root, handlers = {}) {
   root.querySelectorAll("[data-solo-action='reload-scene']").forEach((button) => {
     button.addEventListener("click", () => handlers.onReload?.());
+  });
+
+  root.querySelectorAll("[data-solo-banner-dismiss]").forEach((button) => {
+    button.addEventListener("click", () => handlers.onDismissBanner?.());
   });
 
   root.querySelectorAll("[data-solo-exit]").forEach((button) => {
@@ -2076,6 +2098,7 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     bindSoloSceneShell(root, {
       onReload: loadScene,
       onExit: handleExit,
+      onDismissBanner: handleDismissBanner,
       onMenuToggle: handleMenuToggle,
       onCogPlaceholder: handleCogPlaceholder,
       onMapSelectToken: handleMapSelectToken,
@@ -2210,6 +2233,55 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     state.menuOpen = !state.menuOpen;
     state.cogNote = "";
     render();
+  }
+
+  function handleDismissBanner() {
+    state.banner = "";
+    render();
+  }
+
+  // ---- Async feedback wrapper ----------------------------------------------
+  // Wraps every network action so it can never fail silently or wait
+  // invisibly: it sets a busy flag (disables the input + dims action buttons,
+  // guarding against double-submit), arms a 2s "GM is thinking…" lag indicator,
+  // surfaces any thrown error as a dismissible in-panel banner, and always
+  // clears the busy/lag state when the action settles.
+  let lagTimer = null;
+
+  function clearLag() {
+    if (lagTimer) {
+      clearTimeout(lagTimer);
+      lagTimer = null;
+    }
+    state.gmThinking = false;
+  }
+
+  async function runAction(label, fn) {
+    if (state.busy) {
+      return; // an action is already in flight — ignore re-entry
+    }
+    state.busy = label;
+    state.banner = "";
+    clearLag();
+    if (typeof setTimeout === "function") {
+      lagTimer = setTimeout(() => {
+        state.gmThinking = true;
+        render();
+      }, 2000);
+      if (lagTimer && typeof lagTimer.unref === "function") {
+        lagTimer.unref();
+      }
+    }
+    render();
+    try {
+      await fn();
+    } catch (error) {
+      state.banner = String(error?.message || error || "Something went wrong. Try again.");
+    } finally {
+      state.busy = null;
+      clearLag();
+      render();
+    }
   }
 
   // ---- Battle map (Phase 2) ----
@@ -2363,11 +2435,11 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     state.attemptDraft = String(value || "");
   }
 
-  async function handleAttempt({ intent }) {
+  function handleAttempt({ intent }) {
     if (!state.scene) {
       return;
     }
-    try {
+    return runAction("attempt", async () => {
       const response = await postSoloAction(apiClient, runId, createAttemptAction({ intent }));
       state.attemptResult = response.attemptResult || response.latestAttemptResult || null;
       state.attemptDraft = "";
@@ -2377,10 +2449,7 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       state.restResult = null;
       state.useItemResult = null;
       await loadScene();
-    } catch (error) {
-      state.error = String(error?.message || error || "Attempt failed.");
-      render();
-    }
+    });
   }
 
   let castPollTimer = null;
@@ -2493,8 +2562,16 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
   }
 
   async function loadScene() {
-    state.loading = true;
-    state.error = "";
+    // First load (no scene yet) takes over the shell with the full-screen
+    // loader/error. A reload after an action keeps the current scene on screen
+    // and shows a brief inline "Loading scene…" strip instead of a blank flash.
+    const initial = !state.scene;
+    if (initial) {
+      state.loading = true;
+      state.error = "";
+    } else {
+      state.sceneReloading = true;
+    }
     state.npcCreatorConfirmation = "";
     render();
     try {
@@ -2533,60 +2610,63 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       state.restResult = null;
       state.useItemResult = null;
     } catch (error) {
-      state.error = String(error?.message || error || "Failed to load solo scene.");
+      const message = String(error?.message || error || "Failed to load solo scene.");
+      if (initial) {
+        // No scene to fall back to — show the full-screen retry surface.
+        state.error = message;
+      } else {
+        // Keep the existing scene visible; surface the failure as a banner.
+        state.banner = message;
+      }
     } finally {
       state.loading = false;
+      state.sceneReloading = false;
       render();
       scheduleCastPoll();
     }
   }
 
-  async function handleMove(move) {
+  function handleMove(move) {
     if (!state.scene) {
       return;
     }
-    try {
+    return runAction("move", async () => {
       await postSoloAction(apiClient, runId, createMoveAction(state.scene, move));
       await loadScene();
-    } catch (error) {
-      state.error = String(error?.message || error || "Move failed.");
-      render();
-    }
+    });
   }
 
-  async function handleInspect(entity) {
-    try {
+  function handleInspect(entity) {
+    return runAction("inspect", async () => {
       state.detail = await postSoloAction(apiClient, runId, createInspectAction(entity));
-      render();
-    } catch (error) {
-      state.error = String(error?.message || error || "Inspect failed.");
-      render();
-    }
+    });
   }
 
-  async function handleSearch() {
-    try {
+  // Several actions share the same epilogue: clear the other result panels and
+  // re-fetch the scene, preserving any GM narration already in state.
+  async function refreshSceneAfterAction() {
+    const refreshed = await fetchSoloScene(apiClient, runId);
+    state.scene = {
+      ...refreshed,
+      gmNarration: state.scene?.gmNarration || null,
+      gmStatus: state.scene?.gmStatus || null
+    };
+  }
+
+  function handleSearch() {
+    return runAction("search", async () => {
       const response = await postSoloAction(apiClient, runId, createSearchAction());
       state.searchResult = response.searchResult || null;
       state.talkResult = null;
       state.dialogueActive = false;
       state.restResult = null;
       state.useItemResult = null;
-      const refreshed = await fetchSoloScene(apiClient, runId);
-      state.scene = {
-        ...refreshed,
-        gmNarration: state.scene?.gmNarration || null,
-        gmStatus: state.scene?.gmStatus || null
-      };
-      render();
-    } catch (error) {
-      state.error = String(error?.message || error || "Search failed.");
-      render();
-    }
+      await refreshSceneAfterAction();
+    });
   }
 
-  async function handleTalk(entity) {
-    try {
+  function handleTalk(entity) {
+    return runAction("talk", async () => {
       const response = await postSoloAction(apiClient, runId, createTalkAction(entity));
       state.talkResult = response.talkResult || null;
       // Open the visual-novel dialogue overlay and restart the typewriter.
@@ -2595,64 +2675,39 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       state.searchResult = null;
       state.restResult = null;
       state.useItemResult = null;
-      const refreshed = await fetchSoloScene(apiClient, runId);
-      state.scene = {
-        ...refreshed,
-        gmNarration: state.scene?.gmNarration || null,
-        gmStatus: state.scene?.gmStatus || null
-      };
-      render();
-    } catch (error) {
-      state.error = String(error?.message || error || "Talk failed.");
-      render();
-    }
+      await refreshSceneAfterAction();
+    });
   }
 
-  async function handleRest(action) {
-    try {
+  function handleRest(action) {
+    return runAction("rest", async () => {
       const response = await postSoloAction(apiClient, runId, createRestAction(action));
       state.restResult = response.restResult || null;
       state.searchResult = null;
       state.talkResult = null;
       state.dialogueActive = false;
       state.useItemResult = null;
-      const refreshed = await fetchSoloScene(apiClient, runId);
-      state.scene = {
-        ...refreshed,
-        gmNarration: state.scene?.gmNarration || null,
-        gmStatus: state.scene?.gmStatus || null
-      };
-      render();
-    } catch (error) {
-      state.error = String(error?.message || error || "Rest failed.");
-      render();
-    }
+      await refreshSceneAfterAction();
+    });
   }
 
-  async function handleUseItem(item) {
-    try {
+  function handleUseItem(item) {
+    return runAction("use_item", async () => {
       const response = await postSoloAction(apiClient, runId, createUseItemAction(item));
       state.useItemResult = response.useItemResult || null;
       state.searchResult = null;
       state.talkResult = null;
       state.dialogueActive = false;
       state.restResult = null;
-      const refreshed = await fetchSoloScene(apiClient, runId);
-      state.scene = {
-        ...refreshed,
-        gmNarration: state.scene?.gmNarration || null,
-        gmStatus: state.scene?.gmStatus || null
-      };
-      render();
-    } catch (error) {
-      state.error = String(error?.message || error || "Use item failed.");
-      render();
-    }
+      await refreshSceneAfterAction();
+    });
   }
 
-  async function handleGmMode({ mode }) {
+  function handleGmMode({ mode }) {
     state.gmMode = mode === "provider" ? "provider" : "placeholder";
-    await loadScene();
+    return runAction("gm-mode", async () => {
+      await loadScene();
+    });
   }
 
   render();
