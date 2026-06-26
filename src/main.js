@@ -909,6 +909,14 @@ function renderApp() {
   if (html === lastRenderedHtml) {
     return;
   }
+  // Render-stability guard: never rebuild the DOM while the user is typing in a
+  // text field. Periodic external renders (realtime presence + the ~1.2s WS
+  // reconnect loop) would otherwise replace appRoot.innerHTML and clear input
+  // focus/caret mid-keystroke (e.g. the world-generator World Name field). The
+  // next render — after blur or a button/chip interaction — reconciles the view.
+  if (isEditingTextField()) {
+    return;
+  }
   lastRenderedHtml = html;
   appRoot.innerHTML = html;
 
@@ -945,6 +953,23 @@ function renderApp() {
   restoreFocusSnapshot(focusSnapshot);
 }
 
+// True while the user is actively typing in a text input/textarea inside the
+// app — used to suppress full re-renders that would clear focus/caret.
+function isEditingTextField() {
+  const el = document.activeElement;
+  if (!el || el === document.body || !appRoot.contains(el)) {
+    return false;
+  }
+  if (el.tagName === "TEXTAREA") {
+    return true;
+  }
+  if (el.tagName === "INPUT") {
+    const type = (el.getAttribute("type") || "text").toLowerCase();
+    return ["text", "search", "email", "password", "number", "url", "tel", ""].includes(type);
+  }
+  return false;
+}
+
 function captureFocusSnapshot() {
   const active = document.activeElement;
   if (!active || active === document.body || !appRoot.contains(active)) {
@@ -952,7 +977,9 @@ function captureFocusSnapshot() {
   }
   const name = active.getAttribute("name");
   const id = active.id || null;
-  if (!name && !id) {
+  // World-generator / character-wizard inputs identify by data-* (no name/id).
+  const dataKey = active.getAttribute("data-world-field") || active.getAttribute("data-cw-input") || null;
+  if (!name && !id && !dataKey) {
     return null;
   }
   const isTextLike =
@@ -960,6 +987,7 @@ function captureFocusSnapshot() {
   return {
     name,
     id,
+    dataKey,
     selectionStart: isTextLike ? active.selectionStart : null,
     selectionEnd: isTextLike ? active.selectionEnd : null
   };
@@ -975,6 +1003,11 @@ function restoreFocusSnapshot(snapshot) {
   }
   if (!target && snapshot.id) {
     target = appRoot.querySelector(`#${snapshot.id}`);
+  }
+  if (!target && snapshot.dataKey) {
+    target =
+      appRoot.querySelector(`[data-world-field="${snapshot.dataKey}"]`) ||
+      appRoot.querySelector(`[data-cw-input="${snapshot.dataKey}"]`);
   }
   if (!target) {
     return;
