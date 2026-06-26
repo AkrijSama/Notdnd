@@ -1261,8 +1261,12 @@ export function buildSoloMapTokens(scene = {}, options = {}) {
 
   const tokens = [];
 
+  let playerSpawn = null;
   if (player) {
     const name = typeof player.displayName === "string" && player.displayName ? player.displayName : "You";
+    const vision = typeof player.vision === "number" ? player.vision : DEFAULT_VISION_TILES;
+    const pos = place(Math.floor(width / 2), height - 1);
+    playerSpawn = { x: pos.x, y: pos.y, vision };
     tokens.push({
       id: "player",
       kind: "player",
@@ -1273,15 +1277,34 @@ export function buildSoloMapTokens(scene = {}, options = {}) {
       faction: "player",
       // Carried for Phase 2 (speed-validated movement); unused in Phase 1.
       speed: typeof player.speed === "number" ? player.speed : 30,
-      vision: typeof player.vision === "number" ? player.vision : DEFAULT_VISION_TILES,
-      ...place(Math.floor(width / 2), height - 1)
+      vision,
+      ...pos
     });
   }
+
+  // Present NPCs spawn within the player's starting vision (fanned out a couple
+  // tiles in front of — above — the player) so they're visible on entry instead
+  // of hidden by fog near the top edge. Falls back to a top-row spread when
+  // there is no player token to anchor on.
+  const placeNpcInSight = (index, total, anchor) => {
+    if (!anchor) {
+      const spacing = Math.max(1, Math.floor(width / (total + 1)));
+      return place(Math.min(width - 1, (index + 1) * spacing), 1);
+    }
+    const radius = Number.isFinite(anchor.vision) ? anchor.vision : DEFAULT_VISION_TILES;
+    // Two rows toward the top keeps NPCs in front of the player without taking
+    // the player's own cell; clamp so we never step above the board.
+    const dy = Math.min(2, anchor.y, radius);
+    // Widest horizontal offset that still lands inside the circular vision.
+    const maxDx = Math.max(1, Math.floor(Math.sqrt(Math.max(0, radius * radius - dy * dy))));
+    const t = total > 1 ? index / (total - 1) : 0.5;
+    const dx = Math.round(-maxDx + t * (2 * maxDx));
+    return place(anchor.x + dx, anchor.y - dy);
+  };
 
   const count = presentNpcs.length;
   presentNpcs.forEach((npc, index) => {
     const name = npc.displayName || npc.role || npc.npcId;
-    const spacing = Math.max(1, Math.floor(width / (count + 1)));
     tokens.push({
       id: `npc:${npc.npcId}`,
       kind: "npc",
@@ -1292,7 +1315,7 @@ export function buildSoloMapTokens(scene = {}, options = {}) {
       faction: "npc",
       speed: typeof npc.speed === "number" ? npc.speed : 30,
       vision: typeof npc.vision === "number" ? npc.vision : DEFAULT_VISION_TILES,
-      ...place(Math.min(width - 1, (index + 1) * spacing), 1)
+      ...placeNpcInSight(index, count, playerSpawn)
     });
   });
 
@@ -2315,6 +2338,26 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     state.battleMap.revealed = [...merged];
   }
 
+  // One-time seed (run entry): reveal every cell within the player's starting
+  // vision radius so the map shows the player's immediate surroundings on load
+  // instead of an all-black grid. Movement-time fog (accumulateReveal) is
+  // unchanged.
+  function seedInitialReveal() {
+    const { tokens } = resolveBattleTokens(state.scene || {}, state.battleMap);
+    const playerToken = tokens.find((token) => token.faction === "player");
+    if (!playerToken) {
+      return;
+    }
+    const radius = Number.isFinite(playerToken.vision) ? playerToken.vision : DEFAULT_VISION_TILES;
+    const merged = new Set(Array.isArray(state.battleMap.revealed) ? state.battleMap.revealed : []);
+    for (const cell of computeRevealed(SOLO_MAP_WIDTH, SOLO_MAP_HEIGHT, [
+      { x: playerToken.x, y: playerToken.y, radius }
+    ])) {
+      merged.add(cell);
+    }
+    state.battleMap.revealed = [...merged];
+  }
+
   function handleMapSelectToken(tokenId) {
     ensureBattlePositions();
     state.battleMap.selectedTokenId = tokenId || null;
@@ -2590,7 +2633,14 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       if (Array.isArray(state.scene?.battleMap?.revealed)) {
         state.battleMap.revealed = [...state.scene.battleMap.revealed];
       }
-      accumulateReveal();
+      if (initial) {
+        // Run entry: seed the player's starting vision so the map isn't a black
+        // grid on first load.
+        seedInitialReveal();
+      } else {
+        // Reload after an action: fold any newly-visible cells into explored fog.
+        accumulateReveal();
+      }
       try {
         const gmScene = await fetchSoloGmScene(apiClient, runId, { mode: state.gmMode });
         if (gmScene?.gmNarration) {
