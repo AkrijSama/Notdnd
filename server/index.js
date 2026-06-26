@@ -634,10 +634,47 @@ async function narrateActionWithGm(run, resolved, user) {
   if (!run?.campaignId || !resolved) {
     return null;
   }
-  const message = buildActionGmMessage(run, resolved);
+  let message = buildActionGmMessage(run, resolved);
   if (!message) {
     return null;
   }
+  // Quest advancement: when this action advanced a quest, fold it into the scene
+  // context so the GM dramatizes the progress as a meaningful beat.
+  if (resolved.questJustAdvanced) {
+    const quest = resolved.questJustAdvanced;
+    const title = typeof quest.title === "string" && quest.title ? quest.title : "their quest";
+    const objective = typeof quest.objective === "string" && quest.objective ? ` — ${quest.objective}` : "";
+    message += ` The player has just advanced "${title}"${objective}. Weave this progress naturally into the narration as a turning point, without declaring further quests.`;
+  }
+  const result = await withGmTimeout(
+    runGmPipeline({
+      campaignId: run.campaignId,
+      message,
+      mode: "companion",
+      playerName: run.player?.displayName || "the wanderer",
+      actorUserId: user?.id
+    }),
+    GM_ACTION_TIMEOUT_MS
+  );
+  const narrative = result && typeof result.narrative === "string" ? result.narrative.trim() : "";
+  return narrative || null;
+}
+
+// TASK B: one final GM call for the victory moment. Builds a "closing narration"
+// scene context (the completed quest + a victory hint) and returns the GM's
+// triumphant sign-off, or null on timeout/failure (the victory screen still
+// renders without it).
+async function narrateVictoryWithGm(run, quest, user) {
+  if (!run?.campaignId || !quest) {
+    return null;
+  }
+  const title = typeof quest.title === "string" && quest.title ? quest.title : "their quest";
+  const objective = typeof quest.objective === "string" && quest.objective ? `: ${quest.objective}` : "";
+  const message =
+    `The player has completed their quest "${title}"${objective}. This is the triumphant closing ` +
+    `moment of the run — the journey is won. Write a short, evocative victory narration ` +
+    `(2-3 sentences) celebrating this hard-won conclusion. Do not introduce new quests, ` +
+    `rewards, locations, or unresolved threads — this is a closing beat.`;
   const result = await withGmTimeout(
     runGmPipeline({
       campaignId: run.campaignId,
@@ -853,6 +890,14 @@ async function handleApi(req, res) {
         responseRun.narration = gmNarration;
       }
 
+      // Victory narration: when the main quest was just completed, one final GM
+      // call writes the closing beat shown on the victory screen before the
+      // summary. Best-effort — null on timeout/failure.
+      let victoryNarration = null;
+      if (resolved.runWon) {
+        victoryNarration = await narrateVictoryWithGm(responseRun, resolved.wonQuest, user);
+      }
+
       writeJson(res, 200, {
         ok: true,
         run: responseRun,
@@ -869,7 +914,8 @@ async function handleApi(req, res) {
         details: resolved.details,
         availableMoves: resolved.availableMoves,
         availableActions: resolved.availableActions,
-        runWon: Boolean(resolved.runWon)
+        runWon: Boolean(resolved.runWon),
+        victoryNarration
       });
     } catch (error) {
       routeError(res, error);

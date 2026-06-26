@@ -914,6 +914,13 @@ button.alt:hover {
   color: var(--accent, #c89a4b);
   margin: 0 0 8px;
 }
+.solo-victory-narration {
+  color: var(--ink, #ece1c7);
+  font-style: italic;
+  line-height: 1.5;
+  min-height: 1.5em;
+  margin: 0 0 18px;
+}
 .solo-victory-sub {
   color: var(--ink, #ece1c7);
   margin: 0 0 22px;

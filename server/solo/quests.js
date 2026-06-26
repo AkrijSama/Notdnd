@@ -131,15 +131,16 @@ function predicateMet(run, quest, actionResult) {
  *
  * @param {object} run         post-action run (carries run.quests + state)
  * @param {object} actionResult resolver result (may carry talkResult, etc.)
- * @returns {{ updated: boolean, wonQuest: object | null }}
+ * @returns {{ updated: boolean, wonQuest: object | null, completed: object[] }}
  */
 export function advanceQuests(run, actionResult = {}) {
   if (!isPlainObject(run) || !isPlainObject(run.quests)) {
-    return { updated: false, wonQuest: null };
+    return { updated: false, wonQuest: null, completed: [] };
   }
 
   let updated = false;
   let wonQuest = null;
+  const completed = [];
 
   for (const quest of Object.values(run.quests)) {
     if (!isPlainObject(quest) || quest.status !== "active") {
@@ -148,13 +149,14 @@ export function advanceQuests(run, actionResult = {}) {
     if (predicateMet(run, quest, actionResult)) {
       quest.status = "completed";
       updated = true;
+      completed.push(quest);
       if (quest.isMain && !wonQuest) {
         wonQuest = quest;
       }
     }
   }
 
-  return { updated, wonQuest };
+  return { updated, wonQuest, completed };
 }
 
 /**

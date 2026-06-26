@@ -1733,11 +1733,23 @@ export function renderSoloSceneShell(state = {}) {
     const where = summary.location || state.scene?.location?.name || "the world";
     const played = formatRunDuration(summary.timePlayedMs);
     const questTitle = state.scene?.quests?.mainQuest?.title || "your quest";
+    const narration = typeof state.victoryNarration === "string" ? state.victoryNarration : "";
+    const narrationTyped = state.victoryTyped === true;
     return `
       <section class="solo-scene-shell solo-victory-screen" data-solo-victory>
         <div class="solo-victory-card">
           <div class="solo-victory-kicker">Victory</div>
           <h2 class="solo-victory-title">${escapeHtml(name)} prevails.</h2>
+          ${
+            narration
+              ? `<p
+                   class="solo-victory-narration ${narrationTyped ? "is-complete" : ""}"
+                   data-solo-victory-text
+                   data-typed="${narrationTyped ? "true" : "false"}"
+                   data-fulltext="${escapeHtml(narration)}"
+                 >${narrationTyped ? escapeHtml(narration) : ""}</p>`
+              : ""
+          }
           <p class="solo-victory-sub">You completed <strong>${escapeHtml(questTitle)}</strong>. This chapter is won.</p>
           <dl class="solo-victory-summary">
             <div><dt>Adventurer</dt><dd>${escapeHtml(name)}</dd></div>
@@ -2148,6 +2160,46 @@ export function bindSoloSceneShell(root, handlers = {}) {
     });
   });
 
+  // ---- Victory-screen narration typewriter (same treatment as dialogue) ----
+  const victoryTextEl = root.querySelectorAll("[data-solo-victory-text]")[0] || null;
+  if (victoryTextEl && typeof victoryTextEl.getAttribute === "function") {
+    const fullText = victoryTextEl.getAttribute("data-fulltext") || "";
+    const alreadyTyped = victoryTextEl.getAttribute("data-typed") === "true";
+    let timer = null;
+    const finish = () => {
+      if (timer && typeof clearInterval === "function") {
+        clearInterval(timer);
+      }
+      timer = null;
+      victoryTextEl.textContent = fullText;
+      victoryTextEl.classList?.add("is-complete");
+      handlers.onVictoryTyped?.();
+    };
+    if (!alreadyTyped && fullText && typeof setInterval === "function") {
+      victoryTextEl.textContent = "";
+      let i = 0;
+      timer = setInterval(() => {
+        i += 1;
+        victoryTextEl.textContent = fullText.slice(0, i);
+        if (i >= fullText.length) {
+          finish();
+        }
+      }, 30);
+    }
+    // Click the card (except the home button) skips the typewriter.
+    root.querySelectorAll("[data-solo-victory]").forEach((card) => {
+      card.addEventListener("click", (event) => {
+        const target = event?.target;
+        if (target && typeof target.closest === "function" && target.closest("[data-solo-home]")) {
+          return;
+        }
+        if (timer) {
+          finish();
+        }
+      });
+    });
+  }
+
   // ---- In-scene NPC creator modal + cast roster ----
   root.querySelectorAll("[data-solo-npc-create]").forEach((button) => {
     button.addEventListener("click", () => handlers.onOpenNpcCreator?.());
@@ -2273,6 +2325,10 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     deathScreen: false,
     victoryScreen: false,
     pendingVictory: false,
+    // GM-written closing narration for a won run (typewritered on the victory
+    // screen before the summary). victoryTyped marks the reveal complete.
+    victoryNarration: null,
+    victoryTyped: false,
     runSummary: null,
     menuOpen: false,
     cogNote: "",
@@ -2321,6 +2377,7 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       onAttemptDraft: handleAttemptDraft,
       onDialogueClose: handleDialogueClose,
       onDialogueTyped: handleDialogueTyped,
+      onVictoryTyped: handleVictoryTyped,
       onOpenNpcCreator: handleOpenNpcCreator,
       onNpcClose: handleNpcClose,
       onNpcMode: handleNpcMode,
@@ -2693,6 +2750,7 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     const response = await postSoloAction(apiClient, runId, action);
     if (response && response.runWon) {
       state.pendingVictory = true;
+      state.victoryNarration = typeof response.victoryNarration === "string" ? response.victoryNarration : null;
     }
     return response;
   }
@@ -2762,6 +2820,12 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     // Typewriter finished (or was skipped); mark complete so a re-render shows
     // the full line immediately instead of restarting the reveal.
     state.dialogueTyped = true;
+  }
+
+  function handleVictoryTyped() {
+    // Victory narration typewriter finished/skipped; mark complete so any later
+    // re-render shows the full closing line rather than restarting the reveal.
+    state.victoryTyped = true;
   }
 
   function handleTab({ tab }) {
