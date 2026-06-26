@@ -31,14 +31,21 @@ function titleCase(value) {
 }
 
 /**
- * Builds the single main quest from a world definition using a template (no AI).
- * Title/objective/description derive from worldDef.name + tone +
- * startingLocationName. Completion defaults to reach_location at a second
- * location; when no second location is available it falls back to talk_beat
- * with the first NPC.
+ * Builds the two-stage main quest from a world definition using a template
+ * (no AI). The arc:
+ *   Stage 0 — reach_location at the second location ("Travel to ...").
+ *   Stage 1 — talk_beat with the destination NPC ("Find what awaits you
+ *             there"), or, when no NPC is available, a safe reach fallback
+ *             (the predicate switch only supports reach/talk/obtain, so a true
+ *             "search reveal" stage would need its own seeded content + kind).
+ *
+ * The active stage's objective + completion are mirrored onto the top-level
+ * quest fields for back-compat (older clients read quest.objective /
+ * quest.completion directly). advanceQuests keeps that mirror current as the
+ * stage changes.
  *
  * @param {object} worldDef  resolved world ({ name, tone, startingLocationName, ... })
- * @param {object} [options] { secondLocationId, firstNpcId } from the run being built
+ * @param {object} [options] { secondLocationId, secondLocationName, firstNpcId }
  * @returns {object} quest record (shape matches validateQuestState + MVP fields)
  */
 export function createMainQuest(worldDef = {}, options = {}) {
@@ -48,34 +55,47 @@ export function createMainQuest(worldDef = {}, options = {}) {
     ? worldDef.startingLocationName.trim()
     : "where you began";
 
-  const secondLocationId = isString(options.secondLocationId) ? options.secondLocationId.trim() : null;
+  const secondLocationId = isString(options.secondLocationId)
+    ? options.secondLocationId.trim()
+    : DEFAULT_SECOND_LOCATION_ID;
+  const secondLocationName = isString(options.secondLocationName)
+    ? options.secondLocationName.trim()
+    : "the next waypoint";
   const firstNpcId = isString(options.firstNpcId) ? options.firstNpcId.trim() : null;
 
-  let completion;
-  let objective;
-  if (secondLocationId) {
-    completion = { kind: "reach_location", targetId: secondLocationId };
-    objective = `Leave ${startName} and press deeper into ${name}.`;
-  } else if (firstNpcId) {
-    completion = { kind: "talk_beat", targetId: firstNpcId };
-    objective = `Find the one soul in ${startName} who knows what comes next.`;
-  } else {
-    // Safe default: the default graph always provides a second location.
-    completion = { kind: "reach_location", targetId: DEFAULT_SECOND_LOCATION_ID };
-    objective = `Leave ${startName} and press deeper into ${name}.`;
-  }
+  const stageZero = {
+    objective: `Travel to ${secondLocationName}.`,
+    completion: { kind: "reach_location", targetId: secondLocationId }
+  };
+
+  const stageOne = firstNpcId
+    ? {
+        objective: "Find what awaits you there.",
+        completion: { kind: "talk_beat", targetId: firstNpcId }
+      }
+    : {
+        // No NPC to seed a quest beat on. The predicate switch has no
+        // search-reveal kind, so fall back to a second reach of the same
+        // destination — degenerate but always completable.
+        objective: "Find what awaits you there.",
+        completion: { kind: "reach_location", targetId: secondLocationId }
+      };
+
+  const stages = [stageZero, stageOne];
 
   return {
     questId: MAIN_QUEST_ID,
     status: "active",
     isMain: true,
     title: `The ${titleCase(tone)} Road`,
-    objective,
     description:
-      `${name} is a ${tone} world, and ${startName} is only where your story opens. ` +
-      `It does not end here — there is further to go.`,
-    completion,
+      `${name} is a ${tone} world. First, travel to ${secondLocationName}; ` +
+      `then uncover what waits for you there. ${startName} is only where your story opens.`,
+    stages,
     stage: 0,
+    // Mirror of the active stage (stage 0) for back-compat.
+    objective: stageZero.objective,
+    completion: stageZero.completion,
     relatedEntityIds: [],
     memoryFactIds: [],
     flags: {}
@@ -105,7 +125,10 @@ function playerHasItem(run, itemId) {
 }
 
 function predicateMet(run, quest, actionResult) {
-  const completion = isPlainObject(quest.completion) ? quest.completion : null;
+  // Read the ACTIVE stage's completion (multi-stage quests), falling back to the
+  // mirrored top-level completion for legacy single-predicate quests.
+  const c = quest.stages?.[quest.stage]?.completion ?? quest.completion;
+  const completion = isPlainObject(c) ? c : null;
   if (!completion) {
     return false;
   }
@@ -129,24 +152,48 @@ function predicateMet(run, quest, actionResult) {
  * quests to "completed" (mutates run.quests in place). Completing the main quest
  * marks the run as won.
  *
+ * On a match: if the quest has a later stage, advance to it (and re-mirror the
+ * new stage's objective/completion onto the top-level fields); if it is on its
+ * final stage, mark it completed. Advances at most one stage per action.
+ *
  * @param {object} run         post-action run (carries run.quests + state)
  * @param {object} actionResult resolver result (may carry talkResult, etc.)
- * @returns {{ updated: boolean, wonQuest: object | null, completed: object[] }}
+ * @returns {{ updated: boolean, wonQuest: object | null, completed: object[], advanced: object[] }}
  */
 export function advanceQuests(run, actionResult = {}) {
   if (!isPlainObject(run) || !isPlainObject(run.quests)) {
-    return { updated: false, wonQuest: null, completed: [] };
+    return { updated: false, wonQuest: null, completed: [], advanced: [] };
   }
 
   let updated = false;
   let wonQuest = null;
   const completed = [];
+  const advanced = [];
 
   for (const quest of Object.values(run.quests)) {
     if (!isPlainObject(quest) || quest.status !== "active") {
       continue;
     }
-    if (predicateMet(run, quest, actionResult)) {
+    if (!predicateMet(run, quest, actionResult)) {
+      continue;
+    }
+
+    const stages = Array.isArray(quest.stages) ? quest.stages : null;
+    const lastIndex = stages ? stages.length - 1 : 0;
+    const currentStage = Number.isInteger(quest.stage) ? quest.stage : 0;
+
+    if (stages && currentStage < lastIndex) {
+      // Not the final stage — advance and re-mirror the new stage's fields.
+      quest.stage = currentStage + 1;
+      const next = stages[quest.stage];
+      if (next) {
+        quest.objective = next.objective;
+        quest.completion = next.completion;
+      }
+      updated = true;
+      advanced.push(quest);
+    } else {
+      // Final stage (or a legacy single-predicate quest) — complete it.
       quest.status = "completed";
       updated = true;
       completed.push(quest);
@@ -156,7 +203,7 @@ export function advanceQuests(run, actionResult = {}) {
     }
   }
 
-  return { updated, wonQuest, completed };
+  return { updated, wonQuest, completed, advanced };
 }
 
 /**
