@@ -656,6 +656,36 @@ export function deleteSoloRun(runId) {
   return true;
 }
 
+/**
+ * Narrow write: concludes a solo run by moving it out of the "active" status and
+ * recording how it ended. The outcome (e.g. "died", "exited"/"abandoned",
+ * "completed_quest") maps to a terminal status — "abandoned" for a voluntary
+ * exit, "completed" otherwise — and is stored verbatim on run.outcome alongside
+ * run.completedAt. Idempotent: a run that is already concluded is returned
+ * unchanged (so a later abandon can't overwrite a death). Returns the concluded
+ * run (deep clone), or null if the run does not exist.
+ * @param {string} runId
+ * @param {string} [outcome]
+ * @returns {object|null}
+ */
+export function completeSoloRun(runId, outcome = "completed") {
+  ensureDb();
+  const run = db.soloRuns[String(runId || "").trim()];
+  if (!run) {
+    return null;
+  }
+  if (run.status === "active") {
+    const cleaned = typeof outcome === "string" && outcome.trim() ? outcome.trim() : "completed";
+    run.status = cleaned === "abandoned" || cleaned === "exited" ? "abandoned" : "completed";
+    run.outcome = cleaned;
+    run.completedAt = nowIso();
+    run.updatedAt = run.completedAt;
+    bumpStateVersion();
+    writeToDisk();
+  }
+  return deepClone(run);
+}
+
 // ---------------------------------------------------------------------------
 // Image-asset writes (narrow, surgical).
 //

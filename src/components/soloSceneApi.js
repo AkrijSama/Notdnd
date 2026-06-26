@@ -39,3 +39,16 @@ export async function saveSoloBattleMap(apiClient, runId, battleMap) {
     return null;
   }
 }
+
+// Concludes a run (death / voluntary exit) and returns its summary. Best-effort:
+// returns null on failure so navigation/UI is never blocked by a failed close.
+export async function completeSoloRun(apiClient, runId, outcome) {
+  if (!apiClient || typeof apiClient.completeSoloRun !== "function") {
+    return null;
+  }
+  try {
+    return await apiClient.completeSoloRun(requireRunId(runId), outcome || "completed");
+  } catch {
+    return null;
+  }
+}

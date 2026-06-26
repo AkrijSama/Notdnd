@@ -113,6 +113,12 @@ export function createApiClient(baseUrl = "") {
         body: JSON.stringify(battleMap || {})
       });
     },
+    async completeSoloRun(runId, outcome) {
+      return request(`/api/solo/runs/${encodeURIComponent(runId)}/complete`, {
+        method: "POST",
+        body: JSON.stringify({ outcome: outcome || "completed" })
+      });
+    },
     async createNpc(runId, { name, description, introInstructions, origin } = {}) {
       return request(`/api/solo/runs/${encodeURIComponent(runId)}/npcs`, {
         method: "POST",

@@ -814,6 +814,73 @@ button.alt:hover {
   box-shadow: var(--shadow);
 }
 
+/* ---- Death screen (run conclusion: outcome "died") -------------------- */
+.solo-death-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  background: radial-gradient(120% 90% at 50% 0%, #1a0d0a, #0a0605 70%);
+}
+.solo-death-card {
+  max-width: 520px;
+  width: 100%;
+  margin: auto;
+  padding: 36px 32px;
+  text-align: center;
+  border: 1px solid var(--line, #3d2f22);
+  border-radius: var(--radius-lg, 20px);
+  background: var(--panel, #221a13);
+  box-shadow: var(--shadow, 0 14px 34px rgba(0, 0, 0, 0.55));
+}
+.solo-death-kicker {
+  font-size: 13px;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  color: var(--accent-2, #b94c2d);
+  margin-bottom: 10px;
+}
+.solo-death-title {
+  font-family: var(--font-display, Georgia, serif);
+  font-size: 28px;
+  color: var(--ink, #ece1c7);
+  margin: 0 0 8px;
+}
+.solo-death-sub {
+  color: var(--muted, #95897a);
+  margin: 0 0 22px;
+}
+.solo-death-summary {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 26px;
+  text-align: left;
+}
+.solo-death-summary > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 12px;
+  border: 1px solid var(--border, #2e2420);
+  border-radius: 8px;
+  background: var(--card-dim, #160f09);
+}
+.solo-death-summary dt {
+  color: var(--muted, #95897a);
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.solo-death-summary dd {
+  margin: 0;
+  color: var(--ink, #ece1c7);
+  font-weight: 600;
+}
+.solo-death-home {
+  font-size: 1.02rem;
+  padding: 12px 26px;
+}
+
 button:disabled {
   cursor: not-allowed;
   opacity: 0.45;
@@ -2436,6 +2503,25 @@ button:disabled {
 .solo-home-run-card.primary {
   border-color: var(--accent);
   box-shadow: 0 0 0 1px var(--accent) inset;
+}
+.solo-home-run-card.finished {
+  opacity: 0.55;
+  filter: grayscale(0.6);
+  background: var(--card, #14100c);
+}
+.solo-home-run-card.finished strong {
+  text-decoration: line-through;
+  text-decoration-color: rgba(149, 137, 122, 0.6);
+}
+.solo-home-run-badge {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted, #95897a);
+  border: 1px solid var(--border, #2e2420);
+  border-radius: 999px;
+  padding: 4px 12px;
+  white-space: nowrap;
 }
 .solo-home-run-meta {
   display: flex;

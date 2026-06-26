@@ -42,6 +42,7 @@ import {
   assertCampaignPlayAccess,
   assertCampaignReadAccess,
   assertCampaignWriteAccess,
+  completeSoloRun,
   createQuickstartCampaignFromParsed,
   createSoloRun,
   getCampaignRole,
@@ -474,6 +475,41 @@ function parseSoloRunNpcsPath(pathname) {
     return null;
   }
   return decodeURIComponent(raw);
+}
+
+function parseSoloRunCompletePath(pathname) {
+  const prefix = "/api/solo/runs/";
+  if (!pathname.startsWith(prefix) || !pathname.endsWith("/complete")) {
+    return null;
+  }
+  const raw = pathname.slice(prefix.length, -"/complete".length).replace(/\/+$/, "").trim();
+  if (!raw || raw.includes("/")) {
+    return null;
+  }
+  return decodeURIComponent(raw);
+}
+
+// Player-facing summary of a concluded run (player name, where they ended, how
+// long they played, and how it ended). Pure; built from server truth.
+function buildRunSummary(run) {
+  const createdAt = run.createdAt || null;
+  const endedAt = run.completedAt || run.updatedAt || null;
+  let timePlayedMs = null;
+  if (createdAt && endedAt) {
+    const ms = new Date(endedAt).getTime() - new Date(createdAt).getTime();
+    timePlayedMs = Number.isFinite(ms) && ms >= 0 ? ms : null;
+  }
+  const location = run.locations?.[run.currentLocationId] || null;
+  return {
+    runId: run.runId,
+    playerName: run.player?.displayName || "Adventurer",
+    location: location?.name || run.currentLocationId || null,
+    status: run.status,
+    outcome: run.outcome || run.status,
+    createdAt,
+    endedAt,
+    timePlayedMs
+  };
 }
 
 function parseSoloRunPortraitPath(pathname) {
@@ -1064,6 +1100,30 @@ async function handleApi(req, res) {
       const battleMap = { width, height, positions, revealed };
       updateSoloRunBattleMap(soloMapRunId, battleMap);
       writeJson(res, 200, { ok: true, battleMap });
+    } catch (error) {
+      routeError(res, error);
+    }
+    return true;
+  }
+
+  // Run conclusion: move a run out of "active" and return a player-facing
+  // summary. Outcome (e.g. "died", "abandoned", "completed_quest") is recorded.
+  const soloCompleteRunId = parseSoloRunCompletePath(url.pathname);
+  if (soloCompleteRunId && req.method === "POST") {
+    try {
+      const user = requireAuth(req);
+      const run = getSoloRun(soloCompleteRunId);
+      if (!run) {
+        throw Object.assign(new Error("Solo run not found."), { code: "NOT_FOUND", statusCode: 404 });
+      }
+      assertSoloRunAccess(user, run);
+      const payload = await readJsonBody(req);
+      const outcome = typeof payload?.outcome === "string" && payload.outcome.trim() ? payload.outcome.trim() : "completed";
+      const concluded = completeSoloRun(soloCompleteRunId, outcome);
+      if (!concluded) {
+        throw Object.assign(new Error("Solo run not found."), { code: "NOT_FOUND", statusCode: 404 });
+      }
+      writeJson(res, 200, { ok: true, summary: buildRunSummary(concluded) });
     } catch (error) {
       routeError(res, error);
     }

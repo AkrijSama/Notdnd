@@ -133,13 +133,22 @@ function renderSoloRunCard(run, { primary = false } = {}) {
   const worldName = run?.world?.name || "Untitled World";
   const charName = run?.player?.displayName || "Adventurer";
   const status = run?.status || "unknown";
+  // Concluded runs (completed/abandoned) are read-only: greyed out, badged with
+  // their outcome, and no Resume button (you cannot re-enter a closed run).
+  const finished = status === "completed" || status === "abandoned";
+  const badgeLabel = status === "completed" ? "Completed" : status === "abandoned" ? "Abandoned" : "";
+  const outcome = run?.outcome && run.outcome !== status ? ` (${run.outcome})` : "";
   return `
-    <article class="solo-home-run-card${primary ? " primary" : ""}">
+    <article class="solo-home-run-card${primary ? " primary" : ""}${finished ? " finished" : ""}">
       <div class="solo-home-run-meta">
         <strong>${escapeHtml(worldName)}</strong>
-        <span class="small">${escapeHtml(charName)} · ${escapeHtml(status)}</span>
+        <span class="small">${escapeHtml(charName)} · ${escapeHtml(status)}${escapeHtml(outcome)}</span>
       </div>
-      <button data-action="open-run" data-run-id="${escapeHtml(run.runId)}">${primary ? "Continue your adventure" : "Resume"}</button>
+      ${
+        finished
+          ? `<span class="solo-home-run-badge">${escapeHtml(badgeLabel)}</span>`
+          : `<button data-action="open-run" data-run-id="${escapeHtml(run.runId)}">${primary ? "Continue your adventure" : "Resume"}</button>`
+      }
     </article>
   `;
 }

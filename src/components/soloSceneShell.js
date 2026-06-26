@@ -1,4 +1,4 @@
-import { fetchSoloGmScene, fetchSoloScene, postSoloAction, saveSoloBattleMap } from "./soloSceneApi.js";
+import { completeSoloRun, fetchSoloGmScene, fetchSoloScene, postSoloAction, saveSoloBattleMap } from "./soloSceneApi.js";
 import {
   DEFAULT_VISION_TILES,
   computeReachable,
@@ -1646,6 +1646,24 @@ export function renderNpcCreatorModal(state = {}) {
   `;
 }
 
+// Formats a run duration (ms) as a compact "Xh Ym" / "Xm Ys" / "Xs" string.
+export function formatRunDuration(ms) {
+  if (!Number.isFinite(ms) || ms < 0) {
+    return "—";
+  }
+  const totalSeconds = Math.floor(ms / 1000);
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = totalSeconds % 60;
+  if (h > 0) {
+    return `${h}h ${m}m`;
+  }
+  if (m > 0) {
+    return `${m}m ${s}s`;
+  }
+  return `${s}s`;
+}
+
 export function renderSoloSceneShell(state = {}) {
   if (state.loading) {
     return `
@@ -1662,6 +1680,31 @@ export function renderSoloSceneShell(state = {}) {
           <h2>Solo Scene Unavailable</h2>
           <p>${escapeHtml(state.error)}</p>
           <button class="ghost" data-solo-action="reload-scene">Retry</button>
+        </div>
+      </section>
+    `;
+  }
+
+  // Death screen: the run has been concluded as a death; replace the shell with
+  // a summary before the player returns to the solo home.
+  if (state.deathScreen) {
+    const summary = state.runSummary || {};
+    const name = summary.playerName || state.character?.name || "Your adventurer";
+    const where = summary.location || state.scene?.location?.name || "the wilds";
+    const played = formatRunDuration(summary.timePlayedMs);
+    return `
+      <section class="solo-scene-shell solo-death-screen" data-solo-death>
+        <div class="solo-death-card">
+          <div class="solo-death-kicker">You Died</div>
+          <h2 class="solo-death-title">${escapeHtml(name)} has fallen.</h2>
+          <p class="solo-death-sub">Cut down in ${escapeHtml(where)}. This story ends here.</p>
+          <dl class="solo-death-summary">
+            <div><dt>Adventurer</dt><dd>${escapeHtml(name)}</dd></div>
+            <div><dt>Last seen</dt><dd>${escapeHtml(where)}</dd></div>
+            <div><dt>Time played</dt><dd>${escapeHtml(played)}</dd></div>
+            <div><dt>Outcome</dt><dd>${escapeHtml(summary.outcome || "died")}</dd></div>
+          </dl>
+          <button class="solo-death-home" data-solo-home>Return to your adventures</button>
         </div>
       </section>
     `;
@@ -1788,6 +1831,10 @@ export function bindSoloSceneShell(root, handlers = {}) {
 
   root.querySelectorAll("[data-solo-exit]").forEach((button) => {
     button.addEventListener("click", () => handlers.onExit?.());
+  });
+
+  root.querySelectorAll("[data-solo-home]").forEach((button) => {
+    button.addEventListener("click", () => handlers.onReturnHome?.());
   });
 
   root.querySelectorAll("[data-solo-menu-toggle]").forEach((button) => {
@@ -2117,6 +2164,11 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     busy: null,
     banner: "",
     gmThinking: false,
+    // Run conclusion (death / abandon). runConcluded guards against double-close;
+    // deathScreen swaps the shell for a summary screen; runSummary holds it.
+    runConcluded: false,
+    deathScreen: false,
+    runSummary: null,
     menuOpen: false,
     cogNote: "",
     battleMap: { positions: {}, selectedTokenId: null, movedTiles: 0, history: [], revealed: [] },
@@ -2135,6 +2187,7 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     bindSoloSceneShell(root, {
       onReload: loadScene,
       onExit: handleExit,
+      onReturnHome: handleReturnHome,
       onDismissBanner: handleDismissBanner,
       onMenuToggle: handleMenuToggle,
       onCogPlaceholder: handleCogPlaceholder,
@@ -2437,25 +2490,51 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     render();
   }
 
-  function handleExit() {
-    // The run is already persisted server-side; leaving just navigates home.
+  // Concludes the run server-side exactly once and caches its summary.
+  // Best-effort: a failed close must never block the death screen or navigation.
+  async function concludeRun(outcome) {
+    if (state.runConcluded) {
+      return state.runSummary;
+    }
+    state.runConcluded = true;
+    const response = await completeSoloRun(apiClient, runId, outcome);
+    state.runSummary = response?.summary || null;
+    return state.runSummary;
+  }
+
+  // Navigates to the solo home, flagging the exit so bootstrap() does not
+  // auto-resume this (now concluded) run — otherwise "/" would redirect straight
+  // back into it (re-entry loop).
+  function returnHome() {
     if (typeof window === "undefined") {
       return;
     }
-    if (typeof window.confirm === "function" && !window.confirm("Leave this adventure? Your progress is saved.")) {
-      return;
-    }
-    // Signal an explicit exit so bootstrap() does NOT auto-resume this run.
-    // The flag must stay set across the navigation below: without it, "/"
-    // would auto-redirect straight back into this run (re-entry loop).
     try {
       window.sessionStorage?.setItem("notdnd_exited_run", "true");
     } catch {
       // sessionStorage may be unavailable; navigation still proceeds.
     }
-    // "/" now renders the minimal solo home (Continue card + Start a New
-    // Adventure + past runs), not the legacy 7-tab GM shell.
+    // "/" renders the minimal solo home (Continue card + Start a New Adventure +
+    // past runs), not the legacy 7-tab GM shell.
     window.location.href = "/";
+  }
+
+  async function handleExit() {
+    // Voluntary exit ("Leave Adventure"): confirm, close the run as "abandoned"
+    // so it is properly concluded (not left active forever), then navigate home.
+    if (typeof window === "undefined") {
+      return;
+    }
+    if (typeof window.confirm === "function" && !window.confirm("Leave this adventure? Your progress is saved and the run will be closed.")) {
+      return;
+    }
+    await concludeRun("abandoned");
+    returnHome();
+  }
+
+  // Returns home from the death screen (run already concluded as "died").
+  function handleReturnHome() {
+    returnHome();
   }
 
   function handleDialogueClose() {
@@ -2700,6 +2779,12 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
         }
       } catch {
         // Placeholder GM narration is optional and must not block scene rendering.
+      }
+      // Player downed (0 HP, surfaced via player.status): conclude the run as a
+      // death and switch the shell to the death screen.
+      if (state.scene?.player?.status === "downed" && !state.runConcluded) {
+        await concludeRun("died");
+        state.deathScreen = true;
       }
       state.detail = null;
       state.searchResult = null;
