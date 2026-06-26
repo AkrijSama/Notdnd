@@ -1022,7 +1022,21 @@ async function handleApi(req, res) {
           positions[String(tokenId)] = { x, y };
         }
       }
-      const battleMap = { width, height, positions };
+      // Phase 3 fog: explored cells, sanitized to in-bounds "x,y" keys.
+      const rawRevealed = Array.isArray(payload?.revealed) ? payload.revealed : [];
+      const revealed = [];
+      const seen = new Set();
+      for (const cell of rawRevealed) {
+        if (typeof cell !== "string" || seen.has(cell)) {
+          continue;
+        }
+        const [rx, ry] = cell.split(",").map((n) => Math.floor(Number(n)));
+        if (Number.isFinite(rx) && Number.isFinite(ry) && rx >= 0 && ry >= 0 && rx < width && ry < height) {
+          seen.add(cell);
+          revealed.push(`${rx},${ry}`);
+        }
+      }
+      const battleMap = { width, height, positions, revealed };
       updateSoloRunBattleMap(soloMapRunId, battleMap);
       writeJson(res, 200, { ok: true, battleMap });
     } catch (error) {

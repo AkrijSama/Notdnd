@@ -112,3 +112,51 @@ export function moveCost(grid, x, y) {
 export function isLegalMove(grid, budget, x, y) {
   return computeReachable(grid, budget).has(cellKey(x, y));
 }
+
+// ---------------------------------------------------------------------------
+// Fog of war (Phase 3). Vision is a simple circular radius in tiles (no
+// line-of-sight). A creature with speed 30 sees ~20ft by default.
+// ---------------------------------------------------------------------------
+export const DEFAULT_VISION_TILES = 4;
+
+/**
+ * Set of "x,y" keys within `radiusTiles` (circular, in-bounds) of (x,y). Pure.
+ */
+export function visibleFrom(width, height, x, y, radiusTiles) {
+  const cells = new Set();
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    return cells;
+  }
+  const r = Math.max(0, Math.floor(Number.isFinite(radiusTiles) ? radiusTiles : DEFAULT_VISION_TILES));
+  const minY = Math.max(0, y - r);
+  const maxY = Math.min(height - 1, y + r);
+  const minX = Math.max(0, x - r);
+  const maxX = Math.min(width - 1, x + r);
+  for (let cy = minY; cy <= maxY; cy += 1) {
+    for (let cx = minX; cx <= maxX; cx += 1) {
+      const dx = cx - x;
+      const dy = cy - y;
+      if (dx * dx + dy * dy <= r * r) {
+        cells.add(cellKey(cx, cy));
+      }
+    }
+  }
+  return cells;
+}
+
+/**
+ * Union of the vision circles of every viewer. viewers: [{x,y,radius}]. Pure.
+ * @returns {Set<string>} revealed "x,y" keys
+ */
+export function computeRevealed(width, height, viewers = []) {
+  const revealed = new Set();
+  for (const viewer of viewers) {
+    if (!viewer) {
+      continue;
+    }
+    for (const cell of visibleFrom(width, height, viewer.x, viewer.y, viewer.radius)) {
+      revealed.add(cell);
+    }
+  }
+  return revealed;
+}

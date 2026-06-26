@@ -75,9 +75,17 @@ test("crowded field stays in-bounds and collision-free", () => {
 });
 
 test("renderSoloMapTab draws the grid, scale label, tokens, and legend", () => {
-  const html = renderSoloMapTab(scene);
-  // grid cells = width * height
-  const cellCount = (html.match(/class="solo-map-cell"/g) || []).length;
+  // Reveal the whole board so fog (Phase 3) doesn't hide the far NPCs here;
+  // this test is about token rendering, not fog.
+  const revealed = [];
+  for (let y = 0; y < SOLO_MAP_HEIGHT; y += 1) {
+    for (let x = 0; x < SOLO_MAP_WIDTH; x += 1) {
+      revealed.push(`${x},${y}`);
+    }
+  }
+  const html = renderSoloMapTab(scene, { revealed });
+  // grid cells = width * height (cells may carry legal/fogged modifiers)
+  const cellCount = (html.match(/class="solo-map-cell/g) || []).length;
   assert.equal(cellCount, SOLO_MAP_WIDTH * SOLO_MAP_HEIGHT);
   assert.match(html, /1 tile = 5 ft/);
   assert.match(html, /12×10 grid/);
@@ -93,7 +101,7 @@ test("renderSoloMapTab draws the grid, scale label, tokens, and legend", () => {
 
 test("renderSoloMapTab handles an empty scene gracefully", () => {
   const html = renderSoloMapTab({});
-  assert.match(html, /No combatants on the field/);
-  const cellCount = (html.match(/class="solo-map-cell"/g) || []).length;
+  assert.match(html, /Nothing in sight/); // fog: no viewers -> nothing revealed
+  const cellCount = (html.match(/class="solo-map-cell/g) || []).length;
   assert.equal(cellCount, SOLO_MAP_WIDTH * SOLO_MAP_HEIGHT);
 });

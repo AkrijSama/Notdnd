@@ -1,5 +1,12 @@
 import { fetchSoloGmScene, fetchSoloScene, postSoloAction, saveSoloBattleMap } from "./soloSceneApi.js";
-import { computeReachable, isLegalMove, moveCost, tilesForSpeed } from "./battleMapEngine.js";
+import {
+  DEFAULT_VISION_TILES,
+  computeReachable,
+  computeRevealed,
+  isLegalMove,
+  moveCost,
+  tilesForSpeed
+} from "./battleMapEngine.js";
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -1257,6 +1264,7 @@ export function buildSoloMapTokens(scene = {}, options = {}) {
       faction: "player",
       // Carried for Phase 2 (speed-validated movement); unused in Phase 1.
       speed: typeof player.speed === "number" ? player.speed : 30,
+      vision: typeof player.vision === "number" ? player.vision : DEFAULT_VISION_TILES,
       ...place(Math.floor(width / 2), height - 1)
     });
   }
@@ -1274,6 +1282,7 @@ export function buildSoloMapTokens(scene = {}, options = {}) {
       portraitUri: typeof npc.portraitUri === "string" ? npc.portraitUri : "",
       faction: "npc",
       speed: typeof npc.speed === "number" ? npc.speed : 30,
+      vision: typeof npc.vision === "number" ? npc.vision : DEFAULT_VISION_TILES,
       ...place(Math.min(width - 1, (index + 1) * spacing), 1)
     });
   });
@@ -1317,23 +1326,40 @@ export function renderSoloMapTab(scene = {}, mapState = {}) {
     : new Set();
   const tokenByCell = new Map(tokens.map((token) => [`${token.x},${token.y}`, token]));
 
+  // Fog of war: a cell is revealed if it's in the explored (sticky) set OR
+  // within a player-faction token's current vision radius. Fogged cells are
+  // darkened and any token standing in fog is hidden.
+  const viewers = tokens
+    .filter((token) => token.faction === "player")
+    .map((token) => ({ x: token.x, y: token.y, radius: token.vision }));
+  const revealed = computeRevealed(width, height, viewers);
+  for (const key of Array.isArray(mapState.revealed) ? mapState.revealed : []) {
+    revealed.add(key);
+  }
+
   const cells = [];
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
-      const token = tokenByCell.get(`${x},${y}`);
-      const legal = reachable.has(`${x},${y}`);
+      const key = `${x},${y}`;
+      const fogged = !revealed.has(key);
+      const token = tokenByCell.get(key);
+      const legal = reachable.has(key);
+      const showToken = token && !fogged;
       cells.push(
-        `<div class="solo-map-cell${legal ? " legal" : ""}" data-cell="${x},${y}">${token ? renderSoloMapToken(token, token.id === selectedId) : ""}</div>`
+        `<div class="solo-map-cell${legal ? " legal" : ""}${fogged ? " fogged" : ""}" data-cell="${x},${y}">${showToken ? renderSoloMapToken(token, token.id === selectedId) : ""}</div>`
       );
     }
   }
 
+  // Legend lists only currently-visible tokens (fog hides the rest).
   const legend = tokens
+    .filter((token) => revealed.has(`${token.x},${token.y}`))
     .map(
       (token) =>
         `<span class="solo-map-legend-item"><span class="solo-token solo-token-${escapeHtml(token.kind)}">${escapeHtml(token.label)}</span>${escapeHtml(token.displayName)}</span>`
     )
     .join("");
+  const visibleCount = tokens.filter((token) => revealed.has(`${token.x},${token.y}`)).length;
 
   const canUndo = Array.isArray(mapState.history) && mapState.history.length > 0;
   const status = selected
@@ -1345,6 +1371,7 @@ export function renderSoloMapTab(scene = {}, mapState = {}) {
       <div class="solo-map-toolbar">
         <span class="tag">${width}×${height} grid</span>
         <span class="small">1 tile = ${SOLO_MAP_TILE_FEET} ft</span>
+        <span class="tag">Fog of war</span>
         <span class="small solo-map-status">${status}</span>
         <button type="button" class="ghost solo-map-undo" data-map-undo ${canUndo ? "" : "disabled"}>Undo</button>
       </div>
@@ -1352,9 +1379,9 @@ export function renderSoloMapTab(scene = {}, mapState = {}) {
         ${cells.join("")}
       </div>
       ${
-        tokens.length
+        visibleCount
           ? `<div class="solo-map-legend">${legend}</div>`
-          : `<div class="solo-map-sub">No combatants on the field.</div>`
+          : `<div class="solo-map-sub">Nothing in sight — explore to reveal the map.</div>`
       }
     </div>
   `;
@@ -2026,7 +2053,7 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     attemptDraft: "",
     menuOpen: false,
     cogNote: "",
-    battleMap: { positions: {}, selectedTokenId: null, movedTiles: 0, history: [] },
+    battleMap: { positions: {}, selectedTokenId: null, movedTiles: 0, history: [], revealed: [] },
     dialogueActive: false,
     dialogueTyped: false,
     gmMode: "placeholder",
@@ -2190,8 +2217,23 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     saveSoloBattleMap(apiClient, runId, {
       width: SOLO_MAP_WIDTH,
       height: SOLO_MAP_HEIGHT,
-      positions: state.battleMap.positions
+      positions: state.battleMap.positions,
+      revealed: state.battleMap.revealed
     });
+  }
+
+  // Fog of war: fold each player-faction token's current vision into the sticky
+  // explored set so tiles stay revealed once seen (auto-reveal on movement).
+  function accumulateReveal() {
+    const { tokens } = resolveBattleTokens(state.scene || {}, state.battleMap);
+    const viewers = tokens
+      .filter((token) => token.faction === "player")
+      .map((token) => ({ x: token.x, y: token.y, radius: token.vision }));
+    const merged = new Set(Array.isArray(state.battleMap.revealed) ? state.battleMap.revealed : []);
+    for (const cell of computeRevealed(SOLO_MAP_WIDTH, SOLO_MAP_HEIGHT, viewers)) {
+      merged.add(cell);
+    }
+    state.battleMap.revealed = [...merged];
   }
 
   function handleMapSelectToken(tokenId) {
@@ -2222,6 +2264,7 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     state.battleMap.history.push({ tokenId: selectedId, from: { ...from }, to: { x, y }, cost });
     state.battleMap.positions = { ...positionsById, [selectedId]: { x, y } };
     state.battleMap.movedTiles += cost;
+    accumulateReveal(); // auto-reveal fog around the moved token
     persistBattleMap();
     render();
   }
@@ -2454,6 +2497,12 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       if (state.scene?.battleMap?.positions && typeof state.scene.battleMap.positions === "object") {
         state.battleMap.positions = { ...state.scene.battleMap.positions };
       }
+      // Adopt persisted explored fog (Phase 3), then seed reveal around the
+      // current player position so the player always sees their surroundings.
+      if (Array.isArray(state.scene?.battleMap?.revealed)) {
+        state.battleMap.revealed = [...state.scene.battleMap.revealed];
+      }
+      accumulateReveal();
       try {
         const gmScene = await fetchSoloGmScene(apiClient, runId, { mode: state.gmMode });
         if (gmScene?.gmNarration) {
