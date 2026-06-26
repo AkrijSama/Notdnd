@@ -5,6 +5,7 @@
   "type": "module",
   "description": "Notdnd scaffold: Roll20 + D&D Beyond mechanics with AI GM placeholders",
   "dependencies": {
+    "better-sqlite3": "^12.11.1",
     "flexsearch": "^0.8.205"
   },
   "scripts": {
