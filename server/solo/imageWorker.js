@@ -193,6 +193,15 @@ export async function runImageJob(job = {}) {
       if (!assetId) {
         continue;
       }
+      // Generate-once / cache-forever: skip a variant slot that is already
+      // generated (mirrors the base-portrait reuse check above). Only missing or
+      // previously-failed slots are (re)generated, so re-running the job after a
+      // partial failure fills the gaps without re-paying for completed slots.
+      const variantAsset = run?.imageAssets?.[assetId] || null;
+      if (variantAsset && variantAsset.status === "generated" && typeof variantAsset.uri === "string" && variantAsset.uri) {
+        variants.push({ slot: expression, ok: true, uri: variantAsset.uri, reused: true });
+        continue;
+      }
       // eslint-disable-next-line no-await-in-loop
       const variant = await generateSlot({
         runId,
