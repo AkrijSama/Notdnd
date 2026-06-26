@@ -588,6 +588,97 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
     };
   }
 
+  // Tone-driven far location: replace the placeholder third location (the far
+  // edge of the graph — connected only to second_location, so unreachable from
+  // start) with a destination named from the world, seed searchDetails so it
+  // rewards exploration, and place a lone witness there with end-state lore.
+  const thirdLocation = run.locations?.third_location || null;
+  if (thirdLocation) {
+    const farNouns = ["Depths", "Reach", "Verge", "Hollow", "Expanse", "Threshold", "Descent", "Brink"];
+    const farCore =
+      String(resolvedWorld.name || "the world").replace(/^the\s+/i, "").trim().split(/\s+/)[0] || "Far";
+    const farNoun = farNouns[Math.abs(Math.trunc(worldSeed)) % farNouns.length];
+    thirdLocation.name = `The ${capitalizeFirst(farCore)} ${farNoun}`;
+    thirdLocation.description =
+      `The road gives out here, at the far edge of ${resolvedWorld.name}. This is where the ${resolvedWorld.tone} ` +
+      `of this land settles thickest — where whatever became of everywhere else took hold first. ` +
+      `Few come this far, and fewer leave unchanged.`;
+    thirdLocation.tags = Array.from(
+      new Set([
+        ...(thirdLocation.tags || []).filter((tag) => !["ashenmoor", "ashen-watch", "gatehouse"].includes(tag)),
+        slugTag(resolvedWorld.tone),
+        "destination"
+      ])
+    );
+    thirdLocation.searchDetails = [
+      {
+        detailId: "third_location_relic",
+        label: "A Half-Buried Relic",
+        description:
+          `Something old juts from the dirt — a marker from before ${resolvedWorld.name} fell to its ${resolvedWorld.tone}. ` +
+          "The inscription is almost worn smooth, but a few words still hold.",
+        revealed: false,
+        contentTags: [],
+        linkedEntityIds: ["third_location"],
+        linkedMemoryFactIds: [],
+        edition: "mainline",
+        policyProfileId: "mainline_default"
+      },
+      {
+        detailId: "third_location_vista",
+        label: "The View Beyond",
+        description:
+          "From this vantage the full shape of what went wrong lies open across the land — and there is no mistaking " +
+          "that the worst of it waits further on.",
+        revealed: false,
+        contentTags: [],
+        linkedEntityIds: ["third_location"],
+        linkedMemoryFactIds: [],
+        edition: "mainline",
+        policyProfileId: "mainline_default"
+      }
+    ];
+
+    // Static plot NPC at the destination (mirrors npc_quest_giver): no identity
+    // mint, faceless until the player arrives. Two beats — a reaction to the
+    // player reaching the edge, and repeatable lore on how the world got here.
+    run.npcs.npc_far_witness = {
+      npcId: "npc_far_witness",
+      displayName: "A figure at the edge",
+      role: "witness",
+      currentLocationId: "third_location",
+      known: true,
+      status: "present",
+      memoryFactIds: [],
+      tags: ["lore"],
+      flags: {},
+      edition: "mainline",
+      policyProfileId: "mainline_default",
+      contentTags: [],
+      origin: "procedural",
+      dialogueBeats: [
+        {
+          beatId: "beat_far_arrival",
+          label: "You came this far",
+          text: `Most turn back long before ${thirdLocation.name}. You didn't — and that tells me what kind of ending you're walking toward.`,
+          revealed: false,
+          repeatable: false,
+          linkedQuestIds: [],
+          contentTags: []
+        },
+        {
+          beatId: "beat_far_lore",
+          label: "How it ended",
+          text: `${resolvedWorld.name} was not always like this. The ${resolvedWorld.tone} crept in slowly, and no one agreed on the moment it became too late. Out here, at the edge, you can still feel where it began.`,
+          revealed: false,
+          repeatable: true,
+          linkedQuestIds: [],
+          contentTags: []
+        }
+      ]
+    };
+  }
+
   // Seed the two-stage MVP main quest: travel to the second location (stage 0),
   // then speak with the figure waiting there (stage 1). The tone-keyed template
   // (quests.js) supplies the title/objectives; targets resolve to this run.
@@ -598,6 +689,19 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
     firstNpcId: secondLocation ? "npc_quest_giver" : npc.npcId,
     seed: worldSeed
   });
+
+  // Extend the arc to the far location: after the figure at the second location,
+  // press on to the third location — reaching it is the win ("reach the far edge
+  // of the map"). The engine's N-stage support (advanceQuests) walks this
+  // appended stage like any other. Appended here rather than baked into the
+  // shared createMainQuest contract (which tests lock to two stages), so the
+  // third location is a live win target without changing that contract.
+  if (thirdLocation && Array.isArray(run.quests.quest_main?.stages)) {
+    run.quests.quest_main.stages.push({
+      objective: `Press on to ${thirdLocation.name}.`,
+      completion: { kind: "reach_location", targetId: "third_location" }
+    });
+  }
 
   await rebuildCampaignIndex(campaignId);
 
