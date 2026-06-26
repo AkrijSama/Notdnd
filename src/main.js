@@ -501,7 +501,7 @@ async function handleAuthSubmit(form) {
     if ((nextState.campaigns || []).length === 0) {
       uiState.onboarding = {
         ...uiState.onboarding,
-        step: "character",
+        step: "world",
         error: ""
       };
     } else {
@@ -543,6 +543,21 @@ function bindAppEvents() {
   if (toggleAccountMenu) {
     toggleAccountMenu.addEventListener("click", () => {
       uiState.showAccountMenu = !uiState.showAccountMenu;
+      scheduleRender();
+    });
+  }
+
+  const startAdventureBtn = appRoot.querySelector("[data-action='start-new-adventure']");
+  if (startAdventureBtn) {
+    startAdventureBtn.addEventListener("click", () => {
+      uiState.onboarding = {
+        ...uiState.onboarding,
+        step: "world",
+        worldDef: {},
+        worldPreview: null,
+        loading: false,
+        error: ""
+      };
       scheduleRender();
     });
   }
@@ -910,7 +925,9 @@ async function bootstrap() {
     await loadCampaignMembers();
     const campaigns = store.getState().campaigns || [];
     if (campaigns.length === 0) {
-      uiState.onboarding.step = "character";
+      // Zero campaigns (new OR existing account) -> start the world generator,
+      // not the character wizard (which would skip world creation).
+      uiState.onboarding.step = "world";
     } else {
       // If the player explicitly left a run, don't auto-resume it — offer a
       // "Continue your adventure" prompt on the home screen instead.

@@ -56,6 +56,14 @@ export function renderCommandCenter(state, options = {}) {
       <div class="grid-two">
         <article class="module-card">
           <h3>Campaign Queue</h3>
+          ${
+            state.campaigns.length === 0
+              ? `<div class="empty-campaign-queue">
+                   <p class="small">No adventures yet. Generate a world and step into it.</p>
+                   <button data-action="start-new-adventure">Start a New Adventure</button>
+                 </div>`
+              : ""
+          }
           <ul class="list">
             ${state.campaigns
               .map((campaign) => {
