@@ -3,6 +3,7 @@ import { getAvailableSoloActions } from "./actions.js";
 import { getVisibleEntities, validateVisibleEntity } from "./entities.js";
 import { generatePlaceholderGmNarration, validateGmSceneOutput } from "./gm.js";
 import { getAvailableMoves } from "./movement.js";
+import { getQuestPayload } from "./quests.js";
 import { getUsableInventoryItems } from "./useItem.js";
 import {
   NPC_EXPRESSIONS,
@@ -672,6 +673,8 @@ export function buildSoloScenePayload(run, options = {}) {
     // Phase 2 battle map: persisted token positions (null until the player
     // moves a token). The client falls back to deterministic placement.
     battleMap: isPlainObject(run.battleMap) ? run.battleMap : null,
+    // MVP quest engine: active quests + the main quest (or null) for this run.
+    quests: getQuestPayload(run),
     availableMoves: getAvailableMoves(run).filter((move) => {
       const destination = run.locations[move.locationId];
       return destination ? policyAllows(destination, policyProfile) : false;

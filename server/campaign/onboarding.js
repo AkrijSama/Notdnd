@@ -9,6 +9,7 @@ import { buildCharacter, toRunPlayer } from "../solo/characterBuild.js";
 import { generateNpcIdentity } from "../solo/npcIdentity.js";
 import { writeNpcMemoryDoc } from "../solo/npcMemory.js";
 import { generateWorld } from "../solo/worldGen.js";
+import { createMainQuest } from "../solo/quests.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -435,6 +436,15 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
   }
   run.npcs = run.npcs || {};
   run.npcs[npc.npcId] = npc;
+
+  // Seed the single MVP main quest from the generated world. Default goal is to
+  // reach the second location; if the run somehow lacks one, fall back to a
+  // talk beat with the starting contact.
+  run.quests = run.quests || {};
+  run.quests.quest_main = createMainQuest(resolvedWorld, {
+    secondLocationId: run.locations?.second_location ? "second_location" : null,
+    firstNpcId: npc.npcId
+  });
 
   await rebuildCampaignIndex(campaignId);
 

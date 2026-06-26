@@ -813,6 +813,12 @@ async function handleApi(req, res) {
 
       const responseRun = resolved.run ? saveSoloRun(resolved.run) : run;
 
+      // Quest win condition: completing the main quest ends the run in victory.
+      // The flipped quest status was just persisted via saveSoloRun above.
+      if (resolved.runWon) {
+        completeSoloRun(responseRun.runId, "victory");
+      }
+
       // Augment EVERY narratable action with real GM narration (bounded; the
       // mechanical template survives as a fallback). The narration is also
       // stored as the run's current scene narrative so /gm-scene reflects play.
@@ -862,7 +868,8 @@ async function handleApi(req, res) {
         entity: resolved.entity,
         details: resolved.details,
         availableMoves: resolved.availableMoves,
-        availableActions: resolved.availableActions
+        availableActions: resolved.availableActions,
+        runWon: Boolean(resolved.runWon)
       });
     } catch (error) {
       routeError(res, error);
