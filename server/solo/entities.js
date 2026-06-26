@@ -109,6 +109,10 @@ function playerEntity(player, currentLocationId) {
     visible: true,
     inspectable: true,
     imageAssetId: null,
+    // The player portrait is stored as a URI on run.player (not an imageAsset),
+    // so surface it here for the Entity Sheet — otherwise inspecting the player
+    // always reads imageAssetId:null and shows "No image assigned".
+    portraitUri: typeof player.portraitUri === "string" ? player.portraitUri : null,
     memoryFactIds: [],
     actionTypes: ["inspect"],
     contentTags: [],

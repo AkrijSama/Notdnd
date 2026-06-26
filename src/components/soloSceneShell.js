@@ -712,6 +712,7 @@ export function renderEntityDetailPanel(detail = null) {
   const memories = details.memoryFacts || entity.memoryFacts || [];
   const availableActions = details.availableActions || entity.availableActions || [];
   const imageAssetId = details.imageAssetId || entity.imageAssetId || null;
+  const portraitUri = details.portraitUri || entity.portraitUri || null;
   const tags = details.tags || entity.tags || [];
 
   return `
@@ -721,7 +722,11 @@ export function renderEntityDetailPanel(detail = null) {
         <span class="small">Structured payload</span>
       </div>
       <div class="solo-detail-hero">
-        <div class="solo-detail-portrait">${escapeHtml(imageAssetId || "No image assigned.")}</div>
+        <div class="solo-detail-portrait">${
+          portraitUri
+            ? `<img class="solo-detail-portrait-img" src="${escapeHtml(portraitUri)}" alt="${escapeHtml(title)} portrait" />`
+            : escapeHtml(imageAssetId || "No image assigned.")
+        }</div>
         <div>
           <div class="solo-section-kicker">${escapeHtml(typeLabel(type))}</div>
           <h4>${escapeHtml(title)}</h4>
