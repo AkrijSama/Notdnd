@@ -118,19 +118,61 @@ function renderWizardProgress(step) {
   ).join("")}</div>`;
 }
 
-function renderCharIdentity(c) {
+// Shared mid-creation portrait preview (steps 1 Identity + 6 Review). Reads
+// { portraitUri, portraitStatus } from the onboarding state. Never renders a
+// blank box: it always shows the image, a spinner while first generating, the
+// current image under a pulsing "Regenerating…" overlay while a race/class
+// change generates a new one, the failed note, or an idle hint.
+function renderPortraitPreview(portrait = {}, options = {}) {
+  const variant = options.variant === "review" ? " onb-portrait-review" : "";
+  const uri = typeof portrait.portraitUri === "string" ? portrait.portraitUri : "";
+  const status = portrait.portraitStatus || "idle";
+  const alt = `${esc(options.charName || "Character")} portrait`;
+  // A new generation in flight while we still hold a prior image = regenerating.
+  const regenerating = status === "generating" && Boolean(uri);
+  if (uri) {
+    return `<div class="onb-portrait-preview${variant}${regenerating ? " onb-portrait-regenerating" : ""}">
+        <img class="onb-portrait-img" src="${esc(uri)}" alt="${alt}" />
+        ${regenerating ? `<div class="onb-portrait-overlay"><span class="onb-portrait-spinner" aria-hidden="true"></span>Regenerating…</div>` : ""}
+      </div>`;
+  }
+  if (status === "generating") {
+    return `<div class="onb-portrait-preview${variant} onb-portrait-loading">
+        <span class="onb-portrait-spinner" aria-hidden="true"></span>
+        <small>Crafting your portrait… (~20s)</small>
+      </div>`;
+  }
+  if (status === "failed") {
+    return `<div class="onb-portrait-preview${variant} onb-portrait-loading">
+        <small>Your portrait will be generated when you enter the world.</small>
+      </div>`;
+  }
+  return `<div class="onb-portrait-preview${variant} onb-portrait-loading">
+      <small>Pick a race and class to preview your portrait.</small>
+    </div>`;
+}
+
+function renderCharIdentity(c, portrait = {}) {
   const mode = c.portraitMode || "generate";
   return `
-    <div class="onb-field"><label>Character name</label>
-      <input data-cw-input="name" maxlength="60" placeholder="Ser Rowan Vale" value="${esc(c.name || "")}" /></div>
-    <div class="onb-field"><label>Pronouns (optional)</label>
-      <input data-cw-input="pronouns" maxlength="30" placeholder="they/them" value="${esc(c.pronouns || "")}" /></div>
-    <div class="onb-field"><label>Portrait</label>
-      <div class="onb-chips">
-        ${renderChip("Let the GM imagine them", mode === "generate", 'data-cw-portraitmode="generate"')}
-        ${renderChip("I'll upload my own", mode === "upload", 'data-cw-portraitmode="upload"')}
+    <div class="onb-identity">
+      <div class="onb-identity-fields">
+        <div class="onb-field"><label>Character name</label>
+          <input data-cw-input="name" maxlength="60" placeholder="Ser Rowan Vale" value="${esc(c.name || "")}" /></div>
+        <div class="onb-field"><label>Pronouns (optional)</label>
+          <input data-cw-input="pronouns" maxlength="30" placeholder="they/them" value="${esc(c.pronouns || "")}" /></div>
+        <div class="onb-field"><label>Portrait</label>
+          <div class="onb-chips">
+            ${renderChip("Let the GM imagine them", mode === "generate", 'data-cw-portraitmode="generate"')}
+            ${renderChip("I'll upload my own", mode === "upload", 'data-cw-portraitmode="upload"')}
+          </div>
+          <small class="onb-hint">Your portrait is crafted from your race and class — it appears here as you choose them.</small>
+        </div>
       </div>
-      <small class="onb-hint">You can upload or reroll the portrait once you're in the world.</small>
+      <div class="onb-identity-portrait">
+        <div class="onb-kicker">Portrait preview</div>
+        ${renderPortraitPreview(portrait, { charName: c.name, variant: "identity" })}
+      </div>
     </div>`;
 }
 
@@ -222,7 +264,7 @@ function renderCharAbilities(c) {
     </div>`;
 }
 
-function renderCharReview(c) {
+function renderCharReview(c, portrait = {}) {
   const sheet = buildCharacter({
     name: c.name,
     pronouns: c.pronouns,
@@ -240,12 +282,10 @@ function renderCharReview(c) {
   const skills = sheet.skills.filter((s) => s.proficient).map((s) => `<span class="prof">${esc(s.name)} ${formatModifier(s.modifier)}</span>`).join("") || `<span class="small">No proficiencies</span>`;
   return `
     <div class="cw-review">
-      <div class="cw-review-head">
-        <div class="cw-portrait-ph">${esc((sheet.name || "?").slice(0, 1).toUpperCase())}</div>
-        <div>
-          <div class="cw-review-name">${esc(sheet.name || "Unnamed")}</div>
-          <div class="cw-review-sub">${esc([sheet.race, sheet.class, sheet.background].filter(Boolean).join(" · ") || "—")} · Level ${sheet.level}</div>
-        </div>
+      <div class="cw-review-portrait">
+        ${renderPortraitPreview(portrait, { charName: c.name, variant: "review" })}
+        <div class="cw-review-name">${esc(sheet.name || "Unnamed")}</div>
+        <div class="cw-review-sub">${esc([sheet.race, sheet.class, sheet.background].filter(Boolean).join(" · ") || "—")} · Level ${sheet.level}</div>
       </div>
       <div class="cw-ability-grid">${abilityCells}</div>
       <div class="cw-derived">
@@ -264,7 +304,15 @@ function renderCharacterWizard(state) {
   const c = state.character || {};
   const step = c.step || 1;
   const bodies = { 1: renderCharIdentity, 2: renderCharRace, 3: renderCharClass, 4: renderCharBackground, 5: renderCharAbilities, 6: renderCharReview };
-  const body = (bodies[step] || renderCharIdentity)(c);
+  // Steps 1 (Identity) and 6 (Review) both show the live mid-creation portrait;
+  // its status lives on the onboarding state, not the character object.
+  const portrait = { portraitUri: state.draftPortraitUri, portraitStatus: state.draftPortraitStatus };
+  const body =
+    step === 1
+      ? renderCharIdentity(c, portrait)
+      : step === 6
+        ? renderCharReview(c, portrait)
+        : (bodies[step] || renderCharIdentity)(c);
   const isLast = step === 6;
 
   // Gate "Enter the World" on the three required character fields. Recomputed

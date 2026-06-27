@@ -91,7 +91,7 @@ import { createWsHub } from "./realtime/wsHub.js";
 import { resolveSoloAction } from "./solo/actions.js";
 import { resolveGmNarration } from "./solo/gmProvider.js";
 import { buildGmRuntimeStatus } from "./solo/gmSmoke.js";
-import { enqueueImageJob, enqueueLocationImageJob, enqueuePlayerImageJob, enqueueVariantImageJob, writeUploadedBasePortrait } from "./solo/imageWorker.js";
+import { enqueueDraftPortrait, enqueueImageJob, enqueueLocationImageJob, enqueuePlayerImageJob, enqueueVariantImageJob, getDraftPortrait, writeUploadedBasePortrait } from "./solo/imageWorker.js";
 import { enqueueIdentityJob, runIdentityJob } from "./solo/npcIdentity.js";
 import { buildNpcIntroDirective, buildSoloScenePayload, collectNpcsWithPendingIntro } from "./solo/scene.js";
 
@@ -1409,9 +1409,40 @@ async function handleApi(req, res) {
       const payload = await readJsonBody(req);
       const result = await createWorldOnboardingRun(user.id, {
         world: payload?.world || {},
-        character: payload?.character || {}
+        character: payload?.character || {},
+        draftPortraitId: payload?.draftPortraitId || null
       });
       writeJson(res, 200, { ok: true, ...result });
+    } catch (error) {
+      routeError(res, error);
+    }
+    return true;
+  }
+
+  // Mid-creation (draft) player portrait: generate before a run exists, keyed by
+  // a hash of the character fields. Returns a draftId the client polls.
+  if (req.method === "POST" && url.pathname === "/api/onboarding/portrait") {
+    try {
+      requireAuth(req);
+      const payload = await readJsonBody(req);
+      const draftId = enqueueDraftPortrait({
+        character: payload?.character || {},
+        world: payload?.world || {}
+      });
+      writeJson(res, 200, { ok: true, draftId, status: "generating" });
+    } catch (error) {
+      routeError(res, error);
+    }
+    return true;
+  }
+
+  // Poll a draft portrait: { status: "generating"|"generated"|"failed", uri }.
+  if (req.method === "GET" && url.pathname.startsWith("/api/onboarding/portrait/")) {
+    try {
+      requireAuth(req);
+      const draftId = decodeURIComponent(url.pathname.slice("/api/onboarding/portrait/".length));
+      const status = getDraftPortrait(draftId);
+      writeJson(res, 200, { ok: true, ...status });
     } catch (error) {
       routeError(res, error);
     }
@@ -2162,6 +2193,8 @@ server.on("error", (error) => {
 });
 
 server.listen(port, host, () => {
+  // Startup confirmation: makes a successful bind obvious vs. a server stuck in
+  // an EADDRINUSE loop (where only [DB] prints and the port never binds).
   // eslint-disable-next-line no-console
-  // Removed noisy debug output for production.
+  console.log(`[SERVER] Inkborne listening on port ${port}`);
 });

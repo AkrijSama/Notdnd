@@ -10,15 +10,28 @@
 // "require is not defined"). We forward SIGTERM/SIGINT to the child and only
 // suppress the respawn when WE initiated shutdown — so a clean orchestrator stop
 // exits cleanly, while a crash (non-zero exit) OR an external kill (e.g. OOM
-// SIGKILL) is restarted.
+// SIGKILL) is restarted. EADDRINUSE is the exception: respawning never frees a
+// port held by another process, so we fast-fail instead of looping forever.
 import { spawn } from "node:child_process";
 
 let child = null;
 let shuttingDown = false;
+// Last 500 chars of the child's stderr, so we can detect an unrecoverable
+// EADDRINUSE before deciding whether to respawn.
+let stderrTail = "";
 
 function start() {
-  child = spawn(process.execPath, ["server/index.js"], { stdio: "inherit" });
-  child.on("exit", (code, signal) => {
+  stderrTail = "";
+  // stdout inherited (the [SERVER]/[DB] startup logs reach the terminal
+  // directly); stderr piped so we can scan it for EADDRINUSE — while still
+  // passing it through to the terminal so the operator sees errors unchanged.
+  child = spawn(process.execPath, ["server/index.js"], { stdio: ["inherit", "inherit", "pipe"] });
+  child.stderr.on("data", (chunk) => {
+    process.stderr.write(chunk);
+    stderrTail = (stderrTail + chunk.toString("utf8")).slice(-500);
+  });
+  // "close" (not "exit") so all piped stderr has been flushed before we decide.
+  child.on("close", (code, signal) => {
     if (shuttingDown) {
       // We asked it to stop — mirror its exit and don't respawn.
       process.exit(typeof code === "number" ? code : 0);
@@ -27,6 +40,13 @@ function start() {
     if (code === 0) {
       // Clean self-exit (not a crash) — nothing left to supervise.
       process.exit(0);
+      return;
+    }
+    // Unrecoverable port conflict: another process holds the port, so respawning
+    // would just loop [DB] -> EADDRINUSE -> restart forever, never binding.
+    if (code === 1 && stderrTail.includes("EADDRINUSE")) {
+      console.error("[FATAL] Port already in use. Kill the existing process and restart.");
+      process.exit(1);
       return;
     }
     // Crash (non-zero code) or external kill (signal) the supervisor did not

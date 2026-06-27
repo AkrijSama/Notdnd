@@ -199,11 +199,22 @@ export function createApiClient(baseUrl = "") {
         body: JSON.stringify({ definition, field, salt })
       });
     },
-    async createWorldRun({ world, character }) {
+    async createWorldRun({ world, character, draftPortraitId = null }) {
       return request("/api/onboarding/world-run", {
         method: "POST",
-        body: JSON.stringify({ world, character })
+        body: JSON.stringify({ world, character, draftPortraitId })
       });
+    },
+    // Mid-creation portrait: request generation (server returns a draftId) and
+    // poll it. No run exists yet.
+    async requestDraftPortrait({ character, world }) {
+      return request("/api/onboarding/portrait", {
+        method: "POST",
+        body: JSON.stringify({ character, world })
+      });
+    },
+    async getDraftPortrait(draftId) {
+      return request(`/api/onboarding/portrait/${encodeURIComponent(draftId)}`);
     },
     async getGmMemory(campaignId) {
       return request(`/api/gm/memory?campaignId=${encodeURIComponent(campaignId)}`);
