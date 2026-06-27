@@ -50,10 +50,240 @@ export const LOCATION_TYPE_PRESETS = [
 export const ART_STYLES = ["illustrated", "anime", "cinematic"];
 
 const CORE_FIELDS = ["name", "tone", "startingLocationName", "startingLocationType", "flavor"];
-const NAME_ADJ = ["Shattered", "Ashen", "Hollow", "Sunken", "Riven", "Forgotten", "Bleak", "Gilded", "Thorned", "Ember", "Drowned", "Pale"];
-const NAME_NOUN = ["Realm", "Reaches", "Dominion", "Marches", "Expanse", "Wastes", "Kingdoms", "Frontier", "Vale", "Hollows"];
-const LOC_ADJ = ["Ashen", "Grey", "Salt", "Black", "Iron", "Mist", "Pale", "Old", "Crooked"];
-const LOC_NOUN = ["Crossroad", "Hollow", "Gate", "Harbor", "Hold", "Market", "Rest", "Reach", "Watch", "Landing"];
+
+// ---------------------------------------------------------------------------
+// Tone-aware generation. Each setting archetype carries its own name word banks
+// (so a cyberpunk world gets "Neo-Kowloon", not "The Riven Hollows") and prose
+// phrases (so the opening doesn't frame a sci-fi world with medieval "frayed
+// edge of the known world"). Presets map the TONE_PRESETS exactly; `keywords`
+// catch free-text custom tones (e.g. "Futuristic/Cyberpunk" -> cyberpunk).
+// Unknown tones fall back to dark_fantasy — never a crash.
+//   worldFormats placeholders: {adj} {noun} {num}
+//   places: second-location (hub) suffixes;  far: far-location (climax) nouns
+// ---------------------------------------------------------------------------
+const TONE_ARCHETYPES = {
+  dark_fantasy: {
+    presets: ["dark fantasy", "grimdark"],
+    keywords: ["dark", "grim", "gothic", "blight", "cursed", "ashen", "bleak"],
+    worldAdj: ["Shattered", "Ashen", "Hollow", "Sunken", "Riven", "Forgotten", "Bleak", "Gilded", "Thorned", "Ember", "Drowned", "Pale"],
+    worldNoun: ["Realm", "Reaches", "Dominion", "Marches", "Expanse", "Wastes", "Kingdoms", "Frontier", "Vale", "Hollows"],
+    worldFormats: ["The {adj} {noun}"],
+    locAdj: ["Ashen", "Grey", "Salt", "Black", "Iron", "Mist", "Pale", "Old", "Crooked"],
+    locNoun: ["Crossroad", "Hollow", "Gate", "Harbor", "Hold", "Watch", "Rest", "Reach", "Landing"],
+    places: ["Market", "Ruins", "Crossing", "Watch"],
+    far: ["Depths", "Reach", "Verge", "Hollow", "Expanse", "Threshold", "Descent", "Brink"],
+    edge: "on the frayed edge of the known world",
+    descriptor: "weathered",
+    refuge: "one of the last places that still offers shelter",
+    flavor: "where old powers have fallen and the roads are no longer safe",
+    secondDescribe: (world, place) =>
+      `${place} is what ${world} clings to — guttering lamps, traded rumors, and watchful eyes under every awning.`,
+    farDescribe: (world, tone) =>
+      `The road gives out here, at the far edge of ${world}, where the ${tone} of this land settles thickest. Few come this far, and fewer leave unchanged.`
+  },
+  cosmic_horror: {
+    presets: ["cosmic horror"],
+    keywords: ["cosmic", "eldritch", "lovecraft", "void", "dread", "horror", "occult", "abyss", "unspeakable"],
+    worldAdj: ["Drowned", "Sunless", "Whispering", "Unspoken", "Weeping", "Hollow", "Y'lethi", "Sunken", "Veiled"],
+    worldNoun: ["Depths", "Maw", "Threshold", "Veil", "Abyss", "Hollows", "Expanse", "Reaches"],
+    worldFormats: ["The {adj} {noun}", "{adj} {noun}"],
+    locAdj: ["Drowned", "Sunless", "Whispering", "Pale", "Salt", "Weeping", "Grey"],
+    locNoun: ["Wharf", "Harbor", "Threshold", "Vigil", "Hollow", "Landing", "Mooring"],
+    places: ["Wharf", "Harbor", "Threshold"],
+    far: ["Depths", "Maw", "Veil", "Threshold", "Abyss", "Descent", "Drowning"],
+    edge: "at a thin place where the world wears through",
+    descriptor: "fog-bound",
+    refuge: "a threshold the dread has not yet crossed",
+    flavor: "where the world is thinner than anyone admits, and something on the far side is patient",
+    secondDescribe: (world, place) =>
+      `${place} sits where ${world} meets dark water. The tide carries in more than ships, and the locals do not meet your eyes.`,
+    farDescribe: (world, tone) =>
+      `Here the edges of ${world} stop agreeing on what is real. The ${tone} runs deepest at this drowned threshold, and something on the far side is aware of you.`
+  },
+  post_apocalyptic: {
+    presets: ["post-apocalyptic", "post apocalyptic"],
+    keywords: ["apocalyp", "wasteland", "fallout", "survival", "nuclear", "ruin", "collapse", "scaveng"],
+    worldAdj: ["Rust", "Ash", "Broken", "Last", "Scorched", "Bleached", "Dust", "Salvaged"],
+    worldNoun: ["Wastes", "Sprawl", "Refuge", "Scrap", "Haven", "Remnants", "Reach", "Ruin"],
+    worldFormats: ["The {adj} {noun}", "{adj} {noun}"],
+    locAdj: ["Rust", "Ash", "Broken", "Scrap", "Dust", "Last", "Bleached"],
+    locNoun: ["Haven", "Refuge", "Sprawl", "Camp", "Yard", "Outpost", "Hold"],
+    places: ["Bazaar", "Scrapyard", "Market"],
+    far: ["Wastes", "Sprawl", "Ruin", "Verge", "Reach", "Crater", "Remnant"],
+    edge: "amid the rust and ruin of the old world",
+    descriptor: "rust-eaten",
+    refuge: "a rare pocket of safety in the wastes",
+    flavor: "where the old world is bones and the new one is scavenged from them",
+    secondDescribe: (world, place) =>
+      `${place} is where what's left of ${world} comes to trade — scavenged parts, clean water, and information, all of it cheaper than trust.`,
+    farDescribe: (world, tone) =>
+      `The wastes of ${world} run out here, where the ${tone} that broke the world hit first and hardest. Whatever you came to find, this is where it ends.`
+  },
+  steampunk: {
+    presets: ["steampunk"],
+    keywords: ["steam", "clockwork", "victorian", "industrial", "cog", "brass", "airship"],
+    worldAdj: ["Brass", "Cog", "Gilded", "Steam", "Iron", "Soot", "Clockwork", "Coal"],
+    worldNoun: ["Spires", "Foundry", "Works", "District", "Reach", "Sprawl", "Heights", "Combine"],
+    worldFormats: ["The {adj} {noun}", "{adj} {noun}"],
+    locAdj: ["Brass", "Cog", "Soot", "Iron", "Steam", "Gilded", "Coal"],
+    locNoun: ["Works", "Foundry", "District", "Yard", "Terminal", "Exchange", "Quarter"],
+    places: ["Works", "Foundry", "District"],
+    far: ["Works", "Foundry", "Heights", "Spire", "Combine", "Reach"],
+    edge: "in the soot and clamor of the great works",
+    descriptor: "soot-stained",
+    refuge: "a warm berth amid the grinding machinery",
+    flavor: "where smoke and ambition have outgrown the people who started them",
+    secondDescribe: (world, place) =>
+      `${place} is where ${world} keeps its gears turning — hissing valves, hawkers, and the constant tar-smell of the foundries.`,
+    farDescribe: (world, tone) =>
+      `Past the last rail line, ${world} thins to smoke and silence. The ${tone} that drives this land was forged out here, in works long since gone cold.`
+  },
+  sword_sorcery: {
+    presets: ["sword and sorcery", "sword & sorcery"],
+    keywords: ["sword", "sorcery", "barbarian", "pulp", "conan"],
+    worldAdj: ["Shattered", "Crimson", "Serpent", "Brazen", "Savage", "Jeweled", "Forsaken", "Wild"],
+    worldNoun: ["Marches", "Kingdoms", "Frontier", "Expanse", "Reaches", "Dominion", "Wilds", "Coast"],
+    worldFormats: ["The {adj} {noun}", "{adj} {noun}"],
+    locAdj: ["Crimson", "Serpent", "Brazen", "Iron", "Savage", "Old", "Wild"],
+    locNoun: ["Crossroad", "Gate", "Bazaar", "Hold", "Landing", "Camp"],
+    places: ["Crossroads", "Bazaar", "Market"],
+    far: ["Reaches", "Wilds", "Frontier", "Expanse", "Verge", "Coast", "Descent"],
+    edge: "on the wild marches beyond any law",
+    descriptor: "rough-hewn",
+    refuge: "a rare place to rest a blade and a back",
+    flavor: "where steel settles most arguments and sorcery the rest",
+    secondDescribe: (world, place) =>
+      `${place} is where every road in ${world} tangles together — sell-swords, opportunists, and trouble all pass through, coin in hand.`,
+    farDescribe: (world, tone) =>
+      `Beyond here ${world} turns to untamed wild. The ${tone} of this land runs hot and old this far out, where only the bold or the doomed go.`
+  },
+  high_fantasy: {
+    presets: ["high fantasy"],
+    keywords: ["high fantasy", "epic", "noble", "elven", "heroic"],
+    worldAdj: ["Silver", "Bright", "High", "Golden", "Radiant", "Sunlit", "Argent", "Eternal"],
+    worldNoun: ["Realm", "Spire", "Vale", "Sanctum", "Reaches", "Kingdoms", "Dominion", "Crowns"],
+    worldFormats: ["The {adj} {noun}", "{adj} {noun}"],
+    locAdj: ["Silver", "Bright", "High", "Golden", "Argent", "White", "Sunlit"],
+    locNoun: ["Vale", "Spire", "Gate", "Sanctum", "Court", "Crossing", "Hold"],
+    places: ["Market", "Quarter", "Court"],
+    far: ["Spire", "Vale", "Sanctum", "Reaches", "Crown", "Summit", "Verge"],
+    edge: "beneath the high banners of the realm",
+    descriptor: "gleaming",
+    refuge: "a bright and welcome haven for travelers",
+    flavor: "where banners still fly and old promises still bind",
+    secondDescribe: (world, place) =>
+      `${place} is the proud heart of trade in ${world} — silk awnings, ringing coin, and heralds calling the day's news beneath the spires.`,
+    farDescribe: (world, tone) =>
+      `At the realm's edge, ${world} rises into high and lonely country. The ${tone} of the age gathers here, where legends are said to begin and end.`
+  },
+  mythic: {
+    presets: ["mythic"],
+    keywords: ["myth", "divine", "god", "legend", "ancient", "celestial", "pantheon"],
+    worldAdj: ["Eternal", "Sacred", "Elder", "Divine", "Hallowed", "Ancient", "Sky", "Dawn"],
+    worldNoun: ["Throne", "Temple", "Pantheon", "Sanctum", "Reaches", "Expanse", "Realm", "Heavens"],
+    worldFormats: ["The {adj} {noun}", "{adj} {noun}"],
+    locAdj: ["Sacred", "Elder", "Divine", "Hallowed", "Ancient", "Sky", "Dawn"],
+    locNoun: ["Temple", "Throne", "Sanctum", "Altar", "Gate", "Spring", "Grove"],
+    places: ["Temple", "Sanctum", "Pantheon"],
+    far: ["Throne", "Temple", "Pantheon", "Heavens", "Summit", "Threshold"],
+    edge: "where the old gods are still remembered",
+    descriptor: "ancient",
+    refuge: "a sanctuary blessed against the dark",
+    flavor: "where gods still walk and their quarrels still shape the land",
+    secondDescribe: (world, place) =>
+      `${place} stands where the people of ${world} still bring offerings — incense, hymns, and the quiet certainty that something listens.`,
+    farDescribe: (world, tone) =>
+      `Here ${world} touches the threshold of the divine. The ${tone} of creation is closest at this place, where mortal roads were never meant to lead.`
+  },
+  cyberpunk: {
+    presets: [],
+    keywords: ["cyber", "punk", "neon", "tech", "future", "futurist", "sci-fi", "scifi", "science fiction", "space", "chrome", "android", "dystop", "corporate", "hacker", "matrix", "synth"],
+    worldAdj: ["Chrome", "Neon", "Razor", "Synth", "Static", "Cobalt", "Halcyon", "Mirror"],
+    worldNoun: ["Kowloon", "Sprawl", "Bay", "Heights", "Zone", "Grid", "Reach", "Spire", "Helix", "Verge"],
+    worldFormats: ["Neo-{noun}", "District {num}", "Sector {num}", "{adj} {noun}", "The {noun}"],
+    locAdj: ["Neon", "Chrome", "Razor", "Static", "Lower", "Synth"],
+    locNoun: ["District", "Sector", "Strip", "Terminal", "Block", "Arcology", "Market"],
+    places: ["Bazaar", "Market", "Strip"],
+    far: ["Sprawl", "Sector", "Undercity", "Grid", "Verge", "Deepnet", "Zero"],
+    edge: "deep in the neon-drowned sprawl",
+    descriptor: "neon-lit",
+    refuge: "a rare pocket of cover off the corporate grid",
+    flavor: "where the corps own the sky and everything below it is for sale",
+    secondDescribe: (world, place) =>
+      `${place} is ${world}'s black market — counterfeit chrome, leaked data, and street docs working under flickering neon, no questions logged.`,
+    farDescribe: (world, tone) =>
+      `Past the last lit sector, ${world} drops into the dark undercity. The ${tone} of this place runs rawest down here, where the grid forgets you exist.`
+  }
+};
+
+const DEFAULT_TONE_KEY = "dark_fantasy";
+
+// Maps any tone string to an archetype key. Exact preset match first, then a
+// substring scan for free-text custom tones, then the safe default.
+export function resolveToneKey(tone) {
+  const t = String(tone || "").trim().toLowerCase();
+  if (t) {
+    for (const [key, arch] of Object.entries(TONE_ARCHETYPES)) {
+      if (arch.presets.some((preset) => preset === t)) {
+        return key;
+      }
+    }
+    for (const [key, arch] of Object.entries(TONE_ARCHETYPES)) {
+      if (arch.keywords.some((kw) => t.includes(kw))) {
+        return key;
+      }
+    }
+  }
+  return DEFAULT_TONE_KEY;
+}
+
+function toneArchetype(tone) {
+  return TONE_ARCHETYPES[resolveToneKey(tone)] || TONE_ARCHETYPES[DEFAULT_TONE_KEY];
+}
+
+function formatName(template, { adj, noun, num }) {
+  return String(template)
+    .replace(/\{adj\}/g, adj)
+    .replace(/\{noun\}/g, noun)
+    .replace(/\{num\}/g, String(num));
+}
+
+// Deterministic, tone-appropriate world name (e.g. dark fantasy -> "The Riven
+// Hollows"; cyberpunk -> "Neo-Kowloon" / "District 7" / "Chrome Bay").
+export function pickWorldName(tone, seed) {
+  const arch = toneArchetype(tone);
+  const format = pick(arch.worldFormats, seed, 5);
+  const num = (Math.abs(Math.trunc(Number(seed) || 0)) % 90) + 7; // 7..96
+  return formatName(format, {
+    adj: pick(arch.worldAdj, seed, 0),
+    noun: pick(arch.worldNoun, seed, 1),
+    num
+  });
+}
+
+// Deterministic, tone-appropriate starting-location name (adj + noun).
+function pickStartLocationName(tone, seed) {
+  const arch = toneArchetype(tone);
+  return `${pick(arch.locAdj, seed, 2)} ${pick(arch.locNoun, seed, 3)}`;
+}
+
+// Second location (the stage-1 hub): "<World> <Suffix>" + a tone-matched blurb.
+// Used by onboarding to replace the old hardcoded "Ashenmoor Market Square".
+export function buildSecondLocation(tone, seed, worldName) {
+  const arch = toneArchetype(tone);
+  const suffix = pick(arch.places, seed, 7);
+  const name = `${worldName} ${suffix}`;
+  return { name, suffix, description: arch.secondDescribe(worldName, name) };
+}
+
+// Far location (the climax destination at the edge of the graph): tone-matched
+// name + description. Replaces the old fantasy-only far-noun list.
+export function buildFarLocation(tone, seed, worldName) {
+  const arch = toneArchetype(tone);
+  const core = String(worldName || "the world").replace(/^the\s+/i, "").trim().split(/\s+/)[0] || "Far";
+  const noun = pick(arch.far, seed, 9);
+  return { name: `The ${capitalize(core)} ${noun}`, description: arch.farDescribe(worldName, tone) };
+}
 
 function isStr(value) {
   return typeof value === "string" && value.trim().length > 0;
@@ -70,7 +300,9 @@ function seedFrom(...parts) {
 }
 
 function pick(list, seed, offset = 0) {
-  return list[(seed + offset) % list.length];
+  // Math.abs so negative seeds (e.g. onboarding's signed contentSeed) still
+  // index in range; for positive uint32 seeds this is identical to before.
+  return list[Math.abs(Math.trunc(Number(seed) || 0) + offset) % list.length];
 }
 
 function resolveTextProvider(explicit) {
@@ -118,15 +350,15 @@ function parseWorld(raw) {
 function fallbackField(def, field, seed) {
   switch (field) {
     case "name":
-      return `The ${pick(NAME_ADJ, seed)} ${pick(NAME_NOUN, seed, 1)}`;
+      return pickWorldName(def.tone, seed);
     case "tone":
       return "dark fantasy";
     case "startingLocationName":
-      return `${pick(LOC_ADJ, seed, 2)} ${pick(LOC_NOUN, seed, 3)}`;
+      return pickStartLocationName(def.tone, seed);
     case "startingLocationType":
       return pick(LOCATION_TYPE_PRESETS, seed, 4);
     case "flavor":
-      return `A ${def.tone || "dark fantasy"} world where old powers have fallen and the roads are no longer safe.`;
+      return `A ${def.tone || "dark fantasy"} world ${toneArchetype(def.tone).flavor}.`;
     default:
       return "";
   }
@@ -136,20 +368,24 @@ function fallbackField(def, field, seed) {
 // per-field "⟳" regenerate buttons actually change the text even with no AI
 // provider — without variants, the template was byte-identical every call and
 // the buttons looked dead. Flavor stays its own sentence to avoid grammar gaps.
+// m.refugePhrase / m.edgePhrase / m.descriptor are tone-derived (see synthesize),
+// so a cyberpunk world reads "deep in the neon-drowned sprawl", not a medieval
+// "frayed edge of the known world". refugePhrase is a noun phrase usable after
+// "as", "endures as", "remains", "is".
 const DESCRIPTION_TEMPLATES = [
-  (m) => `${capitalize(m.tone)} hangs over ${m.name}. ${m.flavor} Folk speak of ${m.startingLocationName} as one of the last places that still offers shelter.`,
-  (m) => `${m.name} is a ${m.tone} world. ${m.flavor} ${capitalize(m.startingLocationName)} endures as one of the few refuges left.`,
-  (m) => `Across ${m.name}, a ${m.tone} mood settles deep. ${m.flavor} Many drift toward ${m.startingLocationName}, where shelter can still be found.`,
-  (m) => `In ${m.name}, the ${m.tone} years have left their mark. ${m.flavor} ${capitalize(m.startingLocationName)} remains a place the desperate still seek out.`,
-  (m) => `${capitalize(m.tone)} runs through every corner of ${m.name}. ${m.flavor} Travelers whisper that ${m.startingLocationName} is where the weary still find an open door.`
+  (m) => `${capitalize(m.tone)} hangs over ${m.name}. ${m.flavor} Folk speak of ${m.startingLocationName} as ${m.refugePhrase}.`,
+  (m) => `${m.name} is a ${m.tone} world. ${m.flavor} ${capitalize(m.startingLocationName)} endures as ${m.refugePhrase}.`,
+  (m) => `Across ${m.name}, a ${m.tone} mood settles deep. ${m.flavor} Many drift toward ${m.startingLocationName}, ${m.refugePhrase}.`,
+  (m) => `In ${m.name}, the ${m.tone} years have left their mark. ${m.flavor} ${capitalize(m.startingLocationName)} remains ${m.refugePhrase}.`,
+  (m) => `${capitalize(m.tone)} runs through every corner of ${m.name}. ${m.flavor} Travelers whisper that ${m.startingLocationName} is ${m.refugePhrase}.`
 ];
 
 const LOCATION_TEMPLATES = [
-  (m) => `You begin at ${m.startingLocationName}, a ${m.startingLocationType} on the frayed edge of the known world.`,
+  (m) => `You begin at ${m.startingLocationName}, a ${m.startingLocationType} ${m.edgePhrase}.`,
   (m) => `Your story opens in ${m.startingLocationName}, a ${m.startingLocationType} where few questions are asked.`,
-  (m) => `${capitalize(m.startingLocationName)} — a ${m.startingLocationType} clinging to the margins — is where you start.`,
-  (m) => `You arrive at ${m.startingLocationName}, a weathered ${m.startingLocationType} that has seen better days.`,
-  (m) => `It starts at ${m.startingLocationName}, a ${m.startingLocationType} half-forgotten by the wider world.`
+  (m) => `${capitalize(m.startingLocationName)} — a ${m.descriptor} ${m.startingLocationType} — is where you start.`,
+  (m) => `You arrive at ${m.startingLocationName}, a ${m.descriptor} ${m.startingLocationType} ${m.edgePhrase}.`,
+  (m) => `It starts at ${m.startingLocationName}, a ${m.startingLocationType} ${m.edgePhrase}.`
 ];
 
 function fallbackDescription(merged, seed) {
@@ -171,6 +407,12 @@ function synthesize(def, parsed, seed) {
         : fallbackField(def, field, seed);
   }
   merged.artStyle = ART_STYLES.includes(def.artStyle) ? def.artStyle : "illustrated";
+  // Tone-derived prose phrases for the fallback templates (keyed off the
+  // resolved tone, so they fit the setting even for free-text custom tones).
+  const arch = toneArchetype(merged.tone);
+  merged.edgePhrase = arch.edge;
+  merged.descriptor = arch.descriptor;
+  merged.refugePhrase = arch.refuge;
   merged.description = isStr(parsed?.description)
     ? parsed.description.trim()
     : fallbackDescription(merged, seed);

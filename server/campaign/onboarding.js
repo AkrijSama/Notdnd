@@ -9,7 +9,7 @@ import { buildCharacter, toRunPlayer } from "../solo/characterBuild.js";
 import { copyDraftPortraitToRun } from "../solo/imageWorker.js";
 import { generateNpcIdentity } from "../solo/npcIdentity.js";
 import { writeNpcMemoryDoc } from "../solo/npcMemory.js";
-import { generateWorld } from "../solo/worldGen.js";
+import { buildFarLocation, buildSecondLocation, generateWorld } from "../solo/worldGen.js";
 import { createMainQuest } from "../solo/quests.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -126,52 +126,6 @@ function contentSeed(value) {
     hash = (hash * 31 + text.charCodeAt(i)) | 0;
   }
   return Math.abs(hash);
-}
-
-// Tone-keyed archetypes for the second location (replaces the old hardcoded
-// "Ashenmoor Market Square"). The name is built from the world name + suffix;
-// the description reacts to the world. Unmatched tones fall back by seed.
-const LOCATION_ARCHETYPES = {
-  market: {
-    tones: ["high fantasy", "steampunk", "mythic"],
-    suffix: "Market",
-    describe: (world, place) =>
-      `${place} is the crowded heart of trade in ${world} — shuttered stalls, traded rumors, and watchful eyes under every awning.`
-  },
-  ruins: {
-    tones: ["dark fantasy", "grimdark"],
-    suffix: "Ruins",
-    describe: (world, place) =>
-      `${place} is what ${world} left behind: broken stone, cold ash, and the sense that something still stirs in the rubble.`
-  },
-  crossroads: {
-    tones: ["sword and sorcery"],
-    suffix: "Crossroads",
-    describe: (world, place) =>
-      `${place} is where every road in ${world} tangles together — travelers, opportunists, and trouble all pass through here.`
-  },
-  harbor: {
-    tones: ["cosmic horror", "post-apocalyptic"],
-    suffix: "Harbor",
-    describe: (world, place) =>
-      `${place} sits where ${world} meets dark water. The tide carries in more than ships, and not all of it is welcome.`
-  },
-  shrine: {
-    // Default fallback for any unmatched tone.
-    tones: [],
-    suffix: "Shrine",
-    describe: (world, place) =>
-      `${place} is an old holy place in ${world}, half-remembered and half-feared, where pilgrims still leave offerings they dare not explain.`
-  }
-};
-
-function pickLocationArchetype(tone, seed) {
-  const key = String(tone || "").trim().toLowerCase();
-  const entries = Object.values(LOCATION_ARCHETYPES);
-  const matches = entries.filter((entry) => entry.tones.some((t) => String(t).toLowerCase() === key));
-  const pool = matches.length > 0 ? matches : entries;
-  const index = Math.abs(Math.trunc(Number(seed) || 0)) % pool.length;
-  return pool[index];
 }
 
 // Builds the quest-giver's dialogue: the quest-completing arrival beat first
@@ -566,14 +520,14 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
   const worldSeed = contentSeed(`${resolvedWorld.name}|${resolvedWorld.tone}`);
   const secondLocation = run.locations?.second_location || null;
   if (secondLocation) {
-    const archetype = pickLocationArchetype(resolvedWorld.tone, worldSeed);
-    secondLocation.name = `${resolvedWorld.name} ${archetype.suffix}`;
-    secondLocation.description = archetype.describe(resolvedWorld.name, secondLocation.name);
+    const built = buildSecondLocation(resolvedWorld.tone, worldSeed, resolvedWorld.name);
+    secondLocation.name = built.name;
+    secondLocation.description = built.description;
     secondLocation.tags = Array.from(
       new Set([
         ...(secondLocation.tags || []).filter((tag) => !["ashenmoor", "market", "curfew"].includes(tag)),
         slugTag(resolvedWorld.tone),
-        slugTag(archetype.suffix)
+        slugTag(built.suffix)
       ])
     );
   }
@@ -606,15 +560,9 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
   // rewards exploration, and place a lone witness there with end-state lore.
   const thirdLocation = run.locations?.third_location || null;
   if (thirdLocation) {
-    const farNouns = ["Depths", "Reach", "Verge", "Hollow", "Expanse", "Threshold", "Descent", "Brink"];
-    const farCore =
-      String(resolvedWorld.name || "the world").replace(/^the\s+/i, "").trim().split(/\s+/)[0] || "Far";
-    const farNoun = farNouns[Math.abs(Math.trunc(worldSeed)) % farNouns.length];
-    thirdLocation.name = `The ${capitalizeFirst(farCore)} ${farNoun}`;
-    thirdLocation.description =
-      `The road gives out here, at the far edge of ${resolvedWorld.name}. This is where the ${resolvedWorld.tone} ` +
-      `of this land settles thickest — where whatever became of everywhere else took hold first. ` +
-      `Few come this far, and fewer leave unchanged.`;
+    const far = buildFarLocation(resolvedWorld.tone, worldSeed, resolvedWorld.name);
+    thirdLocation.name = far.name;
+    thirdLocation.description = far.description;
     thirdLocation.tags = Array.from(
       new Set([
         ...(thirdLocation.tags || []).filter((tag) => !["ashenmoor", "ashen-watch", "gatehouse"].includes(tag)),
