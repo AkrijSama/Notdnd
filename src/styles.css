@@ -19,6 +19,29 @@
   --radius-lg: 20px;
   --radius-md: 12px;
   --shadow: 0 14px 34px rgba(0, 0, 0, 0.55);
+
+  /* Skin-semantic vars — defaults match the "Ashen" skin. The solo shell and
+     (now) the home/onboarding surfaces override these via soloThemeVarString on
+     a themed root. Defining them HERE means they are never phantom: any surface
+     resolves a real value with or without a skin applied. (Earlier blank-page
+     and white-on-white bugs came from referencing vars defined only on the solo
+     shell.) Fonts default to the "Tome" set; both are loaded in index.html. */
+  --card: #1a130c;
+  --inset: #120c07;
+  --text: #ece1c7;
+  --text-bright: #f0e6d4;
+  --text-2: #b3a48c;
+  --text-muted: #9a8b76;
+  --border: #2e2420;
+  --border-strong: #3a2e22;
+  --on-accent: #1c1308;
+  /* Lighter gold highlight (the skins' --accent-2). Separate name so it never
+     collides with :root --accent-2 (a warm red used by legacy GM surfaces). */
+  --accent-bright: #e0b352;
+  --font-display: 'Cinzel', Georgia, serif;
+  --font-body: 'Spectral', Georgia, 'Times New Roman', serif;
+  --texture: none;
+  --texture-size: auto;
 }
 
 * {
@@ -176,17 +199,45 @@ button.alt:hover {
   color: #2a1d10;
 }
 
+/* Appearance (skin + font) section inside the account dropdown. Reuses the
+   solo shell's .solo-theme-switcher markup; just gives it room + a divider. */
+.account-dropdown--wide {
+  min-width: 252px;
+}
+.account-dropdown-appearance {
+  padding: 11px 14px 13px;
+  border-top: 1px solid var(--border, #2e2420);
+  border-bottom: 1px solid var(--border, #2e2420);
+  display: grid;
+  gap: 8px;
+}
+.account-dropdown-kicker {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-weight: 700;
+  color: var(--text-muted, #9a8b76);
+}
+
 .brand {
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
 
+.brand h1 {
+  font-family: var(--font-display, 'Cinzel', Georgia, serif);
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--accent, #c89a4b);
+}
+
 .brand span {
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--muted);
+  color: var(--text-muted, var(--muted));
 }
 
 .nav-tabs {
@@ -470,51 +521,103 @@ button.alt:hover {
 
 .onboarding-main {
   padding: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .onboarding-shell {
   position: relative;
+  isolation: isolate;
   overflow: hidden;
   min-height: 72vh;
-  padding: 22px;
-  border-radius: 18px;
-  border: 1px solid rgba(200, 154, 75, 0.28);
+  padding: clamp(20px, 3vw, 40px);
+  border-radius: var(--radius-lg, 20px);
+  color: var(--text, #ece1c7);
+  font-family: var(--font-body, Georgia, "Times New Roman", serif);
+  /* Refined dark panel: a deep layered base (not a muddy flat gradient) with a
+     faint warm glow up top. Texture + vignette are layered via ::before/::after. */
   background:
-    radial-gradient(circle at 15% 20%, rgba(185, 76, 45, 0.28), transparent 38%),
-    radial-gradient(circle at 85% 10%, rgba(200, 154, 75, 0.22), transparent 40%),
-    linear-gradient(160deg, #100b07 0%, #1a130d 45%, #14100b 100%);
-  color: #ece1c7;
+    radial-gradient(130% 80% at 50% -12%, rgba(200, 154, 75, 0.12), transparent 58%),
+    linear-gradient(168deg, var(--panel, #221a13) 0%, var(--bg, #14100c) 56%, var(--inset, #120c07) 100%);
+  border: 1px solid var(--border-strong, #503f2e);
+  /* Ornamental inner gold hairline + soft inner shadow for depth + outer drop. */
+  box-shadow:
+    inset 0 0 0 1px rgba(200, 154, 75, 0.10),
+    inset 0 2px 60px rgba(0, 0, 0, 0.55),
+    var(--shadow, 0 14px 34px rgba(0, 0, 0, 0.55));
   display: grid;
-  gap: 14px;
+  gap: clamp(14px, 2vw, 22px);
 }
 
+/* Grain / texture overlay — the skin's --texture plus a faint fixed weave so
+   even the plain skin reads as a crafted surface rather than a flat box. */
 .onboarding-shell::before {
   content: "";
   position: absolute;
   inset: 0;
+  z-index: 0;
   pointer-events: none;
+  opacity: 0.55;
   background:
-    linear-gradient(rgba(200, 154, 75, 0.07) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(200, 154, 75, 0.07) 1px, transparent 1px);
-  background-size: 26px 26px;
-  mask-image: radial-gradient(circle at center, black 20%, transparent 80%);
+    var(--texture, none),
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.012) 0 1px, transparent 1px 3px),
+    repeating-linear-gradient(90deg, rgba(0, 0, 0, 0.05) 0 1px, transparent 1px 3px);
+  background-size: var(--texture-size, auto), auto, auto;
+}
+
+/* Vignette — darkens the corners so attention pools on the center content. */
+.onboarding-shell::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: radial-gradient(125% 100% at 50% 36%, transparent 55%, rgba(0, 0, 0, 0.42) 100%);
+}
+
+/* Real content sits above the texture/vignette layers. */
+.onboarding-shell > * {
+  position: relative;
+  z-index: 1;
 }
 
 .onboarding-header {
   position: relative;
   z-index: 1;
   display: grid;
-  gap: 8px;
+  gap: 10px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border, #2e2420);
+}
+
+/* Eyebrow chip above the title (e.g. "World Generator"). */
+.onboarding-header .tag {
+  justify-self: start;
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--on-accent, #1c1308);
+  background: linear-gradient(135deg, var(--accent-bright, #e0b352), var(--accent, #c89a4b));
+  padding: 4px 12px;
+  border-radius: 999px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
 }
 
 .onboarding-header h2 {
-  color: var(--accent);
+  font-family: var(--font-display, 'Cinzel', Georgia, serif);
+  font-size: clamp(26px, 4vw, 38px);
+  font-weight: 600;
+  line-height: 1.04;
+  letter-spacing: 0.01em;
+  color: var(--text-bright, #f0e6d4);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.5), 0 0 26px rgba(200, 154, 75, 0.12);
 }
 
-.onboarding-header p {
+.onboarding-header p,
+.onboarding-header .onb-disclaimer {
   margin: 0;
-  color: #d6c8a8;
+  color: var(--text-2, #b3a48c);
+  font-size: 14px;
 }
 
 .onboarding-form {
@@ -2441,53 +2544,71 @@ button:disabled {
 
 /* ---- World generator onboarding (Ticket 39) ---- */
 .onb-world { display: flex; flex-direction: column; gap: 16px; }
-.onb-disclaimer { font-style: italic; opacity: 0.75; }
+.onb-disclaimer { font-style: italic; color: var(--text-2, #b3a48c); }
 .onb-field { display: flex; flex-direction: column; gap: 8px; }
-.onb-field > label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; opacity: 0.75; }
+.onb-field > label {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; font-weight: 600;
+  color: var(--text-muted, #9a8b76); font-family: var(--font-body, Georgia, serif);
+}
+/* Skin-semantic vars (now defined in :root and overridden per skin) with literal
+   fallbacks — dark inset field, legible ink, gold focus ring. No phantom vars. */
 .onb-field input, .onb-field textarea {
-  width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: 9px;
-  /* Anchor to the real :root palette (--input-bg/--ink/--line). The previous
-     --inset/--text/--border vars are NOT defined in :root — they only exist on
-     the solo-game-shell skins — so in the onboarding scope these inputs fell
-     back to whatever --text/--inset were inherited, which could render light
-     text on a light background. --input-bg + --ink are always defined (dark bg,
-     light ink), so the fields stay dark-fantasy legible everywhere. */
-  background: var(--input-bg, #100c08); border: 1px solid var(--line, #3d2f22);
-  color: var(--ink, #ece1c7); font: inherit; resize: vertical;
+  width: 100%; box-sizing: border-box; padding: 11px 13px; border-radius: 10px;
+  background: var(--inset, #120c07); border: 1px solid var(--border, #2e2420);
+  color: var(--text, #ece1c7); font-family: var(--font-body, Georgia, serif); font-size: 15px;
+  resize: vertical; transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
 }
 .onb-field input::placeholder, .onb-field textarea::placeholder {
-  color: var(--muted, #95897a);
+  color: var(--text-muted, #9a8b76); opacity: 0.7;
 }
 .onb-field input:focus, .onb-field textarea:focus {
   outline: none; border-color: var(--accent, #c89a4b);
+  box-shadow: 0 0 0 3px rgba(200, 154, 75, 0.18);
+  background: color-mix(in srgb, var(--inset, #120c07) 86%, var(--accent, #c89a4b) 14%);
 }
 .onb-chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .onb-chip {
-  /* Anchor to :root (--line/--surface/--muted); --border/--inset/--text-2 are
-     solo-shell-only vars (phantom in onboarding scope). See 3b22d23. */
-  appearance: none; border: 1px solid var(--line, #3d2f22); background: var(--surface, #1c1610);
-  color: var(--muted, #95897a); border-radius: 999px; padding: 6px 12px; font-size: 13px; cursor: pointer;
+  appearance: none; border: 1px solid var(--border, #2e2420); background: var(--card, #1a130c);
+  color: var(--text-2, #b3a48c); border-radius: 999px; padding: 7px 14px; font-size: 13px;
+  font-family: var(--font-body, Georgia, serif); cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease, transform 0.1s ease;
 }
-.onb-chip.active { background: var(--accent, #c89a4b); border-color: var(--accent-2, #e0b352); color: #1a1208; }
-.onb-art-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.onb-chip:hover { border-color: var(--accent, #c89a4b); color: var(--text-bright, #f0e6d4); }
+.onb-chip:active { transform: translateY(1px); }
+.onb-chip.active {
+  background: linear-gradient(135deg, var(--accent-bright, #e0b352), var(--accent, #c89a4b));
+  border-color: var(--accent-bright, #e0b352); color: var(--on-accent, #1c1308); font-weight: 600;
+  box-shadow: 0 3px 12px rgba(200, 154, 75, 0.28);
+}
+.onb-art-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
 .onb-art-card {
   appearance: none; cursor: pointer; text-align: left; padding: 0 0 10px; overflow: hidden;
-  /* :root-anchored (--line/--surface/--ink), not solo-only --border/--inset/--text. */
-  border: 2px solid var(--line, #3d2f22); border-radius: 12px; background: var(--surface, #1c1610); color: var(--ink, #ece1c7);
+  border: 1px solid var(--border, #2e2420); border-radius: 12px;
+  background: var(--card, #1a130c); color: var(--text, #ece1c7);
+  transition: border-color 0.15s ease, transform 0.12s ease, box-shadow 0.15s ease;
 }
-.onb-art-card.active { border-color: var(--accent, #c89a4b); }
-.onb-art-prev { height: 84px; }
+.onb-art-card:hover { transform: translateY(-2px); border-color: var(--border-strong, #503f2e); box-shadow: 0 10px 24px rgba(0, 0, 0, 0.4); }
+.onb-art-card.active {
+  border-color: var(--accent, #c89a4b);
+  box-shadow: 0 0 0 1px var(--accent, #c89a4b) inset, 0 10px 28px rgba(200, 154, 75, 0.22);
+}
+.onb-art-prev { height: 90px; box-shadow: inset 0 -18px 30px rgba(0, 0, 0, 0.45); }
 .onb-art-illustrated { background: linear-gradient(135deg, #3a2a14, #6b4a1f); }
 .onb-art-anime { background: linear-gradient(135deg, #2a2440, #6a4f86); }
 .onb-art-cinematic { background: linear-gradient(135deg, #14181f, #3a4654); }
-.onb-art-label { font-weight: 600; padding: 8px 10px 2px; }
-.onb-art-blurb { font-size: 12px; opacity: 0.7; padding: 0 10px; }
+.onb-art-label { font-weight: 600; padding: 8px 12px 2px; font-family: var(--font-display, 'Cinzel', serif); }
+.onb-art-blurb { font-size: 12px; color: var(--text-muted, #9a8b76); padding: 0 12px; }
 .onb-primary {
-  appearance: none; border: 1px solid var(--accent, #c89a4b); background: var(--accent, #c89a4b);
-  /* dark text on the gold accent; literal (no solo-only --on-accent var). */
-  color: #1a1208; border-radius: 10px; padding: 12px 18px; font-weight: 700; cursor: pointer;
+  appearance: none; border: 1px solid var(--accent-bright, #e0b352);
+  background: linear-gradient(135deg, var(--accent-bright, #e0b352), var(--accent, #c89a4b));
+  color: var(--on-accent, #1c1308); border-radius: 12px; padding: 13px 22px;
+  font-weight: 700; font-family: var(--font-display, 'Cinzel', serif); letter-spacing: 0.02em;
+  cursor: pointer; box-shadow: 0 6px 18px rgba(200, 154, 75, 0.28);
+  transition: transform 0.12s ease, box-shadow 0.15s ease, filter 0.15s ease;
 }
-.onb-primary[disabled] { opacity: 0.6; cursor: progress; }
+.onb-primary:hover { transform: translateY(-1px); filter: brightness(1.06); box-shadow: 0 10px 26px rgba(200, 154, 75, 0.36); }
+.onb-primary:active { transform: translateY(0); }
+.onb-primary[disabled] { opacity: 0.55; cursor: progress; filter: none; box-shadow: none; }
 .onb-preview { display: flex; flex-direction: column; gap: 14px; }
 .onb-preview-block {
   padding: 14px 16px; border-radius: 12px; background: var(--surface, #1c1610); border: 1px solid var(--line, #3d2f22);
@@ -2515,19 +2636,21 @@ button:disabled {
 
 /* ---- Character creation wizard (Ticket 38) ---- */
 .cw-progress { display: flex; flex-wrap: wrap; gap: 6px; }
-.cw-step { font-size: 12px; padding: 5px 10px; border-radius: 999px; border: 1px solid var(--line, #3d2f22); color: var(--muted, #95897a); }
-.cw-step.active { background: var(--accent, #c89a4b); color: #1a1208; border-color: var(--accent, #c89a4b); }
-.cw-step.done { color: var(--ink, #ece1c7); border-color: var(--line-strong, #503f2e); }
+.cw-step { font-size: 12px; padding: 5px 11px; border-radius: 999px; border: 1px solid var(--border, #2e2420); color: var(--text-muted, #9a8b76); }
+.cw-step.active { background: linear-gradient(135deg, var(--accent-bright, #e0b352), var(--accent, #c89a4b)); color: var(--on-accent, #1c1308); border-color: var(--accent-bright, #e0b352); font-weight: 600; }
+.cw-step.done { color: var(--text, #ece1c7); border-color: var(--border-strong, #503f2e); }
 .cw-body { display: flex; flex-direction: column; gap: 14px; }
-.onb-hint { font-size: 12px; opacity: 0.6; }
-.cw-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+.onb-hint { font-size: 12px; color: var(--text-muted, #9a8b76); }
+.cw-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
 .cw-card {
   appearance: none; cursor: pointer; text-align: left; display: flex; flex-direction: column; gap: 4px;
-  padding: 12px; border-radius: 12px; border: 2px solid var(--line, #3d2f22);
-  background: var(--surface, #1c1610); color: var(--ink, #ece1c7);
+  padding: 14px; border-radius: 12px; border: 1px solid var(--border, #2e2420);
+  background: var(--card, #1a130c); color: var(--text, #ece1c7);
+  transition: border-color 0.15s ease, transform 0.12s ease, box-shadow 0.15s ease;
 }
-.cw-card.active { border-color: var(--accent, #c89a4b); }
-.cw-card-title { font-weight: 700; font-family: "Sora", sans-serif; }
+.cw-card:hover { transform: translateY(-2px); border-color: var(--border-strong, #503f2e); box-shadow: 0 10px 24px rgba(0, 0, 0, 0.4); }
+.cw-card.active { border-color: var(--accent, #c89a4b); box-shadow: 0 0 0 1px var(--accent, #c89a4b) inset, 0 8px 22px rgba(200, 154, 75, 0.2); }
+.cw-card-title { font-weight: 700; font-family: var(--font-display, 'Cinzel', "Sora", sans-serif); font-size: 16px; color: var(--text-bright, #f0e6d4); }
 .cw-card-meta { font-size: 12px; color: var(--accent, #c89a4b); }
 .cw-card-sub { font-size: 12px; opacity: 0.8; }
 .cw-card-traits { font-size: 11px; opacity: 0.6; }
@@ -2754,25 +2877,68 @@ button:disabled {
   justify-content: center;
 }
 .solo-home {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
   width: 100%;
-  max-width: 720px;
+  max-width: 760px;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
   gap: 24px;
-  padding: 16px 0;
+  padding: clamp(24px, 4vw, 44px) clamp(20px, 3vw, 40px);
+  color: var(--text, #ece1c7);
+  font-family: var(--font-body, Georgia, serif);
+  border-radius: var(--radius-lg, 20px);
+  border: 1px solid var(--border-strong, #503f2e);
+  background:
+    radial-gradient(130% 70% at 50% -10%, rgba(200, 154, 75, 0.12), transparent 58%),
+    linear-gradient(168deg, var(--panel, #221a13) 0%, var(--bg, #14100c) 58%, var(--inset, #120c07) 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(200, 154, 75, 0.10),
+    inset 0 2px 60px rgba(0, 0, 0, 0.55),
+    var(--shadow, 0 14px 34px rgba(0, 0, 0, 0.55));
 }
+.solo-home::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.5;
+  background: var(--texture, none);
+  background-size: var(--texture-size, auto);
+}
+.solo-home > * { position: relative; z-index: 1; }
 .solo-home-hero {
   text-align: center;
+  display: grid;
+  gap: 6px;
 }
+.solo-home-hero h2 {
+  font-family: var(--font-display, 'Cinzel', Georgia, serif);
+  font-size: clamp(26px, 4.5vw, 40px);
+  font-weight: 600;
+  color: var(--text-bright, #f0e6d4);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.5), 0 0 26px rgba(200, 154, 75, 0.12);
+}
+.solo-home-hero .small { color: var(--text-2, #b3a48c); }
 .solo-home-start {
   display: flex;
   justify-content: center;
 }
 .solo-home-start button {
   font-size: 1.05rem;
-  padding: 12px 28px;
+  font-family: var(--font-display, 'Cinzel', Georgia, serif);
+  letter-spacing: 0.02em;
+  padding: 13px 30px;
+  border: 1px solid var(--accent-bright, #e0b352);
+  background: linear-gradient(135deg, var(--accent-bright, #e0b352), var(--accent, #c89a4b));
+  color: var(--on-accent, #1c1308);
+  box-shadow: 0 6px 18px rgba(200, 154, 75, 0.3);
+  transition: transform 0.12s ease, box-shadow 0.15s ease, filter 0.15s ease;
 }
+.solo-home-start button:hover { transform: translateY(-1px); filter: brightness(1.06); box-shadow: 0 10px 26px rgba(200, 154, 75, 0.4); }
 .solo-home-run-list {
   display: flex;
   flex-direction: column;
