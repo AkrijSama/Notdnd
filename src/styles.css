@@ -2398,6 +2398,97 @@ button:disabled {
 .solo-vn-next:hover {
   filter: brightness(1.06);
 }
+
+/* ---- Multi-turn VN dialogue: scrollback, player reply, explicit exit ----
+   Uses the solo shell's theme vars (so it follows the player's skin) with
+   literal fallbacks so nothing renders invisible. */
+.solo-vn-history {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 150px;
+  overflow-y: auto;
+  margin-bottom: 10px;
+  padding-right: 4px;
+}
+.solo-vn-exchange {
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text-2, #b3a48c);
+}
+.solo-vn-exchange-who {
+  font-weight: 700;
+  color: var(--accent-2, #e0b352);
+  margin-right: 6px;
+}
+.solo-vn-exchange-player {
+  color: var(--text, #e8dcc8);
+}
+.solo-vn-exchange-player .solo-vn-exchange-who {
+  color: var(--text-bright, #f0e6d4);
+}
+.solo-vn-exchange-system {
+  font-style: italic;
+  opacity: 0.75;
+}
+.solo-vn-reply {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+.solo-vn-reply-input {
+  flex: 1;
+  min-width: 0;
+  height: 44px;
+  padding: 0 14px;
+  background: var(--inset, #120c07);
+  border: 1px solid var(--border-strong, #3a2e22);
+  border-radius: 8px;
+  color: var(--text-bright, #f0e6d4);
+  font-size: 14px;
+  font-family: inherit;
+}
+.solo-vn-reply-input::placeholder {
+  color: var(--text-faint, #6e6150);
+}
+.solo-vn-reply-input:focus {
+  outline: none;
+  border-color: var(--accent-2, #e0b352);
+}
+.solo-vn-reply-submit {
+  flex: none;
+  cursor: pointer;
+  height: 44px;
+  padding: 0 20px;
+  border-radius: 8px;
+  font-family: var(--font-display, Georgia, serif);
+  font-weight: 700;
+  background: linear-gradient(180deg, var(--accent-grad-a, #d29b32), var(--accent-grad-b, #bd8420));
+  border: 1px solid var(--accent-2, #e0b352);
+  color: var(--on-accent, #1c1308);
+}
+.solo-vn-reply-submit:hover {
+  filter: brightness(1.06);
+}
+.solo-vn-reply-submit:disabled,
+.solo-vn-reply-input:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.solo-vn-end {
+  cursor: pointer;
+  padding: 7px 16px;
+  border-radius: 8px;
+  background: transparent;
+  border: 1px solid var(--border-strong, #3a2e22);
+  color: var(--text-2, #b3a48c);
+  font-size: 13px;
+  font-family: inherit;
+}
+.solo-vn-end:hover {
+  color: var(--text-bright, #f0e6d4);
+  border-color: var(--accent-border, #4a3a1e);
+}
 @keyframes solo-vn-dim {
   from { opacity: 0; }
   to { opacity: 1; }

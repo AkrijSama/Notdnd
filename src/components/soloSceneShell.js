@@ -1641,6 +1641,8 @@ export function renderSoloDialogueOverlay(state = {}) {
   const line = talk.line || "There is not much new to say right now.";
   const typed = state.dialogueTyped === true;
   const initial = String(speaker).trim().slice(0, 1).toUpperCase() || "?";
+  const busy = Boolean(state.busy);
+  const replyDraft = typeof state.dialogueReplyDraft === "string" ? state.dialogueReplyDraft : "";
 
   const portraitInner = portraitUri
     ? `<img class="solo-vn-portrait-img" src="${escapeHtml(portraitUri)}" alt="${escapeHtml(speaker)} portrait" />`
@@ -1648,6 +1650,23 @@ export function renderSoloDialogueOverlay(state = {}) {
         <span>${escapeHtml(initial)}</span>
         <small>Portrait incoming…</small>
       </div>`;
+
+  // Conversation scrollback: the prior exchanges (player + NPC), so the overlay
+  // reads as a sustained conversation. The last NPC entry is the current line,
+  // which is revealed by the typewriter below — so it's excluded from the
+  // scrollback to avoid showing it twice. A few exchanges are kept for context.
+  const history = Array.isArray(state.dialogueHistory) ? state.dialogueHistory : [];
+  const scrollback = history.slice(0, -1).slice(-4);
+  const historyHtml = scrollback.length
+    ? `<div class="solo-vn-history">${scrollback
+        .map(
+          (entry) =>
+            `<div class="solo-vn-exchange solo-vn-exchange-${escapeHtml(entry.role || "npc")}">${
+              entry.speaker ? `<span class="solo-vn-exchange-who">${escapeHtml(entry.speaker)}</span>` : ""
+            }<span class="solo-vn-exchange-text">${escapeHtml(entry.text || "")}</span></div>`
+        )
+        .join("")}</div>`
+    : "";
 
   // `key` on the portrait forces a fresh element (and thus replays the fade)
   // whenever the expression changes between consecutive lines.
@@ -1659,6 +1678,7 @@ export function renderSoloDialogueOverlay(state = {}) {
           ${portraitInner}
         </div>
         <div class="solo-vn-body">
+          ${historyHtml}
           <div class="solo-vn-speaker">${escapeHtml(speaker)}</div>
           <div
             class="solo-vn-text ${typed ? "is-complete" : ""}"
@@ -1666,8 +1686,19 @@ export function renderSoloDialogueOverlay(state = {}) {
             data-typed="${typed ? "true" : "false"}"
             data-fulltext="${escapeHtml(line)}"
           >${typed ? escapeHtml(line) : ""}</div>
+          <div class="solo-vn-reply">
+            <input
+              type="text"
+              class="solo-vn-reply-input"
+              data-solo-dialogue-reply-input
+              placeholder="Say something — or describe what you do…"
+              value="${escapeHtml(replyDraft)}"
+              ${busy ? "disabled" : ""}
+            />
+            <button type="button" class="solo-vn-reply-submit" data-solo-dialogue-reply-submit ${busy ? "disabled" : ""}>${busy ? "…" : "Reply ›"}</button>
+          </div>
           <div class="solo-vn-controls">
-            <button type="button" class="solo-vn-next" data-solo-dialogue-next>NEXT ›</button>
+            <button type="button" class="solo-vn-end" data-solo-dialogue-end>End conversation</button>
           </div>
         </div>
       </div>
@@ -2204,11 +2235,16 @@ export function bindSoloSceneShell(root, handlers = {}) {
         }
       }, 30);
     }
-    // Click anywhere on the panel (except NEXT) skips the typewriter.
+    // Click on the panel skips the typewriter — except the reply controls
+    // (input / submit / end), which have their own behavior.
     root.querySelectorAll("[data-solo-dialogue-panel]").forEach((panel) => {
       panel.addEventListener("click", (event) => {
         const target = event?.target;
-        if (target && typeof target.closest === "function" && target.closest("[data-solo-dialogue-next]")) {
+        if (
+          target &&
+          typeof target.closest === "function" &&
+          target.closest("[data-solo-dialogue-reply-input], [data-solo-dialogue-reply-submit], [data-solo-dialogue-end]")
+        ) {
           return;
         }
         if (timer) {
@@ -2217,16 +2253,38 @@ export function bindSoloSceneShell(root, handlers = {}) {
       });
     });
   }
-  // Backdrop and NEXT both close the overlay without reloading the scene.
+  // Backdrop click softly closes the overlay (keeps the right-rail talk summary).
   root.querySelectorAll("[data-solo-dialogue-close]").forEach((el) => {
     el.addEventListener("click", () => handlers.onDialogueClose?.());
   });
-  root.querySelectorAll("[data-solo-dialogue-next]").forEach((el) => {
+  // Explicit "End conversation" exits the VN back to the ambient scene.
+  root.querySelectorAll("[data-solo-dialogue-end]").forEach((el) => {
     el.addEventListener("click", (event) => {
       event.stopPropagation?.();
-      handlers.onDialogueClose?.();
+      handlers.onDialogueEnd?.();
     });
   });
+  // Player reply: typing updates the draft; Reply button / Enter advances the
+  // conversation through the existing talk pipeline (next beat).
+  const dialogueReplyInput = root.querySelectorAll("[data-solo-dialogue-reply-input]")[0] || null;
+  const submitDialogueReply = () => handlers.onDialogueReply?.();
+  root.querySelectorAll("[data-solo-dialogue-reply-submit]").forEach((el) => {
+    el.addEventListener("click", (event) => {
+      event.stopPropagation?.();
+      submitDialogueReply();
+    });
+  });
+  if (dialogueReplyInput && typeof dialogueReplyInput.addEventListener === "function") {
+    dialogueReplyInput.addEventListener("input", () => {
+      handlers.onDialogueReplyDraft?.({ value: dialogueReplyInput.value });
+    });
+    dialogueReplyInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        submitDialogueReply();
+      }
+    });
+  }
 
   // ---- Victory-screen narration typewriter (same treatment as dialogue) ----
   const victoryTextEl = root.querySelectorAll("[data-solo-victory-text]")[0] || null;
@@ -2446,6 +2504,9 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     battleMap: { positions: {}, selectedTokenId: null, movedTiles: 0, history: [], revealed: [] },
     dialogueActive: false,
     dialogueTyped: false,
+    dialogueHistory: [],
+    dialogueReplyDraft: "",
+    dialogueTargetEntityId: null,
     gmMode: "placeholder",
     activeTab: "scene",
     npcCreator: freshNpcCreatorState(),
@@ -2490,6 +2551,9 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       onAttemptDraft: handleAttemptDraft,
       onDialogueClose: handleDialogueClose,
       onDialogueTyped: handleDialogueTyped,
+      onDialogueReply: handleDialogueReply,
+      onDialogueReplyDraft: handleDialogueReplyDraft,
+      onDialogueEnd: handleDialogueEnd,
       onVictoryTyped: handleVictoryTyped,
       onOpenNpcCreator: handleOpenNpcCreator,
       onSceneRedo: handleSceneRedo,
@@ -3346,11 +3410,74 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       // Open the visual-novel dialogue overlay and restart the typewriter.
       state.dialogueActive = Boolean(state.talkResult);
       state.dialogueTyped = false;
+      // Start a fresh conversation: remember who we're talking to (so replies
+      // re-target them through the same talk pipeline) and seed the history with
+      // the NPC's opening line.
+      state.dialogueTargetEntityId =
+        entity.entityId || entity.targetEntityId || (state.talkResult ? `npc:${state.talkResult.npcId}` : null);
+      state.dialogueReplyDraft = "";
+      state.dialogueHistory =
+        state.talkResult && state.talkResult.line
+          ? [{ role: "npc", speaker: state.talkResult.speakerName || "NPC", text: state.talkResult.line }]
+          : [];
       state.searchResult = null;
       state.restResult = null;
       state.useItemResult = null;
       await refreshSceneAfterAction();
     });
+  }
+
+  function handleDialogueReplyDraft({ value }) {
+    state.dialogueReplyDraft = String(value || "");
+  }
+
+  function handleDialogueReply() {
+    if (!state.dialogueActive || !state.talkResult) {
+      return undefined;
+    }
+    const reply = String(state.dialogueReplyDraft || "").trim();
+    const target = state.dialogueTargetEntityId || `npc:${state.talkResult.npcId}`;
+    return runAction("talk", async () => {
+      // The player's line goes into the visible history; the conversation then
+      // advances through the SAME talk pipeline (a talk action with no beatId
+      // reveals the NPC's next beat) — no parallel dialogue backend.
+      if (reply) {
+        state.dialogueHistory = [...(state.dialogueHistory || []), { role: "player", speaker: "You", text: reply }];
+      }
+      state.dialogueReplyDraft = "";
+      const response = await postAction(createTalkAction({ entityId: target }));
+      const next = response.talkResult || null;
+      if (next && next.found !== false && next.line) {
+        state.talkResult = next;
+        state.dialogueTyped = false;
+        state.dialogueHistory = [
+          ...(state.dialogueHistory || []),
+          { role: "npc", speaker: next.speakerName || "NPC", text: next.line }
+        ];
+      } else {
+        // The NPC has nothing more to add — note it but keep the overlay open so
+        // the exit stays explicit (the player clicks "End conversation").
+        state.dialogueHistory = [
+          ...(state.dialogueHistory || []),
+          { role: "system", speaker: "", text: "The conversation winds down. Nothing more to say for now." }
+        ];
+      }
+      state.searchResult = null;
+      state.restResult = null;
+      state.useItemResult = null;
+      await refreshSceneAfterAction();
+    });
+  }
+
+  function handleDialogueEnd() {
+    // Explicit exit: leave the VN overlay back to the ambient scene. The server's
+    // vnMode returns to ambient on the player's next (non-talk) action; the
+    // overlay closes immediately so the player is back in the scene.
+    state.dialogueActive = false;
+    state.dialogueReplyDraft = "";
+    state.dialogueHistory = [];
+    state.dialogueTargetEntityId = null;
+    render();
   }
 
   function handleRest(action) {
