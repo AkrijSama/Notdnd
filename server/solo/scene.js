@@ -10,6 +10,7 @@ import {
   NPC_EXPRESSIONS,
   createDefaultForbiddenPolicyProfile,
   createDefaultMainlinePolicyProfile,
+  normalizeVnState,
   validateEntityAgainstPolicy,
   validateSoloRun
 } from "./schema.js";
@@ -238,6 +239,14 @@ export function validateSoloScenePayload(payload) {
   }
   if (!isString(payload.policyProfileId)) {
     push(errors, "policyProfileId", "Expected non-empty string");
+  }
+  // VN signal (optional so hand-built/partial payloads stay valid): when present,
+  // vnMode is a boolean and speakerId is a string or null.
+  if (payload.vnMode !== undefined && typeof payload.vnMode !== "boolean") {
+    push(errors, "vnMode", "Expected boolean");
+  }
+  if (payload.speakerId !== undefined && payload.speakerId !== null && !isString(payload.speakerId)) {
+    push(errors, "speakerId", "Expected string or null");
   }
 
   if (!isPlainObject(payload.location)) {
@@ -675,11 +684,20 @@ export function buildSoloScenePayload(run, options = {}) {
 
   const visibleEntities = getVisibleEntities(run, { policyProfile });
   const attemptHistory = attemptHistoryPayload(run, policyProfile, options.attemptHistoryLimit);
+  // VN (visual-novel) scene signal. vnMode=true with a speakerId names a direct,
+  // sustained exchange with that NPC (the client may surface the dialogue
+  // overlay); false = ambient theatre-of-the-mind prose. Normalized so runs that
+  // predate the field default to ambient. The UI consumption is a separate task —
+  // this only exposes the signal. Written by actions.finalizeQuestProgress (the
+  // manual talk trigger) and, in future, the GM-driven gmProvider.deriveVnState.
+  const vnState = normalizeVnState(run.vn);
   const payload = {
     ok: true,
     runId: run.runId,
     edition: run.edition,
     policyProfileId: run.policyProfileId,
+    vnMode: vnState.active,
+    speakerId: vnState.speakerId,
     location: locationPayload(currentLocation),
     // Generated location background image (null until the worker produces it;
     // the client shows a "Generating scene art…" placeholder meanwhile).

@@ -31,6 +31,7 @@ import {
   validateAttemptAction
 } from "./attempt.js";
 import { advanceQuests } from "./quests.js";
+import { createDefaultVnState } from "./schema.js";
 
 const IMPLEMENTED_ACTION_TYPES = new Set(["move", "inspect", "search", "talk", "rest", "use_item", "attempt"]);
 const FUTURE_ACTION_TYPES = new Set(["interact", "enter", "exit"]);
@@ -213,6 +214,9 @@ export function getAvailableSoloActions(run, options = {}) {
 // updated run on result.run; read-only inspect has none, so fall back to the
 // original run (it can never satisfy a predicate, so this is a no-op there).
 function finalizeQuestProgress(originalRun, result) {
+  // Whether the action produced its own (cloned) run. inspect is read-only and
+  // returns none, so we must never write scene state onto the shared input run.
+  const actionProducedRun = Boolean(result.run);
   const activeRun = result.run || originalRun;
   const { updated, wonQuest, completed, advanced } = advanceQuests(activeRun, result);
   if (updated) {
@@ -228,6 +232,21 @@ function finalizeQuestProgress(originalRun, result) {
   if (wonQuest) {
     result.runWon = true;
     result.wonQuest = wonQuest;
+  }
+
+  // VN scene state — the manual half of the ambient↔direct classifier. A talk
+  // action is a direct, sustained exchange with a specific named NPC (VN mode,
+  // focused on that speaker); every other action returns the scene to ambient
+  // prose. The GM-driven half lives in gmProvider.deriveVnState; both write the
+  // same { active, speakerId } shape the client reads off the scene payload.
+  // Guarded on actionProducedRun so the read-only inspect path never mutates the
+  // input run.
+  if (actionProducedRun && result.run) {
+    const speakerId =
+      result.talkResult && typeof result.talkResult.npcId === "string" && result.talkResult.npcId.trim()
+        ? result.talkResult.npcId
+        : null;
+    result.run.vn = speakerId ? { active: true, speakerId } : createDefaultVnState();
   }
   return result;
 }
