@@ -274,8 +274,8 @@ async function requestOpenRouter(messages, model, options = {}) {
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`,
-      "HTTP-Referer": "https://notdnd.com",
-      "X-Title": "NOTDND"
+      "HTTP-Referer": "https://inkborne.com",
+      "X-Title": "Inkborne"
     },
     body: JSON.stringify(body)
   });
