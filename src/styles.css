@@ -2388,16 +2388,19 @@ button:disabled {
 }
 .onb-chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .onb-chip {
-  appearance: none; border: 1px solid var(--border, #2e2420); background: var(--inset, #120c07);
-  color: var(--text-2, #b3a48c); border-radius: 999px; padding: 6px 12px; font-size: 13px; cursor: pointer;
+  /* Anchor to :root (--line/--surface/--muted); --border/--inset/--text-2 are
+     solo-shell-only vars (phantom in onboarding scope). See 3b22d23. */
+  appearance: none; border: 1px solid var(--line, #3d2f22); background: var(--surface, #1c1610);
+  color: var(--muted, #95897a); border-radius: 999px; padding: 6px 12px; font-size: 13px; cursor: pointer;
 }
-.onb-chip.active { background: var(--accent, #c8922a); border-color: var(--accent-2, #e0b352); color: var(--on-accent, #1c1308); }
+.onb-chip.active { background: var(--accent, #c89a4b); border-color: var(--accent-2, #e0b352); color: #1a1208; }
 .onb-art-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
 .onb-art-card {
   appearance: none; cursor: pointer; text-align: left; padding: 0 0 10px; overflow: hidden;
-  border: 2px solid var(--border, #2e2420); border-radius: 12px; background: var(--inset, #120c07); color: var(--text, #f0e4cc);
+  /* :root-anchored (--line/--surface/--ink), not solo-only --border/--inset/--text. */
+  border: 2px solid var(--line, #3d2f22); border-radius: 12px; background: var(--surface, #1c1610); color: var(--ink, #ece1c7);
 }
-.onb-art-card.active { border-color: var(--accent, #c8922a); }
+.onb-art-card.active { border-color: var(--accent, #c89a4b); }
 .onb-art-prev { height: 84px; }
 .onb-art-illustrated { background: linear-gradient(135deg, #3a2a14, #6b4a1f); }
 .onb-art-anime { background: linear-gradient(135deg, #2a2440, #6a4f86); }
@@ -2405,18 +2408,19 @@ button:disabled {
 .onb-art-label { font-weight: 600; padding: 8px 10px 2px; }
 .onb-art-blurb { font-size: 12px; opacity: 0.7; padding: 0 10px; }
 .onb-primary {
-  appearance: none; border: 1px solid var(--accent, #c8922a); background: var(--accent, #c8922a);
-  color: var(--on-accent, #1c1308); border-radius: 10px; padding: 12px 18px; font-weight: 700; cursor: pointer;
+  appearance: none; border: 1px solid var(--accent, #c89a4b); background: var(--accent, #c89a4b);
+  /* dark text on the gold accent; literal (no solo-only --on-accent var). */
+  color: #1a1208; border-radius: 10px; padding: 12px 18px; font-weight: 700; cursor: pointer;
 }
 .onb-primary[disabled] { opacity: 0.6; cursor: progress; }
 .onb-preview { display: flex; flex-direction: column; gap: 14px; }
 .onb-preview-block {
-  padding: 14px 16px; border-radius: 12px; background: var(--inset, #120c07); border: 1px solid var(--border, #2e2420);
+  padding: 14px 16px; border-radius: 12px; background: var(--surface, #1c1610); border: 1px solid var(--line, #3d2f22);
 }
 .onb-kicker { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.7; margin-bottom: 6px; }
 .onb-preview-meta { display: flex; gap: 8px; flex-wrap: wrap; }
 .onb-regen, .onb-regen-text {
-  appearance: none; border: 1px solid var(--border, #2e2420); background: transparent; color: var(--text-2, #b3a48c);
+  appearance: none; border: 1px solid var(--line, #3d2f22); background: transparent; color: var(--muted, #95897a);
   border-radius: 8px; padding: 4px 8px; font-size: 12px; cursor: pointer;
 }
 .onb-regen-text { margin-top: 8px; }
