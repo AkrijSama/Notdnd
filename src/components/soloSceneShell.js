@@ -867,7 +867,7 @@ export const SOLO_SKINS = {
     "--card-dim": "#160f09", "--tabbar": "#140e08", "--border": "#2e2420", "--border-faint": "#221a13",
     "--border-strong": "#3a2e22", "--text": "#e8dcc8", "--text-bright": "#f0e6d4", "--text-2": "#b3a48c",
     "--text-muted": "#9a8b76", "--text-label": "#8a7c68", "--text-faint": "#6e6150", "--accent": "#c8922a",
-    "--accent-2": "#e0b352", "--accent-grad-a": "#d29b32", "--accent-grad-b": "#bd8420",
+    "--accent-2": "#e0b352", "--accent-bright": "#e0b352", "--accent-grad-a": "#d29b32", "--accent-grad-b": "#bd8420",
     "--accent-border": "#4a3a1e", "--on-accent": "#1c1308", "--texture": "none", "--texture-size": "auto"
   },
   dragon: {
@@ -875,7 +875,7 @@ export const SOLO_SKINS = {
     "--card-dim": "#0e1410", "--tabbar": "#0a0f0c", "--border": "#243029", "--border-faint": "#1a241e",
     "--border-strong": "#2e3d33", "--text": "#e2e8da", "--text-bright": "#f1f5ec", "--text-2": "#a7b3a0",
     "--text-muted": "#8a978a", "--text-label": "#76837a", "--text-faint": "#5e6b62", "--accent": "#cf5236",
-    "--accent-2": "#e6a23a", "--accent-grad-a": "#d65a3c", "--accent-grad-b": "#9e2a1b",
+    "--accent-2": "#e6a23a", "--accent-bright": "#e6a23a", "--accent-grad-a": "#d65a3c", "--accent-grad-b": "#9e2a1b",
     "--accent-border": "#5a261a", "--on-accent": "#f6e8d6",
     "--texture": "radial-gradient(circle at 50% 100%,rgba(170,90,60,.10) 0 8px,transparent 9px),radial-gradient(circle at 0 100%,rgba(170,90,60,.10) 0 8px,transparent 9px),radial-gradient(circle at 100% 100%,rgba(170,90,60,.10) 0 8px,transparent 9px)",
     "--texture-size": "20px 14px"
@@ -885,7 +885,7 @@ export const SOLO_SKINS = {
     "--card-dim": "#140d0a", "--tabbar": "#0c0807", "--border": "#3a221a", "--border-faint": "#281712",
     "--border-strong": "#4a2a1e", "--text": "#f0e0d2", "--text-bright": "#fff0e2", "--text-2": "#c2a896",
     "--text-muted": "#a08876", "--text-label": "#8a7060", "--text-faint": "#6e5446", "--accent": "#ff6a1f",
-    "--accent-2": "#ffb347", "--accent-grad-a": "#ff7a2a", "--accent-grad-b": "#d94512",
+    "--accent-2": "#ffb347", "--accent-bright": "#ffb347", "--accent-grad-a": "#ff7a2a", "--accent-grad-b": "#d94512",
     "--accent-border": "#7a2e12", "--on-accent": "#1a0c06",
     "--texture": "linear-gradient(115deg,transparent 47%,rgba(255,90,20,.12) 50%,transparent 53%),linear-gradient(60deg,transparent 47%,rgba(255,120,30,.08) 50%,transparent 53%)",
     "--texture-size": "90px 90px"
@@ -895,7 +895,7 @@ export const SOLO_SKINS = {
     "--card-dim": "#15130d", "--tabbar": "#0f0e09", "--border": "#2c2a1c", "--border-faint": "#201e14",
     "--border-strong": "#3a3724", "--text": "#e6e8d4", "--text-bright": "#f2f4e2", "--text-2": "#aab09a",
     "--text-muted": "#8e9480", "--text-label": "#787e6a", "--text-faint": "#5e6450", "--accent": "#86a544",
-    "--accent-2": "#c2b24a", "--accent-grad-a": "#92b04e", "--accent-grad-b": "#5e7a2c",
+    "--accent-2": "#c2b24a", "--accent-bright": "#c2b24a", "--accent-grad-a": "#92b04e", "--accent-grad-b": "#5e7a2c",
     "--accent-border": "#3a4a22", "--on-accent": "#14180a",
     "--texture": "repeating-linear-gradient(92deg,rgba(150,140,90,.05) 0 2px,transparent 2px 8px),repeating-linear-gradient(88deg,rgba(120,110,70,.04) 0 1px,transparent 1px 5px)",
     "--texture-size": "auto"
@@ -2285,10 +2285,10 @@ export function bindSoloSceneShell(root, handlers = {}) {
   }
 }
 
-const SOLO_SKIN_STORAGE_KEY = "notdnd.solo.skin";
-const SOLO_FONT_STORAGE_KEY = "notdnd.solo.fontSet";
+export const SOLO_SKIN_STORAGE_KEY = "notdnd.solo.skin";
+export const SOLO_FONT_STORAGE_KEY = "notdnd.solo.fontSet";
 
-function readSoloThemePref(key, fallback) {
+export function readSoloThemePref(key, fallback) {
   try {
     if (typeof localStorage === "undefined") {
       return fallback;
@@ -2310,7 +2310,7 @@ function isDebugEnabled() {
   }
 }
 
-function writeSoloThemePref(key, value) {
+export function writeSoloThemePref(key, value) {
   try {
     if (typeof localStorage !== "undefined") {
       localStorage.setItem(key, value);

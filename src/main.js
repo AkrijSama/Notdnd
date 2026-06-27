@@ -8,7 +8,17 @@ import { renderHomebrewStudio, bindHomebrewStudio } from "./components/homebrewS
 import { renderOnboardingFlow, bindOnboardingFlow } from "./components/onboardingFlow.js";
 import { ABILITIES, pointBuyCost, rollAbilityScores } from "../server/solo/dndData.js";
 import { renderSidebar } from "./components/sidebar.js";
-import { mountSoloSceneShell } from "./components/soloSceneShell.js";
+import {
+  mountSoloSceneShell,
+  soloThemeVarString,
+  normalizeSkin,
+  normalizeFontSet,
+  renderSoloThemeSwitcher,
+  readSoloThemePref,
+  writeSoloThemePref,
+  SOLO_SKIN_STORAGE_KEY,
+  SOLO_FONT_STORAGE_KEY
+} from "./components/soloSceneShell.js";
 import { renderTopbar } from "./components/topbar.js";
 import { renderVttTable, bindVttTable } from "./components/vttTable.js";
 import { createRealtimeClient } from "./realtime/client.js";
@@ -28,6 +38,11 @@ const uiState = {
   activeRealtimeCampaignId: null,
   showAuthPanel: false,
   showAccountMenu: false,
+  // App-wide skin/font theme for the home + onboarding surfaces. Shares the same
+  // persisted keys as the in-run solo shell, so a choice made anywhere applies
+  // everywhere. Reads are guarded (privacy browsers throw on localStorage).
+  skin: normalizeSkin(readSoloThemePref(SOLO_SKIN_STORAGE_KEY, "ashen")),
+  fontSet: normalizeFontSet(readSoloThemePref(SOLO_FONT_STORAGE_KEY, "tome")),
   authMode: "login",
   authMessage: "",
   campaignMembers: [],
@@ -97,7 +112,7 @@ function escapeHtml(value) {
 // Minimal header for the solo player's surfaces (home + login). Deliberately
 // omits the 7-tab GM/multiplayer nav (renderTopbar) — solo players never see it.
 // Keeps only the brand and the auth/account affordances that bindAppEvents wires.
-function renderSoloHeader(user, accountMenuOpen = false) {
+function renderSoloHeader(user, accountMenuOpen = false, skin = "ashen", fontSet = "tome") {
   return `
     <header class="topbar solo-topbar">
       <div class="brand">
@@ -114,8 +129,12 @@ function renderSoloHeader(user, accountMenuOpen = false) {
                 ${
                   accountMenuOpen
                     ? `
-                      <div class="account-dropdown" role="menu">
+                      <div class="account-dropdown account-dropdown--wide" role="menu">
                         <button class="account-dropdown-item" role="menuitem" data-action="open-account">Account Settings</button>
+                        <div class="account-dropdown-appearance">
+                          <span class="account-dropdown-kicker">Appearance</span>
+                          ${renderSoloThemeSwitcher(skin, fontSet)}
+                        </div>
                         <button class="account-dropdown-item" role="menuitem" data-action="logout">Sign Out</button>
                       </div>
                     `
@@ -804,6 +823,24 @@ function bindAppEvents() {
     });
   }
 
+  // Appearance: skin + font selection from the account dropdown. Persisted (same
+  // keys the in-run shell uses) so the choice applies app-wide. The menu is left
+  // open after a pick so the change is visible and multiple can be tried.
+  appRoot.querySelectorAll("[data-solo-skin]").forEach((button) => {
+    button.addEventListener("click", () => {
+      uiState.skin = normalizeSkin(button.getAttribute("data-solo-skin"));
+      writeSoloThemePref(SOLO_SKIN_STORAGE_KEY, uiState.skin);
+      scheduleRender();
+    });
+  });
+  appRoot.querySelectorAll("[data-solo-font]").forEach((button) => {
+    button.addEventListener("click", () => {
+      uiState.fontSet = normalizeFontSet(button.getAttribute("data-solo-font"));
+      writeSoloThemePref(SOLO_FONT_STORAGE_KEY, uiState.fontSet);
+      scheduleRender();
+    });
+  });
+
   const startAdventureBtn = appRoot.querySelector("[data-action='start-new-adventure']");
   if (startAdventureBtn) {
     startAdventureBtn.addEventListener("click", () => {
@@ -1068,8 +1105,8 @@ function renderApp() {
 
   const html = onboardingVisible
     ? `
-      <div class="app-shell">
-        ${renderSoloHeader(user, uiState.showAccountMenu)}
+      <div class="app-shell" data-app-themed style="${soloThemeVarString(uiState.skin, uiState.fontSet)}">
+        ${renderSoloHeader(user, uiState.showAccountMenu, uiState.skin, uiState.fontSet)}
         ${authMessageHtml}
         ${renderAuthPanel(state)}
         <main class="panel main onboarding-main">
@@ -1081,16 +1118,16 @@ function renderApp() {
     `
     : user
     ? `
-      <div class="app-shell">
-        ${renderSoloHeader(user, uiState.showAccountMenu)}
+      <div class="app-shell" data-app-themed style="${soloThemeVarString(uiState.skin, uiState.fontSet)}">
+        ${renderSoloHeader(user, uiState.showAccountMenu, uiState.skin, uiState.fontSet)}
         ${authMessageHtml}
         ${renderAuthPanel(state)}
         ${renderSoloHome(state)}
       </div>
     `
     : `
-      <div class="app-shell">
-        ${renderSoloHeader(user, uiState.showAccountMenu)}
+      <div class="app-shell" data-app-themed style="${soloThemeVarString(uiState.skin, uiState.fontSet)}">
+        ${renderSoloHeader(user, uiState.showAccountMenu, uiState.skin, uiState.fontSet)}
         ${authMessageHtml}
         <main class="panel main solo-home-main">
           <section class="module-card solo-login-card">
