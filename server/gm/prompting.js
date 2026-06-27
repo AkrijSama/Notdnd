@@ -455,7 +455,14 @@ export async function runGmPipeline({
       },
       style: styleConfig,
       triggerCount: parsed.triggers.length,
-      systemPrompt
+      systemPrompt,
+      // Free-text narration carries no structured VN classification, so it
+      // defaults to ambient. The authoritative ambient↔direct signal is the
+      // run's VN scene state (set by the solo action dispatcher for the manual
+      // talk trigger, and by gmProvider.deriveVnState for the GM-driven trigger)
+      // and is surfaced on the scene payload — not derived here.
+      vnMode: false,
+      speakerId: null
     }
   };
 }

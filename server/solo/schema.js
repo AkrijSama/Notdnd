@@ -53,6 +53,35 @@ export function createEmptyExpressionVariants() {
   }
   return variants;
 }
+
+/**
+ * Default VN (visual-novel) scene state for a run: ambient. `active` false means
+ * theatre-of-the-mind prose (overheard chatter, environment) with no portrait
+ * focus; `active` true with a `speakerId` means a direct, sustained exchange
+ * with that named NPC. This is a server-side signal the client reads off the
+ * scene payload to decide whether to surface the dialogue overlay.
+ * @returns {{ active: boolean, speakerId: string | null }}
+ */
+export function createDefaultVnState() {
+  return { active: false, speakerId: null };
+}
+
+/**
+ * Coerces any value into a valid VN scene-state object. Graceful by design:
+ * malformed or absent input (older runs, parse failures) collapses to ambient,
+ * and a speaker id is only kept while active, so ambient state never carries a
+ * stale speaker. Never throws.
+ * @param {*} value
+ * @returns {{ active: boolean, speakerId: string | null }}
+ */
+export function normalizeVnState(value) {
+  if (!isPlainObject(value)) {
+    return createDefaultVnState();
+  }
+  const active = value.active === true;
+  const speakerId = active && isString(value.speakerId) ? value.speakerId : null;
+  return { active, speakerId };
+}
 const PLAYER_ASSET_TYPES = new Set(["base", "fortress", "lab", "room", "structure", "other"]);
 const QUEST_STATUSES = new Set(["inactive", "active", "completed", "failed"]);
 const ITEM_EFFECT_TYPES = new Set(["message", "recover_resource", "reveal_note"]);
@@ -868,6 +897,16 @@ export function validateSoloRun(run) {
   validateOptionalString(run.userId, "userId", errors);
   validateOptionalString(run.narration, "narration", errors);
   validateOptionalString(run.openingNarration, "openingNarration", errors);
+  // Optional VN (visual-novel) scene state. Older runs predate it and stay
+  // valid (undefined); when present it must be an ambient↔direct signal object.
+  if (run.vn !== undefined && run.vn !== null) {
+    if (!isPlainObject(run.vn)) {
+      push(errors, "vn", "Expected object");
+    } else {
+      validateBoolean(run.vn.active, "vn.active", errors);
+      validateOptionalString(run.vn.speakerId, "vn.speakerId", errors);
+    }
+  }
   if (run.battleMap !== undefined && run.battleMap !== null && !isPlainObject(run.battleMap)) {
     push(errors, "battleMap", "Expected object");
   }
@@ -1215,6 +1254,8 @@ export function createDefaultSoloRun(options = {}) {
       }
     ],
     flags: {},
+    // Current VN scene state — starts ambient (theatre-of-the-mind prose).
+    vn: createDefaultVnState(),
     version: SOLO_RUN_VERSION
   };
 }

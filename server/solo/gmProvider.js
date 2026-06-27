@@ -14,6 +14,61 @@ function cloneJson(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+function stripNpcPrefix(id) {
+  const value = String(id || "");
+  return value.startsWith("npc:") ? value.slice("npc:".length) : value;
+}
+
+/**
+ * Classifies a parsed GM output into VN scene state: { active, speakerId }. This
+ * is the automatic, GM-driven half of the ambient↔direct classifier (the manual
+ * half is the talk action); both converge on the same shape the client reads off
+ * the scene payload. Defensive: vnMode must be an explicit boolean true AND, when
+ * a set of known NPC ids is supplied, speakerId must name one of them — a
+ * hallucinated or absent speaker collapses to ambient. Missing fields (older
+ * responses, plain-text/parse fallbacks) default to ambient. Never throws.
+ * @param {object} parsed parsed GM output that may carry vnMode/speakerId
+ * @param {{ knownNpcIds?: Iterable<string> }} [options]
+ * @returns {{ active: boolean, speakerId: string | null }}
+ */
+export function deriveVnState(parsed, options = {}) {
+  const active = Boolean(parsed) && parsed.vnMode === true;
+  const speakerId = parsed && typeof parsed.speakerId === "string" ? parsed.speakerId.trim() : "";
+  if (!active || !speakerId) {
+    return { active: false, speakerId: null };
+  }
+  if (options.knownNpcIds) {
+    const known = new Set(options.knownNpcIds);
+    if (!known.has(speakerId) && !known.has(stripNpcPrefix(speakerId))) {
+      // Speaker is not a present/known NPC — treat as ambient rather than trust
+      // an unanchored focus target.
+      return { active: false, speakerId: null };
+    }
+  }
+  return { active: true, speakerId };
+}
+
+// Collects the candidate NPC ids (full entity id + the raw id after an "npc:"
+// prefix) the GM may legitimately name as a VN speaker, from a scene's visible
+// entities. Used to ground deriveVnState against present NPCs.
+function knownNpcIdsFromGmInput(gmInput) {
+  const ids = [];
+  for (const entity of (gmInput && gmInput.visibleEntities) || []) {
+    const entityId = entity && typeof entity.entityId === "string" ? entity.entityId : "";
+    if (entityId) {
+      ids.push(entityId);
+      const raw = stripNpcPrefix(entityId);
+      if (raw && raw !== entityId) {
+        ids.push(raw);
+      }
+    }
+    if (entity && typeof entity.npcId === "string" && entity.npcId) {
+      ids.push(entity.npcId);
+    }
+  }
+  return ids;
+}
+
 function plainText(value) {
   return String(value ?? "")
     .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "")
@@ -30,7 +85,10 @@ function addWarning(gmNarration, warning) {
 
 function safePlaceholder(scenePayload, warning = null) {
   const placeholder = generatePlaceholderGmNarration(scenePayload);
-  return warning ? addWarning(placeholder, warning) : placeholder;
+  const withWarning = warning ? addWarning(placeholder, warning) : placeholder;
+  // Placeholder narration is never a direct VN exchange — surface ambient VN
+  // state so every resolveGmNarration return carries a consistent signal.
+  return { ...withWarning, vnMode: false, speakerId: null };
 }
 
 function providerEnabledFromEnv(env = process.env) {
@@ -82,7 +140,12 @@ export function buildProviderPromptMessages(gmInput, options = {}) {
     objective ? `The player is pursuing: ${objective}. Weave this goal naturally into scene framing and dialogue.` : null,
     advancedNote,
     "Do NOT invent new quests or declare quests complete. Quest progress is decided only by the system.",
-    "Return JSON only with this exact shape: {\"ok\":true,\"narration\":{\"title\":\"string\",\"body\":\"string\",\"tone\":\"neutral|tense|mysterious|warm|dangerous|comic|dramatic\",\"sensoryDetails\":[],\"focusEntityIds\":[]},\"suggestedActionLabels\":[],\"warnings\":[],\"stateMutations\":[]}.",
+    // Visual-novel mode signal. The classifier that consumes this (deriveVnState)
+    // discards a speakerId that is not a present/visible NPC, so the model is held
+    // to grounded, named interlocutors only.
+    "Visual-novel mode: set vnMode=true ONLY when this narration is a direct, sustained exchange with ONE specific, named NPC that is present in visibleEntities — the player addressing them, or that NPC addressing the player directly. Set speakerId to that NPC's id from visibleEntities.",
+    "Set vnMode=false and speakerId=null for ambient theatre-of-the-mind: overheard chatter, crowd noise, background or environmental conversation, or any narration not anchored to one direct interlocutor.",
+    "Return JSON only with this exact shape: {\"ok\":true,\"narration\":{\"title\":\"string\",\"body\":\"string\",\"tone\":\"neutral|tense|mysterious|warm|dangerous|comic|dramatic\",\"sensoryDetails\":[],\"focusEntityIds\":[]},\"suggestedActionLabels\":[],\"warnings\":[],\"stateMutations\":[],\"vnMode\":false,\"speakerId\":null}.",
     "stateMutations must always be an empty array.",
     "Use plain text only. Do not include HTML, script tags, markdown tables, or raw JSON dumps in narration."
   ]
@@ -247,7 +310,12 @@ export async function generateGmNarrationWithProvider(scenePayload, options = {}
     };
   }
 
-  return sanitized;
+  // Surface the GM-driven VN signal alongside the sanitized narration. Derived
+  // from the raw parsed output (sanitizeGmNarration drops unknown fields) and
+  // grounded against the scene's present NPCs so an unanchored speaker is
+  // demoted to ambient.
+  const vn = deriveVnState(parsed, { knownNpcIds: knownNpcIdsFromGmInput(gmInput) });
+  return { ...sanitized, vnMode: vn.active, speakerId: vn.speakerId };
 }
 
 export async function resolveGmNarration(scenePayload, options = {}) {
