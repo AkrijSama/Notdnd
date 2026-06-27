@@ -6,6 +6,7 @@ import { ensureCampaignMemoryDocsAsync, rebuildCampaignIndex } from "../gm/memor
 import { runGmPipeline } from "../gm/prompting.js";
 import { buildOpeningGmMessage } from "../gm/actionNarration.js";
 import { buildCharacter, toRunPlayer } from "../solo/characterBuild.js";
+import { copyDraftPortraitToRun } from "../solo/imageWorker.js";
 import { generateNpcIdentity } from "../solo/npcIdentity.js";
 import { writeNpcMemoryDoc } from "../solo/npcMemory.js";
 import { generateWorld } from "../solo/worldGen.js";
@@ -445,7 +446,7 @@ async function generateOpeningNarration({ campaignId, message, playerName, actor
   }
 }
 
-export async function createWorldOnboardingRun(userId, { world = {}, character = {} } = {}) {
+export async function createWorldOnboardingRun(userId, { world = {}, character = {}, draftPortraitId = null } = {}) {
   const actorUserId = String(userId || "").trim();
   if (!actorUserId) {
     const error = new Error("userId is required to create a world onboarding run.");
@@ -513,6 +514,17 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
   // Apply the full 5e character onto run.player.
   const built = buildCharacter(character);
   run.player = toRunPlayer(built, run.player);
+
+  // Carry forward a portrait generated during character creation (draft run)
+  // into this run's asset namespace, so /scene reuses it instead of
+  // regenerating from scratch. Best-effort: if the draft is missing, the normal
+  // scene-entry generation still runs.
+  if (typeof draftPortraitId === "string" && draftPortraitId.trim()) {
+    const carriedUri = copyDraftPortraitToRun(draftPortraitId.trim(), run.runId);
+    if (carriedUri) {
+      run.player.portraitUri = carriedUri;
+    }
+  }
 
   // One tone-appropriate starting contact.
   const npcRole = roleForLocationType(resolvedWorld.startingLocationType);

@@ -222,7 +222,7 @@ function renderCharAbilities(c) {
     </div>`;
 }
 
-function renderCharReview(c) {
+function renderCharReview(c, portrait = {}) {
   const sheet = buildCharacter({
     name: c.name,
     pronouns: c.pronouns,
@@ -231,6 +231,17 @@ function renderCharReview(c) {
     background: c.background,
     baseAbilityScores: c.baseAbilityScores || {}
   });
+  // Square character-sheet portrait preview (full-body composite). Shows the
+  // generated image, or a spinner while it's being crafted.
+  const portraitUri = typeof portrait.portraitUri === "string" ? portrait.portraitUri : "";
+  const portraitStatus = portrait.portraitStatus || "idle";
+  const portraitBlock = portraitUri
+    ? `<div class="cw-portrait-preview"><img class="cw-portrait-img" src="${esc(portraitUri)}" alt="${esc(c.name || "Character")} portrait" /></div>`
+    : portraitStatus === "generating"
+      ? `<div class="cw-portrait-preview cw-portrait-loading"><span class="cw-portrait-spinner" aria-hidden="true"></span><small>Crafting your portrait… (~20s)</small></div>`
+      : portraitStatus === "failed"
+        ? `<div class="cw-portrait-preview cw-portrait-loading"><small>Portrait will be generated when you enter the world.</small></div>`
+        : "";
   const ds = sheet.derivedStats;
   const abilityCells = ABILITIES.map((a) => `
     <div class="cw-ab-cell"><div class="cw-ab-key">${ABILITY_LABELS[a]}</div>
@@ -240,6 +251,7 @@ function renderCharReview(c) {
   const skills = sheet.skills.filter((s) => s.proficient).map((s) => `<span class="prof">${esc(s.name)} ${formatModifier(s.modifier)}</span>`).join("") || `<span class="small">No proficiencies</span>`;
   return `
     <div class="cw-review">
+      ${portraitBlock}
       <div class="cw-review-head">
         <div class="cw-portrait-ph">${esc((sheet.name || "?").slice(0, 1).toUpperCase())}</div>
         <div>
@@ -264,7 +276,12 @@ function renderCharacterWizard(state) {
   const c = state.character || {};
   const step = c.step || 1;
   const bodies = { 1: renderCharIdentity, 2: renderCharRace, 3: renderCharClass, 4: renderCharBackground, 5: renderCharAbilities, 6: renderCharReview };
-  const body = (bodies[step] || renderCharIdentity)(c);
+  // The Review step also shows the mid-creation portrait (status lives on the
+  // onboarding state, not the character object).
+  const body =
+    step === 6
+      ? renderCharReview(c, { portraitUri: state.draftPortraitUri, portraitStatus: state.draftPortraitStatus })
+      : (bodies[step] || renderCharIdentity)(c);
   const isLast = step === 6;
 
   // Gate "Enter the World" on the three required character fields. Recomputed

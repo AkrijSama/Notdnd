@@ -406,7 +406,102 @@ function charStep(delta) {
 }
 function charField(field, value) {
   uiState.onboarding.character = { ...(uiState.onboarding.character || defaultCharacterState()), [field]: value };
+  // Race/class/background drive the portrait. Once both race AND class are set,
+  // (re)generate the draft portrait so it's ready by the Review step.
+  maybeRequestDraftPortrait();
   scheduleRender();
+}
+
+// ---- Mid-creation (draft) portrait generation ----
+// Generates a portrait before a run exists, keyed server-side by the character
+// fields. Re-requests only when the visual inputs (race/class/background)
+// actually change, so it never regenerates on every click/keystroke.
+function stopDraftPortraitPoll() {
+  if (uiState.onboarding.draftPortraitPollTimer) {
+    clearTimeout(uiState.onboarding.draftPortraitPollTimer);
+    uiState.onboarding.draftPortraitPollTimer = null;
+  }
+}
+
+function startDraftPortraitPoll(draftId, key) {
+  stopDraftPortraitPoll();
+  let attempts = 0;
+  const tick = async () => {
+    attempts += 1;
+    if (uiState.onboarding.draftPortraitKey !== key) {
+      return; // superseded by a newer character combo
+    }
+    try {
+      const res = await apiClient.getDraftPortrait(draftId);
+      if (uiState.onboarding.draftPortraitKey !== key) {
+        return;
+      }
+      if (res?.status === "generated" && res.uri) {
+        uiState.onboarding.draftPortraitUri = res.uri;
+        uiState.onboarding.draftPortraitStatus = "generated";
+        scheduleRender();
+        return; // done — stop polling
+      }
+      if (res?.status === "failed") {
+        uiState.onboarding.draftPortraitStatus = "failed";
+        scheduleRender();
+        return;
+      }
+    } catch {
+      // transient — keep polling within the attempt budget
+    }
+    if (attempts < 20) {
+      uiState.onboarding.draftPortraitPollTimer = setTimeout(tick, 3000);
+    } else {
+      uiState.onboarding.draftPortraitStatus = "failed";
+      scheduleRender();
+    }
+  };
+  uiState.onboarding.draftPortraitPollTimer = setTimeout(tick, 3000);
+}
+
+async function maybeRequestDraftPortrait() {
+  const c = uiState.onboarding.character || {};
+  if (!c.race || !c.characterClass) {
+    return; // need both race + class before a meaningful portrait
+  }
+  // Key on the visual-driving fields only (not name keystrokes).
+  const key = `${c.race}|${c.characterClass}|${c.background || ""}`;
+  if (key === uiState.onboarding.draftPortraitKey) {
+    return; // already requested for this exact combo
+  }
+  uiState.onboarding.draftPortraitKey = key;
+  uiState.onboarding.draftPortraitStatus = "generating";
+  uiState.onboarding.draftPortraitUri = null;
+  uiState.onboarding.draftPortraitId = null;
+  stopDraftPortraitPoll();
+  scheduleRender();
+
+  const world = uiState.onboarding.worldPreview || uiState.onboarding.worldDef || {};
+  try {
+    const res = await apiClient.requestDraftPortrait({
+      character: {
+        name: c.name,
+        race: c.race,
+        characterClass: c.characterClass,
+        background: c.background,
+        pronouns: c.pronouns
+      },
+      world: { tone: world.tone, artStyle: world.artStyle, name: world.name }
+    });
+    if (uiState.onboarding.draftPortraitKey !== key) {
+      return; // combo changed while awaiting — drop this response
+    }
+    if (res?.draftId) {
+      uiState.onboarding.draftPortraitId = res.draftId;
+      startDraftPortraitPoll(res.draftId, key);
+    }
+  } catch {
+    if (uiState.onboarding.draftPortraitKey === key) {
+      uiState.onboarding.draftPortraitStatus = "failed";
+      scheduleRender();
+    }
+  }
 }
 function charInput(field, value) {
   // text fields: update state without re-render so the caret is preserved
@@ -500,9 +595,12 @@ async function enterWorld() {
         background: c.background,
         baseAbilityScores: c.baseAbilityScores,
         chosenSkills: c.chosenSkills
-      }
+      },
+      // Carry the portrait generated during creation into the new run.
+      draftPortraitId: uiState.onboarding.draftPortraitId || null
     });
     if (response?.runId) {
+      stopDraftPortraitPoll();
       window.location.search = `?soloRunId=${encodeURIComponent(response.runId)}`;
       return;
     }

@@ -2476,6 +2476,21 @@ button:disabled {
 .cw-review { display: flex; flex-direction: column; gap: 12px; }
 .cw-review-head { display: flex; align-items: center; gap: 12px; }
 .cw-portrait-ph { width: 56px; height: 56px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: 700; background: var(--input-bg, #100c08); border: 1px solid var(--line-strong, #503f2e); }
+/* Character-sheet portrait preview (Review step): square, ~280px, with a
+   loading state while the draft portrait generates. */
+.cw-portrait-preview {
+  width: 280px; max-width: 100%; aspect-ratio: 1 / 1; margin: 0 auto 4px;
+  border-radius: 12px; overflow: hidden;
+  background: var(--input-bg, #100c08); border: 1px solid var(--line-strong, #503f2e);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 10px; color: var(--muted, #95897a); text-align: center; padding: 12px; box-sizing: border-box;
+}
+.cw-portrait-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.cw-portrait-spinner {
+  width: 26px; height: 26px; border: 3px solid var(--line-strong, #503f2e);
+  border-top-color: var(--accent, #c89a4b); border-radius: 50%; animation: solo-spin 0.9s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) { .cw-portrait-spinner { animation: none; } }
 .cw-review-name { font-size: 20px; font-family: "Sora", sans-serif; }
 .cw-review-sub { font-size: 13px; opacity: 0.8; }
 .cw-ability-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
