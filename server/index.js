@@ -2104,15 +2104,44 @@ async function handleApi(req, res) {
 }
 
 const server = http.createServer(async (req, res) => {
-  if ((req.url || "").startsWith("/api/")) {
-    const handled = await handleApi(req, res);
-    if (!handled) {
-      writeText(res, 404, "Not found");
+  // Outer safety net: any unguarded throw in a route would otherwise become an
+  // unhandled rejection and exit the process, taking down every player. Catch
+  // it here, log with request context, and return a 500 instead of crashing.
+  try {
+    if ((req.url || "").startsWith("/api/")) {
+      const handled = await handleApi(req, res);
+      if (!handled) {
+        writeText(res, 404, "Not found");
+      }
+      return;
     }
-    return;
-  }
 
-  serveStatic(req, res, repoRoot);
+    serveStatic(req, res, repoRoot);
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error(`[FATAL] request handler error: ${req.method} ${req.url}:`, error);
+    if (!res.headersSent) {
+      // routeError(res, error) derives the status from error.statusCode; force a
+      // generic 500 (no internals leaked) without changing routeError.
+      routeError(res, Object.assign(new Error("Internal server error"), { statusCode: 500, code: "INTERNAL_ERROR" }));
+    }
+  }
+});
+
+// Last-resort crash guards: a synchronous throw or a rejected promise that
+// escapes every other boundary would otherwise terminate the process and drop
+// all connections. Log and keep serving — a single bad request must never take
+// the whole instance down.
+process.on("uncaughtException", (err) => {
+  // eslint-disable-next-line no-console
+  console.error("[FATAL] uncaughtException:", err);
+  // do not exit — log and continue
+});
+
+process.on("unhandledRejection", (reason) => {
+  // eslint-disable-next-line no-console
+  console.error("[FATAL] unhandledRejection:", reason);
+  // do not exit — log and continue
 });
 
 server.on("upgrade", (req, socket, head) => {
