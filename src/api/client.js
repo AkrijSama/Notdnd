@@ -310,6 +310,38 @@ export function createApiClient(baseUrl = "") {
         method: "POST",
         body: JSON.stringify({ url })
       });
+    },
+    // PDF sourcebook import — pass { file } (a File) to upload+extract, or
+    // { text } to parse pasted text. Returns review candidates (NOT saved).
+    async importSourcebookPdf({ file = null, text = "" } = {}) {
+      if (file) {
+        const headers = {};
+        if (authToken) {
+          headers.Authorization = `Bearer ${authToken}`;
+        }
+        const form = new FormData();
+        form.append("file", file);
+        const response = await fetch(`${baseUrl}/api/homebrew/import-pdf`, { method: "POST", headers, body: form });
+        const payload = await response.json();
+        if (!response.ok) {
+          const error = new Error(payload.error || `Request failed: ${response.status}`);
+          error.code = payload.code;
+          error.status = response.status;
+          throw error;
+        }
+        return payload;
+      }
+      return request("/api/homebrew/import-pdf", {
+        method: "POST",
+        body: JSON.stringify({ text })
+      });
+    },
+    // Persist reviewed candidates as custom content (Opus 1's storage endpoint).
+    async saveCustomContent(items) {
+      return request("/api/homebrew/custom", {
+        method: "POST",
+        body: JSON.stringify({ items })
+      });
     }
   };
 }

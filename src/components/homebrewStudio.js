@@ -65,6 +65,22 @@ export function renderHomebrewStudio(state) {
           </ul>
         </article>
       </div>
+
+      <article class="module-card">
+        <h3>Import Sourcebook PDF <span class="tag">beta</span></h3>
+        <p class="small">Upload an official or homebrew D&amp;D PDF — or paste a section of its text — and we'll extract races, subclasses, backgrounds, and feats for you to <strong>review and edit before saving</strong>. Parsing is imperfect; scanned or image-only PDFs won't extract — paste the text instead.</p>
+        <div class="field">
+          <span>Upload PDF</span>
+          <input id="hb-pdf-file" type="file" accept=".pdf,application/pdf" />
+        </div>
+        <div class="field">
+          <span>…or paste book text</span>
+          <textarea id="hb-pdf-text" rows="4" placeholder="Paste a chapter — e.g. just the races or subclasses section — for the most reliable results."></textarea>
+          <button id="hb-pdf-parse" type="button">Parse for character options</button>
+          <div class="small" id="hb-pdf-status">Choose a PDF or paste some text, then parse.</div>
+        </div>
+        <div id="hb-pdf-review"></div>
+      </article>
     </section>
   `;
 }
@@ -170,6 +186,125 @@ export function bindHomebrewStudio(root, store) {
         if (urlStatus) {
           urlStatus.textContent = `URL import failed: ${String(error.message || error)}`;
         }
+      }
+    });
+  }
+
+  // ---- Sourcebook PDF import: parse -> review/edit -> confirm-save ----
+  const pdfFile = root.querySelector("#hb-pdf-file");
+  const pdfText = root.querySelector("#hb-pdf-text");
+  const pdfParse = root.querySelector("#hb-pdf-parse");
+  const pdfStatus = root.querySelector("#hb-pdf-status");
+  const pdfReview = root.querySelector("#hb-pdf-review");
+
+  function esc(value) {
+    return String(value == null ? "" : value).replace(
+      /[&<>"']/g,
+      (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch])
+    );
+  }
+
+  if (pdfParse && pdfReview) {
+    // Flat index of the rendered candidates, so the import step can read the
+    // (possibly edited) name + include checkbox for each one back out of the DOM.
+    let flat = [];
+
+    function renderReview(candidates) {
+      flat = [];
+      const groups = [
+        ["races", "Races"],
+        ["subclasses", "Subclasses"],
+        ["backgrounds", "Backgrounds"],
+        ["feats", "Feats"]
+      ];
+      let html = "";
+      for (const [key, label] of groups) {
+        const list = Array.isArray(candidates[key]) ? candidates[key] : [];
+        if (!list.length) {
+          continue;
+        }
+        html += `<div class="small" style="margin-top:10px;font-weight:600">${label}</div>`;
+        for (const item of list) {
+          const idx = flat.length;
+          flat.push(item);
+          const sub = item.className ? ` — ${esc(item.className)}` : item.size ? ` — ${esc(item.size)}` : "";
+          html += `<label class="list-item" style="display:flex;gap:8px;align-items:center">
+            <input type="checkbox" class="hb-pdf-pick" data-idx="${idx}" checked />
+            <input type="text" class="hb-pdf-name" data-idx="${idx}" value="${esc(item.name)}" style="flex:1" />
+            <span class="tag">${esc(item.kind)}${sub}</span>
+          </label>`;
+        }
+      }
+      if (!flat.length) {
+        pdfReview.innerHTML = `<div class="small">No importable content found in this book.</div>`;
+        return;
+      }
+      pdfReview.innerHTML = `${html}
+        <button id="hb-pdf-import" type="button" style="margin-top:12px">Import selected as custom content</button>
+        <div class="small" id="hb-pdf-import-status"></div>`;
+
+      const importBtn = pdfReview.querySelector("#hb-pdf-import");
+      const importStatus = pdfReview.querySelector("#hb-pdf-import-status");
+      importBtn.addEventListener("click", async () => {
+        const picks = Array.from(pdfReview.querySelectorAll(".hb-pdf-pick"));
+        const items = picks
+          .filter((box) => box.checked)
+          .map((box) => {
+            const idx = Number(box.getAttribute("data-idx"));
+            const nameInput = pdfReview.querySelector(`.hb-pdf-name[data-idx="${idx}"]`);
+            const name = String(nameInput?.value || "").trim();
+            return name ? { ...flat[idx], name } : null;
+          })
+          .filter(Boolean);
+        if (!items.length) {
+          importStatus.textContent = "Select at least one entry to import.";
+          return;
+        }
+        importBtn.disabled = true;
+        importStatus.textContent = `Saving ${items.length} item(s)…`;
+        try {
+          await store.saveCustomContent(items);
+          importStatus.textContent = `Imported ${items.length} item(s) as custom content.`;
+        } catch (error) {
+          importStatus.textContent = `Save failed: ${String(error.message || error)}. (Custom-content storage may not be available yet.)`;
+        } finally {
+          importBtn.disabled = false;
+        }
+      });
+    }
+
+    pdfParse.addEventListener("click", async () => {
+      const file = (pdfFile && pdfFile.files && pdfFile.files[0]) || null;
+      const text = String((pdfText && pdfText.value) || "").trim();
+      if (!file && !text) {
+        if (pdfStatus) pdfStatus.textContent = "Choose a PDF or paste some text first.";
+        return;
+      }
+      pdfReview.innerHTML = "";
+      if (pdfStatus) {
+        pdfStatus.textContent = file
+          ? "Extracting and parsing the PDF… this can take a while for a large book."
+          : "Parsing the text…";
+      }
+      pdfParse.disabled = true;
+      try {
+        const res = await store.importSourcebookPdf(file ? { file } : { text });
+        if (!res || res.ok !== true) {
+          if (pdfStatus) {
+            pdfStatus.textContent = (res && res.reason) || "Couldn't parse this book. Try pasting a section, or add content manually.";
+          }
+          return;
+        }
+        if (pdfStatus) {
+          pdfStatus.textContent = `Found ${res.count} option(s) in ${esc(res.source || "the book")}. Review, edit, then import below.`;
+        }
+        renderReview(res.candidates || {});
+      } catch (error) {
+        if (pdfStatus) {
+          pdfStatus.textContent = `Import failed: ${String(error.message || error)}`;
+        }
+      } finally {
+        pdfParse.disabled = false;
       }
     });
   }
