@@ -1,4 +1,6 @@
-const OPENROUTER_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
+// OpenAI-compatible chat-completions endpoint. Defaults to OpenRouter but can
+// point at any compatible provider (Gemini AI Studio, Groq, etc.) via env.
+const LLM_BASE_URL = process.env.NOTDND_LLM_BASE_URL || "https://openrouter.ai/api/v1/chat/completions";
 
 const DEFAULT_MODELS = {
   narrative: "x-ai/grok-3",
@@ -17,9 +19,11 @@ function resolveModelTiers() {
 }
 
 function ensureApiKey() {
-  const apiKey = String(process.env.OPENROUTER_API_KEY || "").trim();
+  // NOTDND_LLM_API_KEY is the provider-agnostic name; OPENROUTER_API_KEY stays
+  // a fallback so existing setups keep working unchanged.
+  const apiKey = String(process.env.NOTDND_LLM_API_KEY || process.env.OPENROUTER_API_KEY || "").trim();
   if (!apiKey) {
-    const error = new Error("OPENROUTER_API_KEY is required.");
+    const error = new Error("NOTDND_LLM_API_KEY (or OPENROUTER_API_KEY) is required.");
     error.code = "MISSING_API_KEY";
     error.statusCode = 500;
     throw error;
@@ -265,7 +269,7 @@ async function requestOpenRouter(messages, model, options = {}) {
     body.stop = options.stopSequences.filter((entry) => String(entry || "").trim());
   }
 
-  const response = await fetch(OPENROUTER_ENDPOINT, {
+  const response = await fetch(LLM_BASE_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
