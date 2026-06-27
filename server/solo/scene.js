@@ -4,6 +4,7 @@ import { getVisibleEntities, validateVisibleEntity } from "./entities.js";
 import { generatePlaceholderGmNarration, validateGmSceneOutput } from "./gm.js";
 import { getAvailableMoves } from "./movement.js";
 import { getQuestPayload } from "./quests.js";
+import { buildFallbackSuggestions, sceneSuggestionsKey } from "./suggestions.js";
 import { getUsableInventoryItems } from "./useItem.js";
 import {
   NPC_EXPRESSIONS,
@@ -618,6 +619,14 @@ export function resolveLocationImageLocked(run, location) {
   return Boolean(asset && asset.locked);
 }
 
+// Pure. True before the player has taken any action this run — the run still
+// carries only the seed "run_created" timeline event. Used to gate the world-
+// entry opening narration so it shows on arrival and disappears once play starts.
+export function isOpeningMoment(run) {
+  const timeline = Array.isArray(run?.timeline) ? run.timeline : [];
+  return timeline.every((event) => event && event.type === "run_created");
+}
+
 // Pure. True when the current location still lacks a generated background image —
 // used by the scene route to enqueue a one-off location-image job on entry/move.
 // A generated image (locked or not) is never regenerated: resolveLocationImageUri
@@ -677,6 +686,11 @@ export function buildSoloScenePayload(run, options = {}) {
     locationImageUri: resolveLocationImageUri(run, currentLocation),
     // Whether the player has locked this location's image (hides Redo/Save).
     locationImageLocked: resolveLocationImageLocked(run, currentLocation),
+    // AI-generated world-entry opening (stored on the run, generated once).
+    // Surfaced only at the "first begins" moment — before the player has taken
+    // any action — so it reads as a GM welcome at the top of the scene, then
+    // steps aside once play starts.
+    openingNarration: isOpeningMoment(run) && isString(run.openingNarration) ? run.openingNarration : null,
     rest: restPayload(currentLocation, policyProfile),
     player: buildPlayerPayload(run),
     visibleEntities,
@@ -716,6 +730,27 @@ export function buildSoloScenePayload(run, options = {}) {
     },
     errors: []
   };
+
+  // Contextual suggested actions: 3 short, editable next-move prompts so the
+  // player never faces a blank box. Served from cache when fresh, else a
+  // deterministic scene-aware fallback; the route's enqueuer refreshes a stale
+  // scene's set in the background (LLM upgrade on the next poll). Pure scaffolding
+  // — the client always also offers a free-text "type your own" input.
+  const suggestionsKey = sceneSuggestionsKey(run);
+  const cachedSuggestions =
+    run.suggestedActionsKey === suggestionsKey &&
+    Array.isArray(run.suggestedActions) &&
+    run.suggestedActions.length >= 3
+      ? run.suggestedActions.slice(0, 3)
+      : null;
+  payload.suggestedActions = cachedSuggestions || buildFallbackSuggestions(run);
+  if (!cachedSuggestions && typeof options.enqueueSuggestions === "function") {
+    try {
+      options.enqueueSuggestions(suggestionsKey);
+    } catch {
+      // Best-effort only.
+    }
+  }
 
   if (options.includePlaceholderGm === true) {
     payload.gmNarration = generatePlaceholderGmNarration(payload, options.gmOptions || {});

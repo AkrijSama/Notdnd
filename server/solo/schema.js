@@ -867,6 +867,7 @@ export function validateSoloRun(run) {
   validateRequiredString(run.runId, "runId", errors);
   validateOptionalString(run.userId, "userId", errors);
   validateOptionalString(run.narration, "narration", errors);
+  validateOptionalString(run.openingNarration, "openingNarration", errors);
   if (run.battleMap !== undefined && run.battleMap !== null && !isPlainObject(run.battleMap)) {
     push(errors, "battleMap", "Expected object");
   }
