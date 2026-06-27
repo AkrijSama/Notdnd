@@ -21,9 +21,9 @@ const PROVIDER_SPECS = {
     type: "mock",
     status: "ready",
     models: {
-      gm: process.env.NOTDND_LOCAL_GM_MODEL || "local-gm-v1",
-      image: process.env.NOTDND_LOCAL_IMAGE_MODEL || "local-image-v1",
-      voice: process.env.NOTDND_LOCAL_VOICE_MODEL || "local-voice-v1"
+      gm: (process.env.INKBORNE_LOCAL_GM_MODEL ?? process.env.NOTDND_LOCAL_GM_MODEL) || "local-gm-v1",
+      image: (process.env.INKBORNE_LOCAL_IMAGE_MODEL ?? process.env.NOTDND_LOCAL_IMAGE_MODEL) || "local-image-v1",
+      voice: (process.env.INKBORNE_LOCAL_VOICE_MODEL ?? process.env.NOTDND_LOCAL_VOICE_MODEL) || "local-voice-v1"
     }
   },
   chatgpt: {
@@ -34,9 +34,9 @@ const PROVIDER_SPECS = {
     endpointEnv: "NOTDND_CHATGPT_ENDPOINT",
     defaultEndpoint: "https://api.openai.com/v1/responses",
     models: {
-      gm: process.env.NOTDND_CHATGPT_GM_MODEL || "gpt-5-mini",
-      image: process.env.NOTDND_CHATGPT_IMAGE_MODEL || "gpt-image-1",
-      voice: process.env.NOTDND_CHATGPT_VOICE_MODEL || "gpt-4o-mini-tts"
+      gm: (process.env.INKBORNE_CHATGPT_GM_MODEL ?? process.env.NOTDND_CHATGPT_GM_MODEL) || "gpt-5-mini",
+      image: (process.env.INKBORNE_CHATGPT_IMAGE_MODEL ?? process.env.NOTDND_CHATGPT_IMAGE_MODEL) || "gpt-image-1",
+      voice: (process.env.INKBORNE_CHATGPT_VOICE_MODEL ?? process.env.NOTDND_CHATGPT_VOICE_MODEL) || "gpt-4o-mini-tts"
     }
   },
   grok: {
@@ -47,9 +47,9 @@ const PROVIDER_SPECS = {
     endpointEnv: "NOTDND_GROK_ENDPOINT",
     defaultEndpoint: "https://api.x.ai/v1/chat/completions",
     models: {
-      gm: process.env.NOTDND_GROK_GM_MODEL || "grok-4-fast-reasoning",
-      image: process.env.NOTDND_GROK_IMAGE_MODEL || "grok-2-image",
-      voice: process.env.NOTDND_GROK_VOICE_MODEL || "grok-voice-preview"
+      gm: (process.env.INKBORNE_GROK_GM_MODEL ?? process.env.NOTDND_GROK_GM_MODEL) || "grok-4-fast-reasoning",
+      image: (process.env.INKBORNE_GROK_IMAGE_MODEL ?? process.env.NOTDND_GROK_IMAGE_MODEL) || "grok-2-image",
+      voice: (process.env.INKBORNE_GROK_VOICE_MODEL ?? process.env.NOTDND_GROK_VOICE_MODEL) || "grok-voice-preview"
     }
   },
   gemini: {
@@ -60,9 +60,9 @@ const PROVIDER_SPECS = {
     endpointEnv: "NOTDND_GEMINI_ENDPOINT",
     defaultEndpoint: "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
     models: {
-      gm: process.env.NOTDND_GEMINI_GM_MODEL || "gemini-2.5-flash",
-      image: process.env.NOTDND_GEMINI_IMAGE_MODEL || "imagen-3.0-generate-002",
-      voice: process.env.NOTDND_GEMINI_VOICE_MODEL || "gemini-2.5-flash-preview-tts"
+      gm: (process.env.INKBORNE_GEMINI_GM_MODEL ?? process.env.NOTDND_GEMINI_GM_MODEL) || "gemini-2.5-flash",
+      image: (process.env.INKBORNE_GEMINI_IMAGE_MODEL ?? process.env.NOTDND_GEMINI_IMAGE_MODEL) || "imagen-3.0-generate-002",
+      voice: (process.env.INKBORNE_GEMINI_VOICE_MODEL ?? process.env.NOTDND_GEMINI_VOICE_MODEL) || "gemini-2.5-flash-preview-tts"
     }
   },
   fal: {
@@ -74,7 +74,7 @@ const PROVIDER_SPECS = {
     defaultEndpoint: "https://fal.run/fal-ai/flux/dev",
     supports: ["image"],
     models: {
-      image: process.env.NOTDND_FAL_IMAGE_MODEL || "fal-ai/flux/dev"
+      image: (process.env.INKBORNE_FAL_IMAGE_MODEL ?? process.env.NOTDND_FAL_IMAGE_MODEL) || "fal-ai/flux/dev"
     }
   }
 };
@@ -367,11 +367,13 @@ const MOCK_IMAGE_PNG = Buffer.from(
 
 // fal.ai routes: base portraits use text-to-image; expression/reference variants
 // use the IP-Adapter face endpoint (image-to-image anchored on a reference).
-const FAL_TEXT_TO_IMAGE_ENDPOINT = process.env.NOTDND_FAL_ENDPOINT || "https://fal.run/fal-ai/flux/dev";
-const FAL_FACE_TO_IMAGE_ENDPOINT = process.env.NOTDND_FAL_FACE_ENDPOINT || "https://fal.run/fal-ai/ip-adapter-face-id";
+const FAL_TEXT_TO_IMAGE_ENDPOINT =
+  (process.env.INKBORNE_FAL_ENDPOINT ?? process.env.NOTDND_FAL_ENDPOINT) || "https://fal.run/fal-ai/flux/dev";
+const FAL_FACE_TO_IMAGE_ENDPOINT =
+  (process.env.INKBORNE_FAL_FACE_ENDPOINT ?? process.env.NOTDND_FAL_FACE_ENDPOINT) || "https://fal.run/fal-ai/ip-adapter-face-id";
 
 function imageMockForced() {
-  return String(process.env.NOTDND_MOCK_IMAGE || "").trim().toLowerCase() === "true";
+  return String((process.env.INKBORNE_MOCK_IMAGE ?? process.env.NOTDND_MOCK_IMAGE) || "").trim().toLowerCase() === "true";
 }
 
 function isMockImageProvider(provider) {
@@ -405,7 +407,7 @@ export function resolveImageProvider() {
   }
   // Recognized image providers: "pollinations" (keyless, free txt2img),
   // "fal" (keyed), "mock"/"placeholder"/"local". An explicit env value wins.
-  const configured = String(process.env.NOTDND_IMAGE_PROVIDER || "").trim().toLowerCase();
+  const configured = String((process.env.INKBORNE_IMAGE_PROVIDER ?? process.env.NOTDND_IMAGE_PROVIDER) || "").trim().toLowerCase();
   if (configured) {
     return configured;
   }
@@ -455,8 +457,10 @@ async function falImage({ prompt, referenceImageUrl, fetchImpl }) {
 // Pollinations.ai — keyless, free, text-to-image (FLUX). Zero auth: a GET
 // returns image bytes directly. No reference/IP-Adapter support, so it is a
 // base-portrait source only; expression variants fall back to fresh txt2img.
-const POLLINATIONS_BASE = process.env.NOTDND_POLLINATIONS_ENDPOINT || "https://image.pollinations.ai/prompt";
-const POLLINATIONS_MODEL = process.env.NOTDND_POLLINATIONS_MODEL || "flux";
+const POLLINATIONS_BASE =
+  (process.env.INKBORNE_POLLINATIONS_ENDPOINT ?? process.env.NOTDND_POLLINATIONS_ENDPOINT) || "https://image.pollinations.ai/prompt";
+const POLLINATIONS_MODEL =
+  (process.env.INKBORNE_POLLINATIONS_MODEL ?? process.env.NOTDND_POLLINATIONS_MODEL) || "flux";
 
 // Deterministic seed so a given prompt yields a stable image (cache-forever
 // friendly). Uses the caller's seed when provided, else a hash of the prompt.

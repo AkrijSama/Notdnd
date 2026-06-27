@@ -27,7 +27,8 @@ const MANAGE_MEMBER_ROLES = new Set(["owner", "gm"]);
 // existing temp-dir setups keep working without changes; ":memory:" yields an
 // ephemeral in-memory database.
 function storePath() {
-  const configured = process.env.NOTDND_DB_PATH;
+  // Brand rename: INKBORNE_DB_PATH first, legacy NOTDND_DB_PATH as fallback.
+  const configured = process.env.INKBORNE_DB_PATH ?? process.env.NOTDND_DB_PATH;
   if (!configured) {
     return DEFAULT_SQLITE_PATH;
   }
@@ -47,7 +48,7 @@ function storePath() {
 // Resolves the legacy JSON store path for the one-time migration. Mirrors
 // storePath()'s NOTDND_DB_PATH handling but points at the ".json" file.
 function legacyJsonPath() {
-  const configured = process.env.NOTDND_DB_PATH;
+  const configured = process.env.INKBORNE_DB_PATH ?? process.env.NOTDND_DB_PATH;
   if (!configured) {
     return DEFAULT_LEGACY_JSON_PATH;
   }
