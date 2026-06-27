@@ -8,7 +8,7 @@ import {
 } from "../server/solo/schema.js";
 import { resolveSoloAction } from "../server/solo/actions.js";
 import { buildSoloScenePayload, validateSoloScenePayload } from "../server/solo/scene.js";
-import { deriveVnState, resolveGmNarration } from "../server/solo/gmProvider.js";
+import { classifyNarrationVn, deriveVnState, resolveGmNarration } from "../server/solo/gmProvider.js";
 
 const TEST_NOW = "2026-01-01T00:00:00.000Z";
 
@@ -270,3 +270,49 @@ test("resolveGmNarration demotes a GM-named speaker that is not in the scene", a
   assert.equal(narration.vnMode, false);
   assert.equal(narration.speakerId, null);
 });
+
+// ---------------------------------------------------------------------------
+// classifyNarrationVn: the automatic trigger over free-text narration
+// ---------------------------------------------------------------------------
+
+const KEEPER = { npcId: "tavern_keeper", generatedName: "Brynn", displayName: "Tavern Keeper" };
+const GUARD = { npcId: "gate_guard", generatedName: "Soren", displayName: "Gate Guard" };
+
+test("classifyNarrationVn stays ambient without quoted speech", () => {
+  const text = "Brynn polishes a glass behind the bar while the rain drums on the shutters.";
+  assert.deepEqual(classifyNarrationVn(text, [KEEPER]), { active: false, speakerId: null });
+});
+
+test("classifyNarrationVn stays ambient when quoted speech names no present NPC", () => {
+  const text = 'Voices murmur across the room. "Keep your head down," someone mutters, and is gone.';
+  assert.deepEqual(classifyNarrationVn(text, [KEEPER]), { active: false, speakerId: null });
+});
+
+test("classifyNarrationVn activates for a single named present speaker", () => {
+  const text = 'Brynn sets down the glass and leans in. "You are asking after the shipment, are you not?"';
+  assert.deepEqual(classifyNarrationVn(text, [KEEPER, GUARD]), { active: true, speakerId: "tavern_keeper" });
+});
+
+test("classifyNarrationVn matches an NPC by display name when no minted name exists", () => {
+  const text = 'The Gate Warden blocks the road. "No one passes after curfew," she says flatly.';
+  const warden = { npcId: "gate_warden", displayName: "Gate Warden" };
+  assert.deepEqual(classifyNarrationVn(text, [warden]), { active: true, speakerId: "gate_warden" });
+});
+
+test("classifyNarrationVn stays ambient when several present NPCs are named (ambiguous)", () => {
+  const text = 'Brynn and Soren both turn. "Trouble," one says. "Always," answers the other.';
+  assert.deepEqual(classifyNarrationVn(text, [KEEPER, GUARD]), { active: false, speakerId: null });
+});
+
+test("classifyNarrationVn ignores a named speaker that is not in the present set", () => {
+  // Brynn is named with quoted speech, but is not among the present NPCs.
+  const text = 'Brynn calls from the doorway. "Wait!" she says.';
+  assert.deepEqual(classifyNarrationVn(text, [GUARD]), { active: false, speakerId: null });
+});
+
+test("classifyNarrationVn is graceful on empty or non-string narration", () => {
+  assert.deepEqual(classifyNarrationVn("", [KEEPER]), { active: false, speakerId: null });
+  assert.deepEqual(classifyNarrationVn(null, [KEEPER]), { active: false, speakerId: null });
+  assert.deepEqual(classifyNarrationVn('Brynn says "Hi" to you.', undefined), { active: false, speakerId: null });
+});
+
