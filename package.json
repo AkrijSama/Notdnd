@@ -10,7 +10,7 @@
   },
   "scripts": {
     "dev": "node server/index.js",
-    "start": "node server/index.js",
+    "start": "node scripts/start.js",
     "check": "for f in $(rg --files -g '*.js' -g '*.mjs' src server tests scripts); do node --check \"$f\" || exit 1; done",
     "unit": "NOTDND_BOOTSTRAP_DEMO=true node --test tests/*.test.js",
     "verify": "npm run check && npm run unit",

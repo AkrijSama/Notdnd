@@ -2,6 +2,9 @@ version: "3.9"
 services:
   notdnd:
     build: .
+    # Auto-restart the container if the Node process crashes or exits abnormally,
+    # so players never hit a dead server (survives daemon restarts too).
+    restart: always
     ports:
       - "4173:4173"
     environment:

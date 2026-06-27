@@ -11,10 +11,15 @@ primary_region = "iad"
   NOTDND_MEMORY_ROOT = "/data/campaigns"
   NOTDND_WAITLIST_PATH = "/data/waitlist.json"
 
+# Single process group; Fly restarts the process automatically if it exits.
+[processes]
+  app = "node server/index.js"
+
 [http_service]
   internal_port = 4173
   force_https = true
-  auto_stop_machines = "off"
+  # Keep the instance up for the whole session — never auto-stop/suspend mid-play.
+  auto_stop_machines = false
   auto_start_machines = true
   min_machines_running = 1
 
