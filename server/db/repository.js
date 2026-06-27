@@ -238,6 +238,11 @@ function ensureDefaults(target) {
   target.soloRuns = target.soloRuns && typeof target.soloRuns === "object" && !Array.isArray(target.soloRuns)
     ? target.soloRuns
     : {};
+  // Manually-authored custom homebrew content, keyed by userId -> array of items.
+  // Persisted via the kv catch-all (writeToDisk). Additive to the SRD content.
+  target.userHomebrew = target.userHomebrew && typeof target.userHomebrew === "object" && !Array.isArray(target.userHomebrew)
+    ? target.userHomebrew
+    : {};
 
   target.selectedCampaignId = target.selectedCampaignId || target.campaigns?.[0]?.id || null;
 
@@ -854,6 +859,79 @@ export function deleteSoloRun(runId) {
     return false;
   }
   delete db.soloRuns[key];
+  bumpStateVersion();
+  writeToDisk();
+  return true;
+}
+
+// ---------------------------------------------------------------------------
+// Custom homebrew content (manually authored, per user).
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns a deep copy of a user's custom content items (newest first).
+ * @param {string} userId
+ * @returns {object[]}
+ */
+export function listUserHomebrew(userId) {
+  ensureDb();
+  const key = String(userId || "").trim();
+  if (!key) {
+    return [];
+  }
+  const items = Array.isArray(db.userHomebrew[key]) ? db.userHomebrew[key] : [];
+  return deepClone(items);
+}
+
+/**
+ * Stores a validated custom-content item for a user, assigning it an id +
+ * createdAt. The caller is responsible for validating/sanitizing `item`
+ * (see customContent.validateCustomItem). Returns the stored record.
+ * @param {string} userId
+ * @param {object} item validated, sanitized custom item (with type + name)
+ * @returns {object} stored record
+ */
+export function addUserHomebrew(userId, item) {
+  ensureDb();
+  const key = String(userId || "").trim();
+  if (!key) {
+    throw makeError("BAD_REQUEST", "userId is required.", 400);
+  }
+  if (!item || typeof item !== "object") {
+    throw makeError("BAD_REQUEST", "A custom-content item is required.", 400);
+  }
+  if (!Array.isArray(db.userHomebrew[key])) {
+    db.userHomebrew[key] = [];
+  }
+  const record = {
+    ...deepClone(item),
+    id: `hb_${crypto.randomBytes(8).toString("hex")}`,
+    createdAt: nowEpochSec()
+  };
+  db.userHomebrew[key].unshift(record);
+  bumpStateVersion();
+  writeToDisk();
+  return deepClone(record);
+}
+
+/**
+ * Removes one of a user's custom-content items by id. Returns true if removed.
+ * @param {string} userId
+ * @param {string} itemId
+ * @returns {boolean}
+ */
+export function deleteUserHomebrew(userId, itemId) {
+  ensureDb();
+  const key = String(userId || "").trim();
+  const id = String(itemId || "").trim();
+  if (!key || !id || !Array.isArray(db.userHomebrew[key])) {
+    return false;
+  }
+  const before = db.userHomebrew[key].length;
+  db.userHomebrew[key] = db.userHomebrew[key].filter((entry) => entry && entry.id !== id);
+  if (db.userHomebrew[key].length === before) {
+    return false;
+  }
   bumpStateVersion();
   writeToDisk();
   return true;

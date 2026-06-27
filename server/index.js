@@ -45,8 +45,10 @@ import {
   assertCampaignWriteAccess,
   completeSoloRun,
   createQuickstartCampaignFromParsed,
+  addUserHomebrew,
   createSoloRun,
   deleteSoloRun,
+  deleteUserHomebrew,
   getCampaignRole,
   getCampaignRuntimeState,
   createSoloNpc,
@@ -59,6 +61,7 @@ import {
   initializeDatabase,
   listCampaignMembers,
   listSoloRunsForUser,
+  listUserHomebrew,
   confirmPasswordReset,
   loginUser,
   logoutSessionToken,
@@ -90,7 +93,9 @@ import { getProfile } from "./gm/promptProfiles.js";
 import { applyPreset, getPresets } from "./gm/stylePresets.js";
 import { buildStylePromptBlock, getStyleConfig, updateStyleConfig, validateStyleUpdate } from "./gm/styleConfig.js";
 import { parseHomebrewDocuments } from "./homebrew/parser.js";
+import { MAX_PDF_BYTES, emptyCandidates, extractPdfText, parseSourcebookText } from "./homebrew/pdfImport.js";
 import { fetchHomebrewUrl } from "./homebrew/urlImport.js";
+import { validateCustomItem, normalizeContentForBuild, CUSTOM_CONTENT_TYPES } from "./homebrew/customContent.js";
 import { createWsHub } from "./realtime/wsHub.js";
 import { resolveSoloAction } from "./solo/actions.js";
 import { resolveGmNarration } from "./solo/gmProvider.js";
@@ -1556,6 +1561,54 @@ async function handleApi(req, res) {
     return true;
   }
 
+  // Custom homebrew content (manually authored): list / create / delete, per user.
+  if (url.pathname === "/api/homebrew/custom" && req.method === "GET") {
+    try {
+      const user = requireAuth(req);
+      const items = listUserHomebrew(user.id);
+      // buildContent = the SRD-shaped catalogs the character creator + build use.
+      writeJson(res, 200, { ok: true, items, buildContent: normalizeContentForBuild(items), types: CUSTOM_CONTENT_TYPES });
+    } catch (error) {
+      routeError(res, error);
+    }
+    return true;
+  }
+
+  if (url.pathname === "/api/homebrew/custom" && req.method === "POST") {
+    try {
+      const user = requireAuth(req);
+      const payload = await readJsonBody(req);
+      const { ok, errors, item } = validateCustomItem(payload?.item || payload || {});
+      if (!ok) {
+        throw Object.assign(new Error(`Invalid custom content: ${errors.join(" ")}`), {
+          code: "INVALID_HOMEBREW",
+          statusCode: 400,
+          validationErrors: errors
+        });
+      }
+      const stored = addUserHomebrew(user.id, item);
+      writeJson(res, 200, { ok: true, item: stored });
+    } catch (error) {
+      routeError(res, error);
+    }
+    return true;
+  }
+
+  if (url.pathname.startsWith("/api/homebrew/custom/") && req.method === "DELETE") {
+    try {
+      const user = requireAuth(req);
+      const id = decodeURIComponent(url.pathname.slice("/api/homebrew/custom/".length)).replace(/\/+$/, "");
+      const removed = deleteUserHomebrew(user.id, id);
+      if (!removed) {
+        throw Object.assign(new Error("Custom content item not found."), { code: "NOT_FOUND", statusCode: 404 });
+      }
+      writeJson(res, 200, { ok: true, removed: true });
+    } catch (error) {
+      routeError(res, error);
+    }
+    return true;
+  }
+
   if (req.method === "POST" && url.pathname === "/api/waitlist") {
     try {
       const payload = await readJsonBody(req);
@@ -2231,6 +2284,58 @@ async function handleApi(req, res) {
           contentType: fetched.contentType
         },
         parsed
+      });
+    } catch (error) {
+      routeError(res, error);
+    }
+    return true;
+  }
+
+  // PDF sourcebook import: extract text from an uploaded PDF (or accept pasted
+  // text), then use the utility LLM to STRUCTURE named character options into
+  // review candidates. Never auto-saves — parsing is imperfect, so the client
+  // shows candidates for the user to edit/confirm before saving as custom
+  // content. Returns ok:false + a friendly reason (not an error) when a book
+  // can't be extracted/parsed, so the UI can fall back to paste / manual entry.
+  if (req.method === "POST" && url.pathname === "/api/homebrew/import-pdf") {
+    try {
+      requireAuth(req);
+      const contentType = String(req.headers["content-type"] || "");
+      let text = "";
+      let source = "pasted text";
+
+      if (contentType.toLowerCase().includes("multipart/form-data")) {
+        const raw = await readRawBody(req, MAX_PDF_BYTES + 1024 * 1024);
+        const file = parseMultipartFile(raw, contentType);
+        if (!file || !file.data || file.data.length === 0) {
+          throw Object.assign(new Error("No PDF file provided."), { code: "BAD_REQUEST", statusCode: 400 });
+        }
+        if (file.data.length > MAX_PDF_BYTES) {
+          throw Object.assign(new Error("PDF exceeds the size limit."), { code: "PAYLOAD_TOO_LARGE", statusCode: 413 });
+        }
+        const extracted = await extractPdfText(file.data);
+        if (!extracted.ok) {
+          // Graceful: a scanned/encrypted/unreadable PDF is not a server error.
+          writeJson(res, 200, { ok: false, reason: extracted.reason, candidates: emptyCandidates(), count: 0 });
+          return true;
+        }
+        text = extracted.text;
+        source = file.filename || "uploaded.pdf";
+      } else {
+        const payload = await readJsonBody(req);
+        text = String(payload?.text || "");
+        if (Buffer.byteLength(text, "utf8") > MAX_PDF_BYTES) {
+          throw Object.assign(new Error("Pasted text exceeds the size limit."), { code: "PAYLOAD_TOO_LARGE", statusCode: 413 });
+        }
+      }
+
+      const result = await parseSourcebookText(text, { campaignId: "homebrew" });
+      writeJson(res, 200, {
+        ok: result.ok,
+        source,
+        candidates: result.candidates,
+        count: result.count || 0,
+        reason: result.reason || null
       });
     } catch (error) {
       routeError(res, error);

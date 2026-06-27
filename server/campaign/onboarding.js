@@ -1,7 +1,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { applyOperation, createSoloRun, getSoloRun, saveSoloRun } from "../db/repository.js";
+import { applyOperation, createSoloRun, getSoloRun, listUserHomebrew, saveSoloRun } from "../db/repository.js";
+import { normalizeContentForBuild } from "../homebrew/customContent.js";
 import { ensureCampaignMemoryDocsAsync, rebuildCampaignIndex } from "../gm/memoryStore.js";
 import { runGmPipeline } from "../gm/prompting.js";
 import { buildOpeningGmMessage, buildOpeningFallback } from "../gm/actionNarration.js";
@@ -465,9 +466,23 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
     ])
   );
 
-  // Apply the full 5e character onto run.player.
-  const built = buildCharacter(character);
+  // Apply the full 5e character onto run.player, including any of the user's
+  // custom homebrew content. Custom races/classes/backgrounds resolve through
+  // the same code path as SRD, so their mechanics (ability bonuses, saves, hit
+  // die, features) apply identically.
+  const customContent = normalizeContentForBuild(listUserHomebrew(actorUserId));
+  const built = buildCharacter(character, { customContent });
   run.player = toRunPlayer(built, run.player);
+
+  // Record provenance: if the character used any custom content, mark the run's
+  // ruleset as "custom" (additive — vanilla characters keep the default ruleset).
+  const usedCustom =
+    customContent.races.some((entry) => entry.name === built.race) ||
+    customContent.classes.some((entry) => entry.name === built.class) ||
+    customContent.backgrounds.some((entry) => entry.name === built.background);
+  if (usedCustom) {
+    run.rulesetId = "custom";
+  }
 
   // Carry forward a portrait generated during character creation (draft run)
   // into this run's asset namespace, so /scene reuses it instead of

@@ -359,6 +359,18 @@ export function createStore({ apiClient = null } = {}) {
       }
       return apiClient.importHomebrewFromUrl(url);
     },
+    async importSourcebookPdf({ file = null, text = "" } = {}) {
+      if (!apiClient) {
+        throw new Error("API client is required for PDF import");
+      }
+      return apiClient.importSourcebookPdf({ file, text });
+    },
+    async saveCustomContent(items) {
+      if (!apiClient) {
+        throw new Error("API client is required to save custom content");
+      }
+      return apiClient.saveCustomContent(items);
+    },
     clearAuth() {
       state = {
         ...state,
