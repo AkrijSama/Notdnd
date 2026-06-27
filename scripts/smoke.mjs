@@ -287,7 +287,10 @@ function startServer() {
       PORT: String(port),
       NOTDND_HOST: host,
       NOTDND_MOCK_OPENROUTER: "true",
-      NOTDND_STREAM: "true"
+      NOTDND_STREAM: "true",
+      // Seed the demo account the smoke tests log in with (gated off by default
+      // since the auth-hardening change).
+      NOTDND_BOOTSTRAP_DEMO: "true"
     },
     stdio: ["ignore", "pipe", "pipe"]
   });
@@ -348,6 +351,9 @@ async function main() {
   process.env.NOTDND_DB_PATH = localDbPath;
   process.env.NOTDND_MEMORY_ROOT = localMemoryRoot;
   process.env.NOTDND_MOCK_OPENROUTER = "true";
+  // In-process tests log in with the demo account; seed it (gated off by default
+  // since the auth-hardening change).
+  process.env.NOTDND_BOOTSTRAP_DEMO = "true";
 
   const repository = await import("../server/db/repository.js");
   const memoryStore = await import("../server/gm/memoryStore.js");
