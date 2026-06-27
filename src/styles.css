@@ -2474,25 +2474,53 @@ button:disabled {
 }
 .cw-nav { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
 .cw-review { display: flex; flex-direction: column; gap: 12px; }
-.cw-review-head { display: flex; align-items: center; gap: 12px; }
-.cw-portrait-ph { width: 56px; height: 56px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: 700; background: var(--input-bg, #100c08); border: 1px solid var(--line-strong, #503f2e); }
-/* Character-sheet portrait preview (Review step): square, ~280px, with a
-   loading state while the draft portrait generates. */
-.cw-portrait-preview {
-  width: 280px; max-width: 100%; aspect-ratio: 1 / 1; margin: 0 auto 4px;
-  border-radius: 12px; overflow: hidden;
-  background: var(--input-bg, #100c08); border: 1px solid var(--line-strong, #503f2e);
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 10px; color: var(--muted, #95897a); text-align: center; padding: 12px; box-sizing: border-box;
-}
-.cw-portrait-img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.cw-portrait-spinner {
-  width: 26px; height: 26px; border: 3px solid var(--line-strong, #503f2e);
-  border-top-color: var(--accent, #c89a4b); border-radius: 50%; animation: solo-spin 0.9s linear infinite;
-}
-@media (prefers-reduced-motion: reduce) { .cw-portrait-spinner { animation: none; } }
+/* Review step: large square portrait at the top, name + summary beneath it. */
+.cw-review-portrait { display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .cw-review-name { font-size: 20px; font-family: "Sora", sans-serif; }
 .cw-review-sub { font-size: 13px; opacity: 0.8; }
+
+/* ---- Character-creator portrait preview (Identity step 1 + Review step 6) ----
+   :root vars only (--input-bg/--line-strong/--accent/--ink/--muted). Never a
+   blank box: shows the image, a spinner while first generating, the current
+   image under a pulsing "Regenerating…" overlay during a race/class re-gen, or
+   an idle hint. */
+.onb-identity { display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start; }
+.onb-identity-fields { flex: 1 1 280px; min-width: 240px; display: flex; flex-direction: column; gap: 14px; }
+.onb-identity-portrait { flex: 0 0 auto; display: flex; flex-direction: column; gap: 6px; align-items: center; }
+.onb-portrait-preview {
+  position: relative;
+  width: 280px; height: 280px; max-width: 100%;
+  border-radius: 14px; overflow: hidden; box-sizing: border-box; padding: 14px;
+  background: var(--input-bg, #100c08); border: 1px solid var(--line-strong, #503f2e);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 10px; color: var(--muted, #95897a); text-align: center;
+}
+.onb-portrait-preview.onb-portrait-review { width: 320px; height: 320px; margin: 0 auto; }
+.onb-portrait-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+.onb-portrait-spinner {
+  width: 28px; height: 28px; flex: none;
+  border: 3px solid var(--line-strong, #503f2e); border-top-color: var(--accent, #c89a4b);
+  border-radius: 50%; animation: solo-spin 0.9s linear infinite;
+}
+.onb-portrait-regenerating { border-color: var(--accent, #c89a4b); animation: onb-portrait-pulse 1.4s ease-in-out infinite; }
+.onb-portrait-overlay {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 8px 10px; font-size: 12px;
+  color: var(--ink, #ece1c7); background: rgba(16, 12, 8, 0.78);
+}
+.onb-portrait-overlay .onb-portrait-spinner { width: 16px; height: 16px; border-width: 2px; }
+@keyframes onb-portrait-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(200, 154, 75, 0); }
+  50% { box-shadow: 0 0 0 3px rgba(200, 154, 75, 0.35); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .onb-portrait-spinner { animation: none; }
+  .onb-portrait-regenerating { animation: none; }
+}
+@media (max-width: 640px) {
+  .onb-portrait-preview, .onb-portrait-preview.onb-portrait-review { width: 100%; }
+}
 .cw-ability-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
 .cw-ab-cell { text-align: center; padding: 8px 4px; border-radius: 10px; background: var(--surface, #1c1610); border: 1px solid var(--line, #3d2f22); }
 .cw-ab-key { font-size: 11px; opacity: 0.7; }

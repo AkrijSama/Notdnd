@@ -407,9 +407,21 @@ function charStep(delta) {
 function charField(field, value) {
   uiState.onboarding.character = { ...(uiState.onboarding.character || defaultCharacterState()), [field]: value };
   // Race/class/background drive the portrait. Once both race AND class are set,
-  // (re)generate the draft portrait so it's ready by the Review step.
-  maybeRequestDraftPortrait();
+  // (re)generate the draft portrait so it's ready by the Review step. Debounced
+  // 500ms so rapidly flipping through race/class doesn't fire a request per click.
+  scheduleDraftPortrait();
   scheduleRender();
+}
+
+let draftPortraitDebounceTimer = null;
+function scheduleDraftPortrait() {
+  if (draftPortraitDebounceTimer) {
+    clearTimeout(draftPortraitDebounceTimer);
+  }
+  draftPortraitDebounceTimer = setTimeout(() => {
+    draftPortraitDebounceTimer = null;
+    maybeRequestDraftPortrait();
+  }, 500);
 }
 
 // ---- Mid-creation (draft) portrait generation ----
@@ -472,7 +484,10 @@ async function maybeRequestDraftPortrait() {
   }
   uiState.onboarding.draftPortraitKey = key;
   uiState.onboarding.draftPortraitStatus = "generating";
-  uiState.onboarding.draftPortraitUri = null;
+  // Keep any existing portraitUri: while a race/class change regenerates, the
+  // preview shows the CURRENT image under a pulsing "Regenerating…" overlay
+  // (status "generating" + a uri present), so the box is never blank. The new
+  // image replaces it when the poll reports "generated".
   uiState.onboarding.draftPortraitId = null;
   stopDraftPortraitPoll();
   scheduleRender();
