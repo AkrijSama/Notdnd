@@ -41,7 +41,21 @@ export function createRealtimeClient({
       socket.close();
     }
 
-    socket = new WebSocket(wsUrlForCampaign(campaignId));
+    // Guard: WebSocket construction can throw in restricted contexts — CSP
+    // without a connect-src allowing ws/wss, mixed content (https page + ws://),
+    // or sandboxed/blocked contexts. This runs at module load (main.js invokes
+    // createRealtimeClient at top level), so an unguarded throw propagates out
+    // and blanks the whole page. Degrade gracefully: log once, leave socket
+    // null, and continue without live sync. No reconnect loop — these failures
+    // are not transient. Solo play does not depend on realtime.
+    try {
+      socket = new WebSocket(wsUrlForCampaign(campaignId));
+    } catch (error) {
+      socket = null;
+      // eslint-disable-next-line no-console
+      console.warn("[realtime] WebSocket unavailable; continuing without live sync.", error);
+      return;
+    }
 
     socket.addEventListener("open", () => {
       onOpen?.();
