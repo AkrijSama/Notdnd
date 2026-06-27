@@ -107,6 +107,11 @@ export function createApiClient(baseUrl = "") {
     async listSoloRuns() {
       return request("/api/solo/runs");
     },
+    async deleteSoloRun(runId) {
+      return request(`/api/solo/runs/${encodeURIComponent(runId)}`, {
+        method: "DELETE"
+      });
+    },
     async deleteCampaign(campaignId) {
       return request(`/api/campaigns/${encodeURIComponent(campaignId)}`, {
         method: "DELETE"
@@ -135,6 +140,18 @@ export function createApiClient(baseUrl = "") {
       return request(`/api/solo/runs/${encodeURIComponent(runId)}/complete`, {
         method: "POST",
         body: JSON.stringify({ outcome: outcome || "completed" })
+      });
+    },
+    async redoLocationImage(runId) {
+      return request(`/api/solo/runs/${encodeURIComponent(runId)}/location-image/redo`, {
+        method: "POST",
+        body: JSON.stringify({})
+      });
+    },
+    async saveLocationImage(runId) {
+      return request(`/api/solo/runs/${encodeURIComponent(runId)}/location-image/save`, {
+        method: "POST",
+        body: JSON.stringify({})
       });
     },
     async createNpc(runId, { name, description, introInstructions, origin } = {}) {

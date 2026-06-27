@@ -1002,6 +1002,9 @@ export function ensureLocationImageAsset(runId, locationId, options = {}) {
       status: "queued",
       promptSummary: typeof options.promptSummary === "string" ? options.promptSummary : null,
       uri: null,
+      // Player can lock a good location image so it never regenerates on revisit
+      // or via Redo. Default false (unlocked / rerollable).
+      locked: false,
       version: 1,
       createdAt: now,
       updatedAt: now,
@@ -1046,6 +1049,67 @@ export function updateImageAssetStatus(runId, assetId, status, uri = null) {
   bumpStateVersion();
   writeToDisk();
   return true;
+}
+
+/**
+ * Locks (or unlocks) a location's background image so it is final for that
+ * location — Redo/Save controls disappear and revisits never regenerate it.
+ * Returns the asset summary, or null when the run/asset does not exist.
+ * @param {string} runId
+ * @param {string} locationId
+ * @param {boolean} [locked]
+ */
+export function setLocationImageLocked(runId, locationId, locked = true) {
+  ensureDb();
+  const run = db.soloRuns[String(runId || "").trim()];
+  if (!run) {
+    return null;
+  }
+  const location = run.locations && run.locations[String(locationId)];
+  const assetId = (location && location.imageAssetId) || `img_location_${locationId}`;
+  const asset = run.imageAssets && run.imageAssets[assetId];
+  if (!asset) {
+    return null;
+  }
+  asset.locked = Boolean(locked);
+  asset.updatedAt = nowIso();
+  bumpStateVersion();
+  writeToDisk();
+  return { assetId, locked: asset.locked, status: asset.status, uri: asset.uri || null };
+}
+
+/**
+ * Prepares a location image for a Redo: refuses when locked ({ locked: true }),
+ * otherwise flips an existing asset back to "queued" so the worker regenerates
+ * it (and resolveLocationImageUri hides the stale one until the new image lands).
+ * Returns { ok: true } when clear to regenerate (asset may not exist yet — the
+ * worker creates it), or null when the run/location does not exist.
+ * @param {string} runId
+ * @param {string} locationId
+ */
+export function markLocationImageRegenerating(runId, locationId) {
+  ensureDb();
+  const run = db.soloRuns[String(runId || "").trim()];
+  if (!run) {
+    return null;
+  }
+  const location = run.locations && run.locations[String(locationId)];
+  if (!location) {
+    return null;
+  }
+  const assetId = location.imageAssetId || `img_location_${locationId}`;
+  const asset = run.imageAssets && run.imageAssets[assetId];
+  if (asset && asset.locked) {
+    return { locked: true };
+  }
+  if (asset) {
+    asset.status = "queued";
+    asset.uri = null;
+    asset.updatedAt = nowIso();
+    bumpStateVersion();
+    writeToDisk();
+  }
+  return { ok: true, locked: false };
 }
 
 /**

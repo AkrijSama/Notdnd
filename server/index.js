@@ -46,6 +46,7 @@ import {
   completeSoloRun,
   createQuickstartCampaignFromParsed,
   createSoloRun,
+  deleteSoloRun,
   getCampaignRole,
   getCampaignRuntimeState,
   createSoloNpc,
@@ -61,12 +62,14 @@ import {
   confirmPasswordReset,
   loginUser,
   logoutSessionToken,
+  markLocationImageRegenerating,
   markNpcIntroduced,
   registerUser,
   requestPasswordReset,
   resolveStorePath,
   saveSoloRun,
   setCampaignRuntimeState,
+  setLocationImageLocked,
   updateImageAssetStatus,
   updateSoloRunBattleMap,
   updateSoloRunNarration
@@ -575,6 +578,19 @@ function parseSoloRunGmScenePath(pathname) {
   return decodeURIComponent(raw);
 }
 
+// POST /api/solo/runs/:runId/location-image/(redo|save)
+function parseSoloRunLocationImagePath(pathname) {
+  const prefix = "/api/solo/runs/";
+  if (!pathname.startsWith(prefix)) {
+    return null;
+  }
+  const match = /^([^/]+)\/location-image\/(redo|save)$/.exec(pathname.slice(prefix.length));
+  if (!match) {
+    return null;
+  }
+  return { runId: decodeURIComponent(match[1]), op: match[2] };
+}
+
 function assertSoloRunAccess(user, run) {
   if (!run || user.isAdmin || !run.userId || run.userId === user.id) {
     return;
@@ -883,6 +899,33 @@ async function handleApi(req, res) {
       routeError(res, error);
     }
     return true;
+  }
+
+  // Delete a solo run (DELETE /api/solo/runs/:runId). Lets players prune
+  // abandoned/finished adventures from the home screen. Auth + ownership gated;
+  // matches only the bare run path (sub-resources like /:runId/npcs have their
+  // own handlers). DB record only — disk image assets are left as harmless
+  // orphans rather than risking a path-based recursive delete.
+  if (req.method === "DELETE" && url.pathname.startsWith("/api/solo/runs/")) {
+    const raw = url.pathname.slice("/api/solo/runs/".length).replace(/\/+$/, "").trim();
+    if (raw && !raw.includes("/")) {
+      try {
+        const user = requireAuth(req);
+        const run = getSoloRun(decodeURIComponent(raw));
+        if (!run) {
+          throw Object.assign(new Error("Solo run not found."), {
+            code: "NOT_FOUND",
+            statusCode: 404
+          });
+        }
+        assertSoloRunAccess(user, run);
+        deleteSoloRun(run.runId);
+        writeJson(res, 200, { ok: true, deleted: true });
+      } catch (error) {
+        routeError(res, error);
+      }
+      return true;
+    }
   }
 
   const soloActionRunId = parseSoloRunActionPath(url.pathname);
@@ -1234,6 +1277,56 @@ async function handleApi(req, res) {
       const battleMap = { width, height, positions, revealed };
       updateSoloRunBattleMap(soloMapRunId, battleMap);
       writeJson(res, 200, { ok: true, battleMap });
+    } catch (error) {
+      routeError(res, error);
+    }
+    return true;
+  }
+
+  // Location background image controls: Redo (regenerate with a fresh seed,
+  // refused if locked) and Save (lock the current image to this location).
+  const locationImageTarget = parseSoloRunLocationImagePath(url.pathname);
+  if (locationImageTarget && req.method === "POST") {
+    try {
+      const user = requireAuth(req);
+      const run = getSoloRun(locationImageTarget.runId);
+      if (!run) {
+        throw Object.assign(new Error("Solo run not found."), { code: "NOT_FOUND", statusCode: 404 });
+      }
+      assertSoloRunAccess(user, run);
+      const locationId = run.currentLocationId;
+      if (!locationId || !run.locations?.[locationId]) {
+        throw Object.assign(new Error("No current location for this run."), { code: "BAD_REQUEST", statusCode: 400 });
+      }
+
+      if (locationImageTarget.op === "save") {
+        const saved = setLocationImageLocked(run.runId, locationId, true);
+        if (!saved) {
+          throw Object.assign(new Error("No location image to save yet."), { code: "NOT_FOUND", statusCode: 404 });
+        }
+        writeJson(res, 200, { ok: true, locked: true });
+        return true;
+      }
+
+      // redo
+      const marked = markLocationImageRegenerating(run.runId, locationId);
+      if (marked && marked.locked) {
+        throw Object.assign(new Error("This location image is locked and cannot be redone."), {
+          code: "CONFLICT",
+          statusCode: 409
+        });
+      }
+      const style = String(run?.flags?.artStyle || "illustrated");
+      // Fresh seed -> a genuinely different image, and doubles as the cache-buster.
+      const seed = Math.floor(Math.random() * 1_000_000_000) + 1;
+      enqueueLocationImageJob({
+        runId: run.runId,
+        locationId,
+        style,
+        basePrompt: buildLocationBasePrompt(run, locationId),
+        seed
+      });
+      writeJson(res, 200, { ok: true, status: "generating" });
     } catch (error) {
       routeError(res, error);
     }

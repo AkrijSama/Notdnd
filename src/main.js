@@ -22,6 +22,7 @@ const uiState = {
   compendiumQuery: "",
   resumeRunId: null,
   soloRuns: [],
+  soloRunPendingDelete: null,
   apiHealthy: false,
   realtimeConnected: false,
   activeRealtimeCampaignId: null,
@@ -138,6 +139,11 @@ function renderSoloRunCard(run, { primary = false } = {}) {
   const finished = status === "completed" || status === "abandoned";
   const badgeLabel = status === "completed" ? "Completed" : status === "abandoned" ? "Abandoned" : "";
   const outcome = run?.outcome && run.outcome !== status ? ` (${run.outcome})` : "";
+  const runId = run?.runId || "";
+  // Only past/finished runs are deletable from the home (active runs are
+  // resumable, not dead). Inline confirm — no browser dialog — so it can be
+  // styled and matches the dark-fantasy aesthetic.
+  const confirming = finished && runId && uiState.soloRunPendingDelete === runId;
   return `
     <article class="solo-home-run-card${primary ? " primary" : ""}${finished ? " finished" : ""}">
       <div class="solo-home-run-meta">
@@ -146,8 +152,19 @@ function renderSoloRunCard(run, { primary = false } = {}) {
       </div>
       ${
         finished
-          ? `<span class="solo-home-run-badge">${escapeHtml(badgeLabel)}</span>`
-          : `<button data-action="open-run" data-run-id="${escapeHtml(run.runId)}">${primary ? "Continue your adventure" : "Resume"}</button>`
+          ? `<div class="solo-home-run-actions">
+               <span class="solo-home-run-badge">${escapeHtml(badgeLabel)}</span>
+               ${
+                 confirming
+                   ? `<span class="solo-home-run-confirm" role="alertdialog" aria-label="Confirm delete">
+                        <span class="solo-home-run-confirm-text">Delete ${escapeHtml(worldName)}? This can't be undone.</span>
+                        <button class="solo-home-run-delete-confirm" data-action="confirm-delete-run" data-run-id="${escapeHtml(runId)}">Delete</button>
+                        <button class="solo-home-run-delete-cancel" data-action="cancel-delete-run" data-run-id="${escapeHtml(runId)}">Cancel</button>
+                      </span>`
+                   : `<button class="solo-home-run-delete" data-action="request-delete-run" data-run-id="${escapeHtml(runId)}" aria-label="Delete ${escapeHtml(worldName)}">Delete</button>`
+               }
+             </div>`
+          : `<button data-action="open-run" data-run-id="${escapeHtml(runId)}">${primary ? "Continue your adventure" : "Resume"}</button>`
       }
     </article>
   `;
@@ -807,6 +824,45 @@ function bindAppEvents() {
       const runId = button.getAttribute("data-run-id");
       if (runId) {
         window.location.search = `?soloRunId=${encodeURIComponent(runId)}`;
+      }
+    });
+  });
+
+  // Past-adventure delete: a Delete button flips the card into an inline confirm
+  // state (no browser dialog); Cancel backs out; Confirm calls the API, drops the
+  // run from uiState.soloRuns, and re-renders.
+  appRoot.querySelectorAll("[data-action='request-delete-run']").forEach((button) => {
+    button.addEventListener("click", () => {
+      uiState.soloRunPendingDelete = button.getAttribute("data-run-id") || null;
+      scheduleRender();
+    });
+  });
+  appRoot.querySelectorAll("[data-action='cancel-delete-run']").forEach((button) => {
+    button.addEventListener("click", () => {
+      uiState.soloRunPendingDelete = null;
+      scheduleRender();
+    });
+  });
+  appRoot.querySelectorAll("[data-action='confirm-delete-run']").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const runId = button.getAttribute("data-run-id");
+      if (!runId) {
+        return;
+      }
+      button.disabled = true;
+      try {
+        await apiClient.deleteSoloRun(runId);
+        uiState.soloRuns = (uiState.soloRuns || []).filter((run) => run?.runId !== runId);
+        if (uiState.resumeRunId === runId) {
+          uiState.resumeRunId = null;
+        }
+      } catch (error) {
+        // Keep the run on failure; nothing destructive happened server-side.
+        // eslint-disable-next-line no-console
+        console.error("Failed to delete solo run", error);
+      } finally {
+        uiState.soloRunPendingDelete = null;
+        scheduleRender();
       }
     });
   });

@@ -609,8 +609,19 @@ export function resolveLocationImageUri(run, location) {
   return asset && asset.status === "generated" && isString(asset.uri) ? asset.uri : null;
 }
 
+// Pure. True when the player has locked the current location's background image
+// (Save), so it is final and must never regenerate.
+export function resolveLocationImageLocked(run, location) {
+  const assets = isPlainObject(run?.imageAssets) ? run.imageAssets : {};
+  const assetId = locationImageAssetId(location);
+  const asset = assetId ? assets[assetId] : null;
+  return Boolean(asset && asset.locked);
+}
+
 // Pure. True when the current location still lacks a generated background image —
 // used by the scene route to enqueue a one-off location-image job on entry/move.
+// A generated image (locked or not) is never regenerated: resolveLocationImageUri
+// returns it, so this is false on revisit.
 export function locationNeedsImage(run, location) {
   if (!isPlainObject(run) || !isPlainObject(location)) {
     return false;
@@ -664,6 +675,8 @@ export function buildSoloScenePayload(run, options = {}) {
     // Generated location background image (null until the worker produces it;
     // the client shows a "Generating scene art…" placeholder meanwhile).
     locationImageUri: resolveLocationImageUri(run, currentLocation),
+    // Whether the player has locked this location's image (hides Redo/Save).
+    locationImageLocked: resolveLocationImageLocked(run, currentLocation),
     rest: restPayload(currentLocation, policyProfile),
     player: buildPlayerPayload(run),
     visibleEntities,
