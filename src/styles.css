@@ -1115,8 +1115,26 @@ button:disabled {
   align-items: start;
 }
 
+/* ---------------------------------------------------------------------------
+   Shared image-fit system. Generated sources have fixed aspect ratios:
+   NPC portrait 512x768 (2:3), player/creator portrait 1024x1024 (1:1),
+   location 768x512 (3:2). Wrap an <img> in a .frame-* container (which fixes
+   the box aspect to match the source so object-fit:cover crops little/nothing)
+   and give the <img> .img-fit (cover + a top-center anchor so a portrait crops
+   toward the FACE, never stretches). Surfaces below use the equivalent CSS
+   inline on their existing rules. (The main scene portrait and banner are
+   already handled separately.)
+--------------------------------------------------------------------------- */
+.img-fit { width: 100%; height: 100%; object-fit: cover; object-position: center top; display: block; }
+.frame-portrait  { aspect-ratio: 512 / 768; overflow: hidden; }
+.frame-square    { aspect-ratio: 1 / 1; overflow: hidden; }
+.frame-landscape { aspect-ratio: 768 / 512; overflow: hidden; }
+
 .solo-detail-portrait {
   min-height: 96px;
+  /* 2:3 portrait frame so the inner image is shown whole (top-anchored), not as
+     a wide-short horizontal strip that sliced the face. */
+  aspect-ratio: 512 / 768;
   border: 1px dashed rgba(200, 154, 75, 0.26);
   border-radius: 12px;
   background: var(--scene-panel);
@@ -1756,7 +1774,7 @@ button:disabled {
   border: 2px solid transparent;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
 }
-.solo-token img { width: 100%; height: 100%; object-fit: cover; }
+.solo-token img { width: 100%; height: 100%; object-fit: cover; object-position: center top; }
 .solo-token-player { background: var(--accent, #c8922a); color: #1c1308; border-color: #f0e4cc; }
 .solo-token-npc { background: #3a4654; color: #f0e4cc; border-color: #6e6150; }
 .solo-map-legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 13px; }
@@ -2070,7 +2088,9 @@ button:disabled {
 .solo-vn-portrait {
   position: relative;
   width: 180px;
-  height: 240px;
+  /* 2:3 to match the 512x768 NPC portrait source so it fits without cropping
+     (was 180x240 = 3:4, which cropped). Mobile sets explicit width/height below. */
+  aspect-ratio: 512 / 768;
   border-radius: 12px;
   overflow: hidden;
   background: var(--inset, #120c07);
@@ -2083,6 +2103,7 @@ button:disabled {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  object-position: center top;
 }
 .solo-vn-portrait-placeholder {
   width: 100%;
@@ -2250,7 +2271,7 @@ button:disabled {
   color: var(--ink-soft, #d8c7a6);
   font-weight: 600;
 }
-.solo-cast-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.solo-cast-thumb img { width: 100%; height: 100%; object-fit: cover; object-position: center top; }
 .solo-cast-name { font-weight: 600; }
 .solo-cast-away { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.6; }
 .solo-cast-role { font-size: 12px; opacity: 0.75; }
@@ -2327,7 +2348,7 @@ button:disabled {
   color: var(--ink-soft, #d8c7a6);
   font-weight: 600;
 }
-.solo-npc-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.solo-npc-thumb img { width: 100%; height: 100%; object-fit: cover; object-position: center top; }
 .solo-npc-portrait-controls { display: flex; flex-direction: column; gap: 6px; }
 .solo-npc-upload {
   display: inline-flex;
@@ -2760,4 +2781,4 @@ button:disabled {
 }
 
 /* Entity Sheet portrait image (player portrait surfaced via portraitUri) */
-.solo-detail-portrait-img { width: 100%; height: 100%; object-fit: cover; border-radius: 8px; display: block; }
+.solo-detail-portrait-img { width: 100%; height: 100%; object-fit: cover; object-position: center top; border-radius: 8px; display: block; }
