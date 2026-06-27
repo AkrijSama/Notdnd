@@ -1,14 +1,32 @@
 const TOKEN_STORAGE_KEY = "notdnd_auth_token_v1";
 
+// Guarded: privacy browsers (Brave shields, incognito with site data blocked)
+// throw a SecurityError on any localStorage access. This runs at module load,
+// so an unguarded throw blanks the whole app. Degrade gracefully — no persisted
+// token, session stays in memory.
 function loadToken() {
-  return localStorage.getItem(TOKEN_STORAGE_KEY);
+  try {
+    if (typeof localStorage === "undefined") {
+      return null;
+    }
+    return localStorage.getItem(TOKEN_STORAGE_KEY);
+  } catch {
+    return null;
+  }
 }
 
 function saveToken(token) {
-  if (token) {
-    localStorage.setItem(TOKEN_STORAGE_KEY, token);
-  } else {
-    localStorage.removeItem(TOKEN_STORAGE_KEY);
+  try {
+    if (typeof localStorage === "undefined") {
+      return;
+    }
+    if (token) {
+      localStorage.setItem(TOKEN_STORAGE_KEY, token);
+    } else {
+      localStorage.removeItem(TOKEN_STORAGE_KEY);
+    }
+  } catch {
+    // Best-effort persistence; ignore storage failures (privacy/blocked storage).
   }
 }
 

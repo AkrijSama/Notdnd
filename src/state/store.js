@@ -54,7 +54,18 @@ function seedState() {
 }
 
 function loadState() {
-  const raw = localStorage.getItem(STORAGE_KEY);
+  // Guarded: privacy browsers / blocked-storage contexts throw a SecurityError
+  // on localStorage access. This runs at module load, so an unguarded throw
+  // blanks the app — fall back to a fresh seed state (cached state just isn't
+  // restored).
+  let raw = null;
+  try {
+    if (typeof localStorage !== "undefined") {
+      raw = localStorage.getItem(STORAGE_KEY);
+    }
+  } catch {
+    return seedState();
+  }
   if (!raw) {
     return seedState();
   }
@@ -71,7 +82,14 @@ function loadState() {
 }
 
 function persist(state) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  // Best-effort; no-op when storage is unavailable or throws (privacy/blocked).
+  try {
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    }
+  } catch {
+    // Ignore — the in-memory state remains the source of truth this session.
+  }
 }
 
 export function createStore({ apiClient = null } = {}) {
