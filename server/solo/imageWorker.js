@@ -566,8 +566,13 @@ export async function runLocationImageJob(job = {}) {
     fs.mkdirSync(path.dirname(target), { recursive: true });
     fs.writeFileSync(target, bytes);
     const uri = servedUriFor(runId, folder, "base", ext);
-    updateImageAssetStatus(runId, linked.assetId, "generated", uri);
-    return { ok: true, uri };
+    // Redo reuses the same on-disk path, so without a unique query the browser
+    // would re-show the cached old image. The fresh per-redo seed is a stable,
+    // unique cache-buster (serveStatic strips the query). First/auto generation
+    // passes no seed -> clean URL.
+    const finalUri = seed != null ? `${uri}?v=${seed}` : uri;
+    updateImageAssetStatus(runId, linked.assetId, "generated", finalUri);
+    return { ok: true, uri: finalUri };
   } catch (error) {
     updateImageAssetStatus(runId, linked.assetId, "failed", null);
     logWorker(`location image failed for ${runId}/${locationId}`, error);

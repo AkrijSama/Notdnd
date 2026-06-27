@@ -1662,6 +1662,48 @@ button:disabled {
   padding: 4px 9px;
   border-radius: 5px;
 }
+/* Redo / Save controls overlaid on the scene image (bottom-right). Hidden once
+   the image is locked. Uses the solo skin vars (defined on .solo-game-shell)
+   with hardcoded dark-fantasy fallbacks so they degrade predictably. */
+.solo-scene-art-controls {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  z-index: 4;
+  display: flex;
+  gap: 8px;
+}
+.solo-scene-art-btn {
+  appearance: none;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  padding: 7px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border, #2e2420);
+  background: rgba(10, 7, 5, 0.72);
+  color: var(--text, #f0e4cc);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+}
+.solo-scene-art-btn:hover {
+  background: rgba(10, 7, 5, 0.92);
+  border-color: var(--accent, #c89a4b);
+}
+.solo-scene-art-btn:active {
+  transform: translateY(1px);
+}
+.solo-scene-art-btn--save {
+  border-color: var(--accent, #c89a4b);
+  background: var(--accent, #c89a4b);
+  color: var(--on-accent, #1c1308);
+  font-weight: 600;
+}
+.solo-scene-art-btn--save:hover {
+  background: var(--accent, #c89a4b);
+  filter: brightness(1.08);
+}
 .solo-scene-input { padding: 18px 28px 22px; max-width: none; }
 .solo-scene-input-row { display: flex; gap: 12px; align-items: stretch; }
 .solo-scene-field {

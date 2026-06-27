@@ -1,4 +1,4 @@
-import { completeSoloRun, fetchSoloGmScene, fetchSoloScene, postSoloAction, saveSoloBattleMap } from "./soloSceneApi.js";
+import { completeSoloRun, fetchSoloGmScene, fetchSoloScene, postSoloAction, redoLocationImage, saveLocationImage, saveSoloBattleMap } from "./soloSceneApi.js";
 import {
   DEFAULT_VISION_TILES,
   computeReachable,
@@ -1186,13 +1186,28 @@ export function renderSoloSceneInputBar(state = {}) {
   `;
 }
 
-export function renderSoloSceneArt(locationImageUri = null) {
+// Inner HTML for the scene-art banner when an image exists: the image plus the
+// Redo/Save controls (hidden once the image is locked). Shared by the initial
+// render and the poll's in-place swap so both stay consistent.
+export function sceneArtInnerHtml(uri, { locked = false } = {}) {
+  const controls = locked
+    ? ""
+    : `
+      <div class="solo-scene-art-controls">
+        <button type="button" class="solo-scene-art-btn" data-scene-redo title="Generate a new image for this location">↻ Redo</button>
+        <button type="button" class="solo-scene-art-btn solo-scene-art-btn--save" data-scene-save title="Keep this image for this location">✓ Save</button>
+      </div>`;
+  return `<img class="solo-scene-art-img" src="${escapeHtml(uri)}" alt="Location background" />${controls}`;
+}
+
+export function renderSoloSceneArt(locationImageUri = null, { locked = false } = {}) {
   const uri = typeof locationImageUri === "string" ? locationImageUri.trim() : "";
   if (uri) {
-    // Generated location background fills the banner area (object-fit: cover).
+    // Generated location background fills the banner area (object-fit: cover),
+    // with Redo/Save controls overlaid bottom-right until the image is locked.
     return `
       <div class="solo-scene-art" data-scene-art>
-        <img class="solo-scene-art-img" src="${escapeHtml(uri)}" alt="Location background" />
+        ${sceneArtInnerHtml(uri, { locked })}
       </div>
     `;
   }
@@ -1854,7 +1869,7 @@ export function renderSoloSceneShell(state = {}) {
               `
                 <div class="solo-scene-layout">
                   <div class="solo-scene-center">
-                    ${renderSoloSceneArt(scene.locationImageUri)}
+                    ${renderSoloSceneArt(scene.locationImageUri, { locked: scene.locationImageLocked })}
                     ${renderLocationPanel(location, scene.gmNarration, scene.gmStatus, selectedGmMode, debug)}
                     ${
                       state.gmThinking || state.sceneReloading
@@ -2206,6 +2221,12 @@ export function bindSoloSceneShell(root, handlers = {}) {
   root.querySelectorAll("[data-solo-npc-create]").forEach((button) => {
     button.addEventListener("click", () => handlers.onOpenNpcCreator?.());
   });
+  root.querySelectorAll("[data-scene-redo]").forEach((button) => {
+    button.addEventListener("click", () => handlers.onSceneRedo?.());
+  });
+  root.querySelectorAll("[data-scene-save]").forEach((button) => {
+    button.addEventListener("click", () => handlers.onSceneSave?.());
+  });
   root.querySelectorAll("[data-solo-npc-close]").forEach((el) => {
     el.addEventListener("click", () => handlers.onNpcClose?.());
   });
@@ -2358,6 +2379,8 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     activeTab: "scene",
     npcCreator: freshNpcCreatorState(),
     npcCreatorConfirmation: "",
+    // Guards re-entry while a Redo/Save location-image request is in flight.
+    sceneArtBusy: null,
     skin: normalizeSkin(readSoloThemePref(SOLO_SKIN_STORAGE_KEY, "ashen")),
     fontSet: normalizeFontSet(readSoloThemePref(SOLO_FONT_STORAGE_KEY, "tome"))
   };
@@ -2398,6 +2421,8 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       onDialogueTyped: handleDialogueTyped,
       onVictoryTyped: handleVictoryTyped,
       onOpenNpcCreator: handleOpenNpcCreator,
+      onSceneRedo: handleSceneRedo,
+      onSceneSave: handleSceneSave,
       onNpcClose: handleNpcClose,
       onNpcMode: handleNpcMode,
       onNpcFile: handleNpcFile,
@@ -2916,6 +2941,57 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     });
   }
 
+  // ---- Location-image controls (Redo / Save) ----
+  // Redo: ask the server to regenerate the current location image (fresh seed),
+  // clear it locally so the "Painting the scene…" placeholder shows, then let
+  // the art poll swap the new image in. Save: lock the current image so it is
+  // final (Redo/Save controls disappear, never regenerates on revisit).
+  function handleSceneRedo() {
+    const scene = state.scene;
+    if (!scene || !scene.location || scene.locationImageLocked || state.sceneArtBusy) {
+      return;
+    }
+    state.sceneArtBusy = "redo";
+    (async () => {
+      try {
+        await redoLocationImage(apiClient, runId);
+        if (state.scene) {
+          // Hide the stale image so the placeholder shows and the poll re-arms.
+          state.scene = { ...state.scene, locationImageUri: null, locationImageLocked: false };
+        }
+      } catch (error) {
+        state.banner = String(error?.message || error || "Could not redo the scene image.");
+        state.bannerKind = "error";
+      } finally {
+        state.sceneArtBusy = null;
+        render();
+        scheduleCastPoll();
+      }
+    })();
+  }
+
+  function handleSceneSave() {
+    const scene = state.scene;
+    if (!scene || !scene.location || scene.locationImageLocked || !scene.locationImageUri || state.sceneArtBusy) {
+      return;
+    }
+    state.sceneArtBusy = "save";
+    (async () => {
+      try {
+        await saveLocationImage(apiClient, runId);
+        if (state.scene) {
+          state.scene = { ...state.scene, locationImageLocked: true };
+        }
+      } catch (error) {
+        state.banner = String(error?.message || error || "Could not save the scene image.");
+        state.bannerKind = "error";
+      } finally {
+        state.sceneArtBusy = null;
+        render();
+      }
+    })();
+  }
+
   let castPollTimer = null;
   let castPollAttempts = 0;
 
@@ -3001,13 +3077,23 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     if (!art) {
       return;
     }
+    const locked = Boolean(scene?.locationImageLocked);
     const img = typeof art.querySelector === "function" ? art.querySelector("img.solo-scene-art-img") : null;
-    if (img) {
-      if (img.getAttribute("src") !== uri) {
-        img.setAttribute("src", uri);
-      }
-    } else {
-      art.innerHTML = `<img class="solo-scene-art-img" src="${escapeHtml(uri)}" alt="Location background" />`;
+    const hasControls = Boolean(art.querySelector("[data-scene-redo]"));
+    // Already showing this image with the correct control state — nothing to do.
+    if (img && img.getAttribute("src") === uri && hasControls === !locked) {
+      return;
+    }
+    // Rebuild the banner contents (image + Redo/Save unless locked) and re-bind
+    // the controls, since replacing innerHTML drops their listeners.
+    art.innerHTML = sceneArtInnerHtml(uri, { locked });
+    const redoBtn = art.querySelector("[data-scene-redo]");
+    if (redoBtn) {
+      redoBtn.addEventListener("click", () => handleSceneRedo());
+    }
+    const saveBtn = art.querySelector("[data-scene-save]");
+    if (saveBtn) {
+      saveBtn.addEventListener("click", () => handleSceneSave());
     }
   }
 

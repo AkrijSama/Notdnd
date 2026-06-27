@@ -142,6 +142,18 @@ export function createApiClient(baseUrl = "") {
         body: JSON.stringify({ outcome: outcome || "completed" })
       });
     },
+    async redoLocationImage(runId) {
+      return request(`/api/solo/runs/${encodeURIComponent(runId)}/location-image/redo`, {
+        method: "POST",
+        body: JSON.stringify({})
+      });
+    },
+    async saveLocationImage(runId) {
+      return request(`/api/solo/runs/${encodeURIComponent(runId)}/location-image/save`, {
+        method: "POST",
+        body: JSON.stringify({})
+      });
+    },
     async createNpc(runId, { name, description, introInstructions, origin } = {}) {
       return request(`/api/solo/runs/${encodeURIComponent(runId)}/npcs`, {
         method: "POST",

@@ -40,6 +40,23 @@ export async function saveSoloBattleMap(apiClient, runId, battleMap) {
   }
 }
 
+// Regenerates the current location's background image (fresh seed). Throws on
+// failure (e.g. 409 when locked) so the caller can surface it.
+export async function redoLocationImage(apiClient, runId) {
+  if (!apiClient || typeof apiClient.redoLocationImage !== "function") {
+    throw new Error("API client with redoLocationImage is required.");
+  }
+  return apiClient.redoLocationImage(requireRunId(runId));
+}
+
+// Locks the current location's image so it is final (no more Redo/Save).
+export async function saveLocationImage(apiClient, runId) {
+  if (!apiClient || typeof apiClient.saveLocationImage !== "function") {
+    throw new Error("API client with saveLocationImage is required.");
+  }
+  return apiClient.saveLocationImage(requireRunId(runId));
+}
+
 // Concludes a run (death / voluntary exit) and returns its summary. Best-effort:
 // returns null on failure so navigation/UI is never blocked by a failed close.
 export async function completeSoloRun(apiClient, runId, outcome) {
