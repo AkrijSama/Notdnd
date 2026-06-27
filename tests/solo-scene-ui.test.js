@@ -431,12 +431,14 @@ test("renderSoloSceneShell renders GM narration when present", () => {
     }
   };
 
-  const html = renderSoloSceneShell({ scene });
+  const html = renderSoloSceneShell({ scene, debug: true });
   assert.match(html, /neutral GM Narration/);
   assert.match(html, /Server-truth narration placeholder/);
   assert.match(html, /quiet/);
   assert.match(html, /GM Mode: Placeholder/);
   assert.doesNotMatch(html, /"narration"/);
+  // The GM status panel is debug-only: hidden from beta players by default.
+  assert.doesNotMatch(renderSoloSceneShell({ scene }), /GM Mode:/);
 });
 
 test("renderSoloSceneShell renders GM status metadata", () => {
@@ -468,7 +470,7 @@ test("renderSoloSceneShell renders GM status metadata", () => {
     }
   };
 
-  const html = renderSoloSceneShell({ scene, gmMode: "provider" });
+  const html = renderSoloSceneShell({ scene, gmMode: "provider", debug: true });
   assert.match(html, /GM Mode: Provider/);
   assert.match(html, /Provider: local \/ local/);
   assert.match(html, /Eval 100/);
@@ -494,7 +496,7 @@ test("renderSoloSceneShell renders fallback GM status", () => {
     }
   };
 
-  const html = renderSoloSceneShell({ scene, gmMode: "provider" });
+  const html = renderSoloSceneShell({ scene, gmMode: "provider", debug: true });
   assert.match(html, /GM Mode: Fallback/);
   assert.match(html, /Fallback/);
   assert.match(html, /GM_PROVIDER_DISABLED/);
@@ -556,7 +558,7 @@ test("mountSoloSceneShell loads GM narration after base scene", async () => {
   const mounted = mountSoloSceneShell(root, { apiClient, runId: "run_test" });
   await mounted.reload();
   assert.match(root.innerHTML, /Mounted GM narration/);
-  assert.match(root.innerHTML, /GM Mode: Placeholder/);
+  // GM status panel is debug-only; not asserted here (hidden by default).
 });
 
 test("mountSoloSceneShell keeps fallback if GM narration request fails", async () => {
