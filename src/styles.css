@@ -1397,7 +1397,11 @@ button:disabled {
   flex-direction: column;
 }
 .solo-portrait {
-  height: 150px;
+  /* Square to match the 1024x1024 full-body composite asset. A fixed short
+     height + image height:auto used to clip the portrait to a top slice (and
+     made object-fit a no-op). Square container + object-fit:cover shows the
+     whole composite with no distortion. Bounded by the sidebar width clamp. */
+  aspect-ratio: 1 / 1;
   flex: none;
   border-bottom: 1px solid var(--border, #2e2420);
   background:
@@ -1577,7 +1581,14 @@ button:disabled {
 .solo-scene-art {
   position: relative;
   flex: none;
-  height: clamp(180px, 24vh, 320px);
+  /* Match the 768x512 (3:2) landscape asset. At normal widths the banner is
+     true 3:2 and shows the whole image; max-height caps it on wide/ultrawide
+     center columns, where object-fit:cover then center-crops top/bottom (the
+     most important middle stays visible). The old fixed short height made the
+     3:2 image render as a thin letterbox band. */
+  aspect-ratio: 3 / 2;
+  min-height: 200px;
+  max-height: clamp(240px, 34vh, 420px);
   overflow: hidden;
   background: linear-gradient(180deg, #120c08, #1a120b 55%, #0d0907);
 }
@@ -1618,6 +1629,7 @@ button:disabled {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  object-position: center;
   display: block;
 }
 .solo-scene-art-pending {
@@ -2533,7 +2545,10 @@ button:disabled {
 
 /* ---- Player portrait (solo sidebar) ---- */
 .solo-portrait { overflow: hidden; }
-.solo-portrait-img { width: 100%; height: auto; object-fit: cover; display: block; }
+/* Fill the square container with object-fit:cover (never stretch). Ratios match
+   the asset, so this shows the full composite; object-position favors the head
+   if the sidebar width ever forces a minor crop. */
+.solo-portrait-img { width: 100%; height: 100%; object-fit: cover; object-position: top center; display: block; }
 
 /* Portrait still generating: fill the same box (no layout shift) with a label. */
 .solo-portrait-pending {
