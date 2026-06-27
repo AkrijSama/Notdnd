@@ -107,6 +107,11 @@ export function createApiClient(baseUrl = "") {
     async listSoloRuns() {
       return request("/api/solo/runs");
     },
+    async deleteSoloRun(runId) {
+      return request(`/api/solo/runs/${encodeURIComponent(runId)}`, {
+        method: "DELETE"
+      });
+    },
     async deleteCampaign(campaignId) {
       return request(`/api/campaigns/${encodeURIComponent(campaignId)}`, {
         method: "DELETE"

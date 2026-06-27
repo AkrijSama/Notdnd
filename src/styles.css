@@ -2774,6 +2774,73 @@ button:disabled {
   flex-direction: column;
   gap: 2px;
 }
+
+/* Delete control for past adventures (badge + delete sit on the card's right).
+   :root vars only; the destructive accents are literal warm-reds (no palette
+   danger var) so they read as "careful" without inventing phantom vars. */
+.solo-home-run-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.solo-home-run-delete {
+  background: transparent;
+  border: 1px solid var(--line-strong, #503f2e);
+  color: var(--muted, #95897a);
+  font-size: 12px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
+}
+.solo-home-run-delete:hover {
+  color: #e7b4a4;
+  border-color: #8a3b2c;
+  background: rgba(138, 59, 44, 0.16);
+}
+.solo-home-run-confirm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.solo-home-run-confirm-text {
+  font-size: 12px;
+  color: var(--ink, #ece1c7);
+  opacity: 0.85;
+}
+.solo-home-run-delete-confirm,
+.solo-home-run-delete-cancel {
+  font-size: 12px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.solo-home-run-delete-confirm {
+  background: #8a3b2c;
+  border: 1px solid #a84633;
+  color: var(--ink, #ece1c7);
+}
+.solo-home-run-delete-confirm:hover {
+  background: #a84633;
+}
+.solo-home-run-delete-confirm:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.solo-home-run-delete-cancel {
+  background: transparent;
+  border: 1px solid var(--line-strong, #503f2e);
+  color: var(--muted, #95897a);
+}
+.solo-home-run-delete-cancel:hover {
+  color: var(--ink, #ece1c7);
+}
 .solo-login-card {
   max-width: 480px;
   margin: 0 auto;

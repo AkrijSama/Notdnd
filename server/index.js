@@ -46,6 +46,7 @@ import {
   completeSoloRun,
   createQuickstartCampaignFromParsed,
   createSoloRun,
+  deleteSoloRun,
   getCampaignRole,
   getCampaignRuntimeState,
   createSoloNpc,
@@ -883,6 +884,33 @@ async function handleApi(req, res) {
       routeError(res, error);
     }
     return true;
+  }
+
+  // Delete a solo run (DELETE /api/solo/runs/:runId). Lets players prune
+  // abandoned/finished adventures from the home screen. Auth + ownership gated;
+  // matches only the bare run path (sub-resources like /:runId/npcs have their
+  // own handlers). DB record only — disk image assets are left as harmless
+  // orphans rather than risking a path-based recursive delete.
+  if (req.method === "DELETE" && url.pathname.startsWith("/api/solo/runs/")) {
+    const raw = url.pathname.slice("/api/solo/runs/".length).replace(/\/+$/, "").trim();
+    if (raw && !raw.includes("/")) {
+      try {
+        const user = requireAuth(req);
+        const run = getSoloRun(decodeURIComponent(raw));
+        if (!run) {
+          throw Object.assign(new Error("Solo run not found."), {
+            code: "NOT_FOUND",
+            statusCode: 404
+          });
+        }
+        assertSoloRunAccess(user, run);
+        deleteSoloRun(run.runId);
+        writeJson(res, 200, { ok: true, deleted: true });
+      } catch (error) {
+        routeError(res, error);
+      }
+      return true;
+    }
   }
 
   const soloActionRunId = parseSoloRunActionPath(url.pathname);
