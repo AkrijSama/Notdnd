@@ -212,14 +212,14 @@ export function renderGmStatusPanel(gmStatus = null, selectedMode = "placeholder
   `;
 }
 
-export function renderGmNarrationPanel(gmNarration = null, gmStatus = null, selectedMode = "placeholder") {
+export function renderGmNarrationPanel(gmNarration = null, gmStatus = null, selectedMode = "placeholder", debug = false) {
   const narration = gmNarration?.narration || null;
   if (!narration) {
     return `
       <div class="solo-gm-placeholder">
         <span>Future GM Narration</span>
         <p>Scene narration will appear here later, generated from server truth and memory.</p>
-        ${renderGmStatusPanel(gmStatus, selectedMode)}
+        ${debug ? renderGmStatusPanel(gmStatus, selectedMode) : ""}
       </div>
     `;
   }
@@ -236,12 +236,12 @@ export function renderGmNarrationPanel(gmNarration = null, gmStatus = null, sele
               .join("")}</div>`
           : ""
       }
-      ${renderGmStatusPanel(gmStatus, selectedMode)}
+      ${debug ? renderGmStatusPanel(gmStatus, selectedMode) : ""}
     </div>
   `;
 }
 
-export function renderLocationPanel(location = {}, gmNarration = null, gmStatus = null, selectedMode = "placeholder") {
+export function renderLocationPanel(location = {}, gmNarration = null, gmStatus = null, selectedMode = "placeholder", debug = false) {
   const imageLabel = location.imageAssetId ? `Image asset: ${location.imageAssetId}` : "No image assigned yet.";
   // Display-only: never surface the internal "placeholder" tag to the player.
   // The underlying location.tags data is left untouched.
@@ -261,7 +261,7 @@ export function renderLocationPanel(location = {}, gmNarration = null, gmStatus 
         <h3>${escapeHtml(location.name || "Current Location")}</h3>
         <p>${escapeHtml(location.description || "No location description is available.")}</p>
         ${renderTags(visibleTags)}
-        ${renderGmNarrationPanel(gmNarration, gmStatus, selectedMode)}
+        ${renderGmNarrationPanel(gmNarration, gmStatus, selectedMode, debug)}
       </div>
     </section>
   `;
@@ -1793,6 +1793,8 @@ export function renderSoloSceneShell(state = {}) {
   const location = scene.location || {};
   const selectedEntityId = state.detail?.entity?.entityId || state.detail?.entityId || "";
   const selectedGmMode = state.gmMode || "placeholder";
+  // GM provider/fallback status panel is debug-only (hidden from beta players).
+  const debug = state.debug === true;
   const character = state.character || SOLO_SAMPLE_CHARACTER;
   const activeTab = normalizeTab(state.activeTab);
   const skin = normalizeSkin(state.skin);
@@ -1853,7 +1855,7 @@ export function renderSoloSceneShell(state = {}) {
                 <div class="solo-scene-layout">
                   <div class="solo-scene-center">
                     ${renderSoloSceneArt(scene.locationImageUri)}
-                    ${renderLocationPanel(location, scene.gmNarration, scene.gmStatus, selectedGmMode)}
+                    ${renderLocationPanel(location, scene.gmNarration, scene.gmStatus, selectedGmMode, debug)}
                     ${
                       state.gmThinking || state.sceneReloading
                         ? `<div class="solo-thinking" role="status">${state.gmThinking ? "The GM is thinking…" : "Loading scene…"}</div>`
@@ -2276,6 +2278,17 @@ function readSoloThemePref(key, fallback) {
   }
 }
 
+// Player-hidden debug surfaces (e.g. the GM provider/fallback status panel) are
+// shown only when localStorage notdnd_debug === "true". Off for beta players —
+// the "Fallback"/"Placeholder" tags read as "broken" to a real player.
+function isDebugEnabled() {
+  try {
+    return typeof localStorage !== "undefined" && localStorage.getItem("notdnd_debug") === "true";
+  } catch {
+    return false;
+  }
+}
+
 function writeSoloThemePref(key, value) {
   try {
     if (typeof localStorage !== "undefined") {
@@ -2319,6 +2332,9 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     // "info" => amber/gold one-time wait notice; anything else => the default
     // (reddish, alert-styled) error banner.
     bannerKind: "",
+    // GM provider/fallback status panel: shown only with localStorage
+    // notdnd_debug === "true" (hidden from beta players by default).
+    debug: isDebugEnabled(),
     gmThinking: false,
     // Run conclusion (death / abandon / victory). runConcluded guards against
     // double-close; death/victory screens swap the shell for a summary; runSummary

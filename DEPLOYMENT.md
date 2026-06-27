@@ -32,6 +32,35 @@ the host-provided `PORT`, and the three `/data` storage paths below so data pers
 - `NOTDND_BOOTSTRAP_PASSWORD` (recommended)
 - `NOTDND_BOOTSTRAP_DISPLAY_NAME` (recommended)
 
+## Free GM Provider Options
+
+GM narration uses an OpenAI-compatible chat-completions endpoint, configurable
+via `NOTDND_LLM_BASE_URL` + `NOTDND_LLM_API_KEY` (the legacy `OPENROUTER_API_KEY`
+is still honored as a fallback key). Swap to any compatible provider without
+code changes — set the base URL, the key, and a model name the provider accepts
+(via `NOTDND_GM_MODEL`). The vanity `HTTP-Referer` / `X-Title` headers are
+OpenRouter attribution and are harmless to other providers.
+
+### Gemini AI Studio — recommended (1500 requests/day free, no credit card)
+
+- Get a key: https://aistudio.google.com/apikey
+- `NOTDND_LLM_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai/chat/completions`
+- `NOTDND_LLM_API_KEY=<your AI Studio key>`
+- `NOTDND_GM_MODEL=gemini-2.0-flash` (or `gemini-2.5-flash`)
+
+### Groq — backup (very fast, generous free tier)
+
+- Get a key: https://console.groq.com/keys
+- `NOTDND_LLM_BASE_URL=https://api.groq.com/openai/v1/chat/completions`
+- `NOTDND_LLM_API_KEY=<your Groq key>`
+- `NOTDND_GM_MODEL=llama-3.3-70b-versatile`
+
+### OpenRouter — default (broadest model selection)
+
+- Get a key: https://openrouter.ai/keys
+- Leave `NOTDND_LLM_BASE_URL` unset (defaults to OpenRouter) and set
+  `NOTDND_LLM_API_KEY` (or `OPENROUTER_API_KEY`).
+
 ## Option A: Fly.io (persistent, recommended)
 
 1. Install and authenticate:

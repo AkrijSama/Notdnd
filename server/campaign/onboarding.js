@@ -663,7 +663,10 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
           text: `Most turn back long before ${thirdLocation.name}. You didn't — and that tells me what kind of ending you're walking toward.`,
           revealed: false,
           repeatable: false,
-          linkedQuestIds: [],
+          // Linked to the main quest: talking to the witness fires the final
+          // stage (talk_beat -> npc_far_witness) and wins the run — so the
+          // climax is the conversation, not arriving at the location.
+          linkedQuestIds: ["quest_main"],
           contentTags: []
         },
         {
@@ -672,7 +675,9 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
           text: `${resolvedWorld.name} was not always like this. The ${resolvedWorld.tone} crept in slowly, and no one agreed on the moment it became too late. Out here, at the edge, you can still feel where it began.`,
           revealed: false,
           repeatable: true,
-          linkedQuestIds: [],
+          // Also linked + repeatable, so the final stage can still be satisfied
+          // if the player reaches the witness out of order (prevents a soft-lock).
+          linkedQuestIds: ["quest_main"],
           contentTags: []
         }
       ]
@@ -691,15 +696,17 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
   });
 
   // Extend the arc to the far location: after the figure at the second location,
-  // press on to the third location — reaching it is the win ("reach the far edge
-  // of the map"). The engine's N-stage support (advanceQuests) walks this
-  // appended stage like any other. Appended here rather than baked into the
-  // shared createMainQuest contract (which tests lock to two stages), so the
-  // third location is a live win target without changing that contract.
+  // press on to the third location and SPEAK WITH the witness there. The win
+  // fires on that conversation (talk_beat -> npc_far_witness), not on arrival —
+  // so the player actually reaches the climax: arrives, meets the witness, hears
+  // the closing beat, then wins. (advanceQuests resolves talk_beat by matching
+  // the talk's linkedQuestIds against the quest id; the witness's beats carry
+  // ["quest_main"].) Appended here rather than in the shared createMainQuest
+  // contract, which tests lock to two stages.
   if (thirdLocation && Array.isArray(run.quests.quest_main?.stages)) {
     run.quests.quest_main.stages.push({
-      objective: `Press on to ${thirdLocation.name}.`,
-      completion: { kind: "reach_location", targetId: "third_location" }
+      objective: `Press on to ${thirdLocation.name} and seek out the figure waiting at the edge.`,
+      completion: { kind: "talk_beat", targetId: "npc_far_witness" }
     });
   }
 
