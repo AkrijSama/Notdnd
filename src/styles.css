@@ -2371,8 +2371,20 @@ button:disabled {
 .onb-field > label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; opacity: 0.75; }
 .onb-field input, .onb-field textarea {
   width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: 9px;
-  background: var(--inset, #120c07); border: 1px solid var(--border, #2e2420);
-  color: var(--text, #f0e4cc); font: inherit; resize: vertical;
+  /* Anchor to the real :root palette (--input-bg/--ink/--line). The previous
+     --inset/--text/--border vars are NOT defined in :root — they only exist on
+     the solo-game-shell skins — so in the onboarding scope these inputs fell
+     back to whatever --text/--inset were inherited, which could render light
+     text on a light background. --input-bg + --ink are always defined (dark bg,
+     light ink), so the fields stay dark-fantasy legible everywhere. */
+  background: var(--input-bg, #100c08); border: 1px solid var(--line, #3d2f22);
+  color: var(--ink, #ece1c7); font: inherit; resize: vertical;
+}
+.onb-field input::placeholder, .onb-field textarea::placeholder {
+  color: var(--muted, #95897a);
+}
+.onb-field input:focus, .onb-field textarea:focus {
+  outline: none; border-color: var(--accent, #c89a4b);
 }
 .onb-chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .onb-chip {
