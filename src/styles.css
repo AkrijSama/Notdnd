@@ -1847,6 +1847,47 @@ button:disabled {
   font-family: inherit;
 }
 
+/* Editable action suggestions (above the attempt input). Inviting rounded,
+   accent-edged pills — distinct from the muted square action chips and the solid
+   gold Attempt button. Uses the solo shell's theme vars (so they follow the
+   player's chosen skin) with literal fallbacks so they never render invisible. */
+.solo-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.solo-suggestions-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-2, #b3a48c);
+  opacity: 0.8;
+  margin-right: 2px;
+}
+.solo-suggestion {
+  padding: 8px 14px;
+  background: var(--inset, #120c07);
+  border: 1px solid var(--accent-2, #e0b352);
+  border-radius: 999px;
+  color: var(--text-bright, #f0e6d4);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.2;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+.solo-suggestion:hover {
+  background: linear-gradient(180deg, rgba(210, 155, 50, 0.2), rgba(189, 132, 32, 0.12));
+  border-color: var(--accent, #d29b32);
+  color: var(--text-bright, #f7efdd);
+}
+.solo-suggestion:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 /* ---- Character sheet tab ---- */
 .solo-character-sheet {
   padding: 28px 40px;
@@ -2082,6 +2123,42 @@ button:disabled {
   min-width: 0;
   min-height: 0;
   border-right: 1px solid var(--border, #2e2420);
+}
+/* World-entry opening narration: prominent GM voice at the top of the scene,
+   visually distinct from the location copy. Uses solo skin vars (defined on
+   .solo-game-shell) with literal fallbacks — no phantom vars. */
+.solo-scene-opening {
+  flex: none;
+  position: relative;
+  margin: 4px 4px 10px;
+  padding: 16px 20px 16px 22px;
+  border: 1px solid var(--border-strong, #503f2e);
+  border-left: 3px solid var(--accent, #c89a4b);
+  border-radius: 12px;
+  background:
+    radial-gradient(120% 100% at 0% 0%, rgba(200, 154, 75, 0.10), transparent 60%),
+    var(--card, #1a130c);
+  box-shadow: inset 0 0 0 1px rgba(200, 154, 75, 0.06), 0 8px 22px rgba(0, 0, 0, 0.35);
+  color: var(--text, #ece1c7);
+}
+.solo-scene-opening-kicker {
+  display: block;
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--accent, #c89a4b);
+  margin-bottom: 8px;
+}
+.solo-scene-opening p {
+  margin: 0 0 8px;
+  font-family: var(--font-body, Georgia, serif);
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--text-bright, #f0e6d4);
+}
+.solo-scene-opening p:last-child {
+  margin-bottom: 0;
 }
 /* Location copy is the flexible middle band; the input bar pins to the bottom. */
 .solo-scene-center .solo-location-card {

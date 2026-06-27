@@ -112,7 +112,7 @@ export function buildActionGmMessage(run, resolved) {
  * @param {{characterName?:string, race?:string, characterClass?:string, world?:object, npc?:object|null}} input
  * @returns {string}
  */
-export function buildOpeningGmMessage({ characterName, race, characterClass, world = {}, npc = null } = {}) {
+export function buildOpeningGmMessage({ characterName, race, characterClass, world = {}, npc = null, questObjective = null } = {}) {
   const name = isString(characterName) ? characterName : "the wanderer";
   const descriptor = [race, characterClass].filter((part) => isString(part)).join(" ");
   const who = descriptor ? `${name}, a ${descriptor},` : name;
@@ -126,9 +126,44 @@ export function buildOpeningGmMessage({ characterName, race, characterClass, wor
     npc && isString(npc.generatedName)
       ? ` Hint at the presence of ${npc.generatedName}${isString(npc.role) ? `, the ${npc.role}` : ""}, without forcing a conversation.`
       : "";
+  // The hook: tie the opening to the main quest's first objective so the player
+  // leaves with a reason to move — without the GM resolving or inventing it.
+  const hookLine = isString(questObjective)
+    ? ` A pull toward purpose hangs in the air — ${questObjective} Hint at this hook in the fiction; do not resolve it.`
+    : "";
   return (
     `${who} arrives at ${locLine}.${worldLine} ` +
-    `Narrate their arrival in 3-5 vivid sentences of second-person ${tone} prose, grounding them in the scene.${npcHint} ` +
-    "Do not use bracketed trigger tags."
+    `Narrate their arrival in 3-5 vivid sentences of second-person ${tone} prose, grounding them in the atmosphere of the scene.${npcHint}${hookLine} ` +
+    "End by leaving the moment open and unspoken — theirs to act on. Do not use bracketed trigger tags."
   );
+}
+
+// Deterministic, tone-aware opening used when the GM call fails, times out, or is
+// disabled. Always a real welcoming opening (arrival + atmosphere + hook + a beat
+// handing the moment to the player) — never a blank or a bare location dump.
+export function buildOpeningFallback({ characterName, race, characterClass, world = {}, location = {}, questObjective = null } = {}) {
+  const name = isString(characterName) ? characterName : "Wanderer";
+  const descriptor = [race, characterClass].filter((part) => isString(part)).join(" ");
+  const who = descriptor ? `${name}, ${descriptor}` : name;
+  const tone = isString(world.tone) ? world.tone : "dark fantasy";
+  const worldName = isString(world.name) ? world.name : "this world";
+  const placeName = isString(location.name)
+    ? location.name
+    : isString(world.startingLocationName)
+      ? world.startingLocationName
+      : "an unfamiliar place";
+  const placeDesc = isString(location.description)
+    ? location.description
+    : isString(world.startingLocation?.description)
+      ? world.startingLocation.description
+      : "";
+  const sentences = [
+    `You are ${who}, and the ${tone} of ${worldName} settles over you as you arrive at ${placeName}.`,
+    placeDesc || "The place watches you in silence, every shadow holding its own weight.",
+    isString(questObjective)
+      ? `Something tugs at the edge of your purpose: ${questObjective}`
+      : "Whatever brought you here, it has not finished with you yet.",
+    "The moment is yours now — what do you do?"
+  ];
+  return sentences.filter(Boolean).join(" ");
 }

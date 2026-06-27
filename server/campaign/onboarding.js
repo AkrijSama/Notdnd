@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { applyOperation, createSoloRun, getSoloRun, saveSoloRun } from "../db/repository.js";
 import { ensureCampaignMemoryDocsAsync, rebuildCampaignIndex } from "../gm/memoryStore.js";
 import { runGmPipeline } from "../gm/prompting.js";
-import { buildOpeningGmMessage } from "../gm/actionNarration.js";
+import { buildOpeningGmMessage, buildOpeningFallback } from "../gm/actionNarration.js";
 import { buildCharacter, toRunPlayer } from "../solo/characterBuild.js";
 import { copyDraftPortraitToRun } from "../solo/imageWorker.js";
 import { generateNpcIdentity } from "../solo/npcIdentity.js";
@@ -673,21 +673,38 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
   await rebuildCampaignIndex(campaignId);
 
   // Opening narration: the first thing the player reads when they enter the
-  // world. Real GM prose, grounded in the world overview memory doc just
-  // indexed; bounded with a deterministic fallback.
-  run.narration = await generateOpeningNarration({
+  // world. Real GM prose (tone-aware, hooked to the main quest's first
+  // objective), grounded in the world overview memory doc just indexed, bounded
+  // by a 15s timeout with a deterministic tone-aware fallback (never blank, never
+  // a bare location dump). Generated ONCE here and stored on the run.
+  const firstObjective =
+    (Array.isArray(run.quests?.quest_main?.stages) && run.quests.quest_main.stages[0]?.objective) || null;
+  const opening = await generateOpeningNarration({
     campaignId,
     message: buildOpeningGmMessage({
       characterName,
       race: built.race,
       characterClass: built.class,
       world: resolvedWorld,
-      npc
+      npc,
+      questObjective: firstObjective
     }),
     playerName: characterName,
     actorUserId,
-    fallback: resolvedWorld.startingLocation.description
+    fallback: buildOpeningFallback({
+      characterName,
+      race: built.race,
+      characterClass: built.class,
+      world: resolvedWorld,
+      location: start,
+      questObjective: firstObjective
+    })
   });
+  // Distinct, persistent field (survives action narration, which overwrites
+  // run.narration). run.narration is also seeded with the opening so the
+  // gm-scene endpoint shows the GM voice on first load for legacy/compat paths.
+  run.openingNarration = opening;
+  run.narration = opening;
 
   const savedRun = saveSoloRun(run);
 

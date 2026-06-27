@@ -212,6 +212,27 @@ export function renderGmStatusPanel(gmStatus = null, selectedMode = "placeholder
   `;
 }
 
+// World-entry opening: the AI-generated GM welcome, shown prominently at the top
+// of the scene the first time the player enters (server gates scene.openingNarration
+// to the opening moment). Styled as GM voice, distinct from the location copy.
+export function renderSoloSceneOpening(openingNarration = "") {
+  const text = typeof openingNarration === "string" ? openingNarration.trim() : "";
+  if (!text) {
+    return "";
+  }
+  const paragraphs = text
+    .split(/\n{2,}/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const body = (paragraphs.length ? paragraphs : [text]).map((part) => `<p>${escapeHtml(part)}</p>`).join("");
+  return `
+    <section class="solo-scene-opening" role="note" aria-label="Opening narration">
+      <span class="solo-scene-opening-kicker">The GM sets the scene</span>
+      ${body}
+    </section>
+  `;
+}
+
 export function renderGmNarrationPanel(gmNarration = null, gmStatus = null, selectedMode = "placeholder", debug = false) {
   const narration = gmNarration?.narration || null;
   if (!narration) {
@@ -241,7 +262,7 @@ export function renderGmNarrationPanel(gmNarration = null, gmStatus = null, sele
   `;
 }
 
-export function renderLocationPanel(location = {}, gmNarration = null, gmStatus = null, selectedMode = "placeholder", debug = false) {
+export function renderLocationPanel(location = {}, gmNarration = null, gmStatus = null, selectedMode = "placeholder", debug = false, options = {}) {
   const imageLabel = location.imageAssetId ? `Image asset: ${location.imageAssetId}` : "No image assigned yet.";
   // Display-only: never surface the internal "placeholder" tag to the player.
   // The underlying location.tags data is left untouched.
@@ -261,7 +282,7 @@ export function renderLocationPanel(location = {}, gmNarration = null, gmStatus 
         <h3>${escapeHtml(location.name || "Current Location")}</h3>
         <p>${escapeHtml(location.description || "No location description is available.")}</p>
         ${renderTags(visibleTags)}
-        ${renderGmNarrationPanel(gmNarration, gmStatus, selectedMode, debug)}
+        ${options.suppressGm ? "" : renderGmNarrationPanel(gmNarration, gmStatus, selectedMode, debug)}
       </div>
     </section>
   `;
@@ -1171,10 +1192,32 @@ export function renderSoloSceneInputBar(state = {}) {
   // double-submit) and surface the wait in the button label.
   const busy = Boolean(state.busy);
 
+  // Optional, editable next-action suggestions for this scene. Clicking one fills
+  // the input (the player can edit it before submitting); the input itself is
+  // always the "type your own" option. Pure scaffolding — never forces a choice.
+  const suggestions = Array.isArray(scene.suggestedActions)
+    ? scene.suggestedActions.filter((entry) => typeof entry === "string" && entry.trim().length).slice(0, 3)
+    : [];
+  const hasSuggestions = suggestions.length > 0;
+  const suggestionChips = suggestions
+    .map(
+      (entry) =>
+        `<button type="button" class="solo-suggestion" data-solo-suggestion="${escapeHtml(entry)}" ${busy ? "disabled" : ""}>${escapeHtml(entry)}</button>`
+    )
+    .join("");
+
   return `
     <div class="solo-scene-input">
+      ${
+        hasSuggestions
+          ? `<div class="solo-suggestions" role="group" aria-label="Suggested actions">
+        <span class="solo-suggestions-label">Suggested</span>
+        ${suggestionChips}
+      </div>`
+          : ""
+      }
       <div class="solo-scene-input-row">
-        <input type="text" class="solo-scene-field" data-solo-attempt-input placeholder="What do you do?" value="${escapeHtml(state.attemptDraft || "")}" ${busy ? "disabled" : ""} />
+        <input type="text" class="solo-scene-field" data-solo-attempt-input placeholder="${hasSuggestions ? "…or describe your own action" : "What do you do?"}" value="${escapeHtml(state.attemptDraft || "")}" ${busy ? "disabled" : ""} />
         <button type="button" class="solo-attempt-submit" data-solo-attempt-submit ${busy ? "disabled" : ""}>${busy ? "Thinking…" : "Attempt"}</button>
       </div>
       <div class="solo-scene-tools">
@@ -1869,8 +1912,16 @@ export function renderSoloSceneShell(state = {}) {
               `
                 <div class="solo-scene-layout">
                   <div class="solo-scene-center">
+                    ${typeof scene.openingNarration === "string" && scene.openingNarration.trim() ? renderSoloSceneOpening(scene.openingNarration) : ""}
                     ${renderSoloSceneArt(scene.locationImageUri, { locked: scene.locationImageLocked })}
-                    ${renderLocationPanel(location, scene.gmNarration, scene.gmStatus, selectedGmMode, debug)}
+                    ${renderLocationPanel(
+                      location,
+                      scene.gmNarration,
+                      scene.gmStatus,
+                      selectedGmMode,
+                      debug,
+                      { suppressGm: typeof scene.openingNarration === "string" && Boolean(scene.openingNarration.trim()) }
+                    )}
                     ${
                       state.gmThinking || state.sceneReloading
                         ? `<div class="solo-thinking" role="status">${state.gmThinking ? "The GM is thinking…" : "Loading scene…"}</div>`
@@ -2271,6 +2322,26 @@ export function bindSoloSceneShell(root, handlers = {}) {
   };
   root.querySelectorAll("[data-solo-attempt-submit]").forEach((button) => {
     button.addEventListener("click", submitAttempt);
+  });
+  // Clicking a suggestion fills the attempt input (editable) and focuses it, with
+  // the caret at the end — it does NOT submit, so the player can tweak or replace
+  // the text. Reuses onAttemptDraft so the draft model stays in sync.
+  root.querySelectorAll("[data-solo-suggestion]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const text = button.getAttribute("data-solo-suggestion") || "";
+      if (attemptInput) {
+        attemptInput.value = text;
+        if (typeof attemptInput.focus === "function") {
+          attemptInput.focus();
+        }
+        try {
+          attemptInput.setSelectionRange(text.length, text.length);
+        } catch {
+          // Not all inputs support selection ranges; ignore.
+        }
+      }
+      handlers.onAttemptDraft?.({ value: text });
+    });
   });
   if (attemptInput && typeof attemptInput.addEventListener === "function") {
     attemptInput.addEventListener("input", () => {
