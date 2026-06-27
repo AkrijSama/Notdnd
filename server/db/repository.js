@@ -1205,6 +1205,31 @@ export function updateSoloRunNarration(runId, narration) {
 }
 
 /**
+ * Narrow write: caches the 3 contextual suggested actions for the run's current
+ * scene, keyed so a poll can tell whether they're still fresh (and the scene
+ * builder serves them instead of the generic fallback). Returns false if the
+ * run does not exist.
+ * @param {string} runId
+ * @param {string} sceneKey
+ * @param {string[]} actions
+ * @returns {boolean}
+ */
+export function setSoloRunSuggestions(runId, sceneKey, actions) {
+  ensureDb();
+  const run = db.soloRuns[String(runId || "").trim()];
+  if (!run) {
+    return false;
+  }
+  run.suggestedActions = Array.isArray(actions)
+    ? actions.slice(0, 3).map((action) => String(action || "")).filter((action) => action.trim().length > 0)
+    : [];
+  run.suggestedActionsKey = typeof sceneKey === "string" ? sceneKey : "";
+  bumpStateVersion();
+  writeToDisk();
+  return true;
+}
+
+/**
  * Narrow write: persists the solo battle-map token positions on run.battleMap so
  * they survive reloads. Shape: { width, height, positions: { tokenId: {x,y} } }.
  * Returns false if the run does not exist.

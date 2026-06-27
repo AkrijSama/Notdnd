@@ -70,6 +70,7 @@ import {
   saveSoloRun,
   setCampaignRuntimeState,
   setLocationImageLocked,
+  setSoloRunSuggestions,
   updateImageAssetStatus,
   updateSoloRunBattleMap,
   updateSoloRunNarration
@@ -97,6 +98,7 @@ import { buildGmRuntimeStatus } from "./solo/gmSmoke.js";
 import { enqueueDraftPortrait, enqueueImageJob, enqueueLocationImageJob, enqueuePlayerImageJob, enqueueVariantImageJob, getDraftPortrait, writeUploadedBasePortrait } from "./solo/imageWorker.js";
 import { enqueueIdentityJob, runIdentityJob } from "./solo/npcIdentity.js";
 import { buildNpcIntroDirective, buildSoloScenePayload, collectNpcsWithPendingIntro } from "./solo/scene.js";
+import { refreshSceneSuggestions } from "./solo/suggestions.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -969,7 +971,13 @@ async function handleApi(req, res) {
       let restResult = resolved.restResult;
       let useItemResult = resolved.useItemResult;
 
-      const gmNarration = await narrateActionWithGm(responseRun, resolved, user);
+      // Generate the next scene's suggested actions in parallel with the GM
+      // narration (overlapping its latency), so they're cached and ready by the
+      // time the client reloads the scene — no extra wait, no blank suggestions.
+      const [gmNarration] = await Promise.all([
+        narrateActionWithGm(responseRun, resolved, user),
+        refreshSceneSuggestions(responseRun, setSoloRunSuggestions)
+      ]);
       if (gmNarration) {
         const actionType = resolved.action?.type;
         if (actionType === "attempt" && attemptResult) {
@@ -1219,7 +1227,13 @@ async function handleApi(req, res) {
         enqueueImages: makeSceneImageEnqueuer(run),
         enqueueIdentities: makeSceneIdentityEnqueuer(run),
         enqueuePlayerPortrait: () => enqueuePlayerImageJob({ runId: run.runId }),
-        enqueueLocationImage: makeSceneLocationImageEnqueuer(run)
+        enqueueLocationImage: makeSceneLocationImageEnqueuer(run),
+        // Lazily (re)generate this scene's suggested actions when stale — covers
+        // the opening scene and any scene whose cache hasn't been filled yet.
+        // Guarded + fire-and-forget; never blocks scene delivery.
+        enqueueSuggestions: () => {
+          void refreshSceneSuggestions(run, setSoloRunSuggestions);
+        }
       });
       if (!scene.ok) {
         throw Object.assign(new Error("Solo scene could not be built."), {
