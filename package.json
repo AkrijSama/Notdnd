@@ -1,9 +1,9 @@
 {
-  "name": "notdnd",
+  "name": "inkborne",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Notdnd scaffold: Roll20 + D&D Beyond mechanics with AI GM placeholders",
+  "description": "Inkborne scaffold: Roll20 + D&D Beyond mechanics with AI GM placeholders",
   "dependencies": {
     "better-sqlite3": "^12.11.1",
     "flexsearch": "^0.8.205"
