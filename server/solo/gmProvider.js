@@ -69,6 +69,70 @@ function knownNpcIdsFromGmInput(gmInput) {
   return ids;
 }
 
+function isNonEmptyString(value) {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+// Evidence of spoken dialogue in narration: at least one pair of double-quote
+// family marks (straight or typographic). A lone quote (e.g. an apostrophe or a
+// measurement) is not enough — we require a quoted span.
+function hasQuotedSpeech(text) {
+  const marks = String(text || "").match(/["“”„«»]/g);
+  return Boolean(marks) && marks.length >= 2;
+}
+
+// The most specific name to look for in narration: the minted name when present,
+// else the display name.
+function vnNpcName(npc) {
+  if (!npc || typeof npc !== "object") {
+    return "";
+  }
+  if (isNonEmptyString(npc.generatedName)) {
+    return npc.generatedName.trim();
+  }
+  return isNonEmptyString(npc.displayName) ? npc.displayName.trim() : "";
+}
+
+function npcNamedInText(npc, text) {
+  const name = vnNpcName(npc);
+  if (name.length < 3) {
+    return false;
+  }
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`\\b${escaped}\\b`, "i").test(text);
+}
+
+/**
+ * Heuristic, GM-driven classifier for free-text narration — the automatic
+ * ambient→direct trigger. Detects when a narration has shifted into direct,
+ * sustained dialogue with a SINGLE present NPC. Deliberately conservative (the
+ * brief: never falsely trigger VN): it activates only when the narration both
+ * contains quoted speech AND names exactly one present NPC. No quoted speech, or
+ * zero / multiple named speakers (ambiguous), stays ambient. The result is
+ * grounded through deriveVnState, so only a present NPC can become the speaker.
+ * Pure; never throws. Pairs with deriveVnState (which classifies the structured
+ * GM contract) and produces the same { active, speakerId } shape the manual talk
+ * path and the scene payload use.
+ * @param {string} narrationText the GM's free-text narration for this turn
+ * @param {Array<{npcId: string, displayName?: string, generatedName?: string}>} presentNpcs NPCs at the current location
+ * @returns {{ active: boolean, speakerId: string | null }}
+ */
+export function classifyNarrationVn(narrationText, presentNpcs = []) {
+  const text = typeof narrationText === "string" ? narrationText : "";
+  const npcs = Array.isArray(presentNpcs) ? presentNpcs : [];
+  if (!text.trim() || !hasQuotedSpeech(text)) {
+    return { active: false, speakerId: null };
+  }
+  const named = npcs.filter((npc) => npc && isNonEmptyString(npc.npcId) && npcNamedInText(npc, text));
+  if (named.length !== 1) {
+    // Zero named speakers, or several at once — too ambiguous to attribute a
+    // single VN speaker. Stay ambient rather than guess.
+    return { active: false, speakerId: null };
+  }
+  const knownNpcIds = npcs.map((npc) => npc && npc.npcId).filter(isNonEmptyString);
+  return deriveVnState({ vnMode: true, speakerId: named[0].npcId }, { knownNpcIds });
+}
+
 function plainText(value) {
   return String(value ?? "")
     .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "")
