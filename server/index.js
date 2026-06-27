@@ -2162,6 +2162,8 @@ server.on("error", (error) => {
 });
 
 server.listen(port, host, () => {
+  // Startup confirmation: makes a successful bind obvious vs. a server stuck in
+  // an EADDRINUSE loop (where only [DB] prints and the port never binds).
   // eslint-disable-next-line no-console
-  // Removed noisy debug output for production.
+  console.log(`[SERVER] Inkborne listening on port ${port}`);
 });
