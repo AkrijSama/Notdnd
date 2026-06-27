@@ -2,6 +2,21 @@
 
 This app needs a long-running Node process with WebSocket support and persistent disk.
 
+> ⚠️ **Persistent volume required.** All user data — accounts, sessions, solo
+> runs, campaigns, waitlist — lives in a single SQLite file at `NOTDND_DB_PATH`
+> (default `/data/notdnd.db` in production), alongside campaign memory under
+> `NOTDND_MEMORY_ROOT`. On Fly.io/Railway the container filesystem is **ephemeral**:
+> without a persistent volume mounted at `/data`, **every redeploy or machine
+> restart wipes all user data.** Always mount a volume and point the DB + memory
+> paths at it. On startup the server logs `[DB] SQLite database at: <path>` —
+> confirm that path is on the mounted volume.
+
+## Minimum env vars to run
+
+The server boots with **no env vars** (mock AI + placeholder images). For a real
+deploy you need at minimum: `OPENROUTER_API_KEY` (real GM text), `NOTDND_HOST=0.0.0.0`,
+the host-provided `PORT`, and the three `/data` storage paths below so data persists.
+
 ## Required Runtime Env Vars
 
 - `OPENROUTER_API_KEY`

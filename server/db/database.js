@@ -106,6 +106,13 @@ export function getDatabase(sqlitePath) {
   connection = new Database(target);
   applySchema(connection);
   connectionPath = target;
+  if (target !== ":memory:") {
+    // Startup line so an operator can confirm the DB lives on the expected
+    // (persistent) path — not an ephemeral container filesystem that is wiped
+    // on redeploy. See DEPLOYMENT.md.
+    // eslint-disable-next-line no-console
+    console.log("[DB] SQLite database at:", target);
+  }
   return connection;
 }
 
