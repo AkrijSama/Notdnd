@@ -100,8 +100,8 @@ function renderSoloHeader(user, accountMenuOpen = false) {
   return `
     <header class="topbar solo-topbar">
       <div class="brand">
-        <h1>Notdnd</h1>
-        <span>Solo AI RPG</span>
+        <h1>Inkborne</h1>
+        <span>AI RPG</span>
       </div>
       <div class="inline">
         <span class="small">${user ? `Signed in: ${escapeHtml(user.displayName)}` : "Not signed in"}</span>
@@ -925,7 +925,7 @@ function renderApp() {
         ${authMessageHtml}
         <main class="panel main solo-home-main">
           <section class="module-card solo-login-card">
-            <h2>Welcome to Notdnd</h2>
+            <h2>Welcome to Inkborne</h2>
             <p class="small">Sign in to begin or continue your solo adventure.</p>
           </section>
           ${renderAuthPanel(state)}

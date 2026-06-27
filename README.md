@@ -1,6 +1,6 @@
-# Notdnd
+# Inkborne
 
-Notdnd is a unified tabletop platform scaffold combining:
+Inkborne is a unified tabletop platform scaffold combining:
 
 - Roll20-style VTT controls (grid map, tokens, initiative)
 - D&D Beyond-style content flows (campaign, books, character vault, compendium)

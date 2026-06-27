@@ -24,10 +24,10 @@ Do not build:
 
 Proof:
 
-- `docs/notdnd-product-spine.md` exists.
-- `docs/notdnd-mvp-spec.md` exists.
-- `docs/notdnd-architecture.md` exists.
-- `docs/notdnd-roadmap.md` exists.
+- `docs/inkborne-product-spine.md` exists.
+- `docs/inkborne-mvp-spec.md` exists.
+- `docs/inkborne-architecture.md` exists.
+- `docs/inkborne-roadmap.md` exists.
 - `docs/content-safety-policy.md` exists.
 
 ## Phase 1 - Server-Authoritative Solo Run Skeleton
@@ -245,7 +245,7 @@ Likely files/modules:
 - `notdnd/index.html`
 - `src/components/topbar.js`
 - `src/components/sidebar.js`
-- `docs/notdnd-product-spine.md`
+- `docs/inkborne-product-spine.md`
 
 Acceptance criteria:
 

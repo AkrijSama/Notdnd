@@ -1,6 +1,11 @@
 // OpenAI-compatible chat-completions endpoint. Defaults to OpenRouter but can
 // point at any compatible provider (Gemini AI Studio, Groq, etc.) via env.
-const LLM_BASE_URL = process.env.NOTDND_LLM_BASE_URL || "https://openrouter.ai/api/v1/chat/completions";
+// Brand rename (NotDND -> Inkborne): INKBORNE_* is read first, falling back to
+// the legacy NOTDND_* so existing deployments keep working. The (?? ) group is
+// parenthesized because mixing ?? and || without parens is a JS syntax error.
+const LLM_BASE_URL =
+  (process.env.INKBORNE_LLM_BASE_URL ?? process.env.NOTDND_LLM_BASE_URL) ||
+  "https://openrouter.ai/api/v1/chat/completions";
 
 const DEFAULT_MODELS = {
   narrative: "x-ai/grok-3",
@@ -12,18 +17,20 @@ const usageByCampaign = {};
 
 function resolveModelTiers() {
   return {
-    narrative: process.env.NOTDND_GM_MODEL || DEFAULT_MODELS.narrative,
-    utility: process.env.NOTDND_UTILITY_MODEL || DEFAULT_MODELS.utility,
-    fallback: process.env.NOTDND_FALLBACK_MODEL || DEFAULT_MODELS.fallback
+    narrative: (process.env.INKBORNE_GM_MODEL ?? process.env.NOTDND_GM_MODEL) || DEFAULT_MODELS.narrative,
+    utility: (process.env.INKBORNE_UTILITY_MODEL ?? process.env.NOTDND_UTILITY_MODEL) || DEFAULT_MODELS.utility,
+    fallback: (process.env.INKBORNE_FALLBACK_MODEL ?? process.env.NOTDND_FALLBACK_MODEL) || DEFAULT_MODELS.fallback
   };
 }
 
 function ensureApiKey() {
-  // NOTDND_LLM_API_KEY is the provider-agnostic name; OPENROUTER_API_KEY stays
-  // a fallback so existing setups keep working unchanged.
-  const apiKey = String(process.env.NOTDND_LLM_API_KEY || process.env.OPENROUTER_API_KEY || "").trim();
+  // INKBORNE_LLM_API_KEY is the primary name; NOTDND_LLM_API_KEY (legacy brand)
+  // and OPENROUTER_API_KEY remain fallbacks so existing setups keep working.
+  const apiKey = String(
+    (process.env.INKBORNE_LLM_API_KEY ?? process.env.NOTDND_LLM_API_KEY) || process.env.OPENROUTER_API_KEY || ""
+  ).trim();
   if (!apiKey) {
-    const error = new Error("NOTDND_LLM_API_KEY (or OPENROUTER_API_KEY) is required.");
+    const error = new Error("INKBORNE_LLM_API_KEY (or OPENROUTER_API_KEY) is required.");
     error.code = "MISSING_API_KEY";
     error.statusCode = 500;
     throw error;
@@ -70,7 +77,7 @@ function safeMessageContent(content) {
 }
 
 function mockModeEnabled() {
-  return String(process.env.NOTDND_MOCK_OPENROUTER || "").trim().toLowerCase() === "true";
+  return String((process.env.INKBORNE_MOCK_OPENROUTER ?? process.env.NOTDND_MOCK_OPENROUTER) || "").trim().toLowerCase() === "true";
 }
 
 function pushUsage(campaignId, tier, model, usage, cost) {
@@ -274,8 +281,8 @@ async function requestOpenRouter(messages, model, options = {}) {
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`,
-      "HTTP-Referer": "https://notdnd.com",
-      "X-Title": "NOTDND"
+      "HTTP-Referer": "https://inkborne.com",
+      "X-Title": "Inkborne"
     },
     body: JSON.stringify(body)
   });

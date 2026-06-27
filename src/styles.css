@@ -1271,7 +1271,7 @@ button:disabled {
 
 /* =========================================================================
    Solo themed game screen (skins, fonts, character sidebar, tabs, right rail)
-   Imported from the "NotDND Game Screen" design. All colors flow from the
+   Imported from the "Inkborne Game Screen" design. All colors flow from the
    CSS custom properties set on .solo-game-shell so skins retint everything.
    ========================================================================= */
 .solo-game-shell {

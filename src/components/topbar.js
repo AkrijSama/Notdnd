@@ -12,7 +12,7 @@ export function renderTopbar(activeTab, user, accountMenuOpen = false) {
   return `
     <header class="topbar">
       <div class="brand">
-        <h1>Notdnd</h1>
+        <h1>Inkborne</h1>
         <span>Roll20 + D&D Beyond + AI GM</span>
       </div>
       <nav class="nav-tabs">

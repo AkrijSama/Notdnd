@@ -1,6 +1,13 @@
-# NOTDND Deployment Runbook
+# Inkborne Deployment Runbook
 
 This app needs a long-running Node process with WebSocket support and persistent disk.
+
+> **Env var naming (brand rename in progress):** `INKBORNE_*` is the preferred
+> prefix and is read first for AI/model variables (e.g. `INKBORNE_LLM_API_KEY`,
+> `INKBORNE_GM_MODEL`, `INKBORNE_FALLBACK_MODEL`), with the legacy `NOTDND_*` kept
+> as a working fallback. The operational variables (DB path, bootstrap account,
+> memory/storage paths, host) currently read `NOTDND_*` only. **Setting `NOTDND_*`
+> works for every variable**, so it stays the safe choice until the rename completes.
 
 > ⚠️ **Persistent volume required.** All user data — accounts, sessions, solo
 > runs, campaigns, waitlist — lives in a single SQLite file at `NOTDND_DB_PATH`
