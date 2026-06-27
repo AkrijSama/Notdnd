@@ -105,6 +105,18 @@ const PORTRAIT_DIMENSIONS = { width: 512, height: 768 };
 const LANDSCAPE_DIMENSIONS = { width: 768, height: 512 };
 // Square for the character-sheet composite (player + draft portraits only).
 const PLAYER_PORTRAIT_DIMENSIONS = { width: 1024, height: 1024 };
+// Tall VN-sprite aspect for the full-body NPC overlay (NOT the square composite):
+// a head-to-toe standing sprite. Generated lazily into a NEW "vnBody" slot,
+// separate from the 512x768 bust (which battle tokens + cast thumbnails keep).
+const VN_BODY_DIMENSIONS = { width: 832, height: 1216 };
+
+// Full-body VN sprite art direction. Drops "upper body" and any reference-sheet
+// inset language; [tone] is injected per run. Standing, head-to-toe, plain dark
+// background so the sprite composites cleanly over the scene.
+function vnBodyArtDirection(tone) {
+  const flavor = typeof tone === "string" && tone.trim() ? tone.trim() : "dark fantasy";
+  return `full-body standing character, head to toe, plain dark background, visual novel sprite, ${flavor}, detailed face and clothing`;
+}
 
 // ---------------------------------------------------------------------------
 // Player / draft (character-creation) portrait helpers.
@@ -338,6 +350,64 @@ export async function runVariantImageJob(job = {}) {
     ...PORTRAIT_DIMENSIONS
   });
   return { ok: true, variant };
+}
+
+/**
+ * Lazy full-body VN-sprite job: generates ONE tall (832x1216) head-to-toe sprite
+ * for an NPC, on demand, into the NEW "vnBody" slot — distinct from the 512x768
+ * bust (which battle tokens + cast thumbnails keep using). Only invoked when an
+ * NPC first enters VN mode (cost control); never generated upfront for every NPC.
+ * Generate-once / cache-forever (skips an already-generated slot), and seed-locked
+ * to the NPC's identitySeed so the sprite reads as the same character as the bust.
+ * On Pollinations this is a fresh txt2img (bust manipulation is a later fal.ai
+ * phase). Awaitable; never throws to the queue. Routes through the same provider
+ * failover (Pollinations primary) as every other generation via generateImage.
+ * @param {{ runId: string, npcId: string, style?: string, basePrompt?: string }} job
+ * @returns {Promise<{ ok: boolean, vnBody?: object, reason?: string, skipped?: boolean }>}
+ */
+export async function runVnBodyImageJob(job = {}) {
+  const runId = String(job.runId || "").trim();
+  const npcId = String(job.npcId || "").trim();
+  if (!runId || !npcId) {
+    return { ok: false, reason: "missing runId or npcId" };
+  }
+
+  const linked = ensureNpcImageAssets(runId, npcId, { style: job.style });
+  if (!linked || !linked.vnBody) {
+    return { ok: false, reason: "run or npc not found" };
+  }
+
+  const run = getSoloRun(runId);
+  // Generate-once / cache-forever: an existing full-body sprite is reused as-is.
+  const existing = run?.imageAssets?.[linked.vnBody] || null;
+  if (existing && existing.status === "generated" && typeof existing.uri === "string" && existing.uri) {
+    return { ok: true, vnBody: { slot: "vnBody", ok: true, uri: existing.uri, reused: true } };
+  }
+
+  const npc = run?.npcs?.[npcId] || null;
+  const style = job.style ? String(job.style).trim() : "";
+  // Seed-locked to the bust so the full-body sprite reads as the same character.
+  const seed = Number.isFinite(Number(npc?.identitySeed)) ? Number(npc.identitySeed) : null;
+  const tone = run?.world?.tone || "dark fantasy";
+  const basePrompt = String(
+    job.basePrompt ||
+    npc?.portraitPrompt ||
+    `a ${npc?.role || npcId}, dark fantasy, detailed`
+  ).trim();
+
+  const vnBody = await generateSlot({
+    runId,
+    npcId,
+    slot: "vnBody",
+    assetId: linked.vnBody,
+    // Fresh txt2img standing sprite — no reference (manipulation is a later phase).
+    prompt: `${basePrompt}, ${vnBodyArtDirection(tone)}`,
+    style,
+    seed,
+    referenceImageUrl: null,
+    ...VN_BODY_DIMENSIONS
+  });
+  return { ok: true, vnBody };
 }
 
 /**
@@ -590,6 +660,9 @@ function dispatchJob(job) {
   if (job && job.kind === "variant") {
     return runVariantImageJob(job);
   }
+  if (job && job.kind === "vnBody") {
+    return runVnBodyImageJob(job);
+  }
   if (job && job.kind === "draft") {
     return runDraftPortraitJob(job);
   }
@@ -645,6 +718,26 @@ export function enqueueVariantImageJob(job = {}) {
     runId: job.runId,
     npcId: job.npcId,
     expression: job.expression,
+    style: job.style,
+    basePrompt: job.basePrompt
+  });
+  Promise.resolve().then(drainQueue).catch((error) => logWorker("drain failed", error));
+}
+
+/**
+ * Enqueues a lazy full-body VN-sprite job. Fire-and-forget; safe from a request
+ * path. The worker skips it if the vnBody slot is already generated, so it's
+ * cheap to call on every scene load while an NPC is in VN mode.
+ * @param {{ runId: string, npcId: string, style?: string, basePrompt?: string }} job
+ */
+export function enqueueVnBodyImageJob(job = {}) {
+  if (!job || !job.runId || !job.npcId) {
+    return;
+  }
+  queue.push({
+    kind: "vnBody",
+    runId: job.runId,
+    npcId: job.npcId,
     style: job.style,
     basePrompt: job.basePrompt
   });

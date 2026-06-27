@@ -98,9 +98,9 @@ import { fetchHomebrewUrl } from "./homebrew/urlImport.js";
 import { validateCustomItem, normalizeContentForBuild, CUSTOM_CONTENT_TYPES } from "./homebrew/customContent.js";
 import { createWsHub } from "./realtime/wsHub.js";
 import { resolveSoloAction } from "./solo/actions.js";
-import { resolveGmNarration } from "./solo/gmProvider.js";
+import { classifyNarrationVn, resolveGmNarration } from "./solo/gmProvider.js";
 import { buildGmRuntimeStatus } from "./solo/gmSmoke.js";
-import { enqueueDraftPortrait, enqueueImageJob, enqueueLocationImageJob, enqueuePlayerImageJob, enqueueVariantImageJob, getDraftPortrait, writeUploadedBasePortrait } from "./solo/imageWorker.js";
+import { enqueueDraftPortrait, enqueueImageJob, enqueueLocationImageJob, enqueuePlayerImageJob, enqueueVariantImageJob, enqueueVnBodyImageJob, getDraftPortrait, writeUploadedBasePortrait } from "./solo/imageWorker.js";
 import { enqueueIdentityJob, runIdentityJob } from "./solo/npcIdentity.js";
 import { buildNpcIntroDirective, buildSoloScenePayload, collectNpcsWithPendingIntro } from "./solo/scene.js";
 import { refreshSceneSuggestions } from "./solo/suggestions.js";
@@ -687,6 +687,14 @@ function withGmTimeout(promise, ms) {
   ]);
 }
 
+// NPCs at the run's current location — the candidate speakers the automatic VN
+// classifier may attribute direct dialogue to (and the set it grounds against,
+// so an absent NPC can never become the speaker).
+function presentNpcsForVn(run) {
+  const npcs = run && run.npcs && typeof run.npcs === "object" ? Object.values(run.npcs) : [];
+  return npcs.filter((npc) => npc && npc.currentLocationId === run.currentLocationId && npc.status !== "gone");
+}
+
 // Generates real GM narration for any resolved solo action (move/talk/search/
 // rest/use_item/attempt). Bounded by GM_ACTION_TIMEOUT_MS; returns null on
 // timeout/empty so the caller keeps the mechanical template as a fallback.
@@ -1005,6 +1013,28 @@ async function handleApi(req, res) {
         }
         updateSoloRunNarration(responseRun.runId, gmNarration);
         responseRun.narration = gmNarration;
+
+        // Automatic ambient->direct VN trigger. The manual talk path already set
+        // run.vn for talk actions (at resolveSoloAction time), so only classify
+        // when vn is not already active: when a non-talk action's narration has
+        // shifted into direct, sustained dialogue with a single present NPC,
+        // promote the scene to VN mode. Conservative + grounded against present
+        // NPCs (see classifyNarrationVn), so the manual signal is never falsely
+        // overridden and an absent speaker never triggers VN. Persisted with a
+        // synchronous read-modify-write (no await between getSoloRun and
+        // saveSoloRun), so no async image-worker write can interleave with a
+        // stale full-run snapshot. Graceful: no narration / no signal -> ambient.
+        if (!(responseRun.vn && responseRun.vn.active)) {
+          const autoVn = classifyNarrationVn(gmNarration, presentNpcsForVn(responseRun));
+          if (autoVn.active) {
+            const fresh = getSoloRun(responseRun.runId);
+            if (fresh) {
+              fresh.vn = autoVn;
+              saveSoloRun(fresh);
+              responseRun.vn = autoVn;
+            }
+          }
+        }
       }
 
       // Lazy expression variants: a talk beat tells us which expression the NPC
@@ -1246,6 +1276,15 @@ async function handleApi(req, res) {
           statusCode: 400,
           validationErrors: scene.errors
         });
+      }
+      // Lazy full-body VN sprite: only when an NPC is in VN (direct) mode. The
+      // worker skips an already-generated vnBody, so this is cheap to re-enqueue
+      // on every scene load and never fires for NPCs who never enter VN.
+      if (scene.vnMode && typeof scene.speakerId === "string" && scene.speakerId) {
+        const vnNpcId = scene.speakerId.includes(":")
+          ? scene.speakerId.split(":").slice(1).join(":")
+          : scene.speakerId;
+        enqueueVnBodyImageJob({ runId: run.runId, npcId: vnNpcId, style: run?.flags?.artStyle });
       }
       writeJson(res, 200, scene);
     } catch (error) {

@@ -1043,9 +1043,14 @@ export function ensureNpcImageAssets(runId, npcId, options = {}) {
     variants[expression] = assetId;
   }
 
+  // Full-body VN sprite slot — distinct from the bust (base) and the expression
+  // variants. Created as a queued placeholder (cheap, no image bytes); generated
+  // lazily by runVnBodyImageJob only when the NPC first enters VN mode.
+  const vnBodyAssetId = ensureAsset(`img_${npcId}_vnBody`);
+
   bumpStateVersion();
   writeToDisk();
-  return { base: baseAssetId, variants };
+  return { base: baseAssetId, variants, vnBody: vnBodyAssetId };
 }
 
 /**

@@ -20,8 +20,9 @@ const {
   ensureNpcImageAssets,
   updateImageAssetStatus
 } = await import("../server/db/repository.js");
-const { runImageJob, runVariantImageJob } = await import("../server/solo/imageWorker.js");
+const { runImageJob, runVariantImageJob, runVnBodyImageJob } = await import("../server/solo/imageWorker.js");
 const { NPC_EXPRESSIONS } = await import("../server/solo/schema.js");
+const { resolveVnBodyUri } = await import("../server/solo/scene.js");
 const { serveStatic } = await import("../server/api/http.js");
 
 function seedRunWithNpc(runId) {
@@ -101,20 +102,85 @@ test("runImageJob returns not-found for a missing npc and never throws", async (
   assert.match(result.reason, /not found/);
 });
 
-test("ensureNpcImageAssets is idempotent and creates base + 6 variants", () => {
+test("ensureNpcImageAssets is idempotent and creates base + 6 variants + vnBody", () => {
   seedRunWithNpc("run_img_c");
   const first = ensureNpcImageAssets("run_img_c", "tavern_keeper", { style: "pixel" });
   assert.equal(first.base, "img_tavern_keeper_base");
   assert.equal(Object.keys(first.variants).length, NPC_EXPRESSIONS.length);
+  // New full-body VN sprite slot, distinct from the bust + variants.
+  assert.equal(first.vnBody, "img_tavern_keeper_vnBody");
 
   const afterFirst = getSoloRun("run_img_c");
-  assert.equal(Object.keys(afterFirst.imageAssets).length, NPC_EXPRESSIONS.length + 1);
+  // base + 6 expression variants + 1 vnBody.
+  assert.equal(Object.keys(afterFirst.imageAssets).length, NPC_EXPRESSIONS.length + 2);
   assert.equal(afterFirst.imageAssets.img_tavern_keeper_base.status, "queued");
   assert.equal(afterFirst.imageAssets.img_tavern_keeper_base.promptSummary, "style:pixel");
+  // vnBody starts as a queued placeholder (no image until lazily generated).
+  assert.equal(afterFirst.imageAssets.img_tavern_keeper_vnBody.status, "queued");
+  assert.equal(afterFirst.imageAssets.img_tavern_keeper_vnBody.uri, null);
 
   ensureNpcImageAssets("run_img_c", "tavern_keeper", { style: "pixel" });
   const afterSecond = getSoloRun("run_img_c");
-  assert.equal(Object.keys(afterSecond.imageAssets).length, NPC_EXPRESSIONS.length + 1);
+  assert.equal(Object.keys(afterSecond.imageAssets).length, NPC_EXPRESSIONS.length + 2);
+});
+
+test("runVnBodyImageJob generates the full-body sprite into a slot distinct from the bust", async () => {
+  seedRunWithNpc("run_vn_a");
+  // Pre-generate the bust so we can prove vnBody is additive (bust untouched).
+  await runImageJob({ runId: "run_vn_a", npcId: "tavern_keeper", basePrompt: "a keeper" });
+  let run = getSoloRun("run_vn_a");
+  const bustUri = run.imageAssets.img_tavern_keeper_base.uri;
+  assert.equal(run.imageAssets.img_tavern_keeper_base.status, "generated");
+  // vnBody slot exists but is not yet generated (lazy).
+  assert.equal(run.imageAssets.img_tavern_keeper_vnBody.status, "queued");
+
+  const result = await runVnBodyImageJob({ runId: "run_vn_a", npcId: "tavern_keeper", basePrompt: "a keeper" });
+  assert.equal(result.ok, true);
+  assert.equal(result.vnBody.ok, true);
+
+  run = getSoloRun("run_vn_a");
+  const vnAsset = run.imageAssets.img_tavern_keeper_vnBody;
+  assert.equal(vnAsset.status, "generated");
+  assert.match(vnAsset.uri, /\/tavern_keeper\/vnBody\.(png|jpe?g|webp)$/);
+  // Distinct slot: vnBody uri != bust uri; the bust is untouched (additive).
+  assert.notEqual(vnAsset.uri, bustUri);
+  assert.equal(run.imageAssets.img_tavern_keeper_base.uri, bustUri);
+  // The on-disk file exists at the vnBody path.
+  const onDisk = path.join(process.env.NOTDND_ASSETS_ROOT, "run_vn_a", "tavern_keeper", path.basename(vnAsset.uri));
+  assert.ok(fs.existsSync(onDisk));
+});
+
+test("runVnBodyImageJob is generate-once / cache-forever", async () => {
+  seedRunWithNpc("run_vn_b");
+  const first = await runVnBodyImageJob({ runId: "run_vn_b", npcId: "tavern_keeper" });
+  assert.equal(first.ok, true);
+  assert.notEqual(first.vnBody.reused, true);
+  const firstUri = getSoloRun("run_vn_b").imageAssets.img_tavern_keeper_vnBody.uri;
+
+  const second = await runVnBodyImageJob({ runId: "run_vn_b", npcId: "tavern_keeper" });
+  assert.equal(second.ok, true);
+  assert.equal(second.vnBody.reused, true);
+  assert.equal(second.vnBody.uri, firstUri);
+});
+
+test("runVnBodyImageJob returns not-found for a missing npc and never throws", async () => {
+  seedRunWithNpc("run_vn_c");
+  const result = await runVnBodyImageJob({ runId: "run_vn_c", npcId: "ghost" });
+  assert.equal(result.ok, false);
+  assert.match(result.reason, /not found/);
+});
+
+test("resolveVnBodyUri returns the sprite only for the active VN speaker", async () => {
+  seedRunWithNpc("run_vn_d");
+  await runVnBodyImageJob({ runId: "run_vn_d", npcId: "tavern_keeper" });
+  const run = getSoloRun("run_vn_d");
+  const uri = run.imageAssets.img_tavern_keeper_vnBody.uri;
+  // Active VN mode for this speaker -> the sprite uri.
+  assert.equal(resolveVnBodyUri(run, { active: true, speakerId: "tavern_keeper" }), uri);
+  // Ambient -> null.
+  assert.equal(resolveVnBodyUri(run, { active: false, speakerId: null }), null);
+  // Active but a different (un-generated) speaker -> null.
+  assert.equal(resolveVnBodyUri(run, { active: true, speakerId: "someone_else" }), null);
 });
 
 test("updateImageAssetStatus is a narrow write and reports missing assets", () => {
