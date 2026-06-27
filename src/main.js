@@ -437,7 +437,17 @@ function confirmWorld() {
 // ---- Character creation wizard handlers (Ticket 38) ----
 function charStep(delta) {
   const c = uiState.onboarding.character || defaultCharacterState();
-  uiState.onboarding.character = { ...c, step: Math.max(1, Math.min(6, (c.step || 1) + delta)) };
+  const step = Math.max(1, Math.min(6, (c.step || 1) + delta));
+  uiState.onboarding.character = { ...c, step };
+  // Safety net: ensure the draft portrait is requested by the time the player
+  // reaches the Review step, even if the field-change trigger was missed or a
+  // prior attempt failed. maybeRequestDraftPortrait is idempotent — it only
+  // fires when race + class are set and this combo hasn't already been requested
+  // (a failure clears the key, so this re-attempts), so it never double-requests
+  // a successful or in-flight portrait.
+  if (step === 6) {
+    maybeRequestDraftPortrait();
+  }
   scheduleRender();
 }
 function charField(field, value) {
@@ -492,6 +502,9 @@ function startDraftPortraitPoll(draftId, key) {
       }
       if (res?.status === "failed") {
         uiState.onboarding.draftPortraitStatus = "failed";
+        // Clear the key so the combo can be retried (e.g. on returning to the
+        // Review step) instead of sticking on "failed" forever.
+        uiState.onboarding.draftPortraitKey = null;
         scheduleRender();
         return;
       }
@@ -502,6 +515,7 @@ function startDraftPortraitPoll(draftId, key) {
       uiState.onboarding.draftPortraitPollTimer = setTimeout(tick, 3000);
     } else {
       uiState.onboarding.draftPortraitStatus = "failed";
+      uiState.onboarding.draftPortraitKey = null; // allow a retry after a timeout
       scheduleRender();
     }
   };
@@ -550,6 +564,9 @@ async function maybeRequestDraftPortrait() {
   } catch {
     if (uiState.onboarding.draftPortraitKey === key) {
       uiState.onboarding.draftPortraitStatus = "failed";
+      // Clear the key so a stale-server 404 or transient network error can be
+      // retried (e.g. on reaching the Review step) rather than sticking.
+      uiState.onboarding.draftPortraitKey = null;
       scheduleRender();
     }
   }
