@@ -2541,6 +2541,15 @@ button:disabled {
 }
 .solo-banner-dismiss:hover { opacity: 1; }
 
+/* Informational variant (vs. the default reddish alert): the one-time
+   "your world is being illustrated" notice. Dark background, amber/gold text,
+   consistent with the dark-fantasy aesthetic (--accent #c89a4b). */
+.solo-banner-info {
+  border-color: rgba(200, 154, 75, 0.7);
+  background: rgba(28, 22, 10, 0.78);
+  color: #e6c780;
+}
+
 /* Subtle "the GM is thinking…" / "loading scene…" strip in the narration area. */
 .solo-thinking {
   display: flex;

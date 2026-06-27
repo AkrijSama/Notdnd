@@ -1105,7 +1105,7 @@ export function renderSoloCharacterSidebar(character = SOLO_SAMPLE_CHARACTER) {
 
   return `
     <aside class="solo-game-sidebar">
-      <div class="solo-portrait" data-portrait-for="player" data-portrait-img-class="solo-portrait-img">${character.portraitUri ? `<img class="solo-portrait-img" src="${escapeHtml(character.portraitUri)}" alt="${escapeHtml(character.name || "Character")} portrait" />` : `<div class="solo-portrait-pending"><span class="solo-portrait-spinner" aria-hidden="true"></span><small>Portrait generating…</small></div>`}</div>
+      <div class="solo-portrait" data-portrait-for="player" data-portrait-img-class="solo-portrait-img">${character.portraitUri ? `<img class="solo-portrait-img" src="${escapeHtml(character.portraitUri)}" alt="${escapeHtml(character.name || "Character")} portrait" />` : `<div class="solo-portrait-pending"><span class="solo-portrait-spinner" aria-hidden="true"></span><small>Crafting your portrait… (~20s)</small></div>`}</div>
       <div class="solo-sidebar-identity">
         <div class="solo-char-name">${escapeHtml(character.name)}</div>
         <div class="solo-char-sub">${escapeHtml(character.className)} · Level ${escapeHtml(character.level)}</div>
@@ -1204,7 +1204,7 @@ export function renderSoloSceneArt(locationImageUri = null) {
       <div class="solo-scene-art-window"></div>
       <div class="solo-scene-art-hearth"></div>
       <div class="solo-scene-art-floor"></div>
-      <div class="solo-scene-art-pending">Generating scene art…</div>
+      <div class="solo-scene-art-pending">Painting the scene… (~20s)</div>
     </div>
   `;
 }
@@ -1498,7 +1498,7 @@ export function renderSoloRightRail(state = {}) {
           const initial = String(name).trim().slice(0, 1).toUpperCase() || "?";
           const thumb = portraitUri
             ? `<img src="${escapeHtml(portraitUri)}" alt="${escapeHtml(name)}" />`
-            : `<span class="solo-cast-thumb-pending" title="Portrait generating…">${escapeHtml(initial)}</span>`;
+            : `<span class="solo-cast-thumb-pending" title="Crafting your portrait… (~20s)">${escapeHtml(initial)}</span>`;
           const away = member.present === false ? ` <span class="solo-cast-away">away</span>` : "";
           return `
             <div class="solo-cast-card">
@@ -1841,7 +1841,7 @@ export function renderSoloSceneShell(state = {}) {
           <div class="solo-game-content">
             ${
               state.banner
-                ? `<div class="solo-banner" role="alert">
+                ? `<div class="solo-banner${state.bannerKind === "info" ? " solo-banner-info" : ""}" role="${state.bannerKind === "info" ? "status" : "alert"}">
                     <span class="solo-banner-msg">${escapeHtml(state.banner)}</span>
                     <button type="button" class="solo-banner-dismiss" data-solo-banner-dismiss aria-label="Dismiss">×</button>
                   </div>`
@@ -2316,6 +2316,9 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     attemptDraft: "",
     busy: null,
     banner: "",
+    // "info" => amber/gold one-time wait notice; anything else => the default
+    // (reddish, alert-styled) error banner.
+    bannerKind: "",
     gmThinking: false,
     // Run conclusion (death / abandon / victory). runConcluded guards against
     // double-close; death/victory screens swap the shell for a summary; runSummary
@@ -2552,7 +2555,37 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
 
   function handleDismissBanner() {
     state.banner = "";
+    state.bannerKind = "";
     render();
+  }
+
+  // One-time-per-session amber notice on first scene entry, explaining that
+  // images stream in so the early placeholders read as intentional, not broken.
+  // sessionStorage-gated (shows once per tab session); skipped entirely where
+  // sessionStorage is unavailable (tests / SSR), so it never alters test output.
+  const IMAGE_WAIT_BANNER_KEY = "notdnd_image_wait_banner_seen";
+  function maybeShowImageWaitBanner() {
+    const ss = typeof window !== "undefined" ? window.sessionStorage : null;
+    if (!ss) {
+      return;
+    }
+    let seen = false;
+    try {
+      seen = ss.getItem(IMAGE_WAIT_BANNER_KEY) === "true";
+    } catch {
+      return;
+    }
+    if (seen) {
+      return;
+    }
+    state.banner =
+      "Your world is being illustrated. Portraits and scenes appear as they're ready — usually within 30 seconds.";
+    state.bannerKind = "info";
+    try {
+      ss.setItem(IMAGE_WAIT_BANNER_KEY, "true");
+    } catch {
+      // best-effort; the banner still shows this load if the write fails.
+    }
   }
 
   // ---- Async feedback wrapper ----------------------------------------------
@@ -2594,6 +2627,7 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       await fn();
     } catch (error) {
       state.banner = String(error?.message || error || "Something went wrong. Try again.");
+      state.bannerKind = "error";
     } finally {
       state.busy = null;
       clearLag();
@@ -3042,6 +3076,8 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
         // Run entry: seed the player's starting vision so the map isn't a black
         // grid on first load.
         seedInitialReveal();
+        // First entry this session: explain that images stream in.
+        maybeShowImageWaitBanner();
       } else {
         // Reload after an action: fold any newly-visible cells into explored fog.
         accumulateReveal();
@@ -3081,6 +3117,7 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       } else {
         // Keep the existing scene visible; surface the failure as a banner.
         state.banner = message;
+        state.bannerKind = "error";
       }
     } finally {
       state.loading = false;
