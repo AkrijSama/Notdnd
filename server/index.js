@@ -45,8 +45,10 @@ import {
   assertCampaignWriteAccess,
   completeSoloRun,
   createQuickstartCampaignFromParsed,
+  addUserHomebrew,
   createSoloRun,
   deleteSoloRun,
+  deleteUserHomebrew,
   getCampaignRole,
   getCampaignRuntimeState,
   createSoloNpc,
@@ -59,6 +61,7 @@ import {
   initializeDatabase,
   listCampaignMembers,
   listSoloRunsForUser,
+  listUserHomebrew,
   confirmPasswordReset,
   loginUser,
   logoutSessionToken,
@@ -92,6 +95,7 @@ import { buildStylePromptBlock, getStyleConfig, updateStyleConfig, validateStyle
 import { parseHomebrewDocuments } from "./homebrew/parser.js";
 import { MAX_PDF_BYTES, emptyCandidates, extractPdfText, parseSourcebookText } from "./homebrew/pdfImport.js";
 import { fetchHomebrewUrl } from "./homebrew/urlImport.js";
+import { validateCustomItem, normalizeContentForBuild, CUSTOM_CONTENT_TYPES } from "./homebrew/customContent.js";
 import { createWsHub } from "./realtime/wsHub.js";
 import { resolveSoloAction } from "./solo/actions.js";
 import { resolveGmNarration } from "./solo/gmProvider.js";
@@ -1551,6 +1555,54 @@ async function handleApi(req, res) {
       const draftId = decodeURIComponent(url.pathname.slice("/api/onboarding/portrait/".length));
       const status = getDraftPortrait(draftId);
       writeJson(res, 200, { ok: true, ...status });
+    } catch (error) {
+      routeError(res, error);
+    }
+    return true;
+  }
+
+  // Custom homebrew content (manually authored): list / create / delete, per user.
+  if (url.pathname === "/api/homebrew/custom" && req.method === "GET") {
+    try {
+      const user = requireAuth(req);
+      const items = listUserHomebrew(user.id);
+      // buildContent = the SRD-shaped catalogs the character creator + build use.
+      writeJson(res, 200, { ok: true, items, buildContent: normalizeContentForBuild(items), types: CUSTOM_CONTENT_TYPES });
+    } catch (error) {
+      routeError(res, error);
+    }
+    return true;
+  }
+
+  if (url.pathname === "/api/homebrew/custom" && req.method === "POST") {
+    try {
+      const user = requireAuth(req);
+      const payload = await readJsonBody(req);
+      const { ok, errors, item } = validateCustomItem(payload?.item || payload || {});
+      if (!ok) {
+        throw Object.assign(new Error(`Invalid custom content: ${errors.join(" ")}`), {
+          code: "INVALID_HOMEBREW",
+          statusCode: 400,
+          validationErrors: errors
+        });
+      }
+      const stored = addUserHomebrew(user.id, item);
+      writeJson(res, 200, { ok: true, item: stored });
+    } catch (error) {
+      routeError(res, error);
+    }
+    return true;
+  }
+
+  if (url.pathname.startsWith("/api/homebrew/custom/") && req.method === "DELETE") {
+    try {
+      const user = requireAuth(req);
+      const id = decodeURIComponent(url.pathname.slice("/api/homebrew/custom/".length)).replace(/\/+$/, "");
+      const removed = deleteUserHomebrew(user.id, id);
+      if (!removed) {
+        throw Object.assign(new Error("Custom content item not found."), { code: "NOT_FOUND", statusCode: 404 });
+      }
+      writeJson(res, 200, { ok: true, removed: true });
     } catch (error) {
       routeError(res, error);
     }

@@ -176,37 +176,54 @@ function renderCharIdentity(c, portrait = {}) {
     </div>`;
 }
 
-function renderCharRace(c) {
-  return `<div class="cw-grid">${RACES.map((race) => {
-    const bonuses = Object.entries(race.abilityBonuses).map(([a, b]) => `+${b} ${ABILITY_LABELS[a]}`).join(", ");
-    return `<button type="button" class="cw-card ${c.race === race.name ? "active" : ""}" data-cw-race="${esc(race.name)}">
-      <div class="cw-card-title">${esc(race.name)}</div>
+// "Homebrew" badge on custom (user-authored) option cards.
+const HOMEBREW_TAG = `<span class="cw-homebrew-tag">Homebrew</span>`;
+
+function raceCard(race, active, isCustom) {
+  const bonuses = Object.entries(race.abilityBonuses || {}).map(([a, b]) => `+${b} ${ABILITY_LABELS[a] || a}`).join(", ");
+  return `<button type="button" class="cw-card ${active ? "active" : ""}${isCustom ? " cw-card--homebrew" : ""}" data-cw-race="${esc(race.name)}">
+      <div class="cw-card-title">${esc(race.name)}${isCustom ? ` ${HOMEBREW_TAG}` : ""}</div>
       <div class="cw-card-meta">Speed ${race.speed} · ${esc(race.size)} · ${esc(bonuses)}</div>
-      <div class="cw-card-traits">${esc(race.traits.join(" · "))}</div>
+      <div class="cw-card-traits">${esc((race.traits || []).join(" · "))}</div>
     </button>`;
-  }).join("")}</div>`;
 }
 
-function renderCharClass(c) {
-  return `<div class="cw-grid">${CLASSES.map((cls) => `
-    <button type="button" class="cw-card ${c.characterClass === cls.name ? "active" : ""}" data-cw-class="${esc(cls.name)}">
-      <div class="cw-card-title">${esc(cls.name)}</div>
-      <div class="cw-card-meta">Hit die ${esc(cls.hitDie)} · Primary ${ABILITY_LABELS[cls.primaryAbility]}</div>
-      <div class="cw-card-sub">${esc(cls.description)}</div>
-      <div class="cw-card-traits">${esc(cls.features.join(" · "))}</div>
-    </button>`).join("")}</div>`;
+function classCard(cls, active, isCustom) {
+  return `<button type="button" class="cw-card ${active ? "active" : ""}${isCustom ? " cw-card--homebrew" : ""}" data-cw-class="${esc(cls.name)}">
+      <div class="cw-card-title">${esc(cls.name)}${isCustom ? ` ${HOMEBREW_TAG}` : ""}</div>
+      <div class="cw-card-meta">Hit die ${esc(cls.hitDie)} · Primary ${ABILITY_LABELS[cls.primaryAbility] || cls.primaryAbility}</div>
+      ${cls.description ? `<div class="cw-card-sub">${esc(cls.description)}</div>` : ""}
+      <div class="cw-card-traits">${esc((cls.features || []).join(" · "))}</div>
+    </button>`;
 }
 
-function renderCharBackground(c) {
-  return `<div class="cw-grid">${BACKGROUNDS.map((bg) => `
-    <button type="button" class="cw-card ${c.background === bg.name ? "active" : ""}" data-cw-background="${esc(bg.name)}">
-      <div class="cw-card-title">${esc(bg.name)}</div>
-      <div class="cw-card-meta">Skills: ${esc(bg.skillProficiencies.join(", "))}</div>
-      <div class="cw-card-sub"><strong>${esc(bg.feature.name)}</strong> — ${esc(bg.feature.description)}</div>
-    </button>`).join("")}</div>`;
+function backgroundCard(bg, active, isCustom) {
+  return `<button type="button" class="cw-card ${active ? "active" : ""}${isCustom ? " cw-card--homebrew" : ""}" data-cw-background="${esc(bg.name)}">
+      <div class="cw-card-title">${esc(bg.name)}${isCustom ? ` ${HOMEBREW_TAG}` : ""}</div>
+      <div class="cw-card-meta">Skills: ${esc((bg.skillProficiencies || []).join(", "))}</div>
+      <div class="cw-card-sub"><strong>${esc(bg.feature?.name || "")}</strong>${bg.feature?.description ? ` — ${esc(bg.feature.description)}` : ""}</div>
+    </button>`;
 }
 
-function renderCharAbilities(c) {
+function renderCharRace(c, customRaces = []) {
+  const srd = RACES.map((race) => raceCard(race, c.race === race.name, false)).join("");
+  const custom = (Array.isArray(customRaces) ? customRaces : []).map((race) => raceCard(race, c.race === race.name, true)).join("");
+  return `<div class="cw-grid">${srd}${custom}</div>`;
+}
+
+function renderCharClass(c, customClasses = []) {
+  const srd = CLASSES.map((cls) => classCard(cls, c.characterClass === cls.name, false)).join("");
+  const custom = (Array.isArray(customClasses) ? customClasses : []).map((cls) => classCard(cls, c.characterClass === cls.name, true)).join("");
+  return `<div class="cw-grid">${srd}${custom}</div>`;
+}
+
+function renderCharBackground(c, customBackgrounds = []) {
+  const srd = BACKGROUNDS.map((bg) => backgroundCard(bg, c.background === bg.name, false)).join("");
+  const custom = (Array.isArray(customBackgrounds) ? customBackgrounds : []).map((bg) => backgroundCard(bg, c.background === bg.name, true)).join("");
+  return `<div class="cw-grid">${srd}${custom}</div>`;
+}
+
+function renderCharAbilities(c, customContent = {}) {
   const method = c.abilityMethod || "standard_array";
   const scores = c.baseAbilityScores || {};
   const methodTabs = [
@@ -244,13 +261,13 @@ function renderCharAbilities(c) {
     }).join("");
   }
 
-  // Live derived stats from the current (partial) choices.
+  // Live derived stats from the current (partial) choices, including custom content.
   const preview = buildCharacter({
     race: c.race,
     characterClass: c.characterClass,
     background: c.background,
     baseAbilityScores: scores
-  });
+  }, { customContent });
   const derived = preview.derivedStats;
   return `
     <div class="onb-field"><label>Method</label><div class="onb-chips">${methodTabs}</div></div>
@@ -264,7 +281,7 @@ function renderCharAbilities(c) {
     </div>`;
 }
 
-function renderCharReview(c, portrait = {}) {
+function renderCharReview(c, portrait = {}, customContent = {}) {
   const sheet = buildCharacter({
     name: c.name,
     pronouns: c.pronouns,
@@ -272,7 +289,7 @@ function renderCharReview(c, portrait = {}) {
     characterClass: c.characterClass,
     background: c.background,
     baseAbilityScores: c.baseAbilityScores || {}
-  });
+  }, { customContent });
   const ds = sheet.derivedStats;
   const abilityCells = ABILITIES.map((a) => `
     <div class="cw-ab-cell"><div class="cw-ab-key">${ABILITY_LABELS[a]}</div>
@@ -303,16 +320,25 @@ function renderCharReview(c, portrait = {}) {
 function renderCharacterWizard(state) {
   const c = state.character || {};
   const step = c.step || 1;
-  const bodies = { 1: renderCharIdentity, 2: renderCharRace, 3: renderCharClass, 4: renderCharBackground, 5: renderCharAbilities, 6: renderCharReview };
   // Steps 1 (Identity) and 6 (Review) both show the live mid-creation portrait;
   // its status lives on the onboarding state, not the character object.
   const portrait = { portraitUri: state.draftPortraitUri, portraitStatus: state.draftPortraitStatus };
-  const body =
-    step === 1
-      ? renderCharIdentity(c, portrait)
-      : step === 6
-        ? renderCharReview(c, portrait)
-        : (bodies[step] || renderCharIdentity)(c);
+  // SRD-shaped custom content catalogs (from the user's homebrew); additive to SRD.
+  const custom = state.customContent || {};
+  let body;
+  if (step === 2) {
+    body = renderCharRace(c, custom.races);
+  } else if (step === 3) {
+    body = renderCharClass(c, custom.classes);
+  } else if (step === 4) {
+    body = renderCharBackground(c, custom.backgrounds);
+  } else if (step === 5) {
+    body = renderCharAbilities(c, custom);
+  } else if (step === 6) {
+    body = renderCharReview(c, portrait, custom);
+  } else {
+    body = renderCharIdentity(c, portrait);
+  }
   const isLast = step === 6;
 
   // Gate "Enter the World" on the three required character fields. Recomputed

@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://notdnd.local/schemas/custom-content.schema.json",
+  "title": "Inkborne Custom Homebrew Content",
+  "description": "Manually-authored custom content (no source PDF). Enforced at runtime by server/homebrew/customContent.js (validateCustomItem), which also sanitizes all free text via sanitizePlayerText. Stored per user; the SRD-shaped projection (normalizeContentForBuild) feeds the character creator + buildCharacter so custom mechanics apply identically to SRD.",
+  "type": "object",
+  "required": ["type", "name"],
+  "properties": {
+    "type": { "enum": ["race", "class", "background", "subclass", "feat"] },
+    "name": { "type": "string", "minLength": 1, "maxLength": 80 }
+  },
+  "oneOf": [
+    {
+      "title": "Custom Race",
+      "properties": {
+        "type": { "const": "race" },
+        "abilityBonuses": { "type": "object", "description": "ability -> integer; at least one required", "additionalProperties": { "type": "integer", "minimum": -5, "maximum": 10 } },
+        "size": { "type": "string" },
+        "speed": { "type": "integer", "minimum": 0, "maximum": 120 },
+        "traits": { "type": "array", "items": { "$ref": "#/$defs/named" } },
+        "languages": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    {
+      "title": "Custom Class",
+      "properties": {
+        "type": { "const": "class" },
+        "hitDie": { "enum": ["d4", "d6", "d8", "d10", "d12"] },
+        "primaryAbility": { "type": "string" },
+        "savingThrows": { "type": "array", "items": { "type": "string" } },
+        "armorProficiencies": { "type": "array", "items": { "type": "string" } },
+        "weaponProficiencies": { "type": "array", "items": { "type": "string" } },
+        "skillCount": { "type": "integer", "minimum": 0, "maximum": 6 },
+        "skillList": { "type": "array", "items": { "type": "string" } },
+        "startingEquipment": { "type": "array", "items": { "type": "string" } },
+        "features": { "type": "array", "items": { "$ref": "#/$defs/named" } }
+      }
+    },
+    {
+      "title": "Custom Background",
+      "properties": {
+        "type": { "const": "background" },
+        "skillProficiencies": { "type": "array", "items": { "type": "string" } },
+        "toolProficiencies": { "type": "array", "items": { "type": "string" } },
+        "languages": { "type": "array", "items": { "type": "string" } },
+        "startingEquipment": { "type": "array", "items": { "type": "string" } },
+        "feature": { "$ref": "#/$defs/named" }
+      }
+    },
+    {
+      "title": "Custom Subclass",
+      "properties": {
+        "type": { "const": "subclass" },
+        "parentClass": { "type": "string", "minLength": 1 },
+        "features": { "type": "array", "items": { "$ref": "#/$defs/named" }, "minItems": 1 }
+      }
+    },
+    {
+      "title": "Custom Feat",
+      "properties": {
+        "type": { "const": "feat" },
+        "prerequisite": { "type": "string" },
+        "description": { "type": "string", "minLength": 1 },
+        "mechanicalEffect": { "type": "string" }
+      }
+    }
+  ],
+  "$defs": {
+    "named": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "description": { "type": "string", "maxLength": 600 }
+      }
+    }
+  }
+}

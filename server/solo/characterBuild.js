@@ -24,17 +24,36 @@ function normalizedScores(baseAbilityScores = {}) {
   return base;
 }
 
+// Resolves a creation choice by name: custom content (SRD-shaped) wins over SRD
+// so authored content is available alongside — and applies through — the same
+// code path. `customList` entries must already be normalized to the SRD shape
+// (see homebrew/customContent.normalizeContentForBuild).
+function resolveByName(name, customList, srdGetter) {
+  const key = String(name || "").trim().toLowerCase();
+  if (!key) {
+    return null;
+  }
+  const custom = (Array.isArray(customList) ? customList : []).find(
+    (entry) => entry && String(entry.name || "").trim().toLowerCase() === key
+  );
+  return custom || srdGetter(name);
+}
+
 /**
  * @param {{ name?: string, pronouns?: string, race?: string, characterClass?: string,
  *   background?: string, baseAbilityScores?: Record<string, number>, chosenSkills?: string[],
  *   level?: number }} [choices]
+ * @param {{ customContent?: { races?: object[], classes?: object[], backgrounds?: object[] } }} [options]
+ *   Optional SRD-shaped custom content (races/classes/backgrounds) that augments
+ *   the SRD catalog. Custom mechanics apply identically to SRD ones.
  * @returns {object} full character record
  */
-export function buildCharacter(choices = {}) {
+export function buildCharacter(choices = {}, options = {}) {
+  const custom = options.customContent || {};
   const level = Math.max(1, Number(choices.level) || 1);
-  const raceData = getRace(choices.race);
-  const classData = getClass(choices.characterClass);
-  const backgroundData = getBackground(choices.background);
+  const raceData = resolveByName(choices.race, custom.races, getRace);
+  const classData = resolveByName(choices.characterClass, custom.classes, getClass);
+  const backgroundData = resolveByName(choices.background, custom.backgrounds, getBackground);
   const proficiencyBonus = proficiencyBonusForLevel(level);
 
   const base = normalizedScores(choices.baseAbilityScores);

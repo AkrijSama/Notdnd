@@ -5,6 +5,7 @@ import { renderCharacterVault, bindCharacterVault } from "./components/character
 import { renderCommandCenter, bindCommandCenter } from "./components/commandCenter.js";
 import { renderCompendium, bindCompendium } from "./components/compendium.js";
 import { renderHomebrewStudio, bindHomebrewStudio } from "./components/homebrewStudio.js";
+import { renderHomebrewManager, bindHomebrewManager, homebrewDraftToItem, itemToDraft } from "./components/homebrewManager.js";
 import { renderOnboardingFlow, bindOnboardingFlow } from "./components/onboardingFlow.js";
 import { ABILITIES, pointBuyCost, rollAbilityScores } from "../server/solo/dndData.js";
 import { renderSidebar } from "./components/sidebar.js";
@@ -38,6 +39,13 @@ const uiState = {
   activeRealtimeCampaignId: null,
   showAuthPanel: false,
   showAccountMenu: false,
+  // Manual custom homebrew content (user-authored). customContentItems = the raw
+  // stored items (for the manager); customContent = the SRD-shaped catalogs the
+  // character creator + build consume. showHomebrew toggles the manager view.
+  customContentItems: [],
+  customContent: { races: [], classes: [], backgrounds: [] },
+  showHomebrew: false,
+  homebrew: { type: "race", draft: {}, editingId: null, error: "", saving: false },
   // App-wide skin/font theme for the home + onboarding surfaces. Shares the same
   // persisted keys as the in-run solo shell, so a choice made anywhere applies
   // everywhere. Reads are guarded (privacy browsers throw on localStorage).
@@ -131,6 +139,7 @@ function renderSoloHeader(user, accountMenuOpen = false, skin = "ashen", fontSet
                     ? `
                       <div class="account-dropdown account-dropdown--wide" role="menu">
                         <button class="account-dropdown-item" role="menuitem" data-action="open-account">Account Settings</button>
+                        <button class="account-dropdown-item" role="menuitem" data-action="open-homebrew">Manage Homebrew</button>
                         <div class="account-dropdown-appearance">
                           <span class="account-dropdown-kicker">Appearance</span>
                           ${renderSoloThemeSwitcher(skin, fontSet)}
@@ -351,6 +360,88 @@ function shouldShowOnboarding(state) {
 
 function patchOnboarding(patch) {
   uiState.onboarding = { ...uiState.onboarding, ...patch };
+  scheduleRender();
+}
+
+// ---- Custom homebrew content ----
+// Loads the user's manually-authored content. buildContent is the SRD-shaped
+// catalog the character creator + build use; items is the raw list (manager).
+async function loadCustomContent() {
+  try {
+    const res = await apiClient.listCustomHomebrew();
+    uiState.customContentItems = Array.isArray(res?.items) ? res.items : [];
+    uiState.customContent = res?.buildContent || { races: [], classes: [], backgrounds: [] };
+  } catch {
+    uiState.customContentItems = [];
+    uiState.customContent = { races: [], classes: [], backgrounds: [] };
+  }
+}
+
+function openHomebrew() {
+  uiState.showHomebrew = true;
+  uiState.showAccountMenu = false;
+  uiState.homebrew = { type: "race", draft: {}, editingId: null, error: "", saving: false };
+  scheduleRender();
+}
+function closeHomebrew() {
+  uiState.showHomebrew = false;
+  scheduleRender();
+}
+function hbType(type) {
+  uiState.homebrew = { ...uiState.homebrew, type, draft: {}, editingId: null, error: "" };
+  scheduleRender();
+}
+function hbField(key, value) {
+  uiState.homebrew = { ...uiState.homebrew, draft: { ...(uiState.homebrew.draft || {}), [key]: value } };
+  // No re-render on free-text input (preserve caret); state is read on submit.
+}
+function hbCancelEdit() {
+  uiState.homebrew = { ...uiState.homebrew, draft: {}, editingId: null, error: "" };
+  scheduleRender();
+}
+async function hbSubmit() {
+  const hb = uiState.homebrew;
+  if (hb.saving) {
+    return;
+  }
+  const item = homebrewDraftToItem(hb.type, hb.draft || {});
+  uiState.homebrew = { ...hb, saving: true, error: "" };
+  scheduleRender();
+  try {
+    await apiClient.createCustomHomebrew(item);
+    // Edit = replace: the new item is created, then the original is removed.
+    if (hb.editingId) {
+      try {
+        await apiClient.deleteCustomHomebrew(hb.editingId);
+      } catch {
+        // best-effort; the new copy is already stored
+      }
+    }
+    await loadCustomContent();
+    uiState.homebrew = { type: hb.type, draft: {}, editingId: null, error: "", saving: false };
+  } catch (error) {
+    uiState.homebrew = { ...uiState.homebrew, saving: false, error: String(error?.message || error || "Could not save custom content.") };
+  }
+  scheduleRender();
+}
+async function hbDelete(id) {
+  try {
+    await apiClient.deleteCustomHomebrew(id);
+    await loadCustomContent();
+    if (uiState.homebrew.editingId === id) {
+      uiState.homebrew = { ...uiState.homebrew, draft: {}, editingId: null };
+    }
+  } catch (error) {
+    uiState.homebrew = { ...uiState.homebrew, error: String(error?.message || error || "Could not delete.") };
+  }
+  scheduleRender();
+}
+function hbEdit(id) {
+  const item = (uiState.customContentItems || []).find((entry) => entry.id === id);
+  if (!item) {
+    return;
+  }
+  uiState.homebrew = { type: item.type, draft: itemToDraft(item), editingId: id, error: "", saving: false };
   scheduleRender();
 }
 
@@ -946,6 +1037,11 @@ function bindAppEvents() {
     });
   }
 
+  const openHomebrewBtn = appRoot.querySelector("[data-action='open-homebrew']");
+  if (openHomebrewBtn) {
+    openHomebrewBtn.addEventListener("click", () => openHomebrew());
+  }
+
   const authLoginBtn = appRoot.querySelector("[data-action='auth-mode-login']");
   if (authLoginBtn) {
     authLoginBtn.addEventListener("click", () => {
@@ -1120,7 +1216,18 @@ function renderApp() {
     ? `<section class="module-card"><div class="small">${uiState.authMessage}</div></section>`
     : "";
 
-  const html = onboardingVisible
+  // Make the user's custom homebrew available to the character creator render.
+  uiState.onboarding.customContent = uiState.customContent;
+
+  const html = (user && uiState.showHomebrew)
+    ? `
+      <div class="app-shell" data-app-themed style="${soloThemeVarString(uiState.skin, uiState.fontSet)}">
+        ${renderSoloHeader(user, uiState.showAccountMenu, uiState.skin, uiState.fontSet)}
+        ${authMessageHtml}
+        ${renderHomebrewManager(uiState)}
+      </div>
+    `
+    : onboardingVisible
     ? `
       <div class="app-shell" data-app-themed style="${soloThemeVarString(uiState.skin, uiState.fontSet)}">
         ${renderSoloHeader(user, uiState.showAccountMenu, uiState.skin, uiState.fontSet)}
@@ -1171,6 +1278,18 @@ function renderApp() {
   appRoot.innerHTML = html;
 
   bindAppEvents();
+
+  if (user && uiState.showHomebrew) {
+    bindHomebrewManager(appRoot, {
+      onType: hbType,
+      onField: hbField,
+      onSubmit: hbSubmit,
+      onCancelEdit: hbCancelEdit,
+      onEdit: hbEdit,
+      onDelete: hbDelete,
+      onClose: closeHomebrew
+    });
+  }
 
   if (onboardingVisible) {
     const onboardingRoot = appRoot.querySelector("#onboarding-root");
@@ -1334,6 +1453,7 @@ async function bootstrap() {
         // Keep the full list so the solo home can show a Continue card plus any
         // past adventures.
         uiState.soloRuns = allRuns;
+        await loadCustomContent();
         const activeRuns = allRuns.filter((run) => run?.status === "active");
         if (activeRuns.length > 0) {
           const mostRecent = activeRuns[0];

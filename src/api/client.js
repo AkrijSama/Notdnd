@@ -210,6 +210,21 @@ export function createApiClient(baseUrl = "") {
         body: JSON.stringify(payload)
       });
     },
+    // Custom homebrew content (manually authored).
+    async listCustomHomebrew() {
+      return request("/api/homebrew/custom");
+    },
+    async createCustomHomebrew(item) {
+      return request("/api/homebrew/custom", {
+        method: "POST",
+        body: JSON.stringify({ item })
+      });
+    },
+    async deleteCustomHomebrew(id) {
+      return request(`/api/homebrew/custom/${encodeURIComponent(id)}`, {
+        method: "DELETE"
+      });
+    },
     async respondAsGm(payload) {
       return request("/api/gm/respond", {
         method: "POST",
