@@ -1,45 +1,67 @@
 :root {
-  --bg: #14100c;
-  --panel: #221a13;
-  --panel-alt: #2a2018;
-  --surface: #1c1610;
-  --surface-strong: #271e16;
-  --input-bg: #100c08;
-  --ink: #ece1c7;
-  --muted: #95897a;
-  --accent: #c89a4b;
-  --accent-2: #b94c2d;
+  /* ---------------------------------------------------------------------------
+     DEFAULT SKIN — "Black grimoire": a dark, premium leather-bound tome. Leather
+     blacks with an oxblood undertone (so black reads as LEATHER, not slate),
+     aged-gold foil accents, vellum ink for text, debossed ink-wells for inputs.
+     Deliberately genre-NEUTRAL occult-journal — no fantasy ornament — so it
+     hosts cyberpunk / cosmic-horror worlds as comfortably as fantasy. Other
+     skins (dragon/lava/wood) override these same var NAMES via soloThemeVarString.
+     ------------------------------------------------------------------------- */
+  --bg: #0c0a09;
+  --panel: #17120f;
+  --panel-alt: #1e1714;
+  --surface: #141009;
+  --surface-strong: #1f1813;
+  --input-bg: #0a0706;
+  --ink: #e9ddc4;
+  --muted: #9b8c76;
+  --accent: #b08545;        /* aged gold — desaturated, not bright acid-gold */
+  --accent-2: #b94c2d;      /* warm red — legacy GM surfaces; semantics unchanged */
   --accent-3: #6f8fc4;
-  --line: #3d2f22;
-  --line-strong: #503f2e;
+  --line: #382a20;          /* oxblood-tinged leather seam */
+  --line-strong: #513d2a;
   --good: #7faf60;
   --warn: #d9a23d;
   --pill-good-bg: rgba(127, 175, 96, 0.18);
   --pill-warn-bg: rgba(217, 162, 61, 0.18);
   --radius-lg: 20px;
   --radius-md: 12px;
-  --shadow: 0 14px 34px rgba(0, 0, 0, 0.55);
+  --shadow: 0 18px 40px rgba(0, 0, 0, 0.62);
 
-  /* Skin-semantic vars — defaults match the "Ashen" skin. The solo shell and
-     (now) the home/onboarding surfaces override these via soloThemeVarString on
-     a themed root. Defining them HERE means they are never phantom: any surface
-     resolves a real value with or without a skin applied. (Earlier blank-page
-     and white-on-white bugs came from referencing vars defined only on the solo
-     shell.) Fonts default to the "Tome" set; both are loaded in index.html. */
-  --card: #1a130c;
-  --inset: #120c07;
-  --text: #ece1c7;
-  --text-bright: #f0e6d4;
-  --text-2: #b3a48c;
-  --text-muted: #9a8b76;
-  --border: #2e2420;
-  --border-strong: #3a2e22;
-  --on-accent: #1c1308;
+  /* Skin-semantic vars — defaults are the leather-tome base. The solo shell and
+     home/onboarding surfaces override these via soloThemeVarString on a themed
+     root. Defining them HERE means they are never phantom: any surface resolves
+     a real value with or without a skin applied. Fonts default to "Tome". */
+  --card: #19130f;
+  --inset: #0a0706;
+  --text: #e9ddc4;
+  --text-bright: #f4ebd6;
+  --text-2: #b6a589;
+  --text-muted: #94856f;
+  --border: #2c2018;
+  --border-strong: #3d2d1f;
+  --on-accent: #1a1206;
+  --accent-border: #4a3a1e; /* gold-tooled edge under foil controls */
   /* Lighter gold highlight (the skins' --accent-2). Separate name so it never
      collides with :root --accent-2 (a warm red used by legacy GM surfaces). */
-  --accent-bright: #e0b352;
+  --accent-bright: #d8b46a; /* gold leaf — the foil edge / highlight */
   --font-display: 'Cinzel', Georgia, serif;
   --font-body: 'Spectral', Georgia, 'Times New Roman', serif;
+
+  /* ---- Depth & material system (CSS only — no binary assets) ----
+     Reused everywhere so the UI reads as layered leather, not flat panels. */
+  --oxblood: #2a0f0e;
+  /* Hot-foil gradient for stamped display type (background-clip: text). */
+  --gold-foil: linear-gradient(176deg, #f0dca2 0%, #d8b46a 36%, #b08545 64%, #8a6326 100%);
+  --gold-edge: rgba(216, 180, 106, 0.16);   /* hairline gold rule on key surfaces */
+  --emboss: inset 0 1px 0 rgba(216, 180, 106, 0.07), inset 0 -14px 30px rgba(0, 0, 0, 0.42);
+  --deboss: inset 0 2px 5px rgba(0, 0, 0, 0.72), inset 0 -1px 0 rgba(216, 180, 106, 0.05);
+  --elev-1: 0 8px 22px rgba(0, 0, 0, 0.5);
+  --elev-2: 0 18px 44px rgba(0, 0, 0, 0.6);
+  --vignette: radial-gradient(135% 120% at 50% 28%, transparent 52%, rgba(0, 0, 0, 0.5) 100%);
+  /* Fine fractal grain so big leather surfaces are textured, never flat. Tiny
+     inline SVG (no asset). Layer it at low opacity over a surface. */
+  --leather-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23g)' opacity='0.32'/%3E%3C/svg%3E");
   --texture: none;
   --texture-size: auto;
 }
@@ -53,11 +75,29 @@ body {
   font-family: "Space Grotesk", sans-serif;
   color: var(--ink);
   min-height: 100vh;
+  /* Black leather with an oxblood undertone: a low gold sheen at the spine (top),
+     warm oxblood pooling toward the bottom corner, and a vignette so attention
+     settles inward. Reads as a closed tome's cover, genre-neutral. */
   background:
-    radial-gradient(circle at top right, rgba(185, 76, 45, 0.22), transparent 42%),
-    radial-gradient(circle at 10% 20%, rgba(200, 154, 75, 0.16), transparent 38%),
-    linear-gradient(140deg, #0d0a07 5%, #16110d 50%, #1b1410 100%);
+    var(--vignette),
+    radial-gradient(125% 80% at 50% -12%, rgba(216, 180, 106, 0.06), transparent 56%),
+    radial-gradient(110% 80% at 82% 116%, rgba(42, 15, 14, 0.55), transparent 62%),
+    linear-gradient(162deg, #0b0908 0%, #110c0a 54%, #090605 100%);
+  background-attachment: fixed;
 }
+
+/* Fixed leather grain over the whole page so the cover never reads as flat black. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.05;
+  background-image: var(--leather-grain);
+  background-size: 160px 160px;
+}
+#app { position: relative; z-index: 1; }
 
 * {
   scrollbar-color: var(--line-strong) transparent;
@@ -102,42 +142,62 @@ textarea {
   font: inherit;
 }
 
+/* Primary button — a gold-foil stamp pressed into leather: brushed-gold fill,
+   embossed top sheen + recessed lower edge, hot-stamp text shadow. */
 button {
-  border: none;
+  border: 1px solid var(--accent-border, #4a3a1e);
   border-radius: 999px;
-  padding: 10px 16px;
-  background: var(--accent);
-  color: #1a1208;
+  padding: 10px 18px;
+  background:
+    linear-gradient(180deg, var(--accent-bright, #d8b46a) 0%, var(--accent, #b08545) 52%, #946f30 100%);
+  color: var(--on-accent, #1a1206);
   cursor: pointer;
   font-weight: 600;
-  transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease, color 0.18s ease;
+  text-shadow: 0 1px 0 rgba(255, 244, 214, 0.3);
+  box-shadow: var(--emboss, inset 0 1px 0 rgba(216, 180, 106, 0.07)), 0 6px 16px rgba(0, 0, 0, 0.42);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease;
 }
 
 button:hover {
   transform: translateY(-1px);
-  box-shadow: 0 8px 18px rgba(200, 154, 75, 0.28);
-  background: #d9ad5e;
+  filter: brightness(1.07);
+  box-shadow: var(--emboss, inset 0 1px 0 rgba(216, 180, 106, 0.07)), 0 11px 24px rgba(0, 0, 0, 0.5);
 }
 
+button:active {
+  transform: translateY(0);
+  box-shadow: var(--deboss, inset 0 2px 5px rgba(0, 0, 0, 0.72));
+}
+
+button:focus-visible {
+  outline: 2px solid var(--accent-bright, #d8b46a);
+  outline-offset: 2px;
+}
+
+/* Ghost — an incised leather control: no fill, hairline gold edge on hover. */
 button.ghost {
   background: transparent;
   color: var(--ink);
   border: 1px solid var(--line-strong);
   box-shadow: none;
+  text-shadow: none;
 }
 
 button.ghost:hover {
-  background: var(--surface-strong);
+  background: rgba(216, 180, 106, 0.07);
   border-color: var(--accent);
+  filter: none;
 }
 
 button.alt {
-  background: var(--accent-2);
+  background: linear-gradient(180deg, #c8573a, var(--accent-2, #b94c2d) 60%, #8f3a22);
   color: #fbeee5;
+  border-color: #5a261a;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
 }
 
 button.alt:hover {
-  background: #cc5a38;
+  filter: brightness(1.08);
 }
 
 #app {
@@ -152,14 +212,23 @@ button.alt:hover {
 }
 
 .topbar {
+  position: relative;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: rgba(34, 26, 19, 0.92);
+  /* Raised leather header band: cordovan with grain, a hairline gold edge, and
+     a debossed lower rule (the gilt line across a book's spine). */
+  background:
+    var(--leather-grain),
+    linear-gradient(180deg, var(--panel-alt, #1e1714), var(--panel, #17120f));
+  background-size: 160px 160px, auto;
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   padding: 14px 18px;
-  box-shadow: var(--shadow);
+  box-shadow:
+    var(--emboss, inset 0 1px 0 rgba(216, 180, 106, 0.07)),
+    inset 0 0 0 1px var(--gold-edge, rgba(216, 180, 106, 0.16)),
+    var(--elev-1, 0 8px 22px rgba(0, 0, 0, 0.5));
   backdrop-filter: blur(6px);
 }
 
@@ -225,18 +294,26 @@ button.alt:hover {
   gap: 2px;
 }
 
+/* Wordmark — gold hot-foil stamped into the leather header (the signature).
+   Gradient fill clipped to the glyphs; a dark drop under it sells the deboss.
+   Falls back to a solid gold fill where background-clip:text is unsupported. */
 .brand h1 {
   font-family: var(--font-display, 'Cinzel', Georgia, serif);
-  font-size: 24px;
+  font-size: 25px;
   font-weight: 600;
-  letter-spacing: 0.04em;
-  color: var(--accent, #c89a4b);
+  letter-spacing: 0.05em;
+  color: var(--accent-bright, #d8b46a);
+  background: var(--gold-foil, linear-gradient(176deg, #f0dca2, #b08545));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.6));
 }
 
 .brand span {
-  font-size: 12px;
+  font-size: 11px;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.22em;
   color: var(--text-muted, var(--muted));
 }
 
@@ -271,10 +348,17 @@ button.alt:hover {
 }
 
 .panel {
-  background: rgba(34, 26, 19, 0.92);
+  position: relative;
+  background:
+    var(--leather-grain),
+    linear-gradient(168deg, var(--panel-alt, #1e1714), var(--panel, #17120f));
+  background-size: 160px 160px, auto;
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow);
+  box-shadow:
+    var(--emboss, inset 0 1px 0 rgba(216, 180, 106, 0.07)),
+    inset 0 0 0 1px var(--gold-edge, rgba(216, 180, 106, 0.16)),
+    var(--shadow);
 }
 
 .sidebar {
@@ -354,14 +438,18 @@ button.alt:hover {
   gap: 6px;
 }
 
+/* Inputs read as ink-wells recessed into the page: dark debossed field, a gold
+   edge only on focus. */
 .field input,
 .field select,
 .field textarea {
   border: 1px solid var(--line-strong);
   border-radius: 10px;
-  padding: 9px 10px;
+  padding: 9px 11px;
   background: var(--input-bg);
   color: var(--ink);
+  box-shadow: var(--deboss, inset 0 2px 5px rgba(0, 0, 0, 0.72));
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .field input:focus,
@@ -369,7 +457,7 @@ button.alt:hover {
 .field textarea:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 2px rgba(200, 154, 75, 0.18);
+  box-shadow: var(--deboss, inset 0 2px 5px rgba(0, 0, 0, 0.72)), 0 0 0 2px rgba(216, 180, 106, 0.22);
 }
 
 .field input::placeholder,
@@ -637,17 +725,20 @@ button.alt:hover {
 
 .onboarding-form input,
 .onboarding-form textarea {
-  border: 1px solid rgba(200, 154, 75, 0.32);
+  border: 1px solid var(--line-strong, rgba(200, 154, 75, 0.32));
   border-radius: 12px;
   padding: 10px 12px;
-  background: rgba(8, 6, 4, 0.78);
-  color: #f4ead0;
+  background: var(--input-bg, rgba(8, 6, 4, 0.78));
+  color: var(--text-bright, #f4ead0);
+  box-shadow: var(--deboss, inset 0 2px 5px rgba(0, 0, 0, 0.72));
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .onboarding-form input:focus,
 .onboarding-form textarea:focus {
   outline: none;
   border-color: var(--accent);
+  box-shadow: var(--deboss, inset 0 2px 5px rgba(0, 0, 0, 0.72)), 0 0 0 2px rgba(216, 180, 106, 0.22);
 }
 
 .onboarding-form textarea {
@@ -3120,14 +3211,20 @@ button:disabled {
   color: var(--text, #ece1c7);
   font-family: var(--font-body, Georgia, serif);
   border-radius: var(--radius-lg, 20px);
-  border: 1px solid var(--border-strong, #503f2e);
+  border: 1px solid var(--border-strong, #3d2d1f);
+  /* The open tome: oxblood-warmed black leather, a faint gilt sheen at the head,
+     grain over all of it, and a debossed inner well so the page sits below its
+     gold-edged cover. */
   background:
-    radial-gradient(130% 70% at 50% -10%, rgba(200, 154, 75, 0.12), transparent 58%),
-    linear-gradient(168deg, var(--panel, #221a13) 0%, var(--bg, #14100c) 58%, var(--inset, #120c07) 100%);
+    var(--leather-grain),
+    radial-gradient(130% 70% at 50% -10%, rgba(216, 180, 106, 0.10), transparent 58%),
+    radial-gradient(120% 90% at 50% 120%, rgba(42, 15, 14, 0.4), transparent 60%),
+    linear-gradient(168deg, var(--panel-alt, #1e1714) 0%, var(--panel, #17120f) 52%, var(--inset, #0a0706) 100%);
+  background-size: 160px 160px, auto, auto, auto;
   box-shadow:
-    inset 0 0 0 1px rgba(200, 154, 75, 0.10),
-    inset 0 2px 60px rgba(0, 0, 0, 0.55),
-    var(--shadow, 0 14px 34px rgba(0, 0, 0, 0.55));
+    inset 0 0 0 1px var(--gold-edge, rgba(216, 180, 106, 0.16)),
+    inset 0 2px 60px rgba(0, 0, 0, 0.6),
+    var(--elev-2, 0 18px 44px rgba(0, 0, 0, 0.6));
 }
 .solo-home::before {
   content: "";
@@ -3143,16 +3240,38 @@ button:disabled {
 .solo-home-hero {
   text-align: center;
   display: grid;
-  gap: 6px;
+  gap: 8px;
+  padding-bottom: 18px;
+}
+/* Hairline gilt rule beneath the header — the gilt line tooled across a tome's
+   title page. Centered, fading at both ends so it reads as foil, not a border. */
+.solo-home-hero::after {
+  content: "";
+  justify-self: center;
+  width: min(220px, 60%);
+  height: 1px;
+  margin-top: 4px;
+  background: linear-gradient(90deg, transparent, var(--accent, #b08545), transparent);
+  opacity: 0.7;
 }
 .solo-home-hero h2 {
   font-family: var(--font-display, 'Cinzel', Georgia, serif);
-  font-size: clamp(26px, 4.5vw, 40px);
+  font-size: clamp(28px, 4.5vw, 42px);
   font-weight: 600;
-  color: var(--text-bright, #f0e6d4);
-  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.5), 0 0 26px rgba(200, 154, 75, 0.12);
+  letter-spacing: 0.04em;
+  /* Gold hot-foil, matching the wordmark signature. */
+  color: var(--accent-bright, #d8b46a);
+  background: var(--gold-foil, linear-gradient(176deg, #f0dca2, #b08545));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.6));
 }
-.solo-home-hero .small { color: var(--text-2, #b3a48c); }
+.solo-home-hero .small {
+  color: var(--text-2, #b6a589);
+  font-style: italic;
+  letter-spacing: 0.01em;
+}
 .solo-home-start {
   display: flex;
   justify-content: center;
@@ -3174,25 +3293,51 @@ button:disabled {
   flex-direction: column;
   gap: 12px;
 }
+/* Run card — an entry in the ledger: a raised leather slip with a gilt spine
+   down its binding edge, embossed so it sits proud of the page. */
 .solo-home-run-card {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 14px 18px;
-  border: 1px solid var(--border, #2e2420);
-  border-radius: 10px;
-  background: var(--card-dim, #160f09);
+  padding: 15px 18px 15px 22px;
+  border: 1px solid var(--border, #2c2018);
+  border-radius: 11px;
+  background:
+    var(--leather-grain),
+    linear-gradient(168deg, var(--card, #19130f), var(--card-dim, #120d09));
+  background-size: 160px 160px, auto;
+  box-shadow:
+    var(--emboss, inset 0 1px 0 rgba(216, 180, 106, 0.07)),
+    var(--elev-1, 0 8px 22px rgba(0, 0, 0, 0.5));
+  transition: transform 0.16s ease, box-shadow 0.16s ease;
+}
+.solo-home-run-card::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 10px;
+  bottom: 10px;
+  width: 3px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, transparent, var(--accent, #b08545), transparent);
+  opacity: 0.55;
 }
 .solo-home-run-card.primary {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent) inset;
+  border-color: var(--accent-border, #4a3a1e);
+  box-shadow:
+    inset 0 0 0 1px var(--gold-edge, rgba(216, 180, 106, 0.16)),
+    var(--emboss, inset 0 1px 0 rgba(216, 180, 106, 0.07)),
+    var(--elev-2, 0 18px 44px rgba(0, 0, 0, 0.6));
 }
+.solo-home-run-card.primary::before { opacity: 0.9; width: 4px; }
 .solo-home-run-card.finished {
-  opacity: 0.55;
-  filter: grayscale(0.6);
-  background: var(--card, #14100c);
+  opacity: 0.62;
+  filter: grayscale(0.55);
+  box-shadow: var(--deboss, inset 0 2px 5px rgba(0, 0, 0, 0.72));
 }
+.solo-home-run-card.finished::before { opacity: 0.2; }
 .solo-home-run-card.finished strong {
   text-decoration: line-through;
   text-decoration-color: rgba(149, 137, 122, 0.6);
@@ -3210,7 +3355,30 @@ button:disabled {
 .solo-home-run-meta {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
+}
+/* World title on a ledger entry: set in the display serif so each saved world
+   reads like a chapter title embossed on its slip. */
+.solo-home-run-meta strong {
+  font-family: var(--font-display, 'Cinzel', Georgia, serif);
+  font-size: 1.06rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--text-bright, #f4ebd6);
+}
+.solo-home-run-meta .small { color: var(--text-muted, #94856f); }
+
+/* "Past adventures" — a tooled small-caps section label with a gilt rule. */
+.solo-home-past h3 {
+  font-family: var(--font-display, 'Cinzel', Georgia, serif);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--accent, #b08545);
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--gold-edge, rgba(216, 180, 106, 0.16));
 }
 
 /* Delete control for past adventures (badge + delete sit on the card's right).

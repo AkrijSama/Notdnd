@@ -952,13 +952,20 @@ export function renderSceneMemoryPanel(scene = {}) {
 // Default skin ("Ashen Keep") plus the three premium skins. Each entry is a full
 // CSS custom-property set applied to the shell root so the whole screen retints.
 export const SOLO_SKINS = {
+  // Default skin — "Black grimoire": premium black/oxblood leather-bound tome.
+  // Genre-neutral occult-journal base (hosts cyberpunk/cosmic-horror, not just
+  // fantasy). Mirrors the :root leather-tome palette so the scene shell matches
+  // the home/onboarding surfaces. Texture is a fine gradient cross-hatch (grain)
+  // — kept quote-free so it's safe inside the inline style="" attribute.
   ashen: {
-    "--bg": "#1c1510", "--panel": "#171009", "--card": "#1a130c", "--inset": "#120c07",
-    "--card-dim": "#160f09", "--tabbar": "#140e08", "--border": "#2e2420", "--border-faint": "#221a13",
-    "--border-strong": "#3a2e22", "--text": "#e8dcc8", "--text-bright": "#f0e6d4", "--text-2": "#b3a48c",
-    "--text-muted": "#9a8b76", "--text-label": "#8a7c68", "--text-faint": "#6e6150", "--accent": "#c8922a",
-    "--accent-2": "#e0b352", "--accent-bright": "#e0b352", "--accent-grad-a": "#d29b32", "--accent-grad-b": "#bd8420",
-    "--accent-border": "#4a3a1e", "--on-accent": "#1c1308", "--texture": "none", "--texture-size": "auto"
+    "--bg": "#0c0a09", "--panel": "#17120f", "--card": "#19130f", "--inset": "#0a0706",
+    "--card-dim": "#120d09", "--tabbar": "#0e0b09", "--border": "#2c2018", "--border-faint": "#201711",
+    "--border-strong": "#3d2d1f", "--text": "#e9ddc4", "--text-bright": "#f4ebd6", "--text-2": "#b6a589",
+    "--text-muted": "#94856f", "--text-label": "#8a7c64", "--text-faint": "#6a5d4c", "--accent": "#b08545",
+    "--accent-2": "#d8b46a", "--accent-bright": "#d8b46a", "--accent-grad-a": "#c79a4e", "--accent-grad-b": "#946f30",
+    "--accent-border": "#4a3a1e", "--on-accent": "#1a1206",
+    "--texture": "repeating-linear-gradient(34deg,rgba(216,180,106,.022) 0 1px,transparent 1px 3px),repeating-linear-gradient(-22deg,rgba(0,0,0,.16) 0 1px,transparent 1px 4px)",
+    "--texture-size": "auto"
   },
   dragon: {
     "--bg": "#0f1411", "--panel": "#0c100d", "--card": "#121a14", "--inset": "#0c120e",
@@ -999,7 +1006,7 @@ export const SOLO_FONTS = {
 };
 
 const SOLO_SKIN_SWATCHES = {
-  ashen: "linear-gradient(135deg,#c8922a,#1c1510)",
+  ashen: "linear-gradient(135deg,#d8b46a,#0c0a09)",
   dragon: "linear-gradient(135deg,#cf5236,#0f1411)",
   lava: "linear-gradient(135deg,#ff6a1f,#16100d)",
   wood: "linear-gradient(135deg,#86a544,#161310)"
