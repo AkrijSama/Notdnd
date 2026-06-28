@@ -74,10 +74,18 @@ import {
   setCampaignRuntimeState,
   setLocationImageLocked,
   setSoloRunSuggestions,
+  setUserTier,
   updateImageAssetStatus,
   updateSoloRunBattleMap,
   updateSoloRunNarration
 } from "./db/repository.js";
+import {
+  canGenerateImage,
+  canStartSession,
+  entitlementSummary,
+  incrementSessionCount,
+  requestHasByokKey
+} from "./auth/entitlements.js";
 import {
   buildContextWindow,
   archiveEntity,
@@ -257,6 +265,20 @@ function requireAuth(req) {
     });
   }
   return user;
+}
+
+// Soft daily session cap. Throws a 429 (with a clear upgrade message) when a
+// free user has started their allotted runs for the day and isn't supplying a
+// BYOK key. Paid tiers and BYOK pass straight through. The cap keeps a heavy
+// free user under the upstream LLM provider's daily request ceiling.
+function enforceSessionEntitlement(req, user) {
+  const gate = canStartSession(user, { byok: requestHasByokKey(req) });
+  if (!gate.allowed) {
+    throw Object.assign(
+      new Error("You've reached your free daily session limit — upgrade to Adventurer for unlimited play."),
+      { code: "SESSION_LIMIT_REACHED", statusCode: 429 }
+    );
+  }
 }
 
 function userCanAccessCampaign(userId, campaignId) {
@@ -786,6 +808,35 @@ async function handleApi(req, res) {
     return true;
   }
 
+  // Admin: manually set a user's subscription tier. Beta-only stopgap until a
+  // payment processor is wired — gated by a server-side shared secret
+  // (INKBORNE_ADMIN_KEY) sent in the x-inkborne-admin-key header, NOT user auth,
+  // so it can be driven by an operator script without an admin login. Returns 404
+  // when the key is unset (route effectively disabled) to avoid advertising it.
+  if (req.method === "POST" && url.pathname === "/api/admin/set-tier") {
+    try {
+      const adminKey = String(process.env.INKBORNE_ADMIN_KEY || "").trim();
+      if (!adminKey) {
+        throw Object.assign(new Error("Not found."), { code: "NOT_FOUND", statusCode: 404 });
+      }
+      const provided = String(req.headers["x-inkborne-admin-key"] || "").trim();
+      if (!provided || provided !== adminKey) {
+        throw Object.assign(new Error("Admin key required."), { code: "FORBIDDEN", statusCode: 403 });
+      }
+      const payload = await readJsonBody(req);
+      const userId = String(payload?.userId || "").trim();
+      const tier = String(payload?.tier || "").trim();
+      if (!userId) {
+        throw Object.assign(new Error("userId is required."), { code: "BAD_REQUEST", statusCode: 400 });
+      }
+      const updated = setUserTier(userId, tier);
+      writeJson(res, 200, { ok: true, user: updated });
+    } catch (error) {
+      routeError(res, error);
+    }
+    return true;
+  }
+
   if (req.method === "POST" && url.pathname === "/api/auth/register") {
     try {
       enforceAuthRateLimit(req);
@@ -892,12 +943,14 @@ async function handleApi(req, res) {
   if (req.method === "POST" && url.pathname === "/api/solo/runs") {
     try {
       const user = requireAuth(req);
+      enforceSessionEntitlement(req, user);
       const payload = await readJsonBody(req);
       const run = createSoloRun({
         userId: user.id,
         runId: payload.runId,
         worldSeed: payload.worldSeed
       });
+      incrementSessionCount(user.id);
       writeJson(res, 201, { ok: true, run });
     } catch (error) {
       routeError(res, error);
@@ -1258,11 +1311,17 @@ async function handleApi(req, res) {
         });
       }
       assertSoloRunAccess(user, run);
+      // Entitlement gate: a free user past their daily image quota (and without a
+      // BYOK key) stops triggering new image generation — the scene still renders
+      // fully, just with placeholder art until the cap resets. Degrades softly; it
+      // never blocks the scene. Identity/suggestions are text, so they stay open.
+      const byok = requestHasByokKey(req);
+      const allowImages = canGenerateImage(user, { byok }).allowed;
       const scene = buildSoloScenePayload(run, {
-        enqueueImages: makeSceneImageEnqueuer(run),
+        enqueueImages: allowImages ? makeSceneImageEnqueuer(run) : undefined,
         enqueueIdentities: makeSceneIdentityEnqueuer(run),
-        enqueuePlayerPortrait: () => enqueuePlayerImageJob({ runId: run.runId }),
-        enqueueLocationImage: makeSceneLocationImageEnqueuer(run),
+        enqueuePlayerPortrait: allowImages ? () => enqueuePlayerImageJob({ runId: run.runId }) : undefined,
+        enqueueLocationImage: allowImages ? makeSceneLocationImageEnqueuer(run) : undefined,
         // Lazily (re)generate this scene's suggested actions when stale — covers
         // the opening scene and any scene whose cache hasn't been filled yet.
         // Guarded + fire-and-forget; never blocks scene delivery.
@@ -1280,12 +1339,15 @@ async function handleApi(req, res) {
       // Lazy full-body VN sprite: only when an NPC is in VN (direct) mode. The
       // worker skips an already-generated vnBody, so this is cheap to re-enqueue
       // on every scene load and never fires for NPCs who never enter VN.
-      if (scene.vnMode && typeof scene.speakerId === "string" && scene.speakerId) {
+      if (allowImages && scene.vnMode && typeof scene.speakerId === "string" && scene.speakerId) {
         const vnNpcId = scene.speakerId.includes(":")
           ? scene.speakerId.split(":").slice(1).join(":")
           : scene.speakerId;
         enqueueVnBodyImageJob({ runId: run.runId, npcId: vnNpcId, style: run?.flags?.artStyle });
       }
+      // Surface tier + remaining image quota so the client can show a soft,
+      // non-blocking upgrade prompt as a free user approaches their limit.
+      scene.entitlement = entitlementSummary(user, { byok });
       writeJson(res, 200, scene);
     } catch (error) {
       routeError(res, error);
@@ -1461,6 +1523,7 @@ async function handleApi(req, res) {
   if (req.method === "POST" && url.pathname === "/api/onboarding/start") {
     try {
       const user = requireAuth(req);
+      enforceSessionEntitlement(req, user);
       const payload = await readJsonBody(req);
       const characterName = String(payload.characterName || "").trim();
       const archetype = String(payload.archetype || "").trim();
@@ -1478,6 +1541,7 @@ async function handleApi(req, res) {
         archetype,
         backstorySnippet
       });
+      incrementSessionCount(user.id);
 
       const normalizedArchetype = archetype || "weathered wanderer";
       const normalizedBackstory =
@@ -1557,12 +1621,14 @@ async function handleApi(req, res) {
   if (req.method === "POST" && url.pathname === "/api/onboarding/world-run") {
     try {
       const user = requireAuth(req);
+      enforceSessionEntitlement(req, user);
       const payload = await readJsonBody(req);
       const result = await createWorldOnboardingRun(user.id, {
         world: payload?.world || {},
         character: payload?.character || {},
         draftPortraitId: payload?.draftPortraitId || null
       });
+      incrementSessionCount(user.id);
       writeJson(res, 200, { ok: true, ...result });
     } catch (error) {
       routeError(res, error);
@@ -1574,8 +1640,15 @@ async function handleApi(req, res) {
   // a hash of the character fields. Returns a draftId the client polls.
   if (req.method === "POST" && url.pathname === "/api/onboarding/portrait") {
     try {
-      requireAuth(req);
+      const user = requireAuth(req);
       const payload = await readJsonBody(req);
+      // Draft portraits cost a generation; gate the same as in-run art. A
+      // quota-exhausted free user (no BYOK) gets a soft "quota_reached" status
+      // instead of art — character creation still proceeds without a portrait.
+      if (!canGenerateImage(user, { byok: requestHasByokKey(req) }).allowed) {
+        writeJson(res, 200, { ok: true, draftId: null, status: "quota_reached" });
+        return true;
+      }
       const draftId = enqueueDraftPortrait({
         character: payload?.character || {},
         world: payload?.world || {},

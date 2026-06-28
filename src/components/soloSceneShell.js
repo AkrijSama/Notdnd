@@ -233,6 +233,35 @@ export function renderSoloSceneOpening(openingNarration = "") {
   `;
 }
 
+// Soft, non-blocking upgrade prompt. Surfaced only for a free user (no BYOK)
+// who is at/near their daily image quota or has hit the session cap. Gameplay is
+// never blocked — this is a gentle nudge with a placeholder /pricing CTA. Reads
+// the entitlement summary the /scene route attaches; returns "" when not
+// applicable (paid/BYOK users, or a free user with quota to spare).
+export function renderSoloUpgradePrompt(scene = {}) {
+  const ent = scene && typeof scene.entitlement === "object" ? scene.entitlement : null;
+  if (!ent || ent.tier !== "free" || ent.byok === true || ent.unlimited === true) {
+    return "";
+  }
+  const remaining = ent.imageQuotaRemaining;
+  const lowImages = typeof remaining === "number" && remaining <= 2;
+  const sessionReached = ent.sessionLimitReached === true;
+  if (!lowImages && !sessionReached) {
+    return "";
+  }
+  const message = sessionReached
+    ? "You've reached your free daily session limit — upgrade to Adventurer for unlimited play."
+    : remaining <= 0
+      ? "You've used your free images today — upgrade to Adventurer for unlimited portraits and scenes."
+      : `Only ${remaining} free image${remaining === 1 ? "" : "s"} left today — upgrade to Adventurer for unlimited portraits and scenes.`;
+  return `
+    <aside class="solo-upgrade-prompt" role="note" aria-label="Upgrade prompt" data-solo-upgrade-prompt>
+      <span class="solo-upgrade-prompt-msg">${escapeHtml(message)}</span>
+      <a class="solo-upgrade-prompt-cta" href="/pricing" data-solo-upgrade-cta>Upgrade</a>
+    </aside>
+  `;
+}
+
 export function renderGmNarrationPanel(gmNarration = null, gmStatus = null, selectedMode = "placeholder", debug = false) {
   const narration = gmNarration?.narration || null;
   if (!narration) {
@@ -1999,6 +2028,7 @@ export function renderSoloSceneShell(state = {}) {
               `
                 <div class="solo-scene-layout" style="grid-template-columns: minmax(0, 1fr);">
                   <div class="solo-scene-center">
+                    ${renderSoloUpgradePrompt(scene)}
                     ${typeof scene.openingNarration === "string" && scene.openingNarration.trim() ? renderSoloSceneOpening(scene.openingNarration) : ""}
                     ${renderSoloSceneArt(scene.locationImageUri, { locked: scene.locationImageLocked })}
                     ${renderSoloActionOutcome(state)}

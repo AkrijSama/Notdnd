@@ -2127,6 +2127,42 @@ button:disabled {
 /* World-entry opening narration: prominent GM voice at the top of the scene,
    visually distinct from the location copy. Uses solo skin vars (defined on
    .solo-game-shell) with literal fallbacks — no phantom vars. */
+/* Soft, non-blocking upgrade nudge shown when a free user nears their daily
+   image quota or hits the session cap. Sits inline above the scene; never a
+   modal — gameplay continues underneath it. */
+.solo-upgrade-prompt {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 4px 4px 10px;
+  padding: 10px 14px;
+  border: 1px solid var(--accent, #c89a4b);
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(200, 154, 75, 0.14), rgba(200, 154, 75, 0.05));
+  color: var(--text, #ece1c7);
+  font-size: 13px;
+}
+.solo-upgrade-prompt-msg {
+  flex: 1 1 220px;
+  line-height: 1.4;
+}
+.solo-upgrade-prompt-cta {
+  flex: none;
+  display: inline-block;
+  padding: 6px 14px;
+  border-radius: 8px;
+  background: var(--accent, #c89a4b);
+  color: #1a130c;
+  font-weight: 700;
+  text-decoration: none;
+  letter-spacing: 0.02em;
+}
+.solo-upgrade-prompt-cta:hover {
+  filter: brightness(1.08);
+}
+
 .solo-scene-opening {
   flex: none;
   position: relative;

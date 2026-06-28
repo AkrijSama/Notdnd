@@ -36,6 +36,7 @@ const SCHEMA_SQL = `
     displayName TEXT,
     passwordHash TEXT,
     isAdmin INTEGER DEFAULT 0,
+    tier TEXT DEFAULT 'free',
     createdAt INTEGER,
     data TEXT NOT NULL
   );
@@ -67,6 +68,25 @@ const SCHEMA_SQL = `
   );
 `;
 
+// Additive column migrations for tables created by an earlier schema version.
+// `CREATE TABLE IF NOT EXISTS` never alters an existing table, so a column added
+// to SCHEMA_SQL after a DB already exists must be backfilled here. Each entry is
+// idempotent: we only ALTER when the column is absent (SQLite errors on a
+// duplicate ADD COLUMN). The `data` JSON blob remains the source of truth; these
+// denormalized columns exist for inspectability/future queries.
+const COLUMN_MIGRATIONS = [
+  { table: "users", column: "tier", ddl: "ALTER TABLE users ADD COLUMN tier TEXT DEFAULT 'free'" }
+];
+
+function applyColumnMigrations(db) {
+  for (const { table, column, ddl } of COLUMN_MIGRATIONS) {
+    const columns = db.prepare(`PRAGMA table_info(${table})`).all();
+    if (!columns.some((col) => col.name === column)) {
+      db.exec(ddl);
+    }
+  }
+}
+
 function applySchema(db) {
   // WAL gives concurrent readers + a single writer without the whole-file
   // corruption the JSON store suffered; NORMAL sync is the standard durable
@@ -75,6 +95,7 @@ function applySchema(db) {
   db.pragma("synchronous = NORMAL");
   db.pragma("foreign_keys = ON");
   db.exec(SCHEMA_SQL);
+  applyColumnMigrations(db);
 }
 
 /**

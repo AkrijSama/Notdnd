@@ -156,6 +156,24 @@ function normalizeDisplayName(input, fallback = "Player") {
   return name || fallback;
 }
 
+// Subscription tiers. 'free' is image-gated (a daily generation cap); the paid
+// tiers lift the image/session limits. The entitlement policy (limits, BYOK
+// bypass) lives in server/auth/entitlements.js — the repository only owns the
+// tier field and the daily usage counters it reads.
+export const USER_TIERS = Object.freeze(["free", "adventurer", "premium"]);
+const DEFAULT_USER_TIER = "free";
+
+function normalizeTier(tier) {
+  const value = String(tier || "").trim().toLowerCase();
+  return USER_TIERS.includes(value) ? value : DEFAULT_USER_TIER;
+}
+
+// UTC day key (YYYY-MM-DD) for the daily image/session usage counters. UTC so
+// the reset boundary is stable regardless of the server's local timezone.
+function utcDateKey(now = new Date()) {
+  return now.toISOString().slice(0, 10);
+}
+
 function sanitizeUser(user) {
   if (!user) {
     return null;
@@ -165,6 +183,7 @@ function sanitizeUser(user) {
     email: user.email,
     displayName: user.displayName,
     isAdmin: Boolean(user.isAdmin),
+    tier: normalizeTier(user.tier),
     createdAt: user.createdAt
   };
 }
@@ -243,6 +262,14 @@ function ensureDefaults(target) {
   target.userHomebrew = target.userHomebrew && typeof target.userHomebrew === "object" && !Array.isArray(target.userHomebrew)
     ? target.userHomebrew
     : {};
+  // Daily entitlement usage counters, keyed by userId -> { date: 'YYYY-MM-DD'
+  // (UTC), images, sessions }. Resets at midnight UTC (the stored date no longer
+  // matching today zeroes the counts on next access). Persisted via the kv
+  // catch-all; the free-tier image/session caps meter off this.
+  target.dailyUsageByUser =
+    target.dailyUsageByUser && typeof target.dailyUsageByUser === "object" && !Array.isArray(target.dailyUsageByUser)
+      ? target.dailyUsageByUser
+      : {};
 
   target.selectedCampaignId = target.selectedCampaignId || target.campaigns?.[0]?.id || null;
 
@@ -299,8 +326,8 @@ function writeToDisk() {
   const persist = sdb.transaction(() => {
     sdb.prepare("DELETE FROM users").run();
     const insertUser = sdb.prepare(
-      "INSERT INTO users (id, email, displayName, passwordHash, isAdmin, createdAt, data) " +
-        "VALUES (@id, @email, @displayName, @passwordHash, @isAdmin, @createdAt, @data)"
+      "INSERT INTO users (id, email, displayName, passwordHash, isAdmin, tier, createdAt, data) " +
+        "VALUES (@id, @email, @displayName, @passwordHash, @isAdmin, @tier, @createdAt, @data)"
     );
     for (const user of Array.isArray(db.users) ? db.users : []) {
       if (!user || typeof user.id !== "string") {
@@ -312,6 +339,7 @@ function writeToDisk() {
         displayName: typeof user.displayName === "string" ? user.displayName : null,
         passwordHash: typeof user.passwordHash === "string" ? user.passwordHash : null,
         isAdmin: user.isAdmin ? 1 : 0,
+        tier: normalizeTier(user.tier),
         createdAt: Number.isFinite(Number(user.createdAt)) ? Number(user.createdAt) : null,
         data: JSON.stringify(user)
       });
@@ -512,6 +540,9 @@ function bootstrapAdminAndMemberships() {
       resetToken: null,
       resetTokenExpiresAt: null,
       isAdmin: true,
+      // The env-gated demo/bootstrap account is the local testing identity, so it
+      // gets a paid tier (unlimited images/sessions) to keep it unthrottled.
+      tier: "adventurer",
       createdAt: nowEpochSec()
     });
   }
@@ -1465,6 +1496,7 @@ export function registerUser({ email, password, displayName }) {
     resetToken: null,
     resetTokenExpiresAt: null,
     isAdmin: false,
+    tier: DEFAULT_USER_TIER,
     createdAt: nowEpochSec()
   };
 
@@ -1626,6 +1658,111 @@ export function getUserBySessionToken(token) {
   }
 
   return sanitizeUser(user);
+}
+
+/**
+ * Returns a user's subscription tier ('free' | 'adventurer' | 'premium').
+ * Defaults to 'free' for an unknown user or a missing/invalid stored value, so
+ * the entitlement layer always has a concrete tier to gate against.
+ * @param {string} userId
+ * @returns {'free'|'adventurer'|'premium'}
+ */
+export function getUserTier(userId) {
+  ensureDb();
+  const user = getUserById(userId);
+  return normalizeTier(user?.tier);
+}
+
+/**
+ * Sets a user's subscription tier (manual assignment during beta — no payment
+ * processor yet). Validates the tier, persists, and returns the sanitized user.
+ * @param {string} userId
+ * @param {'free'|'adventurer'|'premium'} tier
+ * @returns {{ id: string, email: string, displayName: string, isAdmin: boolean, tier: string, createdAt: number }}
+ */
+export function setUserTier(userId, tier) {
+  ensureDb();
+  const value = String(tier || "").trim().toLowerCase();
+  if (!USER_TIERS.includes(value)) {
+    throw makeError("BAD_REQUEST", `Invalid tier. Expected one of: ${USER_TIERS.join(", ")}.`, 400);
+  }
+  const user = getUserById(userId);
+  if (!user) {
+    throw makeError("NOT_FOUND", "User not found.", 404);
+  }
+  user.tier = value;
+  writeToDisk();
+  return sanitizeUser(user);
+}
+
+// Reads the live daily-usage record for a user, rolling it over to today (UTC)
+// when the stored date is stale. `persist=true` writes a rollover back so a
+// fresh day starts from zero on disk; reads pass false to avoid a write per call.
+function currentDailyUsage(userId, { persist = false } = {}) {
+  const today = utcDateKey();
+  const key = String(userId || "");
+  if (!key) {
+    return { date: today, images: 0, sessions: 0 };
+  }
+  let record = db.dailyUsageByUser[key];
+  if (!record || typeof record !== "object" || record.date !== today) {
+    record = { date: today, images: 0, sessions: 0 };
+    if (persist) {
+      db.dailyUsageByUser[key] = record;
+    }
+  }
+  return record;
+}
+
+/**
+ * Returns today's (UTC) entitlement usage for a user: image generations and
+ * sessions started. Read-only — a stale day reads as zeroed without persisting.
+ * @param {string} userId
+ * @returns {{ date: string, images: number, sessions: number }}
+ */
+export function getDailyUsage(userId) {
+  ensureDb();
+  const record = currentDailyUsage(userId);
+  return { date: record.date, images: Number(record.images) || 0, sessions: Number(record.sessions) || 0 };
+}
+
+/**
+ * Increments today's image-generation count for a user and persists it. Called
+ * at actual generation time (the image worker), not at enqueue, so re-enqueued
+ * in-flight jobs never double-count. Returns the new daily image count.
+ * @param {string} userId
+ * @returns {number}
+ */
+export function incrementImageCount(userId) {
+  ensureDb();
+  const key = String(userId || "");
+  if (!key) {
+    return 0;
+  }
+  const record = currentDailyUsage(userId, { persist: true });
+  db.dailyUsageByUser[key] = record;
+  record.images = (Number(record.images) || 0) + 1;
+  writeToDisk();
+  return record.images;
+}
+
+/**
+ * Increments today's session-started count for a user and persists it. Returns
+ * the new daily session count.
+ * @param {string} userId
+ * @returns {number}
+ */
+export function incrementSessionCount(userId) {
+  ensureDb();
+  const key = String(userId || "");
+  if (!key) {
+    return 0;
+  }
+  const record = currentDailyUsage(userId, { persist: true });
+  db.dailyUsageByUser[key] = record;
+  record.sessions = (Number(record.sessions) || 0) + 1;
+  writeToDisk();
+  return record.sessions;
 }
 
 export function getCampaignRole(campaignId, context = {}) {
