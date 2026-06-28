@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { createDefaultSoloRun } from "../server/solo/schema.js";
 import {
   applyFailureDamage,
+  attemptNeedsCheck,
   buildAttemptContext,
   buildAttemptProviderInput,
   resolveAttemptAction,
@@ -293,4 +294,131 @@ test("damage is an allowed proposed-effect type", () => {
   });
 
   assert.equal(validation.ok, true, JSON.stringify(validation.errors));
+});
+
+// --- FIX H: roll gate — trivial movement/observation resolves with no dice ---
+
+test("attemptNeedsCheck classifies movement/observation as no-roll and contest as roll", () => {
+  // Movement / travel / navigation — the reported over-rolling bug.
+  for (const intent of [
+    "Head toward NightCity Market",
+    "head to the market",
+    "go to the docks",
+    "walk into the tavern",
+    "travel north",
+    "enter the warehouse",
+    "leave the alley",
+    "Look around the room",
+    "glance at the crowd"
+  ]) {
+    assert.equal(attemptNeedsCheck(intent), false, `"${intent}" should not roll`);
+  }
+  // Genuinely contested / uncertain — must still roll.
+  for (const intent of [
+    "Sneak past the guards",
+    "Pick the lock",
+    "Climb the wall",
+    "Persuade the merchant",
+    "Force the door open",
+    "Search for hidden compartments",
+    "Attack the bandit"
+  ]) {
+    assert.equal(attemptNeedsCheck(intent), true, `"${intent}" should roll`);
+  }
+  // Contested verb wins even when a movement word is also present.
+  assert.equal(attemptNeedsCheck("sneak toward the gate"), true);
+  // Ambiguous intents default to rolling (don't break uncertain actions).
+  assert.equal(attemptNeedsCheck("do something strange"), true);
+});
+
+test("an explicit provider needsCheck overrides the heuristic", () => {
+  // Movement verb that the heuristic would skip, but the provider forces a check.
+  assert.equal(attemptNeedsCheck("walk across the rotten bridge", { needsCheck: true }), true);
+  // Contested verb the heuristic would roll, but the provider waives it.
+  assert.equal(attemptNeedsCheck("search the open shelf", { needsCheck: false }), false);
+});
+
+test("a no-roll movement attempt resolves narratively without dice or HP cost", () => {
+  const run = createDefaultSoloRun({ now: "2026-01-01T00:00:00.000Z" });
+  const before = run.player.resources.hitPoints.current;
+
+  const result = resolveAttemptAction(run, {
+    type: "attempt",
+    actorId: "player",
+    intent: "Head toward NightCity Market"
+  }, { fixedRoll: 1 }); // a forced low roll must NOT matter — no check is made
+
+  assert.equal(result.ok, true);
+  assert.equal(result.attemptResult.needsCheck, false);
+  assert.equal(result.attemptResult.checkResult, null, "no dice for a no-stakes move");
+  assert.equal(result.attemptResult.success, true, "the move just happens");
+  assert.equal(result.attemptResult.damage, null, "no failure cost without a check");
+  assert.equal(result.run.player.resources.hitPoints.current, before);
+  assert.ok(result.attemptResult.narration.trim().length > 0, "still narrates");
+  assert.equal(result.event.type, "attempt");
+});
+
+test("a no-roll attempt still applies a provider memory effect", () => {
+  const run = createDefaultSoloRun({ now: "2026-01-01T00:00:00.000Z" });
+  const result = resolveAttemptAction(run, {
+    type: "attempt",
+    actorId: "player",
+    intent: "Walk to the shrine"
+  }, {
+    attemptProviderFn: () => ({
+      summary: "You walk to the shrine.",
+      recommendedAbility: null,
+      dc: null,
+      needsCheck: false,
+      advantage: false,
+      disadvantage: false,
+      successNarration: "The shrine looms quietly as you arrive.",
+      failureNarration: "—",
+      proposedEffects: [{ type: "memory_fact", text: "The player visited the old shrine." }]
+    })
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.attemptResult.needsCheck, false);
+  assert.equal(result.attemptResult.checkResult, null);
+  assert.ok(result.memoryFact, "memory effect persists even without a roll");
+  assert.match(result.attemptResult.narration, /shrine/);
+});
+
+test("a contested attempt still rolls a real check (regression guard)", () => {
+  const run = createDefaultSoloRun({ now: "2026-01-01T00:00:00.000Z" });
+  const result = resolveAttemptAction(run, {
+    type: "attempt",
+    actorId: "player",
+    intent: "Sneak past the guards"
+  }, { fixedRoll: 1 });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.attemptResult.needsCheck, true);
+  assert.ok(result.attemptResult.checkResult, "contested action rolls");
+  assert.equal(result.attemptResult.success, false);
+});
+
+test("provider output accepts a needsCheck boolean", () => {
+  const validation = validateAttemptProviderOutput({
+    summary: "You stroll over.",
+    recommendedAbility: null,
+    dc: null,
+    needsCheck: false,
+    advantage: false,
+    disadvantage: false,
+    successNarration: "You arrive.",
+    failureNarration: "—",
+    proposedEffects: []
+  });
+  assert.equal(validation.ok, true, JSON.stringify(validation.errors));
+
+  const bad = validateAttemptProviderOutput({
+    summary: "x",
+    successNarration: "x",
+    failureNarration: "x",
+    needsCheck: "yes",
+    proposedEffects: []
+  });
+  assert.equal(bad.ok, false);
 });

@@ -15,6 +15,9 @@ const PROVIDER_OUTPUT_FIELDS = new Set([
   "summary",
   "recommendedAbility",
   "dc",
+  // Whether the action is contested enough to roll. Optional: when the provider
+  // supplies it, it overrides the server-side verb heuristic (attemptNeedsCheck).
+  "needsCheck",
   "advantage",
   "disadvantage",
   "successNarration",
@@ -68,6 +71,50 @@ function abilityFromIntent(intent) {
     return "intelligence";
   }
   return "intelligence";
+}
+
+// --- Roll gate: does this attempt need a d20 check at all? -------------------
+// The old behavior rolled a check for EVERY freeform attempt, so trivial
+// no-stakes intents like "head toward the market" rolled vs a DC. That's noise:
+// walking somewhere unobstructed, or simply looking around, has no uncertainty.
+// These two regexes classify the intent when the provider doesn't supply an
+// explicit needsCheck. Contested verbs WIN over movement (so "sneak toward the
+// gate" still rolls), and anything ambiguous defaults to rolling — preserving
+// the old behavior for genuinely uncertain actions (the brief: don't break the
+// cases that SHOULD roll).
+
+// Contested / uncertain intents that ALWAYS roll: physical feats, stealth and
+// finesse, social pressure, and risky skill use. Checked FIRST so a contested
+// verb is never suppressed by an incidental movement word.
+const CONTESTED_INTENT_RE = /\b(sneak|stealth|hide|hiding|slip|pick|lockpick|picklock|disarm|disable|hack|decipher|forge|climb|scale|leap|vault|pry|force|forcing|break|breaking|smash|bash|shatter|wrench|intimidate|threaten|menace|coerce|persuade|convince|deceive|lie|bluff|charm|seduce|negotiate|barter|haggle|bribe|outrun|evade|escape|dodge|pickpocket|steal|swipe|snatch|search|investigate|fight|attack|strike|punch|kick|shove|grapple|wrestle|tackle|swim|balance|jump|throw|hurl|aim|shoot|fire|cast|sabotage|trick|con|disguise|track|forage)\b/;
+
+// No-stakes intents that resolve NARRATIVELY with no roll: pure movement /
+// travel / navigation, and simple observation. Deliberately narrow — it does NOT
+// include manipulation verbs like "open/push/pull/grab" (those can carry stakes
+// and the engine still rolls them); only frictionless travel and looking.
+const NO_ROLL_INTENT_RE = /\b(head|heading|headed|go|going|goes|went|walk|walking|walked|travel|traveling|travelling|travelled|journey|journeying|wander|wandering|stroll|strolling|march|marching|proceed|proceeding|continue|advance|advancing|approach|approaching|enter|entering|exit|exiting|leave|leaving|depart|departing|return|returning|navigate|cross|crossing|move|moves|moved|moving|venture|venturing|look|looking|looked|glance|glancing|observe|observing|survey|surveying|gaze|gazing|watch|watching|scan|scanning|peer|peering|gander)\b/;
+
+/**
+ * Decides whether an attempt needs a d20 check. A provider-supplied `needsCheck`
+ * boolean wins (the GM/provider classified it); otherwise a verb heuristic:
+ * contested/uncertain intents roll, pure movement/observation resolve
+ * narratively, and anything ambiguous defaults to rolling. Pure; never throws.
+ * @param {string} intent the player's freeform intent text
+ * @param {object|null} providerOutput sanitized attempt provider output (may carry needsCheck)
+ * @returns {boolean}
+ */
+export function attemptNeedsCheck(intent, providerOutput = null) {
+  if (providerOutput && typeof providerOutput.needsCheck === "boolean") {
+    return providerOutput.needsCheck;
+  }
+  const text = String(intent || "").toLowerCase();
+  if (CONTESTED_INTENT_RE.test(text)) {
+    return true;
+  }
+  if (NO_ROLL_INTENT_RE.test(text)) {
+    return false;
+  }
+  return true;
 }
 
 function result(errors) {
@@ -373,6 +420,11 @@ export function buildAttemptProviderInput(context, options = {}) {
       summary: "string",
       recommendedAbility: `${[...ABILITIES, ...SKILLS].join("|")}|null`,
       dc: "number|null",
+      // true only for genuinely uncertain/contested actions (sneak, persuade,
+      // fight, pick a lock, climb, search for something hidden…). Pure movement,
+      // travel, or simple observation is no-stakes: set false and the server
+      // resolves it narratively with no dice roll.
+      needsCheck: "boolean|null",
       advantage: "boolean",
       disadvantage: "boolean",
       successNarration: "string",
@@ -406,6 +458,9 @@ export function validateAttemptProviderOutput(output, options = {}) {
     if (!isNumber(output.dc) || output.dc < 1 || output.dc > 30) {
       push(errors, "dc", "Expected number from 1 to 30");
     }
+  }
+  if (output.needsCheck !== undefined && output.needsCheck !== null && typeof output.needsCheck !== "boolean") {
+    push(errors, "needsCheck", "Expected boolean");
   }
   for (const key of ["advantage", "disadvantage"]) {
     if (output[key] !== undefined && typeof output[key] !== "boolean") {
@@ -451,6 +506,7 @@ export function sanitizeAttemptProviderOutput(output, options = {}) {
     summary: sanitizeText(output?.summary),
     recommendedAbility: output?.recommendedAbility ? String(output.recommendedAbility).trim().toLowerCase() : null,
     dc: isNumber(output?.dc) ? output.dc : null,
+    needsCheck: typeof output?.needsCheck === "boolean" ? output.needsCheck : null,
     advantage: output?.advantage === true,
     disadvantage: output?.disadvantage === true,
     successNarration: sanitizeText(output?.successNarration),
@@ -668,36 +724,61 @@ export function resolveAttemptAction(run, action, options = {}) {
   const providerInput = buildAttemptProviderInput(context, options);
   const providerResult = resolveProviderOutput(context, providerInput, options);
   const providerOutput = providerResult.output;
-  // Never silently auto-succeed an unjudged attempt. When the provider omits the
-  // ability/skill, fall back to an intent-derived ability (skill-less); when it
-  // omits the DC, fall back to an intent-derived DC. Either way we always roll a
-  // real check, so an attempt can fail even on a thin provider response.
-  const recommendation = abilityFromRecommendation(providerOutput.recommendedAbility)
-    || { ability: abilityFromIntent(context.intent), skill: null };
-  const checkDc = (providerOutput.dc !== null && providerOutput.dc !== undefined)
-    ? providerOutput.dc
-    : classifyIntentDc(context.intent);
-  const checkResult = resolveAbilityCheck(updatedRun, {
-    checkId: "attempt_check",
-    rulesetId: context.rulesetId,
-    ability: recommendation.ability,
-    skill: recommendation.skill,
-    dc: checkDc,
-    advantage: providerOutput.advantage === true,
-    disadvantage: providerOutput.disadvantage === true
-  }, options);
-  const success = checkResult.ok === true && checkResult.success === true;
 
-  // Minimal failure-cost: a failed attempt drains a little HP (clamped at 0).
-  const damage = success ? null : applyFailureDamage(updatedRun, FAILED_ATTEMPT_DAMAGE);
+  // Roll gate (FIX H): only genuinely uncertain/contested actions roll a d20.
+  // Pure movement/travel/observation resolves narratively — no dice, no "vs DC".
+  const needsCheck = attemptNeedsCheck(context.intent, providerOutput);
 
-  const narration = success ? providerOutput.successNarration : providerOutput.failureNarration;
+  let checkResult = null;
+  let success;
+  let damage = null;
+  if (needsCheck) {
+    // Never silently auto-succeed an unjudged contested attempt. When the
+    // provider omits the ability/skill, fall back to an intent-derived ability
+    // (skill-less); when it omits the DC, fall back to an intent-derived DC.
+    // Either way we roll a real check, so an attempt can fail even on a thin
+    // provider response.
+    const recommendation = abilityFromRecommendation(providerOutput.recommendedAbility)
+      || { ability: abilityFromIntent(context.intent), skill: null };
+    const checkDc = (providerOutput.dc !== null && providerOutput.dc !== undefined)
+      ? providerOutput.dc
+      : classifyIntentDc(context.intent);
+    checkResult = resolveAbilityCheck(updatedRun, {
+      checkId: "attempt_check",
+      rulesetId: context.rulesetId,
+      ability: recommendation.ability,
+      skill: recommendation.skill,
+      dc: checkDc,
+      advantage: providerOutput.advantage === true,
+      disadvantage: providerOutput.disadvantage === true
+    }, options);
+    success = checkResult.ok === true && checkResult.success === true;
+    // Minimal failure-cost: a failed contested attempt drains a little HP.
+    damage = success ? null : applyFailureDamage(updatedRun, FAILED_ATTEMPT_DAMAGE);
+  } else {
+    // No-stakes action: it simply happens. No roll, no failure cost — the GM
+    // still narrates the outcome (the request layer replaces the line below with
+    // real GM prose), it just isn't gated on a dice result.
+    success = true;
+  }
+
+  const baseNarration = success ? providerOutput.successNarration : providerOutput.failureNarration;
+  // Never leave a turn silent (FIX K, code half): if the provider narration is
+  // empty, fall back to a plain outcome line. The live attempt provider always
+  // fills these, but a thin custom provider might not — and a no-roll action must
+  // still narrate.
+  const narration = isString(baseNarration)
+    ? baseNarration
+    : (needsCheck ? "You make the attempt." : "You do so without trouble.");
   const attemptResult = {
     intent: safeAction.intent,
     targetId: safeAction.targetId || null,
     success,
     summary: providerOutput.summary,
     checkResult,
+    // Whether a d20 was rolled this turn. The client uses this to show the
+    // "vs DC" result only for contested actions (null checkResult == narrative).
+    needsCheck,
     narration,
     warnings: providerResult.warnings,
     proposedEffects: providerOutput.proposedEffects || [],
