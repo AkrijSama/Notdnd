@@ -3399,6 +3399,16 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       state.dialogueActive = false;
       state.restResult = null;
       state.useItemResult = null;
+      // VN auto-trigger: the GM/classifier flagged direct dialogue with a named
+      // speaker (the freeform "speak to X" path sets scene.vnMode + speakerId
+      // server-side). Open the dialogue overlay for that speaker via the talk
+      // pipeline. This runs AFTER the resets above so it overrides the default
+      // dialogueActive=false when — and only when — vnMode is active. Ambient
+      // (vnMode=false) leaves the overlay closed; the manual Talk button is
+      // unaffected (it opens via handleTalk + refreshSceneAfterAction, not here).
+      if (state.scene && state.scene.vnMode === true && typeof state.scene.speakerId === "string" && state.scene.speakerId.trim()) {
+        await openVnDialogueForSpeaker(state.scene.speakerId);
+      }
     } catch (error) {
       const message = String(error?.message || error || "Failed to load solo scene.");
       if (initial) {
@@ -3478,6 +3488,54 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       state.useItemResult = null;
       await refreshSceneAfterAction();
     });
+  }
+
+  // Auto-open the VN dialogue overlay from the server's vnMode signal — the
+  // freeform "speak to X" path. The classifier set scene.vnMode=true + speakerId
+  // server-side, but no dialogue content rides the scene payload, so we pull the
+  // speaker's beat through the SAME talk pipeline the manual Talk button uses and
+  // converge on the same overlay + dialogue state. postAction directly (NOT
+  // runAction): loadScene may already be running inside an action's runAction,
+  // whose busy guard would block a nested runAction. Best-effort — on any failure
+  // we leave the scene ambient rather than open an empty overlay.
+  async function openVnDialogueForSpeaker(speakerId) {
+    const target = String(speakerId || "").trim();
+    if (!target) {
+      return;
+    }
+    let talk = null;
+    try {
+      const resp = await postAction(createTalkAction({ targetEntityId: target }));
+      talk = resp && resp.talkResult ? resp.talkResult : null;
+    } catch {
+      talk = null;
+    }
+    const rawId = target.includes(":") ? target.split(":").slice(1).join(":") : target;
+    // Never an empty overlay: prefer the NPC's beat line, else the freeform
+    // action's GM narration, else stay ambient.
+    const gmBody = state.scene?.gmNarration?.narration?.body || "";
+    const line = talk && typeof talk.line === "string" && talk.line.trim() ? talk.line : gmBody;
+    if (!talk && !line) {
+      return;
+    }
+    state.talkResult = talk || {
+      npcId: rawId,
+      speakerName: null,
+      line,
+      found: Boolean(line),
+      summary: "",
+      checkResult: null,
+      expressionVariants: {},
+      warningCodes: []
+    };
+    state.dialogueActive = true;
+    state.dialogueTyped = false;
+    state.dialogueTargetEntityId = `npc:${state.talkResult.npcId || rawId}`;
+    state.dialogueReplyDraft = "";
+    const openingLine = state.talkResult.line && state.talkResult.line.trim() ? state.talkResult.line : line;
+    state.dialogueHistory = openingLine
+      ? [{ role: "npc", speaker: state.talkResult.speakerName || "NPC", text: openingLine }]
+      : [];
   }
 
   function handleDialogueReplyDraft({ value }) {
