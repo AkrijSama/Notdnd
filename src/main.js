@@ -618,8 +618,10 @@ async function maybeRequestDraftPortrait() {
   if (!c.race || !c.characterClass) {
     return; // need both race + class before a meaningful portrait
   }
-  // Key on the visual-driving fields only (not name keystrokes).
-  const key = `${c.race}|${c.characterClass}|${c.background || ""}`;
+  // Key on the visual-driving fields plus the redo nonce, so a Redo (which bumps
+  // the nonce) re-fires this for the same race/class instead of being skipped.
+  const nonce = uiState.onboarding.draftPortraitNonce || 0;
+  const key = `${c.race}|${c.characterClass}|${c.background || ""}|${nonce}`;
   if (key === uiState.onboarding.draftPortraitKey) {
     return; // already requested for this exact combo
   }
@@ -643,7 +645,8 @@ async function maybeRequestDraftPortrait() {
         background: c.background,
         pronouns: c.pronouns
       },
-      world: { tone: world.tone, artStyle: world.artStyle, name: world.name }
+      world: { tone: world.tone, artStyle: world.artStyle, name: world.name },
+      nonce
     });
     if (uiState.onboarding.draftPortraitKey !== key) {
       return; // combo changed while awaiting — drop this response
@@ -661,6 +664,18 @@ async function maybeRequestDraftPortrait() {
       scheduleRender();
     }
   }
+}
+
+// Reroll the draft portrait with a fresh seed: bump the nonce (which changes the
+// request key + the server-side id/seed) and re-request immediately. The current
+// image stays under a "Regenerating…" overlay until the new one lands.
+function redoDraftPortrait() {
+  const c = uiState.onboarding.character || {};
+  if (!c.race || !c.characterClass) {
+    return; // nothing to reroll until there's a portrait to reroll
+  }
+  uiState.onboarding.draftPortraitNonce = (uiState.onboarding.draftPortraitNonce || 0) + 1;
+  maybeRequestDraftPortrait();
 }
 function charInput(field, value) {
   // text fields: update state without re-render so the caret is preserved
@@ -1307,6 +1322,7 @@ function renderApp() {
         onCharStep: charStep,
         onCharField: charField,
         onCharInput: charInput,
+        onPortraitRedo: redoDraftPortrait,
         onCharMethod: charMethod,
         onCharAssign: charAssign,
         onCharPointBuy: charPointBuy,

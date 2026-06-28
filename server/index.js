@@ -1578,7 +1578,8 @@ async function handleApi(req, res) {
       const payload = await readJsonBody(req);
       const draftId = enqueueDraftPortrait({
         character: payload?.character || {},
-        world: payload?.world || {}
+        world: payload?.world || {},
+        nonce: payload?.nonce
       });
       writeJson(res, 200, { ok: true, draftId, status: "generating" });
     } catch (error) {

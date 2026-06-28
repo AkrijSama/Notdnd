@@ -202,9 +202,14 @@ function playerPortraitSeed(character = {}) {
 // Draft asset namespace id: hashed over EVERY prompt-affecting field so any
 // change (race/class/background/pronouns/name) yields a fresh namespace and a
 // regeneration, while identical choices reuse the cached asset.
-export function computeDraftPortraitId(character = {}) {
+export function computeDraftPortraitId(character = {}, nonce = 0) {
   const c = normalizePortraitCharacter(character);
-  return `draft_${hashOf(`${c.name || ""}|${c.race || ""}|${c.characterClass || ""}|${c.background || ""}|${c.pronouns || ""}`)}`;
+  const base = `${c.name || ""}|${c.race || ""}|${c.characterClass || ""}|${c.background || ""}|${c.pronouns || ""}`;
+  // A redo nonce (>0) yields a fresh namespace so the disk cache is bypassed and
+  // a NEW image is generated. nonce 0 keeps the original id, so first-generation
+  // and carry-forward behaviour are unchanged.
+  const n = Math.trunc(Number(nonce) || 0);
+  return `draft_${hashOf(n > 0 ? `${base}|n${n}` : base)}`;
 }
 
 // In-process status for draft portraits being generated (poll source of truth;
@@ -531,7 +536,9 @@ export async function runDraftPortraitJob(job = {}) {
   draftPortraits.set(draftId, { status: "generating", uri: null });
   const prompt = buildPlayerPortraitPrompt(character, world);
   const style = isStr(world.artStyle) ? world.artStyle : "illustrated";
-  const seed = playerPortraitSeed(character);
+  // Offset the deterministic seed by the redo nonce so a reroll produces a
+  // genuinely different image (not the same one under a fresh id).
+  const seed = playerPortraitSeed(character) + Math.trunc(Number(job.nonce) || 0) * 100003;
 
   try {
     const result = await generateImage({ prompt, style, seed, ...PLAYER_PORTRAIT_DIMENSIONS });
@@ -792,7 +799,9 @@ export function enqueuePlayerImageJob(job = {}) {
 export function enqueueDraftPortrait(job = {}) {
   const character = job.character || {};
   const world = job.world || {};
-  const draftId = computeDraftPortraitId(character);
+  // Redo nonce: bypasses the cache (new id) and varies the seed (new image).
+  const nonce = Math.trunc(Number(job.nonce) || 0);
+  const draftId = computeDraftPortraitId(character, nonce);
 
   // Idempotent: if already generated on disk, mark generated and skip the queue.
   const existing = findDraftPortraitOnDisk(draftId);
@@ -802,7 +811,7 @@ export function enqueueDraftPortrait(job = {}) {
   }
 
   draftPortraits.set(draftId, { status: "generating", uri: null });
-  queue.push({ kind: "draft", draftId, character, world });
+  queue.push({ kind: "draft", draftId, character, world, nonce });
   Promise.resolve().then(drainQueue).catch((error) => logWorker("drain failed", error));
   return draftId;
 }

@@ -1,4 +1,6 @@
 const TOKEN_STORAGE_KEY = "notdnd_auth_token_v1";
+// Cap how long any JSON API request may hang before it rejects (self-healing UI).
+const DEFAULT_REQUEST_TIMEOUT_MS = 25_000;
 
 // Guarded: privacy browsers (Brave shields, incognito with site data blocked)
 // throw a SecurityError on any localStorage access. This runs at module load,
@@ -43,20 +45,46 @@ export function createApiClient(baseUrl = "") {
       headers.Authorization = `Bearer ${authToken}`;
     }
 
-    const response = await fetch(`${baseUrl}${path}`, {
-      ...options,
-      headers
-    });
+    // Hard client-side timeout: a hung request (server connected but never
+    // responding) would otherwise leave the caller awaiting forever — so
+    // runAction's finally never runs and the action input stays disabled. The
+    // AbortController makes such a request REJECT instead, so the UI re-enables
+    // and the loop self-heals regardless of server/LLM behavior.
+    const timeoutMs = Number.isFinite(options.timeoutMs) ? options.timeoutMs : DEFAULT_REQUEST_TIMEOUT_MS;
+    const controller = typeof AbortController === "function" ? new AbortController() : null;
+    const timer =
+      controller && timeoutMs > 0 && typeof setTimeout === "function"
+        ? setTimeout(() => controller.abort(), timeoutMs)
+        : null;
 
-    const payload = await response.json();
-    if (!response.ok || payload.ok === false) {
-      const error = new Error(payload.error || `Request failed: ${response.status}`);
-      error.code = payload.code;
-      error.status = response.status;
-      error.payload = payload;
+    try {
+      const response = await fetch(`${baseUrl}${path}`, {
+        ...options,
+        headers,
+        ...(controller ? { signal: controller.signal } : {})
+      });
+
+      const payload = await response.json();
+      if (!response.ok || payload.ok === false) {
+        const error = new Error(payload.error || `Request failed: ${response.status}`);
+        error.code = payload.code;
+        error.status = response.status;
+        error.payload = payload;
+        throw error;
+      }
+      return payload;
+    } catch (error) {
+      if (error && error.name === "AbortError") {
+        const timeoutError = new Error("The request timed out — the server did not respond. Please try again.");
+        timeoutError.code = "TIMEOUT";
+        throw timeoutError;
+      }
       throw error;
+    } finally {
+      if (timer) {
+        clearTimeout(timer);
+      }
     }
-    return payload;
   }
 
   return {

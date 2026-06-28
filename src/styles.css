@@ -2879,6 +2879,29 @@ button:disabled {
   color: var(--ink, #ece1c7); background: rgba(16, 12, 8, 0.78);
 }
 .onb-portrait-overlay .onb-portrait-spinner { width: 16px; height: 16px; border-width: 2px; }
+/* Reroll control overlaid on the portrait preview (:root vars + fallbacks). */
+.onb-portrait-redo {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  z-index: 2;
+  padding: 5px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  color: var(--ink, #ece1c7);
+  background: rgba(16, 12, 8, 0.8);
+  border: 1px solid var(--line-strong, #503f2e);
+}
+.onb-portrait-redo:hover {
+  border-color: var(--accent, #c89a4b);
+  color: var(--accent, #c89a4b);
+}
+.onb-portrait-redo:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
 @keyframes onb-portrait-pulse {
   0%, 100% { box-shadow: 0 0 0 0 rgba(200, 154, 75, 0); }
   50% { box-shadow: 0 0 0 3px rgba(200, 154, 75, 0.35); }

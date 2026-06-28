@@ -796,22 +796,25 @@ export function buildSoloScenePayload(run, options = {}) {
     payload.gmNarration = generatePlaceholderGmNarration(payload, options.gmOptions || {});
   }
 
-  // Opt-in, fire-and-forget image generation trigger. Off by default so the
-  // builder stays pure for tests; the live scene route injects the enqueuer.
-  // Must never block scene delivery or throw.
-  if (typeof options.enqueueImages === "function") {
+  // Image generation is enqueued in PRIORITY order: the things the player looks
+  // at first generate first. The worker queue is FIFO, so enqueue order is the
+  // generation order — player portrait, then the current location background,
+  // then peripheral visible NPCs. All are opt-in + fire-and-forget (the live
+  // scene route injects the enqueuers; the builder stays pure for tests) and
+  // must never block scene delivery or throw.
+
+  // 1. Player portrait — the player's own character, highest priority.
+  if (typeof options.enqueuePlayerPortrait === "function") {
     try {
-      const npcIds = collectNpcsNeedingArt(run, visibleEntities);
-      if (npcIds.length > 0) {
-        options.enqueueImages(npcIds);
+      if (playerNeedsPortrait(run)) {
+        options.enqueuePlayerPortrait();
       }
     } catch {
       // Best-effort only.
     }
   }
 
-  // Opt-in, fire-and-forget location background image. Generated once per
-  // location, on entry or when the player moves here. Never blocks delivery.
+  // 2. Current location background — the scene the player is standing in.
   if (typeof options.enqueueLocationImage === "function") {
     try {
       if (locationNeedsImage(run, currentLocation)) {
@@ -822,11 +825,12 @@ export function buildSoloScenePayload(run, options = {}) {
     }
   }
 
-  // Opt-in, fire-and-forget player-portrait generation. Never blocks delivery.
-  if (typeof options.enqueuePlayerPortrait === "function") {
+  // 3. Visible NPC portraits — peripheral cast, generated after the above.
+  if (typeof options.enqueueImages === "function") {
     try {
-      if (playerNeedsPortrait(run)) {
-        options.enqueuePlayerPortrait();
+      const npcIds = collectNpcsNeedingArt(run, visibleEntities);
+      if (npcIds.length > 0) {
+        options.enqueueImages(npcIds);
       }
     } catch {
       // Best-effort only.

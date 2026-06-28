@@ -131,10 +131,17 @@ function renderPortraitPreview(portrait = {}, options = {}) {
   const alt = `${esc(options.charName || "Character")} portrait`;
   // A new generation in flight while we still hold a prior image = regenerating.
   const regenerating = status === "generating" && Boolean(uri);
+  // Redo (reroll with a fresh seed) is offered once a portrait exists or a prior
+  // attempt failed; disabled while a generation is already in flight.
+  const canRedo = Boolean(uri) || status === "failed";
+  const redoBtn = canRedo
+    ? `<button type="button" class="onb-portrait-redo" data-cw-portrait-redo ${regenerating ? "disabled" : ""} aria-label="Redo portrait">↻ Redo</button>`
+    : "";
   if (uri) {
     return `<div class="onb-portrait-preview${variant}${regenerating ? " onb-portrait-regenerating" : ""}">
         <img class="onb-portrait-img" src="${esc(uri)}" alt="${alt}" />
         ${regenerating ? `<div class="onb-portrait-overlay"><span class="onb-portrait-spinner" aria-hidden="true"></span>Regenerating…</div>` : ""}
+        ${redoBtn}
       </div>`;
   }
   if (status === "generating") {
@@ -146,6 +153,7 @@ function renderPortraitPreview(portrait = {}, options = {}) {
   if (status === "failed") {
     return `<div class="onb-portrait-preview${variant} onb-portrait-loading">
         <small>Your portrait will be generated when you enter the world.</small>
+        ${redoBtn}
       </div>`;
   }
   return `<div class="onb-portrait-preview${variant} onb-portrait-loading">
@@ -645,6 +653,9 @@ export function bindOnboardingFlow(root, handlers = {}) {
   });
   root.querySelectorAll("[data-cw-portraitmode]").forEach((button) => {
     button.addEventListener("click", () => handlers.onCharField?.("portraitMode", button.getAttribute("data-cw-portraitmode")));
+  });
+  root.querySelectorAll("[data-cw-portrait-redo]").forEach((button) => {
+    button.addEventListener("click", () => handlers.onPortraitRedo?.());
   });
   root.querySelectorAll("[data-cw-race]").forEach((button) => {
     button.addEventListener("click", () => handlers.onCharField?.("race", button.getAttribute("data-cw-race")));
