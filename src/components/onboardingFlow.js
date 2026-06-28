@@ -30,9 +30,9 @@ const NARRATOR_LABEL = "Narrator";
 const TONE_CHIPS = ["dark fantasy", "high fantasy", "grimdark", "sword and sorcery", "post-apocalyptic", "cosmic horror", "steampunk", "mythic"];
 const LOCATION_TYPE_CHIPS = ["tavern", "city gate", "wilderness", "dungeon", "port", "market", "temple", "ruins", "camp", "crossroads"];
 const ART_STYLE_OPTIONS = [
-  { id: "illustrated", label: "Illustrated Dark Fantasy", blurb: "Painterly, dramatic, card-art", sample: "/public/assets/art-illustrated.svg" },
-  { id: "anime", label: "Anime VN", blurb: "Clean line art, expressive faces", sample: "/public/assets/art-anime.svg" },
-  { id: "cinematic", label: "Dark Cinematic", blurb: "Moody, filmic key art", sample: "/public/assets/art-cinematic.svg" }
+  { id: "illustrated", label: "Illustrated Dark Fantasy", blurb: "Painterly, dramatic, card-art", sample: "/public/assets/art-illustrated.jpg" },
+  { id: "anime", label: "Anime VN", blurb: "Clean line art, expressive faces", sample: "/public/assets/art-anime.jpg" },
+  { id: "cinematic", label: "Dark Cinematic", blurb: "Moody, filmic key art", sample: "/public/assets/art-cinematic.jpg" }
 ];
 
 function esc(value) {
