@@ -140,6 +140,24 @@ export function toRunPlayer(character, basePlayer = {}) {
   player.proficiencyBonus = character?.proficiencyBonus || 2;
   player.abilities = { ...(player.abilities || {}), ...(character?.abilityScores?.final || {}) };
 
+  // Project the skill table onto player.skills so trained skills actually reach
+  // the live resolver (resolveAbilityCheck in rules.js). That resolver computes
+  // total = roll + abilityModifier(score) + skillModifier, adding the ability
+  // modifier from the score itself — so player.skills must carry ONLY the
+  // proficiency component (proficiencyBonus when proficient, else 0); folding the
+  // ability mod in here would double-count it. Keyed by the skill name lowercased
+  // to match the resolver/dndData vocabulary. Net effect: a Rogue with DEX 16
+  // (+3) proficient in Stealth rolls at +5 (3 ability + 2 proficiency), while an
+  // untrained character rolls at +3.
+  const proficiencyBonus = Number(character?.proficiencyBonus) || 0;
+  player.skills = { ...(player.skills || {}) };
+  for (const skill of Array.isArray(character?.skills) ? character.skills : []) {
+    if (!skill?.name) {
+      continue;
+    }
+    player.skills[String(skill.name).toLowerCase()] = skill.proficient ? proficiencyBonus : 0;
+  }
+
   const maxHp = character?.derivedStats?.maxHp;
   if (Number.isFinite(maxHp)) {
     player.health = maxHp;

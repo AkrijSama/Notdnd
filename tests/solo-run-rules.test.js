@@ -82,7 +82,7 @@ test("invalid ability is rejected", () => {
 });
 
 test("invalid skill is rejected", () => {
-  const result = validateAbilityCheck(baseCheck({ skill: "acrobatics" }));
+  const result = validateAbilityCheck(baseCheck({ skill: "telepathy" }));
 
   assert.equal(result.ok, false);
   assert.ok(result.errors.some((error) => error.path === "skill"));

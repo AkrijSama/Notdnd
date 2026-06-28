@@ -1,6 +1,19 @@
+import { SKILLS as SRD_SKILL_ABILITIES } from "./dndData.js";
+
 export const RULESET_IDS = ["notdnd_basic", "5e_srd", "custom"];
 export const ABILITIES = ["strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma"];
-export const SKILLS = ["investigation", "perception", "stealth", "persuasion", "insight"];
+
+// Live skill vocabulary, derived from the SRD skill table (dndData.SKILLS) so the
+// resolver recognizes all 18 skills from one source of truth instead of a hand-
+// maintained subset of 5. Keys are the skill name lowercased ("animal handling",
+// "sleight of hand"); values are the governing ability. A check's `skill` field
+// and player.skills are keyed by these same ids.
+export const SKILL_ABILITY = Object.freeze(
+  Object.fromEntries(
+    Object.entries(SRD_SKILL_ABILITIES).map(([name, ability]) => [name.toLowerCase(), ability])
+  )
+);
+export const SKILLS = Object.freeze(Object.keys(SKILL_ABILITY));
 
 const RULESET_VALUES = new Set(RULESET_IDS);
 const ABILITY_VALUES = new Set(ABILITIES);

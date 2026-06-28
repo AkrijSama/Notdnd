@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import { getVisibleEntities } from "./entities.js";
 import { getAvailableMoves } from "./movement.js";
-import { ABILITIES, SKILLS, resolveAbilityCheck } from "./rules.js";
+import { ABILITIES, SKILLS, SKILL_ABILITY, resolveAbilityCheck } from "./rules.js";
 import {
   createDefaultForbiddenPolicyProfile,
   createDefaultMainlinePolicyProfile,
@@ -26,13 +26,49 @@ const ALLOWED_EFFECT_TYPES = new Set(["timeline_event", "memory_fact", "narratio
 // Minimal failure-cost mechanic (not full combat): a failed attempt costs the
 // player a small, fixed amount of HP. Kept simple and deterministic on purpose.
 const FAILED_ATTEMPT_DAMAGE = 2;
-const SKILL_TO_ABILITY = {
-  investigation: "intelligence",
-  perception: "wisdom",
-  stealth: "dexterity",
-  persuasion: "charisma",
-  insight: "wisdom"
-};
+
+// Fallback heuristics for when the provider omits the ability and/or DC. These
+// keep the server from silently auto-succeeding an unjudged attempt: we always
+// derive *some* ability + DC from the intent text and roll. Coarse on purpose —
+// a rough classifier beats a blind constant, and the provider supplies the
+// precise values on the normal path.
+
+// Difficulty buckets: easy (8) / medium (12) / hard (16). Default medium.
+const HARD_INTENT_RE = /\b(sneak|stealth|slip past|pick(ing)?|lockpick|disarm|disable|hack|decipher|forge|climb|scale|leap|vault|pry|force|break\s+down|shatter|intimidate|threaten|seduce|outrun|evade|escape|dodge|pickpocket|steal)\b/;
+const EASY_INTENT_RE = /\b(open|close|shut|push|pull|lift|carry|walk|step|look|glance|listen|read|grab|drop|sit|stand|greet|ask|talk|enter|exit|wave|nod|point)\b/;
+function classifyIntentDc(intent) {
+  const text = String(intent || "").toLowerCase();
+  if (HARD_INTENT_RE.test(text)) {
+    return 16;
+  }
+  if (EASY_INTENT_RE.test(text)) {
+    return 8;
+  }
+  return 12;
+}
+
+// Governing-ability buckets: physical->STR, finesse->DEX, social->CHA,
+// knowledge->INT. Default INT (the catch-all "figure it out" check).
+const PHYSICAL_INTENT_RE = /\b(force|break|smash|bash|lift|carry|push|pull|shove|wrench|haul|climb|swim|grapple|drag|hold)\b/;
+const FINESSE_INTENT_RE = /\b(sneak|stealth|slip|hide|dodge|pick|lockpick|disarm|balance|tumble|aim|throw|juggle|steal|pickpocket|nimble|acrobat)\b/;
+const SOCIAL_INTENT_RE = /\b(persuade|convince|talk|deceive|lie|bluff|charm|seduce|intimidate|threaten|negotiate|barter|impress|perform|comfort|flatter)\b/;
+const KNOWLEDGE_INTENT_RE = /\b(recall|remember|identify|examine|inspect|analyze|study|research|decipher|read|investigate|search|recognize|understand|recount)\b/;
+function abilityFromIntent(intent) {
+  const text = String(intent || "").toLowerCase();
+  if (PHYSICAL_INTENT_RE.test(text)) {
+    return "strength";
+  }
+  if (FINESSE_INTENT_RE.test(text)) {
+    return "dexterity";
+  }
+  if (SOCIAL_INTENT_RE.test(text)) {
+    return "charisma";
+  }
+  if (KNOWLEDGE_INTENT_RE.test(text)) {
+    return "intelligence";
+  }
+  return "intelligence";
+}
 
 function result(errors) {
   return {
@@ -176,7 +212,7 @@ function abilityFromRecommendation(recommendation) {
   }
   if (SKILLS.includes(value)) {
     return {
-      ability: SKILL_TO_ABILITY[value] || "intelligence",
+      ability: SKILL_ABILITY[value] || "intelligence",
       skill: value
     };
   }
@@ -200,7 +236,7 @@ function defaultProviderOutput(input) {
   return {
     summary: `You attempt: ${intent}`,
     recommendedAbility,
-    dc: 10,
+    dc: classifyIntentDc(intent),
     advantage: false,
     disadvantage: false,
     successNarration: "The attempt works well enough for now.",
@@ -335,7 +371,7 @@ export function buildAttemptProviderInput(context, options = {}) {
     },
     outputContract: {
       summary: "string",
-      recommendedAbility: "strength|dexterity|constitution|intelligence|wisdom|charisma|investigation|perception|stealth|persuasion|insight|null",
+      recommendedAbility: `${[...ABILITIES, ...SKILLS].join("|")}|null`,
       dc: "number|null",
       advantage: "boolean",
       disadvantage: "boolean",
@@ -632,22 +668,25 @@ export function resolveAttemptAction(run, action, options = {}) {
   const providerInput = buildAttemptProviderInput(context, options);
   const providerResult = resolveProviderOutput(context, providerInput, options);
   const providerOutput = providerResult.output;
-  const recommendation = abilityFromRecommendation(providerOutput.recommendedAbility);
-  let checkResult = null;
-  let success = true;
-
-  if (recommendation && providerOutput.dc !== null && providerOutput.dc !== undefined) {
-    checkResult = resolveAbilityCheck(updatedRun, {
-      checkId: "attempt_check",
-      rulesetId: context.rulesetId,
-      ability: recommendation.ability,
-      skill: recommendation.skill,
-      dc: providerOutput.dc,
-      advantage: providerOutput.advantage === true,
-      disadvantage: providerOutput.disadvantage === true
-    }, options);
-    success = checkResult.ok === true && checkResult.success === true;
-  }
+  // Never silently auto-succeed an unjudged attempt. When the provider omits the
+  // ability/skill, fall back to an intent-derived ability (skill-less); when it
+  // omits the DC, fall back to an intent-derived DC. Either way we always roll a
+  // real check, so an attempt can fail even on a thin provider response.
+  const recommendation = abilityFromRecommendation(providerOutput.recommendedAbility)
+    || { ability: abilityFromIntent(context.intent), skill: null };
+  const checkDc = (providerOutput.dc !== null && providerOutput.dc !== undefined)
+    ? providerOutput.dc
+    : classifyIntentDc(context.intent);
+  const checkResult = resolveAbilityCheck(updatedRun, {
+    checkId: "attempt_check",
+    rulesetId: context.rulesetId,
+    ability: recommendation.ability,
+    skill: recommendation.skill,
+    dc: checkDc,
+    advantage: providerOutput.advantage === true,
+    disadvantage: providerOutput.disadvantage === true
+  }, options);
+  const success = checkResult.ok === true && checkResult.success === true;
 
   // Minimal failure-cost: a failed attempt drains a little HP (clamped at 0).
   const damage = success ? null : applyFailureDamage(updatedRun, FAILED_ATTEMPT_DAMAGE);
