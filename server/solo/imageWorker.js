@@ -38,32 +38,34 @@ let processing = false;
 const PORTRAIT_ART_DIRECTION =
   "fantasy portrait, painterly illustration, dramatic rim lighting, detailed face, upper body, plain dark background";
 
-// Player / character-creation portraits use a full-body composite suited to a
-// 5e character-sheet square. Kept SEPARATE from the shared NPC art direction
-// above on purpose: NPC portraits render as small thumbnails / VN busts where a
-// shrunk full-body reference sheet would make the face unreadable.
+// Player / character-creation portraits: a SINGLE subject in a SINGLE pose — NOT
+// a multi-pose "character reference sheet". The old reference-sheet / full-body +
+// face-inset composite literally produced turnaround sheets AND dragged in
+// fantasy-concept-art conventions that overrode the race descriptor (e.g. elf
+// ears on Humans). PLAYER_SINGLE_SUBJECT asserts one figure; PLAYER_NO_SHEET
+// negates the sheet behaviour. Both are part of every player art direction.
+const PLAYER_SINGLE_SUBJECT =
+  "single character portrait, one figure, centered, three-quarter view, single subject, head and upper body";
+const PLAYER_NO_SHEET =
+  "NOT a character reference sheet, NO multiple poses, NO multiple angles, NO duplicate figures, NO turnaround, single image only";
 const PLAYER_PORTRAIT_ART_DIRECTION =
-  "character reference sheet, full-body three-quarter side pose, face close-up inset top-right, " +
-  "painterly fantasy illustration, dramatic rim lighting, highly detailed, plain dark background";
+  `${PLAYER_SINGLE_SUBJECT}, painterly fantasy illustration, dramatic rim lighting, highly detailed, plain dark background, ${PLAYER_NO_SHEET}`;
 
 // Per-art-style base direction. generateImage() appends ", <style> style" as the
 // medium cue (providers.js); this base must AGREE with that cue instead of always
-// asserting "painterly illustration", which fights anime/cinematic runs. The
-// "illustrated" entry keeps the original strings verbatim; anime and cinematic
-// get matching bases. Applied to BOTH player and NPC portrait prompts.
+// asserting "painterly illustration", which fights anime/cinematic runs. Player
+// entries are single-subject (no reference sheet); NPC entries are single busts.
 const ART_STYLE_DIRECTION = {
   illustrated: { npc: PORTRAIT_ART_DIRECTION, player: PLAYER_PORTRAIT_ART_DIRECTION },
   anime: {
     npc: "anime portrait, clean line art, cel shaded, anime style, expressive face, upper body, plain background",
     player:
-      "character reference sheet, full-body three-quarter side pose, face close-up inset top-right, " +
-      "clean line art, cel shaded, anime style, expressive face, plain background"
+      `${PLAYER_SINGLE_SUBJECT}, clean line art, cel shaded, anime style, expressive face, plain background, ${PLAYER_NO_SHEET}`
   },
   cinematic: {
     npc: "cinematic character portrait, moody cinematic, film noir, high contrast, dramatic lighting, detailed face, upper body, dark background",
     player:
-      "character reference sheet, full-body three-quarter side pose, face close-up inset top-right, " +
-      "moody cinematic, film noir, high contrast, dramatic lighting, dark background"
+      `${PLAYER_SINGLE_SUBJECT}, moody cinematic, film noir, high contrast, dramatic lighting, dark background, ${PLAYER_NO_SHEET}`
   }
 };
 
@@ -204,7 +206,7 @@ const RACE_VISUAL_DESCRIPTORS = {
   // Only Elf and Half-Elf have pointed ears. Every other race explicitly states
   // "rounded human ears, NOT pointed elf ears" — the base model defaults humanoid
   // fantasy faces to elf ears otherwise (e.g. Aasimar rendering with elf ears).
-  human: "ordinary human, rounded human ears (NOT pointed elf ears), natural human features",
+  human: "ordinary human person, human rounded ears, absolutely NOT pointed elf ears, NOT fantasy elf features, natural human face",
   elf: "pointed ears, slender graceful build, ageless angular face",
   dwarf: "short and stocky, thick braided beard, broad rugged features, rounded human ears (NOT pointed elf ears)",
   halfling: "small in stature, youthful round face, curly hair, rounded human ears (NOT pointed elf ears)",
@@ -216,6 +218,10 @@ const RACE_VISUAL_DESCRIPTORS = {
   aasimar: "celestial human, rounded human ears (NOT pointed elf ears), luminous glowing eyes, radiant otherworldly skin, faint halo of light, human facial structure"
 };
 
+// The only races that should render with pointed ears. Every other race gets a
+// trailing "NOT pointed elf ears" emphasis in the player prompt (see below).
+const POINTED_EAR_RACES = new Set(["elf", "half-elf"]);
+
 function raceVisualDescriptor(race) {
   return RACE_VISUAL_DESCRIPTORS[String(race || "").trim().toLowerCase()] || "";
 }
@@ -225,6 +231,7 @@ export function buildPlayerPortraitPrompt(character = {}, world = {}) {
   const tone = isStr(world.tone) ? world.tone.trim() : "dark fantasy";
   // Express the race's visual identity, not just its name, so uncommon races
   // (Aasimar, Tiefling, Dragonborn, …) render distinctly.
+  const raceKey = String(c.race || "").trim().toLowerCase();
   const descriptor = c.race ? raceVisualDescriptor(c.race) : "";
   const racePart = c.race ? (descriptor ? `${c.race} (${descriptor})` : c.race) : null;
   const subject =
@@ -237,7 +244,13 @@ export function buildPlayerPortraitPrompt(character = {}, world = {}) {
     ]
       .filter(Boolean)
       .join(" ") || "wanderer";
-  return `character portrait of ${subject}, ${tone}, ${artStyleDirection(world.artStyle, "player")}`;
+  // Pointed ears belong ONLY to elves/half-elves. For every other race, repeat
+  // the negation as a trailing (heavily-weighted) clause so the descriptor in the
+  // subject can't be quietly overridden by the medium/style framing.
+  const earEmphasis = raceKey && !POINTED_EAR_RACES.has(raceKey)
+    ? ", human rounded ears, absolutely NOT pointed elf ears, NOT fantasy elf features"
+    : "";
+  return `character portrait of ${subject}, ${tone}, ${artStyleDirection(world.artStyle, "player")}${earEmphasis}`;
 }
 
 // Deterministic seed from name+race+class+artStyle so identical core choices
