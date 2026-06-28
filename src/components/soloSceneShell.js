@@ -523,6 +523,46 @@ function renderCheckResult(checkResult = null) {
   `;
 }
 
+// FIX R-UI: feature the dice roll + verdict for the action just taken, in the
+// MAIN scene flow — so a resolved attempt reads as "I did X → rolled Y vs DC Z →
+// (verdict)" instead of resolving silently in the side Recent Rolls panel. The
+// narrated prose outcome renders below in the GM/location panel; this surfaces
+// the roll that produced it. Server-authoritative and staleness-proof: shown
+// only when the most recent timeline event is an attempt, so a later move/search
+// never re-surfaces a stale roll. Returns "" otherwise. Reuses existing classes
+// (no new CSS rules) with shared :root accent vars applied inline.
+export function renderSoloActionOutcome(state = {}) {
+  const scene = state.scene || {};
+  const timeline = Array.isArray(scene.recentTimeline) ? scene.recentTimeline : [];
+  const last = timeline.length ? timeline[timeline.length - 1] : null;
+  if (!last || last.type !== "attempt") {
+    return "";
+  }
+  const outcome = scene.latestAttemptResult || state.attemptResult || null;
+  if (!outcome) {
+    return "";
+  }
+  const cr = outcome.checkResult || null;
+  const success = outcome.success === true;
+  const intent = String(outcome.intent || "Your action").trim() || "Your action";
+  const hasTotal = cr && cr.total !== undefined && cr.total !== null;
+  const hasDc = cr && cr.dc !== undefined && cr.dc !== null;
+  const rollLine = hasTotal
+    ? `<span class="solo-roll-total ${success ? "good" : "accent"}" style="font-size:22px;line-height:1;">${escapeHtml(cr.total)}</span>
+       <span class="small">${hasDc ? `Rolled ${escapeHtml(cr.total)} vs DC ${escapeHtml(cr.dc)}` : `Rolled ${escapeHtml(cr.total)}`}</span>`
+    : "";
+  return `
+    <div class="module-card solo-panel solo-action-outcome solo-attempt-result ${success ? "found" : "empty"}" role="status"
+         style="margin:4px 4px 10px;border-left:3px solid var(--accent, #c89a4b);">
+      <div class="solo-check-result" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        <span class="tag ${success ? "success" : "danger"}">${success ? "Success" : "Failure"}</span>
+        ${rollLine}
+      </div>
+      <p class="small" style="margin:6px 0 0;">You attempted: ${escapeHtml(intent)}</p>
+    </div>
+  `;
+}
+
 export function renderTalkResultPanel(talkResult = null) {
   return `
     <section class="module-card solo-panel solo-talk-panel">
@@ -1554,10 +1594,16 @@ export function renderSoloRightRail(state = {}) {
           const entityId = member.entityId || (member.npcId ? `npc:${member.npcId}` : "");
           const portraitUri = typeof member.portraitUri === "string" ? member.portraitUri : "";
           const initial = String(name).trim().slice(0, 1).toUpperCase() || "?";
+          const present = member.present !== false;
           const thumb = portraitUri
             ? `<img src="${escapeHtml(portraitUri)}" alt="${escapeHtml(name)}" />`
             : `<span class="solo-cast-thumb-pending" title="Crafting your portrait… (~20s)">${escapeHtml(initial)}</span>`;
           const away = member.present === false ? ` <span class="solo-cast-away">away</span>` : "";
+          // Present NPCs carry Talk/Inspect — the affordances the now-removed
+          // "Visible Entities" panel held, so entities live in ONE place. Reuses
+          // the existing data-solo-action delegation (no handler change) and the
+          // .solo-cast-bringback button styling (no new CSS). Bring back stays for
+          // everyone.
           return `
             <div class="solo-cast-card">
               <div class="solo-cast-thumb" data-portrait-for="${escapeHtml(entityId)}">${thumb}</div>
@@ -1565,7 +1611,15 @@ export function renderSoloRightRail(state = {}) {
                 <div class="solo-cast-name">${escapeHtml(name)}${away}</div>
                 <div class="solo-cast-role">${escapeHtml(role)}</div>
               </div>
-              <button type="button" class="solo-cast-bringback" data-solo-npc-bringback data-entity-id="${escapeHtml(entityId)}">Bring back</button>
+              <div class="solo-cast-actions" style="display:flex;flex-direction:column;gap:4px;">
+                ${
+                  present
+                    ? `<button type="button" class="solo-cast-bringback" data-solo-action="talk" data-entity-id="${escapeHtml(entityId)}">Talk</button>
+                       <button type="button" class="solo-cast-bringback" data-solo-action="inspect" data-entity-id="${escapeHtml(entityId)}">Inspect</button>`
+                    : ""
+                }
+                <button type="button" class="solo-cast-bringback" data-solo-npc-bringback data-entity-id="${escapeHtml(entityId)}">Bring back</button>
+              </div>
             </div>`;
         })
         .join("")
@@ -1598,6 +1652,9 @@ export function renderSoloRightRail(state = {}) {
       <div class="solo-rail-block">
         <div class="solo-stat-kicker">Cast</div>
         <div class="solo-cast-list">${cast}</div>
+      </div>
+      <div class="solo-rail-block">
+        ${renderMovementPanel(scene)}
       </div>
       <div class="solo-rail-block">
         ${renderSearchResultPanel(state.searchResult, scene.discoveredDetails)}
@@ -1880,7 +1937,6 @@ export function renderSoloSceneShell(state = {}) {
 
   const scene = state.scene || {};
   const location = scene.location || {};
-  const selectedEntityId = state.detail?.entity?.entityId || state.detail?.entityId || "";
   const selectedGmMode = state.gmMode || "placeholder";
   // GM provider/fallback status panel is debug-only (hidden from beta players).
   const debug = state.debug === true;
@@ -1941,10 +1997,11 @@ export function renderSoloSceneShell(state = {}) {
             ${panel(
               "scene",
               `
-                <div class="solo-scene-layout">
+                <div class="solo-scene-layout" style="grid-template-columns: minmax(0, 1fr);">
                   <div class="solo-scene-center">
                     ${typeof scene.openingNarration === "string" && scene.openingNarration.trim() ? renderSoloSceneOpening(scene.openingNarration) : ""}
                     ${renderSoloSceneArt(scene.locationImageUri, { locked: scene.locationImageLocked })}
+                    ${renderSoloActionOutcome(state)}
                     ${renderLocationPanel(
                       location,
                       scene.gmNarration,
@@ -1959,10 +2016,6 @@ export function renderSoloSceneShell(state = {}) {
                         : ""
                     }
                     ${renderSoloSceneInputBar(state)}
-                  </div>
-                  <div class="solo-scene-npc">
-                    ${renderEntityPanel(scene, selectedEntityId)}
-                    ${renderMovementPanel(scene)}
                   </div>
                 </div>
               `

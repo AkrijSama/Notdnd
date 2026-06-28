@@ -613,12 +613,23 @@ export function copyDraftPortraitToRun(draftId, runId) {
   }
 }
 
-// Fallback prompt when the caller did not supply one: location name + world
-// tone, as a wide establishing shot with no people.
+// Shared art direction for location backgrounds. These render into the wide
+// scene banner (3:2, matching LANDSCAPE_DIMENSIONS), so they must compose AS a
+// backdrop the scene sits in front of — a wide cinematic establishing shot,
+// not a centered subject. Appended to every location prompt in
+// runLocationImageJob so the composition holds whether the prompt came from the
+// caller or the fallback below.
+const LOCATION_ART_DIRECTION =
+  "wide cinematic establishing shot, landscape orientation, environmental scene, " +
+  "atmospheric depth, background backdrop, no people, no characters";
+
+// Fallback subject when the caller did not supply a prompt: just location name +
+// world tone. The establishing-shot composition is added by LOCATION_ART_DIRECTION
+// in runLocationImageJob, so it is intentionally not repeated here.
 function buildLocationPromptFallback(run, location, locationId) {
   const name = location && typeof location.name === "string" && location.name ? location.name : locationId;
   const tone = run?.world?.tone || "dark fantasy";
-  return `${name}, ${tone}, atmospheric, wide establishing shot, no people`;
+  return `${name}, ${tone}`;
 }
 
 /**
@@ -652,7 +663,11 @@ export async function runLocationImageJob(job = {}) {
   const location = run?.locations?.[locationId] || null;
   const style = job.style ? String(job.style).trim() : "";
   const seed = Number.isFinite(Number(job.seed)) ? Number(job.seed) : null;
-  const prompt = String(job.basePrompt || buildLocationPromptFallback(run, location, locationId)).trim();
+  // Compose FOR the wide banner: the subject (caller prompt or fallback) plus the
+  // shared establishing-shot art direction, so the result reads as a backdrop
+  // rather than a centered subject.
+  const subject = String(job.basePrompt || buildLocationPromptFallback(run, location, locationId)).trim();
+  const prompt = subject ? `${subject}, ${LOCATION_ART_DIRECTION}` : LOCATION_ART_DIRECTION;
   // Filesystem-safe folder segment for this location's assets.
   const folder = `location_${locationId}`;
 
