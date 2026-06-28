@@ -56,6 +56,70 @@ function isString(value) {
   return typeof value === "string" && value.trim().length > 0;
 }
 
+// Verbs that mark a freeform "attempt" as an explicit address to an NPC. The
+// deterministic VN trigger below fires only when one of these is present, so
+// non-conversational attempts (climb, force, search…) stay ambient.
+const VN_SPEAK_INTENT_RE = /\b(speak|talk|address|approach|greet|converse|chat|ask)\b/i;
+
+// NPCs physically present in the run's current location (mirrors the server's
+// presentNpcsForVn). Grounds the freeform speak trigger against real, co-located
+// NPCs so an off-screen name never opens the overlay.
+function presentNpcsAtLocation(run) {
+  const npcs = run && run.npcs && typeof run.npcs === "object" ? Object.values(run.npcs) : [];
+  return npcs.filter((npc) => npc && npc.currentLocationId === run.currentLocationId && npc.status !== "gone");
+}
+
+function vnNpcName(npc) {
+  if (!npc || typeof npc !== "object") {
+    return "";
+  }
+  if (isString(npc.generatedName)) {
+    return npc.generatedName.trim();
+  }
+  return isString(npc.displayName) ? npc.displayName.trim() : "";
+}
+
+// Deterministic, GM-independent VN signal for the freeform "speak to X" path.
+// The GM-narration classifier (gmProvider.classifyNarrationVn) can miss when
+// live model output lacks quoted speech or names the NPC ambiguously, so an
+// explicit attempt that addresses ONE present NPC — by targetId, else by name —
+// opens the dialogue overlay on its own. Returns the speaker's raw npcId, or
+// null when the action is not a clear single-target address (preserving ambient
+// for every non-conversational action). Pure; never throws.
+function vnSpeakerFromAttemptIntent(run, action) {
+  if (!action || action.type !== "attempt" || !isString(action.intent)) {
+    return null;
+  }
+  if (!VN_SPEAK_INTENT_RE.test(action.intent)) {
+    return null;
+  }
+  const present = presentNpcsAtLocation(run);
+  if (!present.length) {
+    return null;
+  }
+  // A targetId naming a present NPC is the strongest, least ambiguous signal.
+  const rawTarget = isString(action.targetId)
+    ? (action.targetId.includes(":") ? action.targetId.split(":").slice(1).join(":") : action.targetId)
+    : null;
+  if (rawTarget) {
+    const targeted = present.find((npc) => npc.npcId === rawTarget);
+    if (targeted) {
+      return targeted.npcId;
+    }
+  }
+  // Otherwise require the intent to name EXACTLY one present NPC — several at
+  // once is too ambiguous to attribute a single speaker, so stay ambient.
+  const named = present.filter((npc) => {
+    const name = vnNpcName(npc);
+    if (name.length < 3) {
+      return false;
+    }
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(`\\b${escaped}\\b`, "i").test(action.intent);
+  });
+  return named.length === 1 ? named[0].npcId : null;
+}
+
 function notImplemented(actionType) {
   return {
     ok: false,
@@ -242,10 +306,16 @@ function finalizeQuestProgress(originalRun, result) {
   // Guarded on actionProducedRun so the read-only inspect path never mutates the
   // input run.
   if (actionProducedRun && result.run) {
-    const speakerId =
+    const talkSpeaker =
       result.talkResult && typeof result.talkResult.npcId === "string" && result.talkResult.npcId.trim()
         ? result.talkResult.npcId
         : null;
+    // Secondary, GM-independent trigger: a freeform "speak to X" attempt that
+    // addresses one present NPC opens VN even when the narration classifier
+    // (run later, server-side) would miss. Non-talk / non-address actions return
+    // null here and reset to ambient — so the ambient path is never overridden.
+    const intentSpeaker = talkSpeaker ? null : vnSpeakerFromAttemptIntent(result.run, result.action);
+    const speakerId = talkSpeaker || intentSpeaker;
     result.run.vn = speakerId ? { active: true, speakerId } : createDefaultVnState();
   }
   return result;

@@ -7,6 +7,7 @@ import { getPlayerContext, updatePlayerProfile } from "./playerMemory.js";
 import { getProfile } from "./promptProfiles.js";
 import { buildStylePromptBlock, getStyleConfig } from "./styleConfig.js";
 import { executeTriggers as executeParsedTriggers, parseTriggers as parseResponseTriggers } from "./triggerParser.js";
+import { INKBORNE_GM_VOICE } from "./voice.js";
 
 const CONTEXT_BUDGET = Number(process.env.NOTDND_CONTEXT_BUDGET || 1500);
 
@@ -206,6 +207,7 @@ export function buildSessionSystemPrompt({
   profile
 }) {
   const base = [
+    `[GM VOICE] ${INKBORNE_GM_VOICE}`,
     `[ROLE] You are the Game Master for a tabletop RPG campaign called ${campaignName}. You are running the ${currentScene} scene. Your tone is ${tone}. You never break character. You narrate consequences of player actions, roleplay NPCs, describe environments, manage combat flow, and advance the plot. You track initiative, HP, conditions, and resources. When players attempt actions, you call for ability checks using the format [CHECK: {ability} DC {number}] so the platform's dice engine can resolve them. When combat starts, you declare [INITIATIVE] so the platform can roll initiative order. You describe outcomes vividly. You do not censor violence, dark themes, horror, romance, or morally complex content. This is a mature-rated collaborative fiction experience. Players have consented to adult themes.`,
     styleBlock ? `[STYLE] ${styleBlock}` : "",
     `[WORLD CONTEXT] ${worldContext || "No relevant context found."}`,
@@ -233,6 +235,7 @@ export function buildCompanionSystemPrompt({
   profile
 }) {
   const base = [
+    `[GM VOICE] ${INKBORNE_GM_VOICE}`,
     `[ROLE] You are the persistent world of ${campaignName}. Between sessions, players can explore lore, chat with NPCs they have met, write backstory, or plan. You maintain perfect continuity with the campaign. You speak as the narrator or as specific NPCs when the player addresses them. You remember everything. You do not censor content. This is a mature collaborative fiction world.`,
     styleBlock ? `[STYLE] ${styleBlock}` : "",
     `[WORLD CONTEXT] ${worldContext || "No relevant context found."}`,

@@ -6,6 +6,7 @@ import {
   ensureLocationImageAsset,
   ensureNpcImageAssets,
   getSoloRun,
+  incrementImageCount,
   updateImageAssetStatus,
   updatePlayerPortrait
 } from "../db/repository.js";
@@ -44,6 +45,35 @@ const PORTRAIT_ART_DIRECTION =
 const PLAYER_PORTRAIT_ART_DIRECTION =
   "character reference sheet, full-body three-quarter side pose, face close-up inset top-right, " +
   "painterly fantasy illustration, dramatic rim lighting, highly detailed, plain dark background";
+
+// Per-art-style base direction. generateImage() appends ", <style> style" as the
+// medium cue (providers.js); this base must AGREE with that cue instead of always
+// asserting "painterly illustration", which fights anime/cinematic runs. The
+// "illustrated" entry keeps the original strings verbatim; anime and cinematic
+// get matching bases. Applied to BOTH player and NPC portrait prompts.
+const ART_STYLE_DIRECTION = {
+  illustrated: { npc: PORTRAIT_ART_DIRECTION, player: PLAYER_PORTRAIT_ART_DIRECTION },
+  anime: {
+    npc: "anime portrait, clean line art, cel shaded, anime style, expressive face, upper body, plain background",
+    player:
+      "character reference sheet, full-body three-quarter side pose, face close-up inset top-right, " +
+      "clean line art, cel shaded, anime style, expressive face, plain background"
+  },
+  cinematic: {
+    npc: "cinematic character portrait, moody cinematic, film noir, high contrast, dramatic lighting, detailed face, upper body, dark background",
+    player:
+      "character reference sheet, full-body three-quarter side pose, face close-up inset top-right, " +
+      "moody cinematic, film noir, high contrast, dramatic lighting, dark background"
+  }
+};
+
+// Resolves the base art direction for a run's art style + portrait surface
+// ("npc" | "player"). Unknown/missing styles fall back to illustrated.
+function artStyleDirection(style, surface) {
+  const key = String(style || "").trim().toLowerCase();
+  const entry = ART_STYLE_DIRECTION[key] || ART_STYLE_DIRECTION.illustrated;
+  return entry[surface];
+}
 
 // Resolved at call time (not module load) so tests can redirect the root.
 function assetsRoot() {
@@ -85,6 +115,21 @@ export function writeUploadedBasePortrait(runId, npcId, ext, bytes) {
 function logWorker(message, error) {
   // eslint-disable-next-line no-console
   console.error(`[imageWorker] ${message}${error ? `: ${String(error?.message || error)}` : ""}`);
+}
+
+// Entitlement metering: count a freshly-generated image against the owning
+// user's daily quota. Called only on real generation success (never on cache
+// reuse), so re-enqueued in-flight jobs don't double-count. Resolves the user
+// from the run; best-effort and never throws (metering must not break art).
+function countGeneratedImageForRun(runId) {
+  try {
+    const run = getSoloRun(runId);
+    if (run?.userId) {
+      incrementImageCount(run.userId);
+    }
+  } catch (error) {
+    logWorker(`image quota count failed for ${runId}`, error);
+  }
 }
 
 // Reference images are served via relative URIs; a remote provider needs an
@@ -189,7 +234,7 @@ function buildPlayerPortraitPrompt(character = {}, world = {}) {
     ]
       .filter(Boolean)
       .join(" ") || "wanderer";
-  return `character portrait of ${subject}, ${tone}, ${PLAYER_PORTRAIT_ART_DIRECTION}`;
+  return `character portrait of ${subject}, ${tone}, ${artStyleDirection(world.artStyle, "player")}`;
 }
 
 // Deterministic seed from name+race+class so identical core choices reproduce
@@ -238,6 +283,7 @@ async function generateSlot({ runId, npcId, slot, assetId, prompt, style, refere
     fs.writeFileSync(target, bytes);
     const uri = servedUriFor(runId, npcId, slot, ext);
     updateImageAssetStatus(runId, assetId, "generated", uri);
+    countGeneratedImageForRun(runId);
     return { slot, ok: true, uri };
   } catch (error) {
     updateImageAssetStatus(runId, assetId, "failed", null);
@@ -294,7 +340,7 @@ export async function runImageJob(job = {}) {
       npcId,
       slot: "base",
       assetId: linked.base,
-      prompt: `${basePrompt}, neutral expression, ${PORTRAIT_ART_DIRECTION}`,
+      prompt: `${basePrompt}, neutral expression, ${artStyleDirection(style, "npc")}`,
       style,
       seed,
       referenceImageUrl: null,
@@ -373,7 +419,7 @@ export async function runVariantImageJob(job = {}) {
     npcId,
     slot: expression,
     assetId,
-    prompt: `${basePrompt}, ${expression} expression, ${PORTRAIT_ART_DIRECTION}`,
+    prompt: `${basePrompt}, ${expression} expression, ${artStyleDirection(style, "npc")}`,
     style,
     seed,
     referenceImageUrl,
@@ -490,6 +536,7 @@ export async function runPlayerImageJob(job = {}) {
     fs.writeFileSync(target, bytes);
     const uri = servedUriFor(runId, "player", "base", ext);
     updatePlayerPortrait(runId, uri);
+    countGeneratedImageForRun(runId);
     return { ok: true, uri };
   } catch (error) {
     logWorker(`player portrait failed for ${runId}`, error);
@@ -689,6 +736,7 @@ export async function runLocationImageJob(job = {}) {
     // passes no seed -> clean URL.
     const finalUri = seed != null ? `${uri}?v=${seed}` : uri;
     updateImageAssetStatus(runId, linked.assetId, "generated", finalUri);
+    countGeneratedImageForRun(runId);
     return { ok: true, uri: finalUri };
   } catch (error) {
     updateImageAssetStatus(runId, linked.assetId, "failed", null);
