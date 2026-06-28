@@ -2205,8 +2205,10 @@ button:disabled {
 .solo-scene-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) clamp(280px, 22vw, 360px);
-  min-height: 0;
-  height: 100%;
+  /* Fill the scene panel but GROW with content rather than locking to its exact
+     height. The scene tab panel owns the scroll (overflow-y:auto), so a tall
+     column scrolls there instead of crushing the location copy to fit. */
+  min-height: 100%;
 }
 .solo-scene-center {
   display: flex;
@@ -2287,24 +2289,23 @@ button:disabled {
 .solo-scene-opening p:last-child {
   margin-bottom: 0;
 }
-/* Location copy is the flexible middle band; the input bar pins to the bottom. */
+/* Location copy sits at its NATURAL height so it always reads at full size — it
+   must never collapse into a scrolling sliver. The input bar still pins to the
+   bottom (margin-top:auto) when the column is short; when content is tall, the
+   scene tab panel scrolls and the input is reached by scrolling. */
 .solo-scene-center .solo-location-card {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
+  flex: 0 0 auto;
   display: block;
 }
 .solo-scene-center .solo-location-copy h3 {
   font-family: var(--font-display, Georgia, serif);
   color: var(--text-bright, #f0e6d4);
 }
-/* Narrative is capped to ~4 lines so it never pushes the input off-screen. */
+/* Narrative reads in full now that the scene panel scrolls — no line clamp, so
+   "Data Den / You're inside…" shows at a readable size instead of a few lines. */
 .solo-scene-center .solo-location-copy > p,
 .solo-scene-center .solo-gm-narration p {
-  display: -webkit-box;
-  -webkit-line-clamp: 4;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+  line-height: 1.6;
 }
 .solo-scene-center .solo-scene-input {
   flex: none;
@@ -3197,6 +3198,86 @@ button:disabled {
   display: flex;
   justify-content: center;
 }
+
+/* Home dashboard zone/grid. Default (narrow + standard laptops) = the single
+   centered primary column, exactly as before; the reserved zones are hidden. */
+.solo-home-dashboard {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+.solo-home-zone {
+  display: none;
+}
+
+/* Wide / ultrawide ( >=1400px ): compose a framed dashboard. The primary play
+   column KEEPS its readable width (the fixed 760 track); flexible reserved rails
+   flank it and a shelf spans beneath, turning the previously-empty leather into
+   intentional, framed negative space — "room to grow", not a column floating in
+   black. On true ultrawide the page's leather backdrop frames the whole cluster.
+   :root tokens only, with literal fallbacks (no phantom vars). */
+@media (min-width: 1400px) {
+  .solo-home-dashboard {
+    display: grid;
+    grid-template-columns: minmax(220px, 1fr) minmax(0, 760px) minmax(220px, 1fr);
+    grid-template-areas:
+      "rail-left primary rail-right"
+      "shelf     shelf   shelf";
+    gap: clamp(18px, 1.8vw, 32px);
+    align-items: stretch;
+  }
+  .solo-home-dashboard > .solo-home { grid-area: primary; }
+  .solo-home-zone-left { grid-area: rail-left; }
+  .solo-home-zone-right { grid-area: rail-right; }
+  .solo-home-zone-shelf { grid-area: shelf; }
+
+  .solo-home-zone {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: clamp(20px, 2vw, 32px);
+    border-radius: var(--radius-lg, 20px);
+    border: 1px dashed var(--border-strong, #3d2d1f);
+    color: var(--text-muted, #94856f);
+    /* Composed leather: grain + faint gilt head-sheen + a debossed well, matching
+       the primary tome but quieter so it reads as reserved, framed space. */
+    background:
+      var(--leather-grain),
+      radial-gradient(130% 80% at 50% -20%, rgba(216, 180, 106, 0.06), transparent 60%),
+      linear-gradient(168deg, rgba(30, 23, 20, 0.55), rgba(10, 7, 6, 0.55));
+    background-size: 160px 160px, auto, auto;
+    box-shadow:
+      inset 0 0 0 1px var(--gold-edge, rgba(216, 180, 106, 0.16)),
+      inset 0 2px 40px rgba(0, 0, 0, 0.5);
+  }
+  .solo-home-zone-shelf {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: flex-start;
+    gap: 6px 16px;
+    min-height: 116px;
+    text-align: left;
+  }
+  .solo-home-zone-kicker {
+    font-family: var(--font-display, 'Cinzel', Georgia, serif);
+    font-size: 13px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--text-2, #b6a589);
+  }
+  .solo-home-zone-note {
+    font-size: 12.5px;
+    font-style: italic;
+    line-height: 1.5;
+    color: var(--text-muted, #94856f);
+    max-width: 34ch;
+  }
+}
+
 .solo-home {
   position: relative;
   isolation: isolate;

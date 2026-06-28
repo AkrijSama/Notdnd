@@ -208,32 +208,53 @@ function renderSoloHome(state) {
     activeRuns.find((run) => run.runId === uiState.resumeRunId) || activeRuns[0] || null;
   const pastRuns = runs.filter((run) => run !== continueRun);
 
+  // The home is a ZONE/GRID dashboard, not a lone column. The primary play column
+  // (.solo-home) keeps its current readable width; on wide/ultrawide viewports the
+  // reserved zones below FRAME the otherwise-empty leather so the space reads as
+  // "a dashboard with room to grow" rather than a narrow column floating in black.
+  // These zones are decorative placeholders for future modules (featured worlds,
+  // dispatches/news, story templates) — aria-hidden, and collapsed on narrow
+  // screens (see .solo-home-zone display rules in styles.css). No real content yet.
   return `
     <main class="panel main solo-home-main">
-      <section class="solo-home">
-        <div class="solo-home-hero">
-          <h2>Your adventures</h2>
-          <p class="small">Step back into a world, or begin a new one.</p>
+      <div class="solo-home-dashboard">
+        <aside class="solo-home-zone solo-home-zone-rail solo-home-zone-left" aria-hidden="true">
+          <span class="solo-home-zone-kicker">Featured Worlds</span>
+          <span class="solo-home-zone-note">Curated worlds to drop straight into — coming soon.</span>
+        </aside>
+        <section class="solo-home">
+          <div class="solo-home-hero">
+            <h2>Your adventures</h2>
+            <p class="small">Step back into a world, or begin a new one.</p>
+          </div>
+          ${
+            continueRun
+              ? `<div class="solo-home-continue">${renderSoloRunCard(continueRun, { primary: true })}</div>`
+              : ""
+          }
+          <div class="solo-home-start">
+            <button data-action="start-new-adventure">Start a New Adventure</button>
+          </div>
+          ${
+            pastRuns.length > 0
+              ? `<section class="solo-home-past">
+                   <h3>Past adventures</h3>
+                   <div class="solo-home-run-list">
+                     ${pastRuns.map((run) => renderSoloRunCard(run)).join("")}
+                   </div>
+                 </section>`
+              : ""
+          }
+        </section>
+        <aside class="solo-home-zone solo-home-zone-rail solo-home-zone-right" aria-hidden="true">
+          <span class="solo-home-zone-kicker">Dispatches</span>
+          <span class="solo-home-zone-note">Release notes and world news — coming soon.</span>
+        </aside>
+        <div class="solo-home-zone solo-home-zone-shelf" aria-hidden="true">
+          <span class="solo-home-zone-kicker">Story Templates</span>
+          <span class="solo-home-zone-note">Ready-made premises and one-shots to spin up fast — coming soon.</span>
         </div>
-        ${
-          continueRun
-            ? `<div class="solo-home-continue">${renderSoloRunCard(continueRun, { primary: true })}</div>`
-            : ""
-        }
-        <div class="solo-home-start">
-          <button data-action="start-new-adventure">Start a New Adventure</button>
-        </div>
-        ${
-          pastRuns.length > 0
-            ? `<section class="solo-home-past">
-                 <h3>Past adventures</h3>
-                 <div class="solo-home-run-list">
-                   ${pastRuns.map((run) => renderSoloRunCard(run)).join("")}
-                 </div>
-               </section>`
-            : ""
-        }
-      </section>
+      </div>
     </main>
   `;
 }
