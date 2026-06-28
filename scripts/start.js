@@ -62,6 +62,16 @@ for (const sig of ["SIGTERM", "SIGINT"]) {
     shuttingDown = true;
     if (child && !child.killed) {
       child.kill(sig);
+      // Escalate: if the child doesn't exit within the grace window (e.g. a hung
+      // graceful-shutdown handler blocking on server.close()), force-kill it so
+      // it can never leave the port held. unref so this timer never keeps the
+      // supervisor alive on its own.
+      const force = setTimeout(() => {
+        if (child && !child.killed) {
+          child.kill("SIGKILL");
+        }
+      }, 5000);
+      force.unref();
     }
   });
 }
