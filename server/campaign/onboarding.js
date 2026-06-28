@@ -473,6 +473,11 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
   const customContent = normalizeContentForBuild(listUserHomebrew(actorUserId));
   const built = buildCharacter(character, { customContent });
   run.player = toRunPlayer(built, run.player);
+  // toRunPlayer sets pronouns to null when the player left the (optional) field
+  // blank; default to he/him (owner default) so the GM is never left guessing.
+  if (typeof run.player.pronouns !== "string" || !run.player.pronouns.trim()) {
+    run.player.pronouns = "he/him";
+  }
 
   // Record provenance: if the character used any custom content, mark the run's
   // ruleset as "custom" (additive — vanilla characters keep the default ruleset).

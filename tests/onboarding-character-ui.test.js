@@ -26,6 +26,15 @@ test("step 1 (Identity) renders name/pronouns/portrait + progress", () => {
   assert.match(html, /data-cw-next/);
 });
 
+test("Identity pronouns field defaults to he/him", () => {
+  // Unset pronouns -> the field shows he/him as the default (owner default).
+  const html = wizard({ step: 1 });
+  assert.match(html, /data-cw-input="pronouns"[^>]*value="he\/him"/);
+  // A chosen value still wins (she/her / they/them remain selectable).
+  const she = wizard({ step: 1, pronouns: "she/her" });
+  assert.match(she, /data-cw-input="pronouns"[^>]*value="she\/her"/);
+});
+
 test("step 2 (Race) renders all races as selectable cards", () => {
   const html = wizard({ step: 2, race: "Dwarf" });
   assert.match(html, /data-cw-race="Dwarf"/);

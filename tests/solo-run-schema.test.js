@@ -187,6 +187,18 @@ test("createDefaultSoloRun defaults to mainline", () => {
   assert.equal(validateSoloRun(run).ok, true);
 });
 
+test("createDefaultSoloRun defaults player pronouns to he/him", () => {
+  const run = createDefaultSoloRun({ runId: "run_pronoun_default" });
+  assert.equal(run.player.pronouns, "he/him");
+  assert.equal(validateSoloRun(run).ok, true);
+});
+
+test("createDefaultSoloRun honors an explicit pronouns option", () => {
+  const run = createDefaultSoloRun({ runId: "run_pronoun_opt", pronouns: "she/her" });
+  assert.equal(run.player.pronouns, "she/her");
+  assert.equal(validateSoloRun(run).ok, true);
+});
+
 test("validateSoloRun accepts edition mainline", () => {
   const run = createDefaultSoloRun({ runId: "run_mainline" });
   run.edition = "mainline";

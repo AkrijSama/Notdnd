@@ -11,6 +11,30 @@ import { INKBORNE_GM_VOICE } from "./voice.js";
 
 const CONTEXT_BUDGET = Number(process.env.NOTDND_CONTEXT_BUDGET || 1500);
 
+// Minimum response-token budget for NARRATIVE GM calls. Reasoning models (e.g.
+// gemini-2.5-flash, the current default) spend a large, variable share of the
+// response budget on internal thinking before emitting any prose. The per-model
+// prompt profiles cap responses at ~400-600 tokens, which the thinking can
+// consume entirely — the model then returns truncated or EMPTY narration
+// (finish_reason "length"), so a resolved action (e.g. a rolled success) shows
+// no narrated outcome. max_tokens is a ceiling, not a target: the model stops
+// when done, so a generous floor adds no cost on a short answer but leaves room
+// for thinking + a full beat. Tunable via env for operators on non-reasoning
+// models. Only RAISES the budget (never lowers an explicit higher override).
+export const NARRATIVE_MIN_RESPONSE_TOKENS = Math.max(
+  256,
+  Number(process.env.INKBORNE_GM_MIN_RESPONSE_TOKENS ?? process.env.NOTDND_GM_MIN_RESPONSE_TOKENS ?? 2048)
+);
+
+// Returns call options with maxResponseTokens floored to NARRATIVE_MIN_RESPONSE_TOKENS
+// (never lowered). Applied only to narrative calls — utility/summarization calls
+// keep their tighter budgets.
+export function withNarrativeTokenFloor(options = {}) {
+  const current = Number(options?.maxResponseTokens);
+  const floored = Number.isFinite(current) ? Math.max(current, NARRATIVE_MIN_RESPONSE_TOKENS) : NARRATIVE_MIN_RESPONSE_TOKENS;
+  return { ...options, maxResponseTokens: floored };
+}
+
 function summarizeCharacters(characters = []) {
   return characters
     .map((character) => {
@@ -176,10 +200,13 @@ function applyStyleModelOverrides(options, styleConfig) {
 }
 
 async function callNarrativeModel(messages, campaignId, resolvedModel, modelTiers, options) {
+  // Floor the response budget so a reasoning model isn't starved of room to
+  // narrate after its internal thinking (see NARRATIVE_MIN_RESPONSE_TOKENS).
+  const floored = withNarrativeTokenFloor(options);
   if (resolvedModel === modelTiers.narrative) {
-    return generateNarrative(messages, campaignId, options);
+    return generateNarrative(messages, campaignId, floored);
   }
-  return generateRaw(messages, resolvedModel, campaignId, options);
+  return generateRaw(messages, resolvedModel, campaignId, floored);
 }
 
 async function callUtilityModel(messages, campaignId, resolvedModel, modelTiers, options) {

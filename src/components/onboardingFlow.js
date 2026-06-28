@@ -184,8 +184,8 @@ function renderCharIdentity(c, portrait = {}) {
       <div class="onb-identity-fields">
         <div class="onb-field"><label>Character name</label>
           <input data-cw-input="name" maxlength="60" placeholder="Ser Rowan Vale" value="${esc(c.name || "")}" /></div>
-        <div class="onb-field"><label>Pronouns (optional)</label>
-          <input data-cw-input="pronouns" maxlength="30" placeholder="they/them" value="${esc(c.pronouns || "")}" /></div>
+        <div class="onb-field"><label>Pronouns</label>
+          <input data-cw-input="pronouns" maxlength="30" placeholder="he/him" value="${esc(c.pronouns || "he/him")}" /></div>
         <div class="onb-field"><label>Portrait</label>
           <div class="onb-chips">
             ${renderChip("Let the GM imagine them", mode === "generate", 'data-cw-portraitmode="generate"')}

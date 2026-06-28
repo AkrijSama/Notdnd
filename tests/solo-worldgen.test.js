@@ -118,6 +118,8 @@ test("createWorldOnboardingRun builds a run from world + character", async () =>
   assert.equal(run.player.displayName, "Kael");
   assert.equal(run.player.character.race, "Elf");
   assert.equal(run.player.character.class, "Ranger");
+  // FIX C: a blank pronouns field defaults to he/him (owner default).
+  assert.equal(run.player.pronouns, "he/him");
 
   const contact = run.npcs.npc_start_contact;
   assert.ok(contact, "starting contact created");
@@ -127,4 +129,25 @@ test("createWorldOnboardingRun builds a run from world + character", async () =>
   // Opening narration is generated + stored so the player reads real prose on
   // entry (mock GM under NOTDND_MOCK_OPENROUTER, else the location fallback).
   assert.ok(typeof run.narration === "string" && run.narration.trim().length > 0, "opening narration stored");
+});
+
+test("createWorldOnboardingRun honors an explicit pronoun choice", async () => {
+  initializeDatabase();
+  resetDatabase();
+  const { user } = registerUser({ email: "pronoun@notdnd.local", password: "password123", displayName: "Pronoun Tester" });
+
+  const result = await createWorldOnboardingRun(user.id, {
+    world: { name: "Realm", tone: "grimdark", startingLocationName: "Gate", startingLocationType: "city gate", flavor: "rust" },
+    character: {
+      name: "Mira",
+      pronouns: "she/her",
+      race: "Human",
+      characterClass: "Fighter",
+      background: "Soldier",
+      baseAbilityScores: { strength: 15, dexterity: 12, constitution: 14, intelligence: 10, wisdom: 11, charisma: 8 }
+    }
+  });
+
+  const run = getSoloRun(result.runId);
+  assert.equal(run.player.pronouns, "she/her", "explicit pronouns are preserved, not overwritten by the default");
 });

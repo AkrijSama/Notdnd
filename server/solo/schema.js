@@ -1135,6 +1135,10 @@ export function createDefaultSoloRun(options = {}) {
     player: {
       playerId,
       displayName: isString(options.displayName) ? options.displayName : "Player",
+      // Default pronouns to he/him (owner default). Overridden when the player
+      // picks otherwise in the Identity step; the GM is told these so it never
+      // has to guess (see gmProvider/voice).
+      pronouns: isString(options.pronouns) ? options.pronouns : "he/him",
       level: 1,
       health: 10,
       maxHealth: 10,
