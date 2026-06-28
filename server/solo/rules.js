@@ -1,4 +1,5 @@
 import { SKILLS as SRD_SKILL_ABILITIES } from "./dndData.js";
+import { abilityModifier, rollD20 } from "../rules/dice.js";
 
 export const RULESET_IDS = ["notdnd_basic", "5e_srd", "custom"];
 export const ABILITIES = ["strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma"];
@@ -50,20 +51,11 @@ function safeNumber(value, fallback = 0) {
   return isNumber(value) ? value : fallback;
 }
 
-export function resolveAbilityModifier(score) {
-  return Math.floor((Number(score) - 10) / 2);
-}
-
-export function rollD20(options = {}) {
-  if (Number.isInteger(options.fixedRoll)) {
-    return Math.min(20, Math.max(1, options.fixedRoll));
-  }
-  if (Array.isArray(options.fixedRolls) && Number.isInteger(options.fixedRolls[0])) {
-    return Math.min(20, Math.max(1, options.fixedRolls.shift()));
-  }
-  const rng = typeof options.rng === "function" ? options.rng : Math.random;
-  return Math.floor(rng() * 20) + 1;
-}
+// Re-exported from the shared dice primitive (../rules/dice.js) under their
+// historical names so existing importers (tests, attempt.js) are unaffected.
+// resolveAbilityModifier is the solo-side name for the shared abilityModifier.
+export { rollD20 };
+export const resolveAbilityModifier = abilityModifier;
 
 export function validateAbilityCheck(check) {
   const errors = [];
