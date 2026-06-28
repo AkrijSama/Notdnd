@@ -201,23 +201,26 @@ function normalizePortraitCharacter(character = {}) {
 // distinctive VISUAL traits makes uncommon races render true to type. Keyed by
 // lowercased race name (Human is intentionally empty — already the default).
 const RACE_VISUAL_DESCRIPTORS = {
-  human: "",
+  // Only Elf and Half-Elf have pointed ears. Every other race explicitly states
+  // "rounded human ears, NOT pointed elf ears" — the base model defaults humanoid
+  // fantasy faces to elf ears otherwise (e.g. Aasimar rendering with elf ears).
+  human: "ordinary human, rounded human ears (NOT pointed elf ears), natural human features",
   elf: "pointed ears, slender graceful build, ageless angular face",
-  dwarf: "short and stocky, thick braided beard, broad rugged features",
-  halfling: "small in stature, youthful round face, curly hair",
-  gnome: "small in stature, large bright eyes, oversized expressive features",
-  "half-orc": "muscular build, greenish-grey skin, jutting lower tusks, heavy brow",
-  tiefling: "curved horns, long pointed tail, red or violet skin, solid glowing eyes",
-  dragonborn: "draconic scaled head, reptilian snout, hairless, scaled skin, no ears",
+  dwarf: "short and stocky, thick braided beard, broad rugged features, rounded human ears (NOT pointed elf ears)",
+  halfling: "small in stature, youthful round face, curly hair, rounded human ears (NOT pointed elf ears)",
+  gnome: "small in stature, large bright eyes, oversized expressive features, rounded ears (NOT pointed elf ears)",
+  "half-orc": "muscular build, greenish-grey skin, jutting lower tusks, heavy brow, rounded ears (NOT pointed elf ears)",
+  tiefling: "curved horns, long pointed tail, red or violet skin, solid glowing eyes, rounded human-like ears (NOT pointed elf ears)",
+  dragonborn: "draconic scaled head, reptilian snout, hairless, scaled skin, no external ears, NOT pointed elf ears",
   "half-elf": "subtly pointed ears, a refined blend of human and elven features",
-  aasimar: "celestial heritage, luminous glowing eyes, radiant otherworldly features, faint halo of light"
+  aasimar: "celestial human, rounded human ears (NOT pointed elf ears), luminous glowing eyes, radiant otherworldly skin, faint halo of light, human facial structure"
 };
 
 function raceVisualDescriptor(race) {
   return RACE_VISUAL_DESCRIPTORS[String(race || "").trim().toLowerCase()] || "";
 }
 
-function buildPlayerPortraitPrompt(character = {}, world = {}) {
+export function buildPlayerPortraitPrompt(character = {}, world = {}) {
   const c = normalizePortraitCharacter(character);
   const tone = isStr(world.tone) ? world.tone.trim() : "dark fantasy";
   // Express the race's visual identity, not just its name, so uncommon races
@@ -237,22 +240,32 @@ function buildPlayerPortraitPrompt(character = {}, world = {}) {
   return `character portrait of ${subject}, ${tone}, ${artStyleDirection(world.artStyle, "player")}`;
 }
 
-// Deterministic seed from name+race+class so identical core choices reproduce
-// the same image (per spec). Independent of the draft-namespace id below.
-function playerPortraitSeed(character = {}) {
+// Deterministic seed from name+race+class+artStyle so identical core choices
+// reproduce the same image, while a different art style yields a different seed
+// (so deterministic providers like Pollinations don't return the prior style's
+// image). Independent of the draft-namespace id below.
+function playerPortraitSeed(character = {}, world = {}) {
   const c = normalizePortraitCharacter(character);
-  return hashOf(`${c.name || ""}|${c.race || ""}|${c.characterClass || ""}`);
+  const style = isStr(world?.artStyle) ? world.artStyle.trim().toLowerCase() : "illustrated";
+  return hashOf(`${c.name || ""}|${c.race || ""}|${c.characterClass || ""}|${style}`);
 }
 
 // Draft asset namespace id: hashed over EVERY prompt-affecting field so any
 // change (race/class/background/pronouns/name) yields a fresh namespace and a
 // regeneration, while identical choices reuse the cached asset.
-export function computeDraftPortraitId(character = {}, nonce = 0) {
+export function computeDraftPortraitId(character = {}, nonce = 0, world = {}) {
   const c = normalizePortraitCharacter(character);
-  const base = `${c.name || ""}|${c.race || ""}|${c.characterClass || ""}|${c.background || ""}|${c.pronouns || ""}`;
+  // artStyle + tone are part of the generated prompt, so they MUST be part of the
+  // cache namespace. Without them, switching art style (e.g. illustrated -> anime)
+  // for the same character resolves to the SAME draftId and serves the stale
+  // image generated for the previous style — the "picked Anime, got dark fantasy"
+  // bug. Defaulting style to "illustrated" matches buildPlayerPortraitPrompt.
+  const style = isStr(world?.artStyle) ? world.artStyle.trim().toLowerCase() : "illustrated";
+  const tone = isStr(world?.tone) ? world.tone.trim().toLowerCase() : "";
+  const base = `${c.name || ""}|${c.race || ""}|${c.characterClass || ""}|${c.background || ""}|${c.pronouns || ""}|${style}|${tone}`;
   // A redo nonce (>0) yields a fresh namespace so the disk cache is bypassed and
-  // a NEW image is generated. nonce 0 keeps the original id, so first-generation
-  // and carry-forward behaviour are unchanged.
+  // a NEW image is generated. nonce 0 keeps a stable id for a given combo, so
+  // first-generation and carry-forward behaviour are unchanged.
   const n = Math.trunc(Number(nonce) || 0);
   return `draft_${hashOf(n > 0 ? `${base}|n${n}` : base)}`;
 }
@@ -522,7 +535,7 @@ export async function runPlayerImageJob(job = {}) {
     pronouns: character.pronouns || player.pronouns || null
   };
   const prompt = buildPlayerPortraitPrompt(merged, run.world || {});
-  const seed = playerPortraitSeed(merged);
+  const seed = playerPortraitSeed(merged, run.world || {});
 
   try {
     const result = await generateImage({ prompt, style, seed, ...PLAYER_PORTRAIT_DIMENSIONS });
@@ -584,8 +597,9 @@ export async function runDraftPortraitJob(job = {}) {
   const prompt = buildPlayerPortraitPrompt(character, world);
   const style = isStr(world.artStyle) ? world.artStyle : "illustrated";
   // Offset the deterministic seed by the redo nonce so a reroll produces a
-  // genuinely different image (not the same one under a fresh id).
-  const seed = playerPortraitSeed(character) + Math.trunc(Number(job.nonce) || 0) * 100003;
+  // genuinely different image (not the same one under a fresh id). Seed also
+  // varies by art style so a style change yields a different image.
+  const seed = playerPortraitSeed(character, world) + Math.trunc(Number(job.nonce) || 0) * 100003;
 
   try {
     const result = await generateImage({ prompt, style, seed, ...PLAYER_PORTRAIT_DIMENSIONS });
@@ -864,7 +878,7 @@ export function enqueueDraftPortrait(job = {}) {
   const world = job.world || {};
   // Redo nonce: bypasses the cache (new id) and varies the seed (new image).
   const nonce = Math.trunc(Number(job.nonce) || 0);
-  const draftId = computeDraftPortraitId(character, nonce);
+  const draftId = computeDraftPortraitId(character, nonce, world);
 
   // Idempotent: if already generated on disk, mark generated and skip the queue.
   const existing = findDraftPortraitOnDisk(draftId);

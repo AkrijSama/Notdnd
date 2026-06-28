@@ -128,19 +128,29 @@ function renderPortraitPreview(portrait = {}, options = {}) {
   const variant = options.variant === "review" ? " onb-portrait-review" : "";
   const uri = typeof portrait.portraitUri === "string" ? portrait.portraitUri : "";
   const status = portrait.portraitStatus || "idle";
+  const accepted = portrait.accepted === true;
   const alt = `${esc(options.charName || "Character")} portrait`;
   // A new generation in flight while we still hold a prior image = regenerating.
   const regenerating = status === "generating" && Boolean(uri);
   // Redo (reroll with a fresh seed) is offered once a portrait exists or a prior
   // attempt failed; disabled while a generation is already in flight.
-  const canRedo = Boolean(uri) || status === "failed";
+  const canRedo = Boolean(uri) || status === "failed" || status === "quota";
   const redoBtn = canRedo
     ? `<button type="button" class="onb-portrait-redo" data-cw-portrait-redo ${regenerating ? "disabled" : ""} aria-label="Redo portrait">↻ Redo</button>`
     : "";
   if (uri) {
-    return `<div class="onb-portrait-preview${variant}${regenerating ? " onb-portrait-regenerating" : ""}">
+    // FIX G: the player keeps rerolling until they explicitly accept. Once locked,
+    // a confirmation badge shows but Redo stays available so they can still change
+    // it. The accept control / badge sits bottom-left, mirroring the bottom-right
+    // Redo (inline-positioned so no separate stylesheet change is needed).
+    const acceptCorner = "position:absolute;left:8px;bottom:8px;z-index:2;padding:5px 12px;border-radius:8px;font-size:12px;";
+    const acceptControl = accepted
+      ? `<span class="onb-portrait-accepted" aria-live="polite" style="${acceptCorner}background:rgba(127,175,96,0.22);border:1px solid #5f7f3f;color:var(--ink,#ece1c7);">✓ Using this portrait</span>`
+      : `<button type="button" class="onb-portrait-accept" data-cw-portrait-accept ${regenerating ? "disabled" : ""} style="${acceptCorner}">Use this portrait</button>`;
+    return `<div class="onb-portrait-preview${variant}${regenerating ? " onb-portrait-regenerating" : ""}${accepted ? " onb-portrait-locked" : ""}">
         <img class="onb-portrait-img" src="${esc(uri)}" alt="${alt}" />
         ${regenerating ? `<div class="onb-portrait-overlay"><span class="onb-portrait-spinner" aria-hidden="true"></span>Regenerating…</div>` : ""}
+        ${acceptControl}
         ${redoBtn}
       </div>`;
   }
@@ -150,9 +160,15 @@ function renderPortraitPreview(portrait = {}, options = {}) {
         <small>Crafting your portrait… (~20s)</small>
       </div>`;
   }
+  if (status === "quota") {
+    return `<div class="onb-portrait-preview${variant} onb-portrait-loading">
+        <small>You've used today's portrait generations. Your portrait will be created when you enter the world.</small>
+        ${redoBtn}
+      </div>`;
+  }
   if (status === "failed") {
     return `<div class="onb-portrait-preview${variant} onb-portrait-loading">
-        <small>Your portrait will be generated when you enter the world.</small>
+        <small>Portrait generation didn't complete. Try again.</small>
         ${redoBtn}
       </div>`;
   }
@@ -331,7 +347,7 @@ function renderCharacterWizard(state) {
   const step = c.step || 1;
   // Steps 1 (Identity) and 6 (Review) both show the live mid-creation portrait;
   // its status lives on the onboarding state, not the character object.
-  const portrait = { portraitUri: state.draftPortraitUri, portraitStatus: state.draftPortraitStatus };
+  const portrait = { portraitUri: state.draftPortraitUri, portraitStatus: state.draftPortraitStatus, accepted: state.draftPortraitAccepted === true };
   // SRD-shaped custom content catalogs (from the user's homebrew); additive to SRD.
   const custom = state.customContent || {};
   let body;
@@ -656,6 +672,9 @@ export function bindOnboardingFlow(root, handlers = {}) {
   });
   root.querySelectorAll("[data-cw-portrait-redo]").forEach((button) => {
     button.addEventListener("click", () => handlers.onPortraitRedo?.());
+  });
+  root.querySelectorAll("[data-cw-portrait-accept]").forEach((button) => {
+    button.addEventListener("click", () => handlers.onPortraitAccept?.());
   });
   root.querySelectorAll("[data-cw-race]").forEach((button) => {
     button.addEventListener("click", () => handlers.onCharField?.("race", button.getAttribute("data-cw-race")));

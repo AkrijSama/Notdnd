@@ -627,6 +627,9 @@ async function maybeRequestDraftPortrait() {
   }
   uiState.onboarding.draftPortraitKey = key;
   uiState.onboarding.draftPortraitStatus = "generating";
+  // A freshly-generating portrait is not yet accepted: the player must explicitly
+  // lock it (FIX G), and any race/class/redo change un-accepts the prior one.
+  uiState.onboarding.draftPortraitAccepted = false;
   // Keep any existing portraitUri: while a race/class change regenerates, the
   // preview shows the CURRENT image under a pulsing "Regenerating…" overlay
   // (status "generating" + a uri present), so the box is never blank. The new
@@ -654,6 +657,13 @@ async function maybeRequestDraftPortrait() {
     if (res?.draftId) {
       uiState.onboarding.draftPortraitId = res.draftId;
       startDraftPortraitPoll(res.draftId, key);
+    } else {
+      // No draftId returned (e.g. image quota reached for a free user). Don't hang
+      // on the "generating" spinner forever — surface a clear status and clear the
+      // key so it can be retried (on reaching Review, on Redo, or after upgrade).
+      uiState.onboarding.draftPortraitStatus = res?.status === "quota_reached" ? "quota" : "failed";
+      uiState.onboarding.draftPortraitKey = null;
+      scheduleRender();
     }
   } catch {
     if (uiState.onboarding.draftPortraitKey === key) {
@@ -674,8 +684,23 @@ function redoDraftPortrait() {
   if (!c.race || !c.characterClass) {
     return; // nothing to reroll until there's a portrait to reroll
   }
+  // A reroll un-accepts the current portrait: the new image must be accepted in
+  // its own right (FIX G).
+  uiState.onboarding.draftPortraitAccepted = false;
   uiState.onboarding.draftPortraitNonce = (uiState.onboarding.draftPortraitNonce || 0) + 1;
   maybeRequestDraftPortrait();
+}
+
+// FIX G: explicit accept. The portrait is not treated as final until the player
+// locks it; Redo stays available on every portrait until this is clicked. The
+// accepted portrait is the current draftPortraitId, which enterWorld carries
+// into the run.
+function acceptDraftPortrait() {
+  if (!uiState.onboarding.draftPortraitUri) {
+    return; // nothing to accept yet
+  }
+  uiState.onboarding.draftPortraitAccepted = true;
+  scheduleRender();
 }
 function charInput(field, value) {
   // text fields: update state without re-render so the caret is preserved
@@ -1323,6 +1348,7 @@ function renderApp() {
         onCharField: charField,
         onCharInput: charInput,
         onPortraitRedo: redoDraftPortrait,
+        onPortraitAccept: acceptDraftPortrait,
         onCharMethod: charMethod,
         onCharAssign: charAssign,
         onCharPointBuy: charPointBuy,
