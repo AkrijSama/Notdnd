@@ -30,9 +30,9 @@ const NARRATOR_LABEL = "Narrator";
 const TONE_CHIPS = ["dark fantasy", "high fantasy", "grimdark", "sword and sorcery", "post-apocalyptic", "cosmic horror", "steampunk", "mythic"];
 const LOCATION_TYPE_CHIPS = ["tavern", "city gate", "wilderness", "dungeon", "port", "market", "temple", "ruins", "camp", "crossroads"];
 const ART_STYLE_OPTIONS = [
-  { id: "illustrated", label: "Illustrated Dark Fantasy", blurb: "Painterly, dramatic, card-art" },
-  { id: "anime", label: "Anime VN", blurb: "Clean line art, expressive faces" },
-  { id: "cinematic", label: "Dark Cinematic", blurb: "Moody, filmic key art" }
+  { id: "illustrated", label: "Illustrated Dark Fantasy", blurb: "Painterly, dramatic, card-art", sample: "/public/assets/art-illustrated.svg" },
+  { id: "anime", label: "Anime VN", blurb: "Clean line art, expressive faces", sample: "/public/assets/art-anime.svg" },
+  { id: "cinematic", label: "Dark Cinematic", blurb: "Moody, filmic key art", sample: "/public/assets/art-cinematic.svg" }
 ];
 
 function esc(value) {
@@ -55,7 +55,7 @@ function renderWorldStep(state) {
   const artCards = ART_STYLE_OPTIONS.map(
     (option) => `
       <button type="button" class="onb-art-card ${(def.artStyle || "illustrated") === option.id ? "active" : ""}" data-world-artstyle="${option.id}">
-        <div class="onb-art-prev onb-art-${option.id}"></div>
+        <div class="onb-art-prev onb-art-${option.id}">${option.sample ? `<img class="onb-art-sample" src="${esc(option.sample)}" alt="${esc(option.label)} sample" loading="lazy" />` : ""}</div>
         <div class="onb-art-label">${esc(option.label)}</div>
         <div class="onb-art-blurb">${esc(option.blurb)}</div>
       </button>`
@@ -88,6 +88,7 @@ function renderWorldStep(state) {
       <div class="onb-field">
         <label>Starting location type</label>
         <div class="onb-chips">${locChips}</div>
+        <input data-world-field="startingLocationType" maxlength="60" placeholder="…or type your own" value="${esc(def.startingLocationType || "")}" ${loading ? "disabled" : ""} />
       </div>
 
       <div class="onb-field">

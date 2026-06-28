@@ -2760,7 +2760,10 @@ button:disabled {
   border-color: var(--accent, #c89a4b);
   box-shadow: 0 0 0 1px var(--accent, #c89a4b) inset, 0 10px 28px rgba(200, 154, 75, 0.22);
 }
-.onb-art-prev { height: 90px; box-shadow: inset 0 -18px 30px rgba(0, 0, 0, 0.45); }
+.onb-art-prev { height: 90px; box-shadow: inset 0 -18px 30px rgba(0, 0, 0, 0.45); overflow: hidden; }
+/* Representative sample image fills the preview; the gradient on .onb-art-{id}
+   remains behind it as a graceful fallback if the asset fails to load. */
+.onb-art-sample { width: 100%; height: 100%; object-fit: cover; display: block; }
 .onb-art-illustrated { background: linear-gradient(135deg, #3a2a14, #6b4a1f); }
 .onb-art-anime { background: linear-gradient(135deg, #2a2440, #6a4f86); }
 .onb-art-cinematic { background: linear-gradient(135deg, #14181f, #3a4654); }

@@ -151,14 +151,39 @@ function normalizePortraitCharacter(character = {}) {
 }
 
 // Shared prompt for the player + draft full-body character-sheet portrait.
+// Visual descriptors for the 10 creator races. Naming a race alone (e.g.
+// "Aasimar") lets the model default to a generic fantasy-elf; spelling out the
+// distinctive VISUAL traits makes uncommon races render true to type. Keyed by
+// lowercased race name (Human is intentionally empty — already the default).
+const RACE_VISUAL_DESCRIPTORS = {
+  human: "",
+  elf: "pointed ears, slender graceful build, ageless angular face",
+  dwarf: "short and stocky, thick braided beard, broad rugged features",
+  halfling: "small in stature, youthful round face, curly hair",
+  gnome: "small in stature, large bright eyes, oversized expressive features",
+  "half-orc": "muscular build, greenish-grey skin, jutting lower tusks, heavy brow",
+  tiefling: "curved horns, long pointed tail, red or violet skin, solid glowing eyes",
+  dragonborn: "draconic scaled head, reptilian snout, hairless, scaled skin, no ears",
+  "half-elf": "subtly pointed ears, a refined blend of human and elven features",
+  aasimar: "celestial heritage, luminous glowing eyes, radiant otherworldly features, faint halo of light"
+};
+
+function raceVisualDescriptor(race) {
+  return RACE_VISUAL_DESCRIPTORS[String(race || "").trim().toLowerCase()] || "";
+}
+
 function buildPlayerPortraitPrompt(character = {}, world = {}) {
   const c = normalizePortraitCharacter(character);
   const tone = isStr(world.tone) ? world.tone.trim() : "dark fantasy";
+  // Express the race's visual identity, not just its name, so uncommon races
+  // (Aasimar, Tiefling, Dragonborn, …) render distinctly.
+  const descriptor = c.race ? raceVisualDescriptor(c.race) : "";
+  const racePart = c.race ? (descriptor ? `${c.race} (${descriptor})` : c.race) : null;
   const subject =
     [
       c.name ? `${c.name},` : null,
       c.pronouns ? `${c.pronouns},` : null,
-      c.race,
+      racePart,
       c.characterClass,
       c.background ? `${c.background} background` : null
     ]
