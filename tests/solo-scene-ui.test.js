@@ -693,6 +693,100 @@ test("mountSoloSceneShell posts talk action and shows dialogue result", async ()
   assert.match(root.innerHTML, /area has been quiet/);
 });
 
+test("mountSoloSceneShell auto-opens VN for a freeform speaker with the NPC's own line, not GM narration", async () => {
+  const root = {
+    innerHTML: "",
+    querySelectorAll() {
+      return [];
+    }
+  };
+  const calls = [];
+  const vnScene = () => ({
+    ...sampleScene(),
+    vnMode: true,
+    // The freeform "speak to X" trigger surfaces the RAW npcId on the scene; the
+    // GM-driven path can surface a prefixed one. Either must resolve the beat.
+    speakerId: "placeholder_npc",
+    cast: [{ npcId: "placeholder_npc", displayName: "Placeholder NPC", portraitUri: null }]
+  });
+  const apiClient = {
+    async fetchSoloScene() {
+      return vnScene();
+    },
+    async fetchSoloGmScene() {
+      return {
+        ok: true,
+        gmNarration: {
+          narration: { title: "Start", body: "You are Akrij and the neon city settles over you.", tone: "mysterious" }
+        },
+        gmStatus: null
+      };
+    },
+    async postSoloAction(runId, action) {
+      calls.push(action);
+      // Mirror the server: the talk pipeline only resolves a beat for the PREFIXED
+      // visible entity id. A raw id (the old bug) returns no talkResult, which used
+      // to make the overlay fall through to GM narration under a generic "NPC".
+      if (action.type === "talk" && action.targetEntityId === "npc:placeholder_npc") {
+        return {
+          ok: true,
+          talkResult: {
+            npcId: "placeholder_npc",
+            beatId: "quiet_area",
+            found: true,
+            speakerName: "Placeholder NPC",
+            line: "The keeper sizes you up and says her piece.",
+            summary: "Placeholder NPC: Quiet Area",
+            revealed: true,
+            expressionVariants: {},
+            warningCodes: []
+          }
+        };
+      }
+      return { ok: true };
+    }
+  };
+
+  const mounted = mountSoloSceneShell(root, { apiClient, runId: "run_test" });
+  await mounted.reload();
+
+  // FIX I: the talk pipeline is invoked with the PREFIXED entity id (the raw
+  // speakerId is normalized), so the beat actually resolves.
+  const talkCall = calls.find((action) => action.type === "talk");
+  assert.ok(talkCall, "a talk action was posted for the freeform speaker");
+  assert.equal(talkCall.targetEntityId, "npc:placeholder_npc");
+  // The overlay opens showing the NPC's NAME (not the generic "NPC")...
+  assert.match(root.innerHTML, /data-solo-dialogue-overlay/);
+  assert.match(root.innerHTML, /solo-vn-speaker">Placeholder NPC</);
+  // ...speaking the NPC's OWN beat line, never the GM opening narration.
+  assert.match(root.innerHTML, /data-fulltext="The keeper sizes you up/);
+  assert.doesNotMatch(root.innerHTML, /data-fulltext="You are Akrij/);
+});
+
+test("VN reply input stays typeable while busy; only the submit button is gated", () => {
+  // FIX J: the global busy flag is held by the action that opens the overlay, so
+  // gating the text input on it made the box dead on arrival. The input must never
+  // be disabled; the submit button keeps the busy state for double-submit feedback.
+  const html = renderSoloSceneShell({
+    scene: sampleScene(),
+    busy: "talk",
+    dialogueActive: true,
+    talkResult: {
+      npcId: "placeholder_npc",
+      speakerName: "Placeholder NPC",
+      line: "Well? Out with it.",
+      found: true,
+      expressionVariants: {},
+      warningCodes: []
+    }
+  });
+  const inputTag = html.match(/<input[^>]*data-solo-dialogue-reply-input[^>]*>/);
+  assert.ok(inputTag, "reply input is rendered");
+  assert.doesNotMatch(inputTag[0], /disabled/);
+  // Submit button reflects busy so double-sends are visibly guarded.
+  assert.match(html, /data-solo-dialogue-reply-submit disabled/);
+});
+
 test("mountSoloSceneShell posts rest action and shows rest result", async () => {
   const restButton = {
     handler: null,

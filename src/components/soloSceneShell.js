@@ -1734,6 +1734,13 @@ export function renderSoloDialogueOverlay(state = {}) {
   const line = talk.line || "There is not much new to say right now.";
   const typed = state.dialogueTyped === true;
   const initial = String(speaker).trim().slice(0, 1).toUpperCase() || "?";
+  // The reply TEXT INPUT is intentionally never disabled — the player must always
+  // be able to type. The global busy flag is held by the outer action that opens
+  // this overlay (the freeform "speak to X" attempt), so gating the input on it
+  // made the box paint dead on arrival. Only the submit BUTTON reflects busy (for
+  // feedback); double-submit is prevented by runAction's re-entry guard, and busy
+  // always clears in runAction's finally (even on a hung call, via the client
+  // request timeout) so submit can never wedge permanently.
   const busy = Boolean(state.busy);
   const replyDraft = typeof state.dialogueReplyDraft === "string" ? state.dialogueReplyDraft : "";
 
@@ -1786,7 +1793,6 @@ export function renderSoloDialogueOverlay(state = {}) {
               data-solo-dialogue-reply-input
               placeholder="Say something — or describe what you do…"
               value="${escapeHtml(replyDraft)}"
-              ${busy ? "disabled" : ""}
             />
             <button type="button" class="solo-vn-reply-submit" data-solo-dialogue-reply-submit ${busy ? "disabled" : ""}>${busy ? "…" : "Reply ›"}</button>
           </div>
@@ -3540,39 +3546,45 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     if (!target) {
       return;
     }
+    // scene.speakerId arrives as the RAW npcId (the freeform "speak to X" trigger)
+    // or, from the GM-driven classifier, an already-"npc:"-prefixed id. The talk
+    // pipeline validates targetEntityId against the visible ENTITY id, which is
+    // always prefixed — so normalize to "npc:<rawId>" before resolving the beat.
+    // Passing the raw id was the bug: validateTalkAction rejected it, no talkResult
+    // came back, and the overlay fell through to GM scene narration under a generic
+    // "NPC". With the prefix, resolveTalkAction returns the NPC's own beat + name.
+    const rawId = target.includes(":") ? target.split(":").slice(1).join(":") : target;
+    const entityId = `npc:${rawId}`;
     let talk = null;
     try {
-      const resp = await postAction(createTalkAction({ targetEntityId: target }));
+      const resp = await postAction(createTalkAction({ targetEntityId: entityId }));
       talk = resp && resp.talkResult ? resp.talkResult : null;
     } catch {
       talk = null;
     }
-    const rawId = target.includes(":") ? target.split(":").slice(1).join(":") : target;
-    // Never an empty overlay: prefer the NPC's beat line, else the freeform
-    // action's GM narration, else stay ambient.
-    const gmBody = state.scene?.gmNarration?.narration?.body || "";
-    const line = talk && typeof talk.line === "string" && talk.line.trim() ? talk.line : gmBody;
-    if (!talk && !line) {
+    // The dialogue content must be the NPC's OWN line — never the GM scene
+    // narration. resolveTalkAction always returns a line for a valid, present NPC
+    // (a real unrevealed beat, or an in-character "nothing new yet" placeholder),
+    // so a missing line/talkResult means the NPC isn't talkable here: stay ambient
+    // rather than open an overlay echoing scene prose under the wrong speaker.
+    const line = talk && typeof talk.line === "string" && talk.line.trim() ? talk.line.trim() : "";
+    if (!talk || !line) {
       return;
     }
-    state.talkResult = talk || {
-      npcId: rawId,
-      speakerName: null,
-      line,
-      found: Boolean(line),
-      summary: "",
-      checkResult: null,
-      expressionVariants: {},
-      warningCodes: []
-    };
+    // Always show the NPC's actual NAME. resolveTalkAction sets speakerName to the
+    // NPC's displayName; fall back to the cast roster (keyed by raw npcId) so a
+    // known NPC is never labeled the generic "NPC".
+    const castName = (Array.isArray(state.scene?.cast) ? state.scene.cast : [])
+      .find((member) => member && member.npcId === rawId)?.displayName || null;
+    const speakerName = typeof talk.speakerName === "string" && talk.speakerName.trim()
+      ? talk.speakerName
+      : castName;
+    state.talkResult = speakerName && speakerName !== talk.speakerName ? { ...talk, speakerName } : talk;
     state.dialogueActive = true;
     state.dialogueTyped = false;
-    state.dialogueTargetEntityId = `npc:${state.talkResult.npcId || rawId}`;
+    state.dialogueTargetEntityId = entityId;
     state.dialogueReplyDraft = "";
-    const openingLine = state.talkResult.line && state.talkResult.line.trim() ? state.talkResult.line : line;
-    state.dialogueHistory = openingLine
-      ? [{ role: "npc", speaker: state.talkResult.speakerName || "NPC", text: openingLine }]
-      : [];
+    state.dialogueHistory = [{ role: "npc", speaker: speakerName || "NPC", text: line }];
   }
 
   function handleDialogueReplyDraft({ value }) {
