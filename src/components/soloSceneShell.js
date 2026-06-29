@@ -2602,24 +2602,17 @@ export function bindSoloSceneShell(root, handlers = {}) {
   root.querySelectorAll("[data-solo-attempt-submit]").forEach((button) => {
     button.addEventListener("click", submitAttempt);
   });
-  // Clicking a suggestion fills the attempt input (editable) and focuses it, with
-  // the caret at the end — it does NOT submit, so the player can tweak or replace
-  // the text. Reuses onAttemptDraft so the draft model stays in sync.
+  // A suggested action is a CHOICE, not a text template: clicking a suggestion
+  // executes that action immediately (same path as typing it + Attempt), in one
+  // click. No pre-fill, no second click. The free-text input + Attempt button is
+  // unchanged for custom actions.
   root.querySelectorAll("[data-solo-suggestion]").forEach((button) => {
     button.addEventListener("click", () => {
-      const text = button.getAttribute("data-solo-suggestion") || "";
-      if (attemptInput) {
-        attemptInput.value = text;
-        if (typeof attemptInput.focus === "function") {
-          attemptInput.focus();
-        }
-        try {
-          attemptInput.setSelectionRange(text.length, text.length);
-        } catch {
-          // Not all inputs support selection ranges; ignore.
-        }
+      const intent = String(button.getAttribute("data-solo-suggestion") || "").trim();
+      if (!intent) {
+        return;
       }
-      handlers.onAttemptDraft?.({ value: text });
+      handlers.onAttempt?.({ intent });
     });
   });
   if (attemptInput && typeof attemptInput.addEventListener === "function") {
@@ -2753,6 +2746,7 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     // ~1s later the GM call's finally{render()} recreates the box → it "freezes".
     // Capture which field was focused + its caret, restore both after the rebuild.
     const focusSnapshot = captureSoloFocus();
+    const scrollSnapshot = captureSoloScroll();
     root.innerHTML = renderSoloSceneShell(state);
     bindSoloSceneShell(root, {
       onReload: loadScene,
@@ -2795,6 +2789,40 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       onBringBack: handleBringBack
     });
     restoreSoloFocus(focusSnapshot);
+    restoreSoloScroll(scrollSnapshot);
+  }
+
+  // Preserve/restore the scroll position of the in-scene scrolling container
+  // across a render(). The innerHTML rebuild recreates the scroll container
+  // (.solo-game-content, overflow-y: auto) and resets its scrollTop to 0, so
+  // after every resolved action the view snaps to the top — forcing the player
+  // to scroll back down to the result + input each turn. We capture scrollTop
+  // before the rebuild and restore it after binding, alongside the focus/caret
+  // guard. Covers every render path (runAction, loadScene, click handlers).
+  const SOLO_SCROLL_SELECTOR = ".solo-game-content";
+  function captureSoloScroll() {
+    if (typeof root.querySelector !== "function") {
+      return null;
+    }
+    const el = root.querySelector(SOLO_SCROLL_SELECTOR);
+    if (!el || typeof el.scrollTop !== "number") {
+      return null;
+    }
+    return { top: el.scrollTop };
+  }
+  function restoreSoloScroll(snapshot) {
+    if (!snapshot || typeof root.querySelector !== "function") {
+      return;
+    }
+    const el = root.querySelector(SOLO_SCROLL_SELECTOR);
+    if (!el) {
+      return;
+    }
+    try {
+      el.scrollTop = snapshot.top;
+    } catch {
+      // Non-fatal — restoring scroll is best-effort.
+    }
   }
 
   // Capture/restore the focused text field across a render(). Identified by a
