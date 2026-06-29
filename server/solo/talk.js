@@ -345,6 +345,13 @@ export function resolveTalkAction(run, action, options = {}) {
   const expression = mapToneToExpression(currentTone, spokenLine);
   const expressionVariants = resolveExpressionVariantUris(updatedRun, npc);
   let memoryFact = null;
+  // Graceful no-beat fallback. Every NPC speaks via the GM (server/index.js
+  // replaces talkResult.line with GM-generated dialogue on both the opening and
+  // each reply). This line is the DEGRADED path shown only when the GM is
+  // unavailable (timeout / provider 4xx-5xx) — so a procedurally-generated NPC
+  // with no authored beats still acknowledges the player in character instead of
+  // the old dead "There is not much new to say right now." dead-end.
+  const who = isString(npc.displayName) ? npc.displayName : "The figure";
   const talkResult = canReveal || canRepeat
     ? {
         npcId,
@@ -367,7 +374,10 @@ export function resolveTalkAction(run, action, options = {}) {
         beatId: selectedBeat?.beatId || null,
         found: false,
         speakerName: npc.displayName,
-        line: selectedBeat && checkResult ? "There is not much new to say right now." : "There is not much new to say right now.",
+        line:
+          selectedBeat && checkResult
+            ? `${who} holds something back, unwilling to say more just now.`
+            : `${who} turns to regard you, ready to hear what you have to say.`,
         summary: selectedBeat && checkResult ? "The conversation does not reveal anything new." : "No new dialogue is available.",
         revealed: false,
         checkResult,
