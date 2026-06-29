@@ -3,9 +3,18 @@
 // Brand rename (NotDND -> Inkborne): INKBORNE_* is read first, falling back to
 // the legacy NOTDND_* so existing deployments keep working. The (?? ) group is
 // parenthesized because mixing ?? and || without parens is a JS syntax error.
-const LLM_BASE_URL =
-  (process.env.INKBORNE_LLM_BASE_URL ?? process.env.NOTDND_LLM_BASE_URL) ||
-  "https://openrouter.ai/api/v1/chat/completions";
+// Resolved at CALL time (not as a module-level const): index.js imports this
+// module before its body runs loadDotenv(), and ES imports are evaluated before
+// that body — so a const here would capture process.env BEFORE .env is loaded and
+// freeze the openrouter.ai default, ignoring INKBORNE_LLM_BASE_URL. The key and
+// model tiers are already read per-call (ensureApiKey/resolveModelTiers); the base
+// must be too, or a Groq/other base in .env is silently dropped.
+function resolveLlmBaseUrl() {
+  return (
+    (process.env.INKBORNE_LLM_BASE_URL ?? process.env.NOTDND_LLM_BASE_URL) ||
+    "https://openrouter.ai/api/v1/chat/completions"
+  );
+}
 
 const DEFAULT_MODELS = {
   narrative: "x-ai/grok-3",
@@ -276,6 +285,7 @@ async function requestOpenRouter(messages, model, options = {}) {
     body.stop = options.stopSequences.filter((entry) => String(entry || "").trim());
   }
 
+  const LLM_BASE_URL = resolveLlmBaseUrl();
   const response = await fetch(LLM_BASE_URL, {
     method: "POST",
     headers: {
@@ -289,6 +299,9 @@ async function requestOpenRouter(messages, model, options = {}) {
 
   if (!response.ok) {
     const rawBody = await response.text();
+    // Visible, not silent: this exact line (wrong base / bad key / 429) is what a
+    // swallowed GM error otherwise hides — surface the status, base, model + body.
+    console.warn(`[GM] LLM ${response.status} from ${LLM_BASE_URL} (model ${model}): ${rawBody.slice(0, 200)}`);
     let payload = {};
     try {
       payload = rawBody ? JSON.parse(rawBody) : {};
