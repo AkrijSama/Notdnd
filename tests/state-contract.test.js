@@ -134,3 +134,93 @@ test("contract validators reject malformed contract fields", () => {
   badToken.battleMap = { tokens: [{ entityId: "x", kind: "monster", x: 1, y: 1 }] };
   assert.equal(validateSoloRun(badToken).ok, false);
 });
+
+// ── STEP 0.5: death-state contract ──────────────────────────────────────────
+
+test("default run carries death-state defaults (status alive, deathSaves 0/0)", () => {
+  const run = defaultRun("run_death_default");
+  assert.equal(validateSoloRun(run).ok, true);
+  assert.equal(run.player.status, "alive");
+  assert.deepEqual(run.player.deathSaves, { successes: 0, failures: 0 });
+});
+
+test("scene payload emits player.status, player.deathSaves, runStatus, resumable", () => {
+  const payload = buildSoloScenePayload(defaultRun("run_death_payload"));
+  assert.equal(payload.player.status, "alive");
+  assert.deepEqual(payload.player.deathSaves, { successes: 0, failures: 0 });
+  assert.equal(payload.runStatus, "active");
+  assert.equal(payload.resumable, true);
+  assert.equal(payload.isDead, false);
+});
+
+test("a dead run is surfaced as terminal / non-resumable in the payload", () => {
+  const run = defaultRun("run_death_terminal");
+  run.status = "dead";
+  run.player.status = "dead";
+  assert.equal(validateSoloRun(run).ok, true, "dead run validates");
+  const payload = buildSoloScenePayload(run);
+  // buildSoloScenePayload only returns ok for a renderable run; a dead run still
+  // renders (death/review screen), so these fields must be present.
+  assert.equal(payload.runStatus, "dead");
+  assert.equal(payload.resumable, false);
+  assert.equal(payload.isDead, true);
+  assert.equal(payload.player.status, "dead");
+});
+
+test("the four canonical lifecycle statuses + legacy values validate", () => {
+  for (const status of ["alive", "dying", "stable", "dead", "active", "downed"]) {
+    const run = defaultRun(`run_status_${status}`);
+    run.player.status = status;
+    assert.equal(validateSoloRun(run).ok, true, `${status} validates`);
+  }
+});
+
+test("a revival item validates via use.effectType=revive and via tags", () => {
+  const byEffect = defaultRun("run_revive_effect");
+  byEffect.inventory.revive_scroll = {
+    itemId: "revive_scroll", name: "Scroll of Revivify", quantity: 1,
+    usable: true, consumable: true,
+    use: { effectType: "revive", label: "Read the scroll" },
+    tags: [], flags: {}
+  };
+  assert.equal(validateSoloRun(byEffect).ok, true);
+
+  const byTag = defaultRun("run_revive_tag");
+  byTag.inventory.token = {
+    itemId: "token", name: "Resurrection Token", quantity: 1,
+    usable: true, consumable: true, tags: ["revival"], flags: {}
+  };
+  assert.equal(validateSoloRun(byTag).ok, true);
+});
+
+test("death-state validators reject bad status and out-of-range deathSaves", () => {
+  const badStatus = defaultRun("run_death_bad_status");
+  badStatus.player.status = "zombie";
+  assert.equal(validateSoloRun(badStatus).ok, false);
+
+  const badRunStatus = defaultRun("run_death_bad_runstatus");
+  badRunStatus.status = "vanquished";
+  assert.equal(validateSoloRun(badRunStatus).ok, false);
+
+  const tooHigh = defaultRun("run_death_saves_high");
+  tooHigh.player.deathSaves = { successes: 4, failures: 0 };
+  assert.equal(validateSoloRun(tooHigh).ok, false);
+
+  const negative = defaultRun("run_death_saves_neg");
+  negative.player.deathSaves = { successes: 0, failures: -1 };
+  assert.equal(validateSoloRun(negative).ok, false);
+
+  const nonInt = defaultRun("run_death_saves_float");
+  nonInt.player.deathSaves = { successes: 1.5, failures: 0 };
+  assert.equal(validateSoloRun(nonInt).ok, false);
+});
+
+test("legacy run without death-state fields still validates and gets defaults", () => {
+  const run = defaultRun("run_death_legacy");
+  delete run.player.status;
+  delete run.player.deathSaves;
+  assert.equal(validateSoloRun(run).ok, true, "legacy run validates");
+  const payload = buildSoloScenePayload(run);
+  assert.equal(payload.player.status, "alive");
+  assert.deepEqual(payload.player.deathSaves, { successes: 0, failures: 0 });
+});

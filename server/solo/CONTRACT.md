@@ -79,11 +79,74 @@ resolver track, not part of the contract.**
 Scene payload (`payload.mode`), defaults to `"campaign"`. Field + default only;
 no behavior in the contract layer.
 
+## 7. Death State (STEP 0.5 — 5e lethality)
+
+Shape + defaults only. The dying-turn loop, death-save rolls, instant-death, and
+revival mechanics are **Track A logic**, not the contract.
+
+### `player.status` — lifecycle enum
+
+```jsonc
+"status": "alive"   // "alive" | "dying" | "stable" | "dead"
+```
+
+- `alive` — normal (default).
+- `dying` — at 0 HP, making death saves each turn.
+- `stable` — stabilized at 0 HP (3 successes / a heal), unconscious but not rolling.
+- `dead` — TERMINAL. The character is gone.
+
+Legacy values `active` / `downed` remain valid (runs persisted before STEP 0.5);
+new code should use the four canonical values. Scene payload defaults to `"alive"`.
+
+### `player.deathSaves` — 5e death-save tally
+
+```jsonc
+"deathSaves": { "successes": 0, "failures": 0 }   // each an integer 0..3
+```
+
+3 successes ⇒ stabilized, 3 failures ⇒ dead (logic is Track A). Validator rejects
+non-integers and values outside `0..3`. Scene payload defaults to `{0,0}`.
+
+### `run.status` — terminal **dead** is non-resumable
+
+`run.status` enum is now `active | completed | abandoned | dead`. **`dead` is a
+terminal DEFEAT status, distinct from `completed`** (a victory/normal end). A
+`dead` run **cannot be continued/resumed** — the home screen must show a
+death/review screen, not Continue.
+
+Scene payload surfaces this:
+
+```jsonc
+"runStatus": "dead",      // the run.status value
+"resumable": false,       // true only while status is active (or unset)
+"isDead": true            // run.status === "dead" || player.status === "dead"
+```
+
+> **Resume-card reconcile (Track B / PM):** the saved-campaigns card currently
+> treats only `completed`/`abandoned` as finished. It MUST also treat `dead` as
+> finished (non-resumable) so a dead run never offers Continue. Contract defines
+> the field; the card update is a UI change outside this step.
+
+### Revival item shape (capability marker only)
+
+An inventory item is a **revival means** if either:
+
+```jsonc
+{ "use": { "effectType": "revive" } }     // structured effect (new enum value)
+// …or…
+{ "tags": ["revival"] }                    // free-tag convention
+```
+
+Track A gates revival-on-death on possession of such an item (consumed once);
+the contract only defines the marker. `ITEM_EFFECT_TYPES` now includes `revive`.
+
 ---
 
 ### Validators (schema.js)
 
 `validatePlayerState`: `xp` (optional number), `inventory[]`, `conditions[]`,
-`resources.hp` / `resources.mp` gauges — all optional/additive.
-`validateSoloRun`: `mode` (optional enum), `battleMap.tokens[]` (optional).
-Exposed constants: `RUN_MODES`, `BATTLE_MAP_TOKEN_KINDS`.
+`resources.hp` / `resources.mp` gauges, `status` enum, `deathSaves` (0..3) — all
+optional/additive. `validateSoloRun`: `mode` (optional enum), `battleMap.tokens[]`
+(optional), `status` enum (incl. terminal `dead`). Exposed constants: `RUN_MODES`,
+`BATTLE_MAP_TOKEN_KINDS`. Revival marker: `use.effectType: "revive"` or
+`tags: ["revival"]`.

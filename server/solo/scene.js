@@ -630,6 +630,11 @@ export function buildPlayerPayload(run) {
     resources: { hp: hpGauge, mp: mpGauge },
     inventory: playerInventoryArray(run),
     conditions: Array.isArray(player.conditions) ? player.conditions : [],
+    // Death state (STEP 0.5): 5e death-save tally, defaulted for legacy runs.
+    deathSaves: {
+      successes: typeof player.deathSaves?.successes === "number" ? player.deathSaves.successes : 0,
+      failures: typeof player.deathSaves?.failures === "number" ? player.deathSaves.failures : 0
+    },
     hitPoints: {
       current: hp && typeof hp.current === "number" ? hp.current : (typeof player.health === "number" ? player.health : 0),
       max: hp && typeof hp.max === "number" ? hp.max : (typeof player.maxHealth === "number" ? player.maxHealth : 0)
@@ -641,9 +646,9 @@ export function buildPlayerPayload(run) {
     stats: isPlainObject(player.stats) ? { ...player.stats } : {},
     skills: isPlainObject(player.skills) ? { ...player.skills } : {},
     portraitUri: isString(player.portraitUri) ? player.portraitUri : null,
-    // Lifecycle status (e.g. "downed" at 0 HP); drives the run-conclusion /
-    // death-screen flow on the client. Null when the run carries no status.
-    status: isString(player.status) ? player.status : null,
+    // Lifecycle status: alive | dying | stable | dead (legacy: active | downed).
+    // Drives the death-screen flow on the client. Defaults to "alive" (STEP 0.5).
+    status: isString(player.status) ? player.status : "alive",
     // Full 5e record (or null) for the character sheet tab.
     character
   };
@@ -829,6 +834,12 @@ export function buildSoloScenePayload(run, options = {}) {
     // State contract: campaign (default) vs sandbox. Legacy runs without the
     // field default to "campaign" so consumers always see a concrete mode.
     mode: run.mode === "sandbox" ? "sandbox" : "campaign",
+    // Death state (STEP 0.5): the run's lifecycle status surfaced so the client
+    // can render a death/review screen. "dead" is TERMINAL — the run is not
+    // resumable; "resumable" is false for any concluded run (dead/completed/abandoned).
+    runStatus: isString(run.status) ? run.status : "active",
+    resumable: run.status === "active" || run.status === undefined || run.status === null,
+    isDead: run.status === "dead" || run.player?.status === "dead",
     edition: run.edition,
     policyProfileId: run.policyProfileId,
     vnMode: vnState.active,

@@ -28,10 +28,15 @@ export const FORBIDDEN_BLOCKED_TAGS = [
   "forced_pregnancy"
 ];
 
-const RUN_STATUSES = new Set(["active", "completed", "abandoned"]);
+// "dead" is a TERMINAL defeat status distinct from "completed" (a victory/normal
+// conclusion). A dead run is NOT resumable (see CONTRACT.md §Death State).
+const RUN_STATUSES = new Set(["active", "completed", "abandoned", "dead"]);
 // Minimal player condition set. "downed" is set when HP reaches 0 (see the
 // failed-attempt damage mechanic in attempt.js). Not full combat.
-const PLAYER_STATUS_VALUES = new Set(["active", "downed"]);
+// Canonical lethality vocabulary: alive | dying (0 HP, making death saves) |
+// stable (stabilized at 0 HP) | dead (terminal). Legacy "active"/"downed" remain
+// valid so runs persisted before STEP 0.5 still validate. Default: "alive".
+const PLAYER_STATUS_VALUES = new Set(["alive", "dying", "stable", "dead", "active", "downed"]);
 const EDITION_VALUES = new Set(EDITIONS);
 const RUN_MODE_VALUES = new Set(RUN_MODES);
 const BATTLE_MAP_TOKEN_KIND_VALUES = new Set(BATTLE_MAP_TOKEN_KINDS);
@@ -91,7 +96,11 @@ export function normalizeVnState(value) {
 }
 const PLAYER_ASSET_TYPES = new Set(["base", "fortress", "lab", "room", "structure", "other"]);
 const QUEST_STATUSES = new Set(["inactive", "active", "completed", "failed"]);
-const ITEM_EFFECT_TYPES = new Set(["message", "recover_resource", "reveal_note"]);
+// "revive" marks a consumable revival item (revivify scroll / resurrection token).
+// An item is also recognized as a revival means by carrying "revival" in item.tags
+// (tags are a free string array). Track A gates revival-on-death on either marker;
+// the contract only defines the shape.
+const ITEM_EFFECT_TYPES = new Set(["message", "recover_resource", "reveal_note", "revive"]);
 const REQUIRED_PLAYER_STATS = ["alchemy", "charm", "cunning", "might", "spirit", "luck"];
 const PLAYER_ABILITIES = ["strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma"];
 const PLAYER_SKILLS = ["investigation", "perception", "stealth", "persuasion", "insight"];
@@ -253,6 +262,25 @@ function validateResourceGauge(value, path, errors) {
   }
   validateNumber(value.current, `${path}.current`, errors);
   validateNumber(value.max, `${path}.max`, errors);
+}
+
+// STEP 0.5 death state: player.deathSaves — { successes, failures }, each an
+// integer in 0..3 (5e: 3 successes stabilize, 3 failures = dead). Optional +
+// additive; legacy runs without it still validate. Shape only — no logic here.
+function validateDeathSaves(value, path, errors) {
+  if (value === undefined || value === null) {
+    return;
+  }
+  if (!isPlainObject(value)) {
+    push(errors, path, "Expected object");
+    return;
+  }
+  for (const key of ["successes", "failures"]) {
+    const n = value[key];
+    if (typeof n !== "number" || !Number.isInteger(n) || n < 0 || n > 3) {
+      push(errors, `${path}.${key}`, "Expected integer in 0..3");
+    }
+  }
 }
 
 // STATE-CONTRACT validators (see CONTRACT.md). All ADDITIVE + tolerant: an
@@ -502,6 +530,8 @@ export function validatePlayerState(player) {
   if (player.status !== undefined && player.status !== null) {
     validateEnum(player.status, PLAYER_STATUS_VALUES, "status", errors);
   }
+  // Death state (STEP 0.5). Optional + additive — legacy runs validate without it.
+  validateDeathSaves(player.deathSaves, "deathSaves", errors);
 
   return result(errors);
 }
@@ -1227,6 +1257,10 @@ export function createDefaultSoloRun(options = {}) {
       xp: 0,
       inventory: [],
       conditions: [],
+      // Death state (STEP 0.5): lifecycle status + 5e death-save tally. Shape +
+      // defaults only — the dying-turn loop / revival mechanics are Track A.
+      status: "alive",
+      deathSaves: { successes: 0, failures: 0 },
       // Default pronouns to he/him (owner default). Overridden when the player
       // picks otherwise in the Identity step; the GM is told these so it never
       // has to guess (see gmProvider/voice).
