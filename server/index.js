@@ -751,7 +751,29 @@ function buildConsequenceDirective(resolved) {
   } else if (damage && damage.amount > 0) {
     parts.push(` The player takes ${damage.amount} damage. Let it hurt and cost them — narrate the wound honestly.`);
   }
-  if (resolved?.attemptResult && resolved.attemptResult.success === false && !damage) {
+  // Ground the prose in the STRUCTURED consequence the server just enforced, so
+  // narration and real state never diverge (the screenshot's disconnect). The GM
+  // is told exactly what became true (the map IS torn, the condition IS applied).
+  const consequence = resolved?.attemptResult?.consequence || null;
+  if (consequence) {
+    if (consequence.type === "objectState" && consequence.applied) {
+      const label = typeof consequence.label === "string" && consequence.label ? consequence.label : "the object";
+      parts.push(` As a result of the failure, ${label} is now ${consequence.objectState}${consequence.reason ? ` — ${consequence.reason}` : ""}. Narrate this exact damage to it; it is now in that state for good.`);
+      if (consequence.retryEffect === "blocked") {
+        parts.push(` It is too ${consequence.objectState} to attempt that approach again — make clear retrying it is pointless.`);
+      } else if (consequence.retryEffect === "harder") {
+        parts.push(` Any further attempt on it is now harder — convey that difficulty.`);
+      }
+    } else if (consequence.type === "condition" && consequence.applied) {
+      parts.push(` The failure leaves the player ${consequence.condition}. Narrate the onset of that condition; it now afflicts them.`);
+    } else if (consequence.type === "resource" && consequence.applied && consequence.resource !== "hp") {
+      parts.push(` The failure costs them ${consequence.amount} ${consequence.resource}. Reflect that cost in the fiction.`);
+    } else if (consequence.type === "retry_foreclosed") {
+      const label = typeof consequence.label === "string" && consequence.label ? consequence.label : "it";
+      parts.push(` The player is re-attempting ${label}, which is already ${consequence.objectState || "ruined"} and cannot be done this way again. Narrate the closed door — no new progress, no fresh harm.`);
+    }
+  }
+  if (resolved?.attemptResult && resolved.attemptResult.success === false && !damage && !consequence) {
     parts.push(" The attempt FAILED. Narrate the failure and its consequence honestly — do not quietly let it succeed anyway.");
   }
   if (resolved?.questFailed) {

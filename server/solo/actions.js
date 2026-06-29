@@ -416,6 +416,29 @@ function cloneRun(run) {
 // and returns the standard resolver shape so the route persists + narrates it like
 // any other action. Never reachable in production (validateSoloAction only admits
 // these when testHooksEnabled()).
+// Builds attempt options from a gated `testHook` rider on an attempt action so
+// the self-play harness can drive a deterministic roll + GM consequence proposal.
+// Returns `options` unchanged in production or when no rider is present.
+function withScriptedAttemptOptions(normalized, options = {}) {
+  const hook = normalized && isPlainObject(normalized.testHook) ? normalized.testHook : null;
+  if (!hook || !testHooksEnabled()) {
+    return options;
+  }
+  const merged = { ...options };
+  if (typeof hook.fixedRoll === "number") {
+    merged.fixedRoll = hook.fixedRoll;
+  }
+  if (isPlainObject(hook.providerOutput)) {
+    const scripted = hook.providerOutput;
+    merged.attemptProviderFn = () => scripted;
+    // Mark the attempt scripted so the request layer keeps the scripted narration
+    // (no live GM override) — see buildActionGmMessage. The flag lives on the
+    // action, not persisted state.
+    normalized.scriptedAttempt = true;
+  }
+  return merged;
+}
+
 function resolveTestHookAction(run, normalized, options = {}) {
   const updatedRun = cloneRun(run);
   const now = options.now instanceof Date ? options.now.toISOString() : (typeof options.now === "string" ? options.now : new Date().toISOString());
@@ -667,7 +690,14 @@ export function resolveSoloAction(run, action, options = {}) {
   }
 
   if (normalized.type === "attempt") {
-    const attempt = resolveAttemptAction(run, normalized, options);
+    // Deterministic test-hook injection (gated like the other test hooks): an
+    // attempt may carry `testHook: { fixedRoll, providerOutput }` so the self-play
+    // harness can drive a KNOWN roll + a KNOWN GM consequence proposal over real
+    // HTTP and assert the server enforces it. Never honored in production. The
+    // `testHook` field is otherwise ignored by validateAttemptAction (unknown
+    // fields are tolerated), so it never reaches persisted state.
+    const attemptOptions = withScriptedAttemptOptions(normalized, options);
+    const attempt = resolveAttemptAction(run, normalized, attemptOptions);
     if (!attempt.ok) {
       return {
         ok: false,

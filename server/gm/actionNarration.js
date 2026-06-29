@@ -42,6 +42,11 @@ export function buildActionGmMessage(run, resolved) {
     if (!ar || ar.policyViolation) {
       return null;
     }
+    // A scripted (test-hook) attempt keeps its deterministic narration so the
+    // self-play harness can assert narration↔state agreement without a live model.
+    if (resolved.action?.scriptedAttempt === true) {
+      return null;
+    }
     const cr = ar.checkResult;
     const rollText = cr && cr.total !== undefined && cr.total !== null ? ` (rolled ${cr.total} vs DC ${cr.dc})` : "";
     return (

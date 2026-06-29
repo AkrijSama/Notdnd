@@ -236,6 +236,82 @@ async function scenarioConsequence(ctx) {
   ctx.note(`xp ${baseXp} → ${xpOf(afterXp)} via ${xpSource}`);
 }
 
+// 1b) MEANINGFUL FAILURE — a failed check's GM-proposed consequence becomes REAL,
+// persistent state (not just prose), and retry is foreclosed only where it fits.
+// Driven deterministically via the gated attempt test-hook (fixedRoll + a scripted
+// GM proposal), so a known roll + known consequence proves end-to-end enforcement.
+async function scenarioFailureConsequence(ctx) {
+  const r = await newRun("failure");
+  ctx.runId = r.runId; ctx.token = r.token;
+
+  // Drive a failing attempt with a KNOWN roll and a KNOWN structured consequence.
+  const fail = (intent, failureConsequence, { fixedRoll = 7, dc = 12 } = {}) =>
+    act(r, {
+      type: "attempt",
+      intent,
+      testHook: {
+        fixedRoll,
+        providerOutput: {
+          summary: `You attempt: ${intent}`,
+          recommendedAbility: "investigation",
+          dc,
+          needsCheck: true,
+          advantage: false,
+          disadvantage: false,
+          successNarration: "It goes well.",
+          failureNarration: failureConsequence?.reason ? `You fail — ${failureConsequence.reason}.` : "You fail.",
+          proposedEffects: [],
+          failureConsequence
+        }
+      }
+    });
+
+  const loc0 = (await scene(r)).json.location?.locationId;
+
+  // (a) DAMAGE — a failed check the GM marks as damage drops REAL HP (visible in
+  // the payload), not just narrated.
+  const hpBefore = hpOf((await scene(r)).json).current;
+  const dmg = await fail("wrench the rusted grate off its hinges", { type: "damage", amount: 3, reason: "the grate tears your palms open" });
+  ctx.assert("damage attempt resolves", dmg.json.ok === true, "ok:true", `ok:${dmg.json.ok} code:${dmg.json.code || ""}`);
+  ctx.assert("failure marked as damage consequence", dmg.json.attemptResult?.consequence?.type === "damage", "damage", String(dmg.json.attemptResult?.consequence?.type));
+  const hpAfter = hpOf((await scene(r)).json).current;
+  ctx.assert("damage consequence dropped REAL HP (visible in payload)", hpAfter === hpBefore - 3, `hp ${hpBefore - 3}`, `hp ${hpAfter}`);
+  ctx.assert("narration agrees with the damage (references the wound)", /tears|palms|grate/i.test(dmg.json.attemptResult?.narration || ""), "wound prose", (dmg.json.attemptResult?.narration || "").slice(0, 60));
+
+  // (b) OBJECTSTATE + BLOCKED — a failed check the GM marks torn/blocked makes the
+  // map a tracked-torn object AND forecloses retry on it.
+  const torn = await fail("examine the brittle map with Esk", { type: "objectState", targetObject: "map", objectState: "torn", retryEffect: "blocked", reason: "the brittle map tears as you unfold it" });
+  ctx.assert("objectState consequence enforced", torn.json.attemptResult?.consequence?.type === "objectState", "objectState", String(torn.json.attemptResult?.consequence?.type));
+  const states = torn.json.run?.locations?.[loc0]?.flags?.objectStates || {};
+  ctx.assert("the map is now a TRACKED torn object (persisted)", states.map?.state === "torn", "torn", String(states.map?.state));
+  ctx.assert("narration agrees with the object damage (the map tears)", /tear|torn|brittle/i.test(torn.json.attemptResult?.narration || ""), "torn prose", (torn.json.attemptResult?.narration || "").slice(0, 60));
+
+  // Persisted: the torn map survives a scene re-fetch (remembered, not transient).
+  const sceneStates = (await scene(r)).json.location?.flags?.objectStates || {};
+  ctx.assert("torn map persists across scene reload", sceneStates.map?.state === "torn", "torn", String(sceneStates.map?.state));
+
+  // Retry on the SAME object — even with a winning roll (20) — is BLOCKED, no dice.
+  const retry = await fail("examine the map again", { type: "objectState", targetObject: "map", objectState: "torn", retryEffect: "blocked" }, { fixedRoll: 20 });
+  ctx.assert("blocked retry cannot succeed by re-rolling", retry.json.attemptResult?.success === false, "success:false", `success:${retry.json.attemptResult?.success}`);
+  ctx.assert("retry is foreclosed (closes the spam-retry hole)", retry.json.attemptResult?.foreclosed === true, "foreclosed:true", `foreclosed:${retry.json.attemptResult?.foreclosed}`);
+  ctx.assert("foreclosed retry rolled NO dice", retry.json.attemptResult?.checkResult === null, "checkResult:null", `checkResult:${retry.json.attemptResult?.checkResult ? "set" : "null"}`);
+
+  // (c) NONE — a failure the GM marks as 'none' mutates NO state (failure can be
+  // consequence-free; not every failure is a punishment).
+  const hpBeforeNone = hpOf((await scene(r)).json).current;
+  const none = await fail("listen at the empty doorway for any sound", { type: "none", reason: "only silence answers" });
+  ctx.assert("none consequence recorded", none.json.attemptResult?.consequence?.type === "none", "none", String(none.json.attemptResult?.consequence?.type));
+  const hpAfterNone = hpOf((await scene(r)).json).current;
+  ctx.assert("'none' failure costs NO HP (consequence-free beat)", hpAfterNone === hpBeforeNone, `hp ${hpBeforeNone}`, `hp ${hpAfterNone}`);
+
+  // And an empty-room failure does NOT foreclose retry (foreclosure fits only
+  // GM-marked objects, never a blanket rule).
+  const reretry = await fail("listen at the empty doorway for any sound", { type: "none" });
+  ctx.assert("consequence-free failure stays freely retryable", reretry.json.attemptResult?.foreclosed !== true, "foreclosed:false", `foreclosed:${reretry.json.attemptResult?.foreclosed}`);
+
+  ctx.note(`HP ${hpBefore} → ${hpAfter} (damage), map tracked-torn + retry blocked, 'none' left HP at ${hpAfterNone}`);
+}
+
 // 2) LETHALITY — the headline product identity. Driven deterministically.
 async function scenarioLethality(ctx) {
   // L1 + L2 + L4 (one run): damage to 0 → dying (not "blacks out, wakes up safe");
@@ -502,6 +578,7 @@ async function scenarioGmHealth(ctx) {
 
 const SCENARIOS = [
   { key: "consequence", title: "CONSEQUENCE — actions mutate persisted state", fn: scenarioConsequence },
+  { key: "failure", title: "MEANINGFUL FAILURE — GM-proposed consequence → real, persistent state", fn: scenarioFailureConsequence },
   { key: "lethality", title: "LETHALITY — 0 HP kills; death is permanent & terminal", fn: scenarioLethality },
   { key: "gating", title: "QUEST GATING — progress is earned, not handed out", fn: scenarioGating },
   { key: "coherence", title: "COHERENCE — the world resists invented nonsense", fn: scenarioCoherence },

@@ -23,13 +23,75 @@ const PROVIDER_OUTPUT_FIELDS = new Set([
   "disadvantage",
   "successNarration",
   "failureNarration",
-  "proposedEffects"
+  "proposedEffects",
+  // MEANINGFUL FAILURE: a STRUCTURED consequence the GM proposes for a failed
+  // (or partial) check, which the server makes REAL. See FAILURE_CONSEQUENCE_*.
+  "failureConsequence"
 ]);
 const ALLOWED_EFFECT_TYPES = new Set(["timeline_event", "memory_fact", "narration", "damage"]);
 
+// ---------------------------------------------------------------------------
+// MEANINGFUL FAILURE CONSEQUENCES — the GM adjudicates WHAT happens on a failed
+// check (a structured proposal, NOT free text); the server ENFORCES it as real,
+// persistent state so narration and mechanics never diverge. "none" is valid and
+// EXPECTED: many failures are just a beat (a failed perception in an empty room),
+// so we do NOT force a penalty on every failure — the GM decides per-case.
+//
+// Consequence shape (additive on the attempt provider output):
+//   {
+//     type:        "none"|"damage"|"condition"|"objectState"|"resource",
+//     amount:      <number>      // damage / resource
+//     condition:   <id/name>     // condition
+//     targetObject:<id/label>    // objectState — what degraded (the map, the lock)
+//     objectState: "torn"|"jammed"|"broken"|"degraded"|...  // objectState
+//     retryEffect: "none"|"harder"|"blocked"   // objectState retry foreclosure
+//     resource:    <name>        // resource (hp/mp/stamina/time)
+//     reason:      <short why>   // grounds the prose; agrees with the mutation
+//   }
+const FAILURE_CONSEQUENCE_TYPES = new Set(["none", "damage", "condition", "objectState", "resource"]);
+const OBJECT_RETRY_EFFECTS = new Set(["none", "harder", "blocked"]);
+export const FAILURE_CONSEQUENCE_TYPE_VALUES = [...FAILURE_CONSEQUENCE_TYPES];
+export const OBJECT_RETRY_EFFECT_VALUES = [...OBJECT_RETRY_EFFECTS];
+
+// Retry foreclosure tuning: a "harder" re-attempt on a degraded object raises the
+// DC by this much (and rolls at disadvantage); a "blocked" object can't be
+// re-attempted via the same approach at all (auto-fail, no fresh consequence).
+const RETRY_DC_BUMP = 5;
+
 // Minimal failure-cost mechanic (not full combat): a failed attempt costs the
-// player a small, fixed amount of HP. Kept simple and deterministic on purpose.
+// player a small, fixed amount of HP. This is the LEGACY default applied ONLY
+// when the provider proposes NO structured consequence (degraded mode / thin
+// providers) — when the GM proposes one, the server enforces exactly that
+// (including "none" = no mechanical cost). Kept deterministic on purpose.
 const FAILED_ATTEMPT_DAMAGE = 2;
+
+// Lowercase slug for object/condition ids: alphanumerics + single dashes.
+function slugify(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48);
+}
+
+// Stopwords stripped when deriving an object's match tokens from intent text, so
+// "examine the torn map" tokenizes to ["torn","map"], not the verb/article noise.
+const OBJECT_STOPWORDS = new Set([
+  "the", "a", "an", "this", "that", "these", "those", "with", "at", "to", "on", "in", "of", "for", "and",
+  "examine", "inspect", "read", "study", "look", "search", "open", "pry", "force", "pick", "use", "try",
+  "again", "more", "my", "your", "his", "her", "their", "it", "into", "from", "over", "under"
+]);
+
+// Meaningful word-tokens (len>=3, not stopwords) used to recognize a later
+// attempt as targeting the SAME degraded object (retry foreclosure matching).
+function objectTokens(text) {
+  return [...new Set(
+    String(text || "")
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .filter((word) => word.length >= 3 && !OBJECT_STOPWORDS.has(word))
+  )];
+}
 
 // Fallback heuristics for when the provider omits the ability and/or DC. These
 // keep the server from silently auto-succeeding an unjudged attempt: we always
@@ -448,7 +510,25 @@ export function buildAttemptProviderInput(context, options = {}) {
       disadvantage: "boolean",
       successNarration: "string",
       failureNarration: "string",
-      proposedEffects: []
+      proposedEffects: [],
+      // MEANINGFUL FAILURE: on a failed (or partial) check, propose the SINGLE
+      // structured consequence that best FITS the fiction — the server makes it
+      // real and persistent. type "none" is valid and expected: many failures
+      // should have NO mechanical cost (a missed perception in an empty room is
+      // just a beat). Only propose damage/condition/objectState/resource when the
+      // fiction earns it. Set objectState + retryEffect when failure should
+      // FORECLOSE retrying the same object (a torn map, a jammed lock); leave it
+      // off when re-attempting should stay open. `reason` must agree with your
+      // failureNarration so prose and mechanics never diverge.
+      failureConsequence: {
+        type: FAILURE_CONSEQUENCE_TYPE_VALUES.join("|"),
+        amount: "number|null",
+        condition: "string|null",
+        targetObject: "string|null",
+        objectState: "string|null",
+        retryEffect: OBJECT_RETRY_EFFECT_VALUES.join("|"),
+        reason: "string|null"
+      }
     }
   };
 }
@@ -503,6 +583,34 @@ export function validateAttemptProviderOutput(output, options = {}) {
     });
   }
 
+  if (output.failureConsequence !== undefined && output.failureConsequence !== null) {
+    const fc = output.failureConsequence;
+    if (!isPlainObject(fc)) {
+      push(errors, "failureConsequence", "Expected object");
+    } else {
+      if (!FAILURE_CONSEQUENCE_TYPES.has(fc.type)) {
+        push(errors, "failureConsequence.type", "Unsupported consequence type");
+      }
+      if ((fc.type === "damage" || fc.type === "resource") && fc.amount !== undefined && fc.amount !== null) {
+        if (!isNumber(fc.amount) || fc.amount < 0 || fc.amount > 999) {
+          push(errors, "failureConsequence.amount", "Expected number from 0 to 999");
+        }
+      }
+      if (fc.type === "condition" && !isString(fc.condition)) {
+        push(errors, "failureConsequence.condition", "Expected non-empty condition id/name");
+      }
+      if (fc.type === "objectState" && !isString(fc.objectState)) {
+        push(errors, "failureConsequence.objectState", "Expected non-empty objectState");
+      }
+      if (fc.type === "resource" && !isString(fc.resource)) {
+        push(errors, "failureConsequence.resource", "Expected non-empty resource name");
+      }
+      if (fc.retryEffect !== undefined && fc.retryEffect !== null && !OBJECT_RETRY_EFFECTS.has(fc.retryEffect)) {
+        push(errors, "failureConsequence.retryEffect", "Expected none|harder|blocked");
+      }
+    }
+  }
+
   const text = [output.summary, output.successNarration, output.failureNarration].join(" ");
   if (/\b(SYSTEM|USER):/i.test(text)) {
     push(errors, "output", "Provider output appeared to include a raw prompt dump");
@@ -520,8 +628,42 @@ export function validateAttemptProviderOutput(output, options = {}) {
   return result(errors);
 }
 
+// Normalizes a GM-proposed failure consequence to its canonical, sanitized shape.
+// null/undefined → null (caller distinguishes "omitted" from "explicit none" by
+// whether the key is present on the raw output). Unknown type collapses to "none".
+function normalizeFailureConsequence(fc) {
+  if (!isPlainObject(fc) || !FAILURE_CONSEQUENCE_TYPES.has(fc.type)) {
+    return { type: "none" };
+  }
+  const reason = isString(fc.reason) ? sanitizeText(fc.reason) : "";
+  if (fc.type === "damage") {
+    return { type: "damage", amount: isNumber(fc.amount) && fc.amount >= 0 ? Math.round(fc.amount) : null, reason };
+  }
+  if (fc.type === "condition") {
+    return { type: "condition", condition: isString(fc.condition) ? sanitizeText(fc.condition) : "", reason };
+  }
+  if (fc.type === "objectState") {
+    return {
+      type: "objectState",
+      targetObject: isString(fc.targetObject) ? sanitizeText(fc.targetObject) : "",
+      objectState: isString(fc.objectState) ? sanitizeText(fc.objectState) : "degraded",
+      retryEffect: OBJECT_RETRY_EFFECTS.has(fc.retryEffect) ? fc.retryEffect : "none",
+      reason
+    };
+  }
+  if (fc.type === "resource") {
+    return {
+      type: "resource",
+      resource: isString(fc.resource) ? sanitizeText(fc.resource).toLowerCase() : "",
+      amount: isNumber(fc.amount) && fc.amount >= 0 ? Math.round(fc.amount) : 1,
+      reason
+    };
+  }
+  return { type: "none", reason };
+}
+
 export function sanitizeAttemptProviderOutput(output, options = {}) {
-  return {
+  const sanitized = {
     summary: sanitizeText(output?.summary),
     recommendedAbility: output?.recommendedAbility ? String(output.recommendedAbility).trim().toLowerCase() : null,
     dc: isNumber(output?.dc) ? output.dc : null,
@@ -537,6 +679,13 @@ export function sanitizeAttemptProviderOutput(output, options = {}) {
         }))
       : []
   };
+  // Preserve the distinction between "provider omitted a consequence" (legacy
+  // default fixed damage applies) and "provider explicitly proposed one"
+  // (server enforces exactly that, including an explicit "none" = no cost).
+  if (output && typeof output === "object" && "failureConsequence" in output) {
+    sanitized.failureConsequence = normalizeFailureConsequence(output.failureConsequence);
+  }
+  return sanitized;
 }
 
 function parseProviderOutput(rawOutput, context) {
@@ -633,7 +782,9 @@ export function createAttemptTimelineEvent(run, action, attemptResult, memoryFac
       checkResult: attemptResult.checkResult || null,
       narration: attemptResult.narration,
       warnings: attemptResult.warnings || [],
-      damage: attemptResult.damage || null
+      damage: attemptResult.damage || null,
+      consequence: attemptResult.consequence || null,
+      foreclosed: attemptResult.foreclosed === true
     }
   };
 }
@@ -647,6 +798,188 @@ export function createAttemptTimelineEvent(run, action, attemptResult, memoryFac
 // downed, plus dying/dead/instantDeath/revived), or null when no HP gauge exists.
 export function applyFailureDamage(run, amount = FAILED_ATTEMPT_DAMAGE) {
   return applyDamage(run, amount);
+}
+
+// --- Structured consequence enforcement ------------------------------------
+// The server turns the GM's proposed consequence into REAL, persistent state.
+// All helpers mutate the (already-cloned) run in place and return a record that
+// is surfaced on attemptResult.consequence so narration + UI agree with state.
+
+function currentLocation(run) {
+  const locations = isPlainObject(run?.locations) ? run.locations : {};
+  return locations[run?.currentLocationId] || null;
+}
+
+// Resolves the stable object key + human label + match tokens for the object a
+// consequence acts on: the GM's targetObject when given, else the salient nouns
+// of the player's intent. The key is what we persist degraded state under; the
+// tokens are how a later attempt is recognized as targeting the SAME object.
+function deriveObjectIdentity(context, spec) {
+  const labelSource = isString(spec?.targetObject) ? spec.targetObject : "";
+  const tokensFromLabel = objectTokens(labelSource);
+  const tokensFromIntent = objectTokens(context?.intent);
+  const tokens = (tokensFromLabel.length ? tokensFromLabel : tokensFromIntent).slice(0, 6);
+  const label = labelSource || tokens.join(" ") || "it";
+  const objectId = slugify(labelSource || tokens.join("-") || context?.intent || "object") || "object";
+  return { objectId, label, matchTokens: tokens };
+}
+
+// Marks the acted-on object/feature with its degraded state on the current
+// location's free-form flags.objectStates map (an EXISTING persisted, validated
+// contract field — location.flags is validated as a plain object with free
+// contents; see schema.validateLocation). Persisted ⇒ remembered across reloads.
+function markObjectDegraded(run, context, spec, now) {
+  const location = currentLocation(run);
+  if (!location) {
+    return null;
+  }
+  if (!isPlainObject(location.flags)) {
+    location.flags = {};
+  }
+  if (!isPlainObject(location.flags.objectStates)) {
+    location.flags.objectStates = {};
+  }
+  const identity = deriveObjectIdentity(context, spec);
+  const retryEffect = OBJECT_RETRY_EFFECTS.has(spec.retryEffect) ? spec.retryEffect : "none";
+  const entry = {
+    objectId: identity.objectId,
+    label: identity.label,
+    state: isString(spec.objectState) ? spec.objectState : "degraded",
+    retryEffect,
+    reason: isString(spec.reason) ? spec.reason : "",
+    matchTokens: identity.matchTokens,
+    sourceIntent: isString(context?.intent) ? context.intent : "",
+    since: now
+  };
+  location.flags.objectStates[identity.objectId] = entry;
+  return entry;
+}
+
+// Pre-roll retry foreclosure: scans the current location's degraded objects for
+// one this attempt re-targets (any match token present as a word in the intent)
+// that carries a retry penalty. "blocked" wins over "harder". Returns the matched
+// entry + effect, or { effect:"none" } when this attempt forecloses nothing — so
+// a failed check with no degraded object stays freely retryable.
+export function resolveRetryForeclosure(run, context) {
+  const location = currentLocation(run);
+  const states = location && isPlainObject(location.flags?.objectStates) ? location.flags.objectStates : null;
+  if (!states) {
+    return { effect: "none", object: null };
+  }
+  const words = new Set(objectTokens(context?.intent));
+  let harderMatch = null;
+  for (const entry of Object.values(states)) {
+    if (!isPlainObject(entry) || !Array.isArray(entry.matchTokens) || entry.retryEffect === "none" || !entry.retryEffect) {
+      continue;
+    }
+    const hit = entry.matchTokens.some((token) => words.has(token));
+    if (!hit) {
+      continue;
+    }
+    if (entry.retryEffect === "blocked") {
+      return { effect: "blocked", object: entry };
+    }
+    if (entry.retryEffect === "harder" && !harderMatch) {
+      harderMatch = entry;
+    }
+  }
+  return harderMatch ? { effect: "harder", object: harderMatch } : { effect: "none", object: null };
+}
+
+// Adds a condition to player.conditions (contract array of { id, name }), idempotent
+// by id so the same failed check can't stack duplicates. Returns the entry or null.
+function addPlayerCondition(run, name) {
+  const player = run?.player;
+  if (!isPlainObject(player)) {
+    return null;
+  }
+  if (!Array.isArray(player.conditions)) {
+    player.conditions = [];
+  }
+  const id = slugify(name) || "condition";
+  const displayName = isString(name) ? name : id;
+  const existing = player.conditions.find((entry) => isPlainObject(entry) && entry.id === id);
+  if (existing) {
+    return existing;
+  }
+  const entry = { id, name: displayName };
+  player.conditions.push(entry);
+  return entry;
+}
+
+// Spends a named resource as a real cost: hp routes through the lethality core;
+// mp/mana/stamina drain their gauge; time advances the world clock. Returns a
+// record of what was spent (best-effort — an absent gauge spends nothing).
+function spendResource(run, resource, amount) {
+  const name = String(resource || "").toLowerCase();
+  const spend = isNumber(amount) && amount > 0 ? Math.round(amount) : 1;
+  if (name === "hp" || name === "health" || name === "hitpoints") {
+    const dmg = applyDamage(run, spend);
+    return { resource: "hp", amount: dmg ? dmg.amount : 0, damage: dmg };
+  }
+  if (name === "time" || name === "turn" || name === "turns") {
+    if (!isPlainObject(run.world)) {
+      run.world = {};
+    }
+    if (!isPlainObject(run.world.time)) {
+      run.world.time = { tick: 0 };
+    }
+    if (!isNumber(run.world.time.tick)) {
+      run.world.time.tick = 0;
+    }
+    run.world.time.tick += spend;
+    return { resource: "time", amount: spend };
+  }
+  const player = run?.player;
+  const gauge = isPlainObject(player?.resources?.[name]) ? player.resources[name] : null;
+  if (gauge && isNumber(gauge.current)) {
+    const before = gauge.current;
+    gauge.current = Math.max(0, before - spend);
+    return { resource: name, amount: before - gauge.current };
+  }
+  return { resource: name, amount: 0 };
+}
+
+/**
+ * Enforces a GM-proposed structured failure consequence as real state. Mutates
+ * the (cloned) run; returns the enforced record surfaced on attemptResult so the
+ * narration is grounded in the same mutation. `spec === undefined` means the
+ * provider proposed nothing → the LEGACY fixed-damage default keeps failure's
+ * teeth in degraded mode. `{ type:"none" }` is an EXPLICIT no-op (consequence-free
+ * failure — a beat, not a punishment).
+ */
+export function enforceFailureConsequence(run, spec, context, now) {
+  if (spec === undefined) {
+    const damage = applyFailureDamage(run, FAILED_ATTEMPT_DAMAGE);
+    return damage
+      ? { type: "damage", applied: true, amount: damage.amount, reason: "", damage }
+      : { type: "none", applied: false, reason: "" };
+  }
+  const consequence = isPlainObject(spec) ? spec : { type: "none" };
+  const reason = isString(consequence.reason) ? consequence.reason : "";
+  switch (consequence.type) {
+    case "damage": {
+      const amount = isNumber(consequence.amount) && consequence.amount > 0 ? consequence.amount : FAILED_ATTEMPT_DAMAGE;
+      const damage = applyDamage(run, amount);
+      return { type: "damage", applied: Boolean(damage), amount: damage ? damage.amount : 0, reason, damage };
+    }
+    case "condition": {
+      const entry = addPlayerCondition(run, consequence.condition);
+      return { type: "condition", applied: Boolean(entry), condition: entry ? entry.name : consequence.condition, conditionId: entry ? entry.id : null, reason };
+    }
+    case "objectState": {
+      const entry = markObjectDegraded(run, context, consequence, now);
+      return entry
+        ? { type: "objectState", applied: true, object: entry.objectId, label: entry.label, objectState: entry.state, retryEffect: entry.retryEffect, reason: reason || entry.reason }
+        : { type: "objectState", applied: false, reason };
+    }
+    case "resource": {
+      const spent = spendResource(run, consequence.resource, consequence.amount);
+      return { type: "resource", applied: spent.amount > 0, resource: spent.resource, amount: spent.amount, reason, damage: spent.damage || null };
+    }
+    default:
+      return { type: "none", applied: false, reason };
+  }
 }
 
 // A flagged intent (prompt injection / explicit / empty-after-sanitize) never
@@ -715,38 +1048,81 @@ export function resolveAttemptAction(run, action, options = {}) {
   // Pure movement/travel/observation resolves narratively — no dice, no "vs DC".
   const needsCheck = attemptNeedsCheck(context.intent, providerOutput);
 
+  const now = isoFromOption(options.now ?? safeAction.createdAt);
   let checkResult = null;
   let success;
   let damage = null;
+  let consequence = null;
+  let foreclosed = false;
+  let blockNarration = null;
   if (needsCheck) {
-    // Never silently auto-succeed an unjudged contested attempt. When the
-    // provider omits the ability/skill, fall back to an intent-derived ability
-    // (skill-less); when it omits the DC, fall back to an intent-derived DC.
-    // Either way we roll a real check, so an attempt can fail even on a thin
-    // provider response.
-    const recommendation = abilityFromRecommendation(providerOutput.recommendedAbility)
-      || { ability: abilityFromIntent(context.intent), skill: null };
-    const checkDc = (providerOutput.dc !== null && providerOutput.dc !== undefined)
-      ? providerOutput.dc
-      : classifyIntentDc(context.intent);
-    checkResult = resolveAbilityCheck(updatedRun, {
-      checkId: "attempt_check",
-      rulesetId: context.rulesetId,
-      ability: recommendation.ability,
-      skill: recommendation.skill,
-      dc: checkDc,
-      advantage: providerOutput.advantage === true,
-      disadvantage: providerOutput.disadvantage === true
-    }, options);
-    success = checkResult.ok === true && checkResult.success === true;
-    // Failure has teeth: a failed contested attempt drains HP, and reaching 0
-    // drops the player into 'dying' (death saves begin). When the player is
-    // ALREADY incapacitated (0 HP / dying), the dying-turn death save rolled by
-    // the action dispatcher is the sole consequence — we don't also stack a
-    // damage-at-0 failure here, which would double-punish the same turn.
-    damage = (success || isIncapacitated(updatedRun))
-      ? null
-      : applyFailureDamage(updatedRun, FAILED_ATTEMPT_DAMAGE);
+    // RETRY FORECLOSURE (pre-roll): if this attempt re-targets an object the GM
+    // previously degraded with a retry penalty, apply it BEFORE rolling. "blocked"
+    // → no roll, auto-fail (the same approach is foreclosed — the map is too torn
+    // to read more); "harder" → raise the DC and roll at disadvantage. This fires
+    // ONLY for objects the GM marked, so an ordinary failed check (empty-room
+    // perception) stays freely retryable, and it closes the spam-retry hole.
+    const foreclosure = resolveRetryForeclosure(updatedRun, context);
+
+    if (foreclosure.effect === "blocked") {
+      foreclosed = true;
+      success = false;
+      checkResult = null;
+      const obj = foreclosure.object || {};
+      blockNarration = isString(obj.reason)
+        ? `${obj.reason} — there is no use trying that approach again.`
+        : `The ${isString(obj.label) ? obj.label : "way"} is too ${isString(obj.state) ? obj.state : "damaged"} to attempt again.`;
+      // A foreclosed retry is a dead end, NOT a fresh wound: no new consequence is
+      // enforced (the object is already degraded), so spamming it costs nothing
+      // new and gains nothing.
+      consequence = {
+        type: "retry_foreclosed",
+        applied: false,
+        object: obj.objectId || null,
+        label: obj.label || null,
+        objectState: obj.state || null,
+        retryEffect: "blocked",
+        reason: isString(obj.reason) ? obj.reason : ""
+      };
+    } else {
+      // Never silently auto-succeed an unjudged contested attempt. When the
+      // provider omits the ability/skill, fall back to an intent-derived ability
+      // (skill-less); when it omits the DC, fall back to an intent-derived DC.
+      // Either way we roll a real check, so an attempt can fail even on a thin
+      // provider response.
+      const recommendation = abilityFromRecommendation(providerOutput.recommendedAbility)
+        || { ability: abilityFromIntent(context.intent), skill: null };
+      const baseDc = (providerOutput.dc !== null && providerOutput.dc !== undefined)
+        ? providerOutput.dc
+        : classifyIntentDc(context.intent);
+      const harder = foreclosure.effect === "harder";
+      const checkDc = harder ? baseDc + RETRY_DC_BUMP : baseDc;
+      checkResult = resolveAbilityCheck(updatedRun, {
+        checkId: "attempt_check",
+        rulesetId: context.rulesetId,
+        ability: recommendation.ability,
+        skill: recommendation.skill,
+        dc: checkDc,
+        advantage: providerOutput.advantage === true && !harder,
+        disadvantage: providerOutput.disadvantage === true || harder
+      }, options);
+      success = checkResult.ok === true && checkResult.success === true;
+      if (harder) {
+        foreclosed = true;
+      }
+      // Failure has teeth, but the GM decides HOW MUCH: the server enforces the
+      // proposed structured consequence (damage/condition/objectState/resource, or
+      // an explicit consequence-free "none"). When the provider proposes nothing,
+      // the legacy fixed HP cost applies so degraded mode still bites. When the
+      // player is ALREADY incapacitated (0 HP / dying), the dying-turn death save
+      // is the sole consequence — we don't stack a fresh one here.
+      if (!success && !isIncapacitated(updatedRun)) {
+        consequence = enforceFailureConsequence(updatedRun, providerOutput.failureConsequence, context, now);
+        damage = consequence && consequence.damage ? consequence.damage : null;
+      } else if (!success) {
+        consequence = { type: "none", applied: false, reason: "" };
+      }
+    }
   } else {
     // No-stakes action: it simply happens. No roll, no failure cost — the GM
     // still narrates the outcome (the request layer replaces the line below with
@@ -754,7 +1130,12 @@ export function resolveAttemptAction(run, action, options = {}) {
     success = true;
   }
 
-  const baseNarration = success ? providerOutput.successNarration : providerOutput.failureNarration;
+  // A foreclosed (blocked) retry narrates the closed door, not a fresh attempt —
+  // grounding the prose in the object's persisted degraded state. Otherwise the
+  // provider's success/failure line stands (with the intent-aware safety net).
+  const baseNarration = blockNarration
+    ? blockNarration
+    : (success ? providerOutput.successNarration : providerOutput.failureNarration);
   // Never leave a turn silent (FIX K, code half): if the provider narration is
   // empty, fall back to an intent-aware outcome line. The live attempt provider
   // always fills these, but a thin custom provider might not — and a no-roll
@@ -776,7 +1157,13 @@ export function resolveAttemptAction(run, action, options = {}) {
     narration,
     warnings: providerResult.warnings,
     proposedEffects: providerOutput.proposedEffects || [],
-    damage
+    damage,
+    // The enforced structured consequence (null on success / no-roll). Drives both
+    // the state mutation above and grounds the GM prose so they never diverge.
+    consequence: consequence || null,
+    // True when this attempt hit a retry penalty (blocked auto-fail, or a harder
+    // re-roll) on a GM-degraded object — the client can surface "no use retrying".
+    foreclosed
   };
 
   const memoryEffect = (providerOutput.proposedEffects || []).find((effect) => effect.type === "memory_fact" && isString(effect.text));
