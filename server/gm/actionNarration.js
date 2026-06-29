@@ -67,6 +67,29 @@ export function buildActionGmMessage(run, resolved) {
     const speaker = isString(tr.speakerName) ? tr.speakerName : isString(npc.displayName) ? npc.displayName : "the figure";
     const persona = isString(npc.personality) ? ` Their manner: ${npc.personality}.` : "";
     const appearance = isString(npc.appearance) ? ` Appearance: ${npc.appearance}.` : "";
+
+    // Reply turn: the player typed something. Voice an in-character ANSWER to what
+    // they said, grounded in the conversation so far — never a re-run of the intro
+    // greeting. (Initial approach carries no message and keeps the beat behavior.)
+    const playerMessage = isString(resolved.action?.message) ? resolved.action.message.trim() : "";
+    if (playerMessage) {
+      const turns = Array.isArray(resolved.action?.history) ? resolved.action.history : [];
+      const transcript = turns
+        .filter((turn) => turn && isString(turn.text))
+        .slice(-8)
+        .map((turn) => `${turn.role === "player" ? "Player" : speaker}: ${turn.text.trim()}`)
+        .join("\n");
+      const beatHint = tr.found && isString(tr.line) ? ` ${speaker} may draw on what they know: "${tr.line}".` : "";
+      return (
+        `The player is mid-conversation with ${speaker}.${persona}${appearance} ` +
+        `${transcript ? `Conversation so far:\n${transcript}\n` : ""}` +
+        `The player just said to them: "${playerMessage}". ` +
+        `Respond AS ${speaker}, in character, directly answering or reacting to what the player just said. ` +
+        `Do NOT repeat an earlier greeting or a line already spoken; advance the exchange.${beatHint} ` +
+        `Voice ${speaker}'s spoken reply (1-3 sentences of dialogue), then a brief line of narration. ${suffix}`
+      );
+    }
+
     const content =
       tr.found && isString(tr.line)
         ? `They have something specific to say: "${tr.line}".`

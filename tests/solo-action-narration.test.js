@@ -44,6 +44,28 @@ test("talk prompt voices the NPC and uses scripted line when present", () => {
   assert.doesNotMatch(firstContact, /No new dialogue/);
 });
 
+test("talk reply prompt answers the player's message with conversation history", () => {
+  const reply = buildActionGmMessage(run, {
+    action: {
+      type: "talk",
+      message: "Whats east?",
+      history: [
+        { role: "npc", text: "Well met, traveler. The name's Garrick." },
+        { role: "player", text: "Hello." }
+      ]
+    },
+    talkResult: { npcId: "npc_1", speakerName: "Garrick", found: true, line: "The gate's been shut since the curfew." }
+  });
+  // The player's actual question must reach the prompt...
+  assert.match(reply, /Whats east\?/);
+  // ...the prior turns must be carried as context...
+  assert.match(reply, /Conversation so far/);
+  assert.match(reply, /Well met, traveler/);
+  // ...and the GM must be told to answer in character, not re-greet.
+  assert.match(reply, /Respond AS Garrick/);
+  assert.match(reply, /Do NOT repeat an earlier greeting/);
+});
+
 test("search/rest/use_item prompts reflect their results", () => {
   assert.match(
     buildActionGmMessage(run, { action: { type: "search" }, searchResult: { found: true, summary: "a hidden ledger" } }),

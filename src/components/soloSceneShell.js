@@ -104,11 +104,24 @@ export function createSearchAction() {
 }
 
 export function createTalkAction(entityOrAction = {}) {
-  return {
+  const action = {
     type: "talk",
     actorId: "player",
     targetEntityId: entityOrAction.entityId || entityOrAction.targetEntityId
   };
+  // A reply carries the player's typed line + the conversation so far, so the GM
+  // answers IN CHARACTER to what was said instead of re-emitting the intro beat.
+  // Absent (the initial approach), the talk stays a plain beat reveal.
+  const message = typeof entityOrAction.message === "string" ? entityOrAction.message.trim() : "";
+  if (message) {
+    action.message = message;
+  }
+  if (Array.isArray(entityOrAction.history) && entityOrAction.history.length > 0) {
+    action.history = entityOrAction.history
+      .filter((entry) => entry && typeof entry.text === "string" && entry.text.trim())
+      .map((entry) => ({ role: entry.role === "player" ? "player" : "npc", text: String(entry.text).trim() }));
+  }
+  return action;
 }
 
 export function createRestAction(action = {}) {
@@ -3653,15 +3666,18 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     }
     const reply = String(state.dialogueReplyDraft || "").trim();
     const target = state.dialogueTargetEntityId || `npc:${state.talkResult.npcId}`;
+    // Snapshot the transcript BEFORE appending the new line, so message + history
+    // aren't duplicated: `message` carries the new line, `history` the prior turns.
+    const priorHistory = Array.isArray(state.dialogueHistory) ? state.dialogueHistory.slice() : [];
     return runAction("talk", async () => {
-      // The player's line goes into the visible history; the conversation then
-      // advances through the SAME talk pipeline (a talk action with no beatId
-      // reveals the NPC's next beat) — no parallel dialogue backend.
+      // The player's line goes into the visible history AND is sent to the server
+      // (message + history) so the GM voices an in-character reply to what was
+      // actually said — not a re-run of the intro beat.
       if (reply) {
-        state.dialogueHistory = [...(state.dialogueHistory || []), { role: "player", speaker: "You", text: reply }];
+        state.dialogueHistory = [...priorHistory, { role: "player", speaker: "You", text: reply }];
       }
       state.dialogueReplyDraft = "";
-      const response = await postAction(createTalkAction({ entityId: target }));
+      const response = await postAction(createTalkAction({ entityId: target, message: reply, history: priorHistory }));
       const next = response.talkResult || null;
       if (next && next.found !== false && next.line) {
         state.talkResult = next;
