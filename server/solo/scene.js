@@ -717,6 +717,131 @@ export function buildBattleMapPayload(run) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Area map (Part 2): a procedural LOCAL-AREA map — the ruins (home base), the
+// forest, and discovered POIs — laid out around the home base. Positions are
+// generated DETERMINISTICALLY from the run's worldSeed + locationId, so the same
+// run always lays the area out identically without storing coordinates. Discovery
+// memory rides on the ALREADY-PERSISTED `location.state.discovered` flag (set by
+// movement.applyMove), so a place stays remembered on map reopen / run reload —
+// NO new persisted field is required. Designed to zoom out later: this emits a
+// single "local" region; a future world layer can nest regions around the same
+// home anchor (see the `region` / `scale` fields, reserved now).
+const AREA_MAP_SIZE = 16;
+const AREA_HOME_LOCATION_ID = "start_location";
+
+// Deterministic 0..1 hash (FNV-1a, normalized). Pure.
+function areaHash01(str) {
+  let h = 0x811c9dc5;
+  const s = String(str);
+  for (let i = 0; i < s.length; i += 1) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return ((h >>> 0) % 100000) / 100000;
+}
+
+// Pure. Classifies a location into a coarse POI kind for the area-map marker,
+// from its tags/name. Home base (the ruins) is tagged separately by the caller.
+function areaPoiKind(location) {
+  const hay = [
+    ...(Array.isArray(location?.tags) ? location.tags : []),
+    ...(Array.isArray(location?.contentTags) ? location.contentTags : []),
+    isString(location?.name) ? location.name : ""
+  ]
+    .join(" ")
+    .toLowerCase();
+  if (/ruin|crypt|tomb|temple|dungeon/.test(hay)) return "ruins";
+  if (/forest|wood|grove|wild|thicket|jungle/.test(hay)) return "forest";
+  if (/town|village|city|market|tavern|port|gate|camp/.test(hay)) return "settlement";
+  if (/water|river|sea|lake|coast|dock|marsh/.test(hay)) return "water";
+  return "site";
+}
+
+// Pure. Deterministic (x,y) on the area grid for a location. Home anchors the
+// centre; every other POI is placed on a ring whose angle + radius come from the
+// seed+id hash, then nudged off any already-taken cell by a deterministic walk so
+// two POIs never stack. `taken` is a Set of "x,y" keys mutated as we place.
+function areaPlace(seed, locationId, isHome, taken) {
+  const centre = Math.floor(AREA_MAP_SIZE / 2);
+  if (isHome) {
+    taken.add(`${centre},${centre}`);
+    return { x: centre, y: centre };
+  }
+  const a = areaHash01(`${seed}:${locationId}:angle`) * Math.PI * 2;
+  // Ring radius in the mid-band so POIs sit around (not on top of) the home base.
+  const r = 2 + areaHash01(`${seed}:${locationId}:radius`) * (centre - 2);
+  let x = Math.max(0, Math.min(AREA_MAP_SIZE - 1, Math.round(centre + Math.cos(a) * r)));
+  let y = Math.max(0, Math.min(AREA_MAP_SIZE - 1, Math.round(centre + Math.sin(a) * r)));
+  let guard = 0;
+  while ((taken.has(`${x},${y}`) || (x === centre && y === centre)) && guard < AREA_MAP_SIZE * AREA_MAP_SIZE) {
+    x = (x + 1) % AREA_MAP_SIZE;
+    if (x === 0) {
+      y = (y + 1) % AREA_MAP_SIZE;
+    }
+    guard += 1;
+  }
+  taken.add(`${x},${y}`);
+  return { x, y };
+}
+
+// Pure. Builds the local-area map payload: every DISCOVERED location as a POI in
+// its remembered (deterministic) position, plus a count of places not yet found
+// (rendered as fog by the UI — undiscovered POIs leak no name/position). The home
+// base (ruins) is always discovered.
+export function buildAreaMapPayload(run) {
+  const locations = isPlainObject(run?.locations) ? run.locations : {};
+  const seed = isString(run?.worldSeed) ? run.worldSeed : (isString(run?.runId) ? run.runId : "seed");
+  const currentId = isString(run?.currentLocationId) ? run.currentLocationId : null;
+  const taken = new Set();
+  // Place the home base first so it always owns the centre cell.
+  const ids = Object.keys(locations).sort((a, b) => {
+    if (a === AREA_HOME_LOCATION_ID) return -1;
+    if (b === AREA_HOME_LOCATION_ID) return 1;
+    return a < b ? -1 : a > b ? 1 : 0;
+  });
+
+  const pois = [];
+  let undiscoveredCount = 0;
+  for (const id of ids) {
+    const location = locations[id];
+    if (!isPlainObject(location)) {
+      continue;
+    }
+    const isHome = id === AREA_HOME_LOCATION_ID;
+    const state = isPlainObject(location.state) ? location.state : {};
+    const discovered = isHome || id === currentId || state.discovered === true || state.visited === true;
+    const pos = areaPlace(seed, id, isHome, taken);
+    if (!discovered) {
+      undiscoveredCount += 1;
+      continue;
+    }
+    pois.push({
+      locationId: id,
+      name: isString(location.name) ? location.name : id,
+      kind: isHome ? "home" : areaPoiKind(location),
+      x: pos.x,
+      y: pos.y,
+      isHome,
+      isCurrent: id === currentId,
+      discovered: true
+    });
+  }
+
+  return {
+    // Reserved for the future world-map zoom: this map is the "local" region
+    // anchored on the home base. A world layer can add scale: "world" + regions.
+    scale: "local",
+    region: "home",
+    width: AREA_MAP_SIZE,
+    height: AREA_MAP_SIZE,
+    homeLocationId: AREA_HOME_LOCATION_ID,
+    currentLocationId: currentId,
+    undiscoveredCount,
+    pois
+  };
+}
+
 // Pure. True when the player has a full 5e character but no generated portrait
 // yet — used by the scene route to enqueue a one-off player-portrait job.
 export function playerNeedsPortrait(run) {
@@ -867,6 +992,10 @@ export function buildSoloScenePayload(run, options = {}) {
     // player and every co-located NPC / item in the current location (not just
     // combat). Persisted token positions win; otherwise deterministic placement.
     battleMap: buildBattleMapPayload(run),
+    // Procedural LOCAL-AREA map (ruins/home base + forest + discovered POIs).
+    // Discovered POIs ride on the persisted `location.state.discovered` flag, so
+    // they're remembered across reopen/reload; undiscovered places stay fogged.
+    areaMap: buildAreaMapPayload(run),
     // MVP quest engine: active quests + the main quest (or null) for this run.
     quests: getQuestPayload(run),
     availableMoves: getAvailableMoves(run).filter((move) => {

@@ -1676,6 +1676,55 @@ export function renderSoloMapTab(scene = {}, mapState = {}) {
   `;
 }
 
+// Procedural LOCAL-AREA map: the ruins (home base) + forest + discovered POIs in
+// their remembered positions. Undiscovered places stay fogged (the payload only
+// carries discovered POIs + a count of the rest). Read-only — markers, not
+// tactics. Built to ZOOM OUT later: scale:"local" today; a world layer can nest
+// regions around the same home anchor. Pure render from scene.areaMap.
+const AREA_POI_GLYPH = { home: "⌂", ruins: "▲", forest: "♣", settlement: "⌂", water: "≈", site: "◆" };
+export function renderSoloAreaMap(scene = {}) {
+  const am = scene && typeof scene.areaMap === "object" && scene.areaMap ? scene.areaMap : {};
+  const pois = Array.isArray(am.pois) ? am.pois : [];
+  const width = Number.isFinite(am.width) && am.width > 0 ? Math.min(32, Math.trunc(am.width)) : 16;
+  const height = Number.isFinite(am.height) && am.height > 0 ? Math.min(32, Math.trunc(am.height)) : 16;
+  const undiscovered = Number.isFinite(am.undiscoveredCount) ? Math.max(0, Math.trunc(am.undiscoveredCount)) : 0;
+  const clampTo = (n, max) => Math.max(0, Math.min(max - 1, Math.trunc(Number(n) || 0)));
+
+  const head = `<div class="solo-presence-head"><span class="solo-stat-kicker">Area map</span><span class="solo-presence-loc">${escapeHtml(am.scale === "local" ? "Around the ruins" : "Known world")}</span></div>`;
+  if (!pois.length) {
+    return `<div class="solo-area"><div class="solo-area-head">${head}</div><div class="solo-presence-empty">No places remembered yet — explore to chart the area.</div></div>`;
+  }
+
+  // Fogged ground beneath the markers, so undiscovered space reads as unexplored.
+  const fog = [];
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      fog.push(`<span class="solo-area-fog" style="grid-column:${x + 1};grid-row:${y + 1};"></span>`);
+    }
+  }
+
+  const markers = pois
+    .map((poi) => {
+      const kind = typeof poi.kind === "string" ? poi.kind : "site";
+      const glyph = AREA_POI_GLYPH[kind] || AREA_POI_GLYPH.site;
+      const x = clampTo(poi.x, width);
+      const y = clampTo(poi.y, height);
+      const name = typeof poi.name === "string" && poi.name ? poi.name : "Unknown";
+      const classes = ["solo-area-poi", `solo-area-poi-${escapeHtml(kind)}`];
+      if (poi.isHome) classes.push("is-home");
+      if (poi.isCurrent) classes.push("is-current");
+      const label = `${name}${poi.isHome ? " (home base)" : ""}${poi.isCurrent ? " — you are here" : ""}`;
+      return `<span class="${classes.join(" ")}" style="grid-column:${x + 1};grid-row:${y + 1};" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}"><span class="solo-area-glyph">${glyph}</span><span class="solo-area-name">${escapeHtml(name)}</span></span>`;
+    })
+    .join("");
+
+  const foot = undiscovered
+    ? `<div class="solo-area-foot small">${pois.length} place${pois.length === 1 ? "" : "s"} charted · ${undiscovered} still hidden in the fog</div>`
+    : `<div class="solo-area-foot small">${pois.length} place${pois.length === 1 ? "" : "s"} charted</div>`;
+
+  return `<div class="solo-area">${head}<div class="solo-area-grid" style="grid-template-columns:repeat(${width},1fr);grid-template-rows:repeat(${height},1fr);" role="img" aria-label="Local area map">${fog.join("")}${markers}</div>${foot}</div>`;
+}
+
 // Resolves a token's display name from the scene (player → displayName; npc →
 // cast/visibleEntities; else the raw id). Pure.
 function presenceTokenName(entityId, kind, scene) {
@@ -1697,11 +1746,46 @@ function presenceTokenName(entityId, kind, scene) {
   return raw || "?";
 }
 
+// Deterministic 0..1 hash from a string (FNV-1a, normalized). Pure — used to give
+// the presence map a stable, location-specific mottle so the same place always
+// renders the same ground (no flicker across re-renders).
+function soloHash01(str) {
+  let h = 0x811c9dc5;
+  const s = String(str);
+  for (let i = 0; i < s.length; i += 1) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return ((h >>> 0) % 1000) / 1000;
+}
+
+// Picks a terrain skin (a CSS class) for the presence/battle ground from the
+// location's tags + name, so the floor reads as appropriate to the place
+// (forest, ruins/stone, water, sand) instead of a black void. Defaults to the
+// neutral stone-floor when nothing matches.
+function presenceTerrainClass(scene = {}) {
+  const loc = scene && typeof scene.location === "object" && scene.location ? scene.location : {};
+  const hay = [
+    ...(Array.isArray(loc.tags) ? loc.tags : []),
+    ...(Array.isArray(loc.contentTags) ? loc.contentTags : []),
+    typeof loc.name === "string" ? loc.name : ""
+  ]
+    .join(" ")
+    .toLowerCase();
+  if (/forest|wood|grove|wild|jungle|thicket/.test(hay)) return "terrain-forest";
+  if (/water|river|port|sea|lake|coast|dock|marsh|swamp/.test(hay)) return "terrain-water";
+  if (/sand|desert|dune|waste/.test(hay)) return "terrain-sand";
+  if (/ruin|crypt|dungeon|temple|stone|tomb|hall/.test(hay)) return "terrain-ruins";
+  return "terrain-stone";
+}
+
 // Always-on presence map (light): renders the per-scene battleMap tokens (player
 // + co-located NPCs) from the state contract so the player always has a sense of
 // being SOMEWHERE. Read-only — tactical movement / range / line-of-sight is a
 // deferred resolver track, NOT here. Reuses the .solo-token-<kind> colour classes;
-// CSS grid places each token at its (x,y).
+// CSS grid places each token at its (x,y). A terrain+grid layer is rendered
+// BENEATH the tokens (explicitly-placed background cells) so the tokens sit on a
+// readable ground, not in a void.
 export function renderSoloPresenceMap(scene = {}) {
   const bm = scene && typeof scene.battleMap === "object" && scene.battleMap ? scene.battleMap : {};
   const tokens = Array.isArray(bm.tokens) ? bm.tokens : [];
@@ -1713,6 +1797,22 @@ export function renderSoloPresenceMap(scene = {}) {
   const width = Number.isFinite(bm.width) && bm.width > 0 ? Math.min(24, Math.trunc(bm.width)) : 12;
   const height = Number.isFinite(bm.height) && bm.height > 0 ? Math.min(24, Math.trunc(bm.height)) : 12;
   const clampTo = (n, max) => Math.max(0, Math.min(max - 1, Math.trunc(Number(n) || 0)));
+  const terrainClass = presenceTerrainClass(scene);
+
+  // Terrain layer: one background cell per grid coordinate (explicitly placed so
+  // it never collides with the explicitly-placed tokens). Each cell carries a
+  // deterministic per-cell brightness so the ground looks mottled/natural — the
+  // grid lines come from the cell borders in CSS.
+  const ground = [];
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const shade = 0.85 + soloHash01(`${locationName}:${x}:${y}`) * 0.3;
+      ground.push(
+        `<span class="solo-presence-cell" style="grid-column:${x + 1};grid-row:${y + 1};filter:brightness(${shade.toFixed(2)});"></span>`
+      );
+    }
+  }
+
   const cells = tokens
     .map((token) => {
       const kind = token && (token.kind === "player" || token.kind === "npc" || token.kind === "item") ? token.kind : "npc";
@@ -1723,7 +1823,7 @@ export function renderSoloPresenceMap(scene = {}) {
       return `<span class="solo-presence-token solo-token-${escapeHtml(kind)}" style="grid-column:${x + 1};grid-row:${y + 1};" title="${escapeHtml(name)}" aria-label="${escapeHtml(name)}">${escapeHtml(initial)}</span>`;
     })
     .join("");
-  return `<div class="solo-presence">${head}<div class="solo-presence-grid" style="grid-template-columns:repeat(${width},1fr);grid-template-rows:repeat(${height},1fr);" role="img" aria-label="Presence map of ${escapeHtml(locationName)}">${cells}</div></div>`;
+  return `<div class="solo-presence">${head}<div class="solo-presence-grid ${terrainClass}" style="grid-template-columns:repeat(${width},1fr);grid-template-rows:repeat(${height},1fr);" role="img" aria-label="Presence map of ${escapeHtml(locationName)}">${ground.join("")}${cells}</div></div>`;
 }
 
 export function renderSoloRightRail(state = {}) {
@@ -2213,6 +2313,7 @@ export function renderSoloSceneShell(state = {}) {
                 <div class="solo-map-view">
                   ${renderSoloMapTab(scene, state.battleMap)}
                   <aside class="solo-map-aside">
+                    ${renderSoloAreaMap(scene)}
                     ${renderMovementPanel(scene)}
                   </aside>
                 </div>
