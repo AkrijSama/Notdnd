@@ -87,8 +87,10 @@ async function main() {
 
   const sc = await call(`/api/solo/runs/${runId}/scene`, { token });
   log(`[3] scene      HTTP ${sc.status} (${sc.ms}ms) location:"${sc.json.location?.name}"`);
+  // Opening narration is generated during world-run and CACHED on the run, so
+  // the scene fetch returns it fast — judge it by content only, not by latency.
   log(`  opening narration:`);
-  show("opening", sc.json.openingNarration, sc.ms);
+  show("opening", sc.json.openingNarration);
   const npcs = sc.json.visibleEntities?.filter((e) => e.entityType === "npc") || [];
   log(`  NPCs present: ${npcs.map((n) => `${n.displayName}(${n.entityId})`).join(", ") || "none"}`);
 
