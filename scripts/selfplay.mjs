@@ -538,9 +538,11 @@ async function main() {
   let provider;
   try {
     provider = await probeProvider();
-    console.log(`  GM provider: ${provider.label} · model: ${provider.model} · status: ${provider.status}`);
-    console.log(`  (edition 'mainline' routes to the cloud provider; a COHERENCE/GM`);
-    console.log(`   warn on a weak model differs from one on the cloud model)`);
+    console.log(`  GM provider (configured): ${provider.label} · model: ${provider.model} · status: ${provider.status}`);
+    console.log(`  NOTE: this is the CONFIGURED cloud provider. The server transparently`);
+    console.log(`  falls back cloud→local (e.g. on a 402 out-of-credits) and does not expose`);
+    console.log(`  which model answered per call — so a COHERENCE / GM-HEALTH result may`);
+    console.log(`  reflect the LOCAL fallback model, not the cloud model named above.`);
   } catch (err) {
     console.log(`  GM provider: <probe failed: ${err?.message || err}>`);
   }
@@ -574,7 +576,7 @@ async function main() {
   console.log("\n════════════════════════════════════════════════════════════");
   console.log("  SCORECARD");
   console.log("════════════════════════════════════════════════════════════");
-  if (provider) console.log(`  GM: ${provider.label} / ${provider.model} (${provider.status})`);
+  if (provider) console.log(`  GM (configured): ${provider.label} / ${provider.model} (${provider.status}) — may fall back to a local model`);
   for (const { sc, ctx, verdict } of results) {
     const counts = `${ctx.hard.filter((h) => h.pass).length}/${ctx.hard.length} hard`;
     const extra = [
