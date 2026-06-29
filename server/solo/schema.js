@@ -2,6 +2,11 @@ import crypto from "node:crypto";
 
 export const SOLO_RUN_VERSION = 1;
 export const EDITIONS = ["mainline", "forbidden"];
+// run.mode — campaign (default, quest-driven) vs sandbox (open, no spine). Field
+// + default only at the contract layer; behavior lives in the resolver tracks.
+export const RUN_MODES = ["campaign", "sandbox"];
+// Token kinds for a per-scene battle map (see CONTRACT.md). Shape only.
+export const BATTLE_MAP_TOKEN_KINDS = ["player", "npc", "item"];
 export const RULESET_IDS = ["notdnd_basic", "5e_srd", "custom"];
 export const CONTENT_RATINGS = ["general", "teen", "mature", "adult"];
 export const DISTRIBUTION_CHANNELS = ["web", "direct_apk", "play_store", "app_store", "steam"];
@@ -28,6 +33,8 @@ const RUN_STATUSES = new Set(["active", "completed", "abandoned"]);
 // failed-attempt damage mechanic in attempt.js). Not full combat.
 const PLAYER_STATUS_VALUES = new Set(["active", "downed"]);
 const EDITION_VALUES = new Set(EDITIONS);
+const RUN_MODE_VALUES = new Set(RUN_MODES);
+const BATTLE_MAP_TOKEN_KIND_VALUES = new Set(BATTLE_MAP_TOKEN_KINDS);
 const RULESET_VALUES = new Set(RULESET_IDS);
 const CONTENT_RATING_VALUES = new Set(CONTENT_RATINGS);
 const DISTRIBUTION_CHANNEL_VALUES = new Set(DISTRIBUTION_CHANNELS);
@@ -248,6 +255,44 @@ function validateResourceGauge(value, path, errors) {
   validateNumber(value.max, `${path}.max`, errors);
 }
 
+// STATE-CONTRACT validators (see CONTRACT.md). All ADDITIVE + tolerant: an
+// absent field is valid (legacy runs predate them); extra item/condition keys
+// are ignored. Each only checks the required identity fields so the resolver
+// tracks can append rich data without re-touching the schema.
+
+// player.inventory entry — { id, name, qty? } plus arbitrary extra fields.
+function validateInventoryEntry(entry, path, errors) {
+  if (!isPlainObject(entry)) {
+    push(errors, path, "Expected object");
+    return;
+  }
+  validateRequiredString(entry.id, `${path}.id`, errors);
+  validateRequiredString(entry.name, `${path}.name`, errors);
+  validateOptionalNumber(entry.qty, `${path}.qty`, errors);
+}
+
+// player.conditions entry — { id, name } plus arbitrary extra fields.
+function validateConditionEntry(entry, path, errors) {
+  if (!isPlainObject(entry)) {
+    push(errors, path, "Expected object");
+    return;
+  }
+  validateRequiredString(entry.id, `${path}.id`, errors);
+  validateRequiredString(entry.name, `${path}.name`, errors);
+}
+
+// scene.battleMap token — { entityId, kind, x, y } plus arbitrary extra fields.
+function validateBattleMapToken(token, path, errors) {
+  if (!isPlainObject(token)) {
+    push(errors, path, "Expected object");
+    return;
+  }
+  validateRequiredString(token.entityId, `${path}.entityId`, errors);
+  validateEnum(token.kind, BATTLE_MAP_TOKEN_KIND_VALUES, `${path}.kind`, errors);
+  validateNumber(token.x, `${path}.x`, errors);
+  validateNumber(token.y, `${path}.y`, errors);
+}
+
 export function validateRestMetadata(rest) {
   const errors = [];
   if (!isPlainObject(rest)) {
@@ -419,6 +464,29 @@ export function validatePlayerState(player) {
     } else {
       validateResourceGauge(player.resources.hitPoints, "resources.hitPoints", errors);
       validateResourceGauge(player.resources.stamina, "resources.stamina", errors);
+      // State contract: hp/mp gauges. Persisted HP remains resources.hitPoints
+      // (applyFailureDamage mutates it); resources.hp/mp are accepted so a resolver
+      // can write them and the scene payload mirrors them. All optional.
+      validateResourceGauge(player.resources.hp, "resources.hp", errors);
+      validateResourceGauge(player.resources.mp, "resources.mp", errors);
+    }
+  }
+
+  // State contract: xp (level already validated above), inventory[], conditions[].
+  // All optional + additive — legacy runs without them still validate.
+  validateOptionalNumber(player.xp, "xp", errors);
+  if (player.inventory !== undefined && player.inventory !== null) {
+    if (!Array.isArray(player.inventory)) {
+      push(errors, "inventory", "Expected array");
+    } else {
+      player.inventory.forEach((entry, index) => validateInventoryEntry(entry, `inventory.${index}`, errors));
+    }
+  }
+  if (player.conditions !== undefined && player.conditions !== null) {
+    if (!Array.isArray(player.conditions)) {
+      push(errors, "conditions", "Expected array");
+    } else {
+      player.conditions.forEach((entry, index) => validateConditionEntry(entry, `conditions.${index}`, errors));
     }
   }
 
@@ -909,8 +977,23 @@ export function validateSoloRun(run) {
       validateOptionalString(run.vn.speakerId, "vn.speakerId", errors);
     }
   }
-  if (run.battleMap !== undefined && run.battleMap !== null && !isPlainObject(run.battleMap)) {
-    push(errors, "battleMap", "Expected object");
+  if (run.battleMap !== undefined && run.battleMap !== null) {
+    if (!isPlainObject(run.battleMap)) {
+      push(errors, "battleMap", "Expected object");
+    } else if (run.battleMap.tokens !== undefined && run.battleMap.tokens !== null) {
+      // State contract: per-scene battle-map tokens (player + co-located NPCs/items).
+      if (!Array.isArray(run.battleMap.tokens)) {
+        push(errors, "battleMap.tokens", "Expected array");
+      } else {
+        run.battleMap.tokens.forEach((token, index) =>
+          validateBattleMapToken(token, `battleMap.tokens.${index}`, errors)
+        );
+      }
+    }
+  }
+  // State contract: run.mode — optional, defaults to "campaign" when absent.
+  if (run.mode !== undefined && run.mode !== null) {
+    validateEnum(run.mode, RUN_MODE_VALUES, "mode", errors);
   }
   validateEnum(run.status, RUN_STATUSES, "status", errors);
   validateTimestamp(run.createdAt, "createdAt", errors);
@@ -1127,6 +1210,8 @@ export function createDefaultSoloRun(options = {}) {
     runId,
     userId,
     status: "active",
+    // State contract: campaign (default) vs sandbox. Field + default only.
+    mode: "campaign",
     edition: "mainline",
     policyProfileId: "mainline_default",
     rulesetId: "notdnd_basic",
@@ -1137,6 +1222,11 @@ export function createDefaultSoloRun(options = {}) {
     player: {
       playerId,
       displayName: isString(options.displayName) ? options.displayName : "Player",
+      // State contract: experience (level already defaulted below), carried
+      // inventory (array — resolver appends, UI renders), active conditions.
+      xp: 0,
+      inventory: [],
+      conditions: [],
       // Default pronouns to he/him (owner default). Overridden when the player
       // picks otherwise in the Identity step; the GM is told these so it never
       // has to guess (see gmProvider/voice).

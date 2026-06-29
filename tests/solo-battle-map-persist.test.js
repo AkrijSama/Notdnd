@@ -18,26 +18,41 @@ function freshRun(runId) {
   return getSoloRun(runId);
 }
 
-test("scene payload exposes battleMap (null until set)", () => {
+test("scene payload always exposes a populated battleMap (state contract)", () => {
   const run = freshRun("run_map_a");
-  assert.equal(buildSoloScenePayload(run).battleMap, null);
+  const map = buildSoloScenePayload(run).battleMap;
+  // Contract: battleMap is always populated (not null), with a player token.
+  assert.ok(map && Array.isArray(map.tokens));
+  assert.ok(map.tokens.some((t) => t.kind === "player"));
 });
 
-test("updateSoloRunBattleMap persists positions, surfaced by the scene payload", () => {
+test("updateSoloRunBattleMap persists token positions, surfaced by the scene payload", () => {
   freshRun("run_map_b");
-  const battleMap = { width: 12, height: 10, positions: { player: { x: 3, y: 7 }, "npc:n1": { x: 8, y: 2 } } };
+  const run0 = getSoloRun("run_map_b");
+  const playerEntityId = `player:${run0.player.playerId}`;
+  const battleMap = { width: 12, height: 10, tokens: [{ entityId: playerEntityId, kind: "player", x: 3, y: 7 }] };
   assert.equal(updateSoloRunBattleMap("run_map_b", battleMap), true);
 
   const run = getSoloRun("run_map_b");
   assert.deepEqual(run.battleMap, battleMap);
-  assert.deepEqual(buildSoloScenePayload(run).battleMap, battleMap);
+  // The payload surfaces the persisted player position (width/height honoured too).
+  const map = buildSoloScenePayload(run).battleMap;
+  assert.equal(map.width, 12);
+  assert.equal(map.height, 10);
+  const playerToken = map.tokens.find((t) => t.entityId === playerEntityId);
+  assert.deepEqual({ x: playerToken.x, y: playerToken.y }, { x: 3, y: 7 });
 });
 
-test("a run carrying battleMap still passes full validation on save", () => {
+test("a run carrying battleMap tokens still passes full validation on save", () => {
   freshRun("run_map_c");
-  updateSoloRunBattleMap("run_map_c", { width: 12, height: 10, positions: { player: { x: 1, y: 1 } } });
+  const run0 = getSoloRun("run_map_c");
+  updateSoloRunBattleMap("run_map_c", {
+    width: 12,
+    height: 10,
+    tokens: [{ entityId: `player:${run0.player.playerId}`, kind: "player", x: 1, y: 1 }]
+  });
   const run = getSoloRun("run_map_c");
-  // saveSoloRun runs validateSoloRun; battleMap must be tolerated.
+  // saveSoloRun runs validateSoloRun; battleMap + tokens must be tolerated.
   assert.doesNotThrow(() => saveSoloRun(run));
 });
 

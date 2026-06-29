@@ -568,17 +568,68 @@ export function buildCastRoster(run, policyProfile) {
 // Pure. Projects run.player into the fields the character sidebar needs.
 // run.player tracks HP via resources.hitPoints and the six D&D abilities; it
 // does not track AC/speed, so those come back null and the client defaults them.
+// State contract: normalize a gauge from a source object (or fallbacks) into
+// { current, max } numbers. Returns the supplied defaults when nothing is found.
+function gaugePayload(source, fallbackCurrent = 0, fallbackMax = 0) {
+  const current = isPlainObject(source) && typeof source.current === "number" ? source.current : fallbackCurrent;
+  const max = isPlainObject(source) && typeof source.max === "number" ? source.max : fallbackMax;
+  return { current, max };
+}
+
+// State contract: the player's carried inventory as an ARRAY of { id, name, qty }.
+// Prefers an explicit player.inventory array (a resolver may write it directly);
+// otherwise projects the persisted run.inventory object (keyed by itemId) into the
+// contract array so a resolver can append and the UI can render uniformly.
+function playerInventoryArray(run) {
+  const player = isPlainObject(run?.player) ? run.player : {};
+  // A non-empty explicit player.inventory wins (a resolver populated it); an
+  // empty/absent one falls through to the persisted run.inventory projection so
+  // today's real items still surface before any resolver writes player.inventory.
+  if (Array.isArray(player.inventory) && player.inventory.length > 0) {
+    return player.inventory.map((item) => ({
+      id: isString(item?.id) ? item.id : (isString(item?.itemId) ? item.itemId : ""),
+      name: isString(item?.name) ? item.name : "",
+      qty: typeof item?.qty === "number" ? item.qty : (typeof item?.quantity === "number" ? item.quantity : 1),
+      ...item
+    }));
+  }
+  const bag = isPlainObject(run?.inventory) ? run.inventory : {};
+  return Object.entries(bag).map(([key, item]) => ({
+    id: isString(item?.itemId) ? item.itemId : key,
+    name: isString(item?.name) ? item.name : key,
+    qty: typeof item?.quantity === "number" ? item.quantity : 1,
+    description: isString(item?.description) ? item.description : null,
+    usable: item?.usable === true,
+    consumable: item?.consumable === true
+  }));
+}
+
 export function buildPlayerPayload(run) {
   const player = isPlainObject(run?.player) ? run.player : {};
   const hp = isPlainObject(player.resources?.hitPoints) ? player.resources.hitPoints : null;
   const character = isPlainObject(player.character) ? player.character : null;
   const derived = isPlainObject(character?.derivedStats) ? character.derivedStats : null;
+  // State contract: resources.{hp,mp}. HP mirrors the persisted gauge that
+  // applyFailureDamage mutates (resources.hitPoints, falling back to health);
+  // MP prefers an explicit resources.mp/mana, else the stamina gauge, else zero.
+  const hpGauge = gaugePayload(
+    isPlainObject(player.resources?.hp) ? player.resources.hp : hp,
+    typeof player.health === "number" ? player.health : 0,
+    typeof player.maxHealth === "number" ? player.maxHealth : 0
+  );
+  const mpSource = player.resources?.mp ?? player.resources?.mana ?? player.resources?.stamina ?? null;
+  const mpGauge = gaugePayload(isPlainObject(mpSource) ? mpSource : null, 0, 0);
   return {
     displayName: isString(player.displayName) ? player.displayName : "Adventurer",
     className: isString(player.className) ? player.className : "Adventurer",
     race: isString(player.race) ? player.race : (character?.race ?? null),
     background: isString(player.background) ? player.background : (character?.background ?? null),
     level: typeof player.level === "number" ? player.level : 1,
+    // State contract fields:
+    xp: typeof player.xp === "number" ? player.xp : 0,
+    resources: { hp: hpGauge, mp: mpGauge },
+    inventory: playerInventoryArray(run),
+    conditions: Array.isArray(player.conditions) ? player.conditions : [],
     hitPoints: {
       current: hp && typeof hp.current === "number" ? hp.current : (typeof player.health === "number" ? player.health : 0),
       max: hp && typeof hp.max === "number" ? hp.max : (typeof player.maxHealth === "number" ? player.maxHealth : 0)
@@ -595,6 +646,69 @@ export function buildPlayerPayload(run) {
     status: isString(player.status) ? player.status : null,
     // Full 5e record (or null) for the character sheet tab.
     character
+  };
+}
+
+// State contract: a per-scene battle map carrying a token for the PLAYER and
+// every NPC / player-asset co-located in the CURRENT location — for EVERY scene,
+// not just combat. Token shape: { entityId, kind: 'player'|'npc'|'item', x, y }.
+// Placement is deterministic scaffolding (NOT tactical logic): persisted token
+// positions on run.battleMap.tokens win; otherwise tokens are laid out on a fixed
+// grid (player centered, others spiralling out) so the data is always populated.
+const BATTLE_MAP_SIZE = 12;
+// Fixed outward ring of offsets from the player's centre cell; deterministic so
+// the same scene always lays out identically. Resolver tracks own real movement.
+const BATTLE_MAP_RING = [
+  [1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1],
+  [2, 0], [-2, 0], [0, 2], [0, -2], [2, 1], [-2, -1], [1, 2], [-1, -2]
+];
+function clampCell(value) {
+  return Math.max(0, Math.min(BATTLE_MAP_SIZE - 1, value));
+}
+export function buildBattleMapPayload(run) {
+  const persisted = isPlainObject(run?.battleMap) ? run.battleMap : {};
+  const savedPositions = new Map();
+  if (Array.isArray(persisted.tokens)) {
+    for (const token of persisted.tokens) {
+      if (isPlainObject(token) && isString(token.entityId)) {
+        savedPositions.set(token.entityId, token);
+      }
+    }
+  }
+
+  const player = isPlainObject(run?.player) ? run.player : {};
+  const currentLocationId = run?.currentLocationId;
+  const centre = Math.floor(BATTLE_MAP_SIZE / 2);
+
+  // The player anchors the centre; co-located NPCs then items fill the ring.
+  const members = [{ entityId: `player:${player.playerId ?? "player"}`, kind: "player" }];
+  for (const npc of Object.values(run?.npcs || {})) {
+    if (npc && npc.currentLocationId === currentLocationId) {
+      members.push({ entityId: `npc:${npc.npcId}`, kind: "npc" });
+    }
+  }
+  for (const asset of Object.values(run?.playerAssets || {})) {
+    if (asset && asset.locationId === currentLocationId) {
+      members.push({ entityId: `player_asset:${asset.assetId}`, kind: "item" });
+    }
+  }
+
+  const tokens = members.map((member, index) => {
+    const saved = savedPositions.get(member.entityId);
+    if (saved && typeof saved.x === "number" && typeof saved.y === "number") {
+      return { entityId: member.entityId, kind: member.kind, x: saved.x, y: saved.y };
+    }
+    if (index === 0) {
+      return { entityId: member.entityId, kind: member.kind, x: centre, y: centre };
+    }
+    const [dx, dy] = BATTLE_MAP_RING[(index - 1) % BATTLE_MAP_RING.length];
+    return { entityId: member.entityId, kind: member.kind, x: clampCell(centre + dx), y: clampCell(centre + dy) };
+  });
+
+  return {
+    width: typeof persisted.width === "number" ? persisted.width : BATTLE_MAP_SIZE,
+    height: typeof persisted.height === "number" ? persisted.height : BATTLE_MAP_SIZE,
+    tokens
   };
 }
 
@@ -712,6 +826,9 @@ export function buildSoloScenePayload(run, options = {}) {
   const payload = {
     ok: true,
     runId: run.runId,
+    // State contract: campaign (default) vs sandbox. Legacy runs without the
+    // field default to "campaign" so consumers always see a concrete mode.
+    mode: run.mode === "sandbox" ? "sandbox" : "campaign",
     edition: run.edition,
     policyProfileId: run.policyProfileId,
     vnMode: vnState.active,
@@ -735,9 +852,10 @@ export function buildSoloScenePayload(run, options = {}) {
     player: buildPlayerPayload(run),
     visibleEntities,
     cast: buildCastRoster(run, policyProfile),
-    // Phase 2 battle map: persisted token positions (null until the player
-    // moves a token). The client falls back to deterministic placement.
-    battleMap: isPlainObject(run.battleMap) ? run.battleMap : null,
+    // State contract: per-scene battle map, ALWAYS populated with a token for the
+    // player and every co-located NPC / item in the current location (not just
+    // combat). Persisted token positions win; otherwise deterministic placement.
+    battleMap: buildBattleMapPayload(run),
     // MVP quest engine: active quests + the main quest (or null) for this run.
     quests: getQuestPayload(run),
     availableMoves: getAvailableMoves(run).filter((move) => {
