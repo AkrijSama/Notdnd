@@ -228,6 +228,37 @@ test("use_item revive: a dying player plays the scroll to come back; item gone",
   assert.equal(result.run.inventory.revive_scroll.quantity, 0);
 });
 
+test("use_item consume decrements the state-contract player.inventory[] mirror in sync", () => {
+  // A granted item lives in BOTH the authoritative run.inventory (object) and the
+  // player.inventory[] array the scene renders from. Consuming it must drop the
+  // qty in BOTH — otherwise a spent item keeps showing on the sheet (the bug
+  // Opus 2 flagged: authoritative decremented, mirror did not).
+  const run = freshRun();
+  run.inventory = {
+    torch: {
+      itemId: "torch",
+      name: "Pitch Torch",
+      quantity: 2,
+      usable: true,
+      consumable: true,
+      tags: [],
+      flags: {},
+      use: { effectType: "message", summary: "You spark the torch." }
+    }
+  };
+  run.player.inventory = [{ id: "torch", name: "Pitch Torch", qty: 2 }];
+
+  const result = resolveUseItemAction(run, { type: "use_item", itemId: "torch" });
+  assert.equal(result.ok, true);
+  assert.equal(result.useItemResult.consumed, true);
+  // Authoritative store decremented…
+  assert.equal(result.run.inventory.torch.quantity, 1, "authoritative qty 2 → 1");
+  // …and the player.inventory[] mirror the UI reads decremented in lockstep.
+  const mirror = result.run.player.inventory.find((e) => e.id === "torch");
+  assert.ok(mirror, "mirror entry still present");
+  assert.equal(mirror.qty, 1, "mirror qty 2 → 1 (no phantom item on the sheet)");
+});
+
 test("use_item revive on a healthy player wastes nothing (no effect, not consumed)", () => {
   const run = freshRun();
   run.inventory = {
