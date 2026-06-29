@@ -3045,6 +3045,110 @@ button:disabled {
 @media (max-width: 640px) {
   .onb-portrait-preview, .onb-portrait-preview.onb-portrait-review { width: 100%; }
 }
+
+/* ---- Conversational portrait editor: chat input + version strip + edit gate.
+   Leather-tome tokens only (:root), with literal fallbacks (no phantom vars). ---- */
+.onb-portrait-editor {
+  width: 320px;
+  max-width: 100%;
+  margin: 10px auto 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line, #3d2f22);
+  border-radius: var(--radius-md, 12px);
+  background: var(--surface, #141009);
+  box-shadow: var(--deboss, inset 0 2px 5px rgba(0, 0, 0, 0.5));
+}
+.onb-portrait-editor-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.onb-portrait-editor-head .onb-kicker { margin-bottom: 0; }
+.onb-portrait-edits-left {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--accent, #c89a4b);
+  white-space: nowrap;
+}
+.onb-portrait-edits-left.is-spent { color: var(--accent-2, #b94c2d); }
+.onb-portrait-versions {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+.onb-portrait-version {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: 8px;
+  border: 1px solid var(--line, #3d2f22);
+  background: var(--input-bg, #0a0706);
+  overflow: hidden;
+  cursor: pointer;
+  transition: border-color 0.12s ease, transform 0.12s ease;
+}
+.onb-portrait-version img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.onb-portrait-version:hover { transform: translateY(-1px); border-color: var(--accent, #c89a4b); }
+.onb-portrait-version.is-current {
+  border-color: var(--accent-bright, #d8b46a);
+  box-shadow: 0 0 0 1px var(--accent-bright, #d8b46a);
+}
+.onb-portrait-edit-row { display: flex; gap: 8px; }
+.onb-portrait-edit-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 9px 12px;
+  border-radius: 9px;
+  border: 1px solid var(--line, #3d2f22);
+  background: var(--input-bg, #0a0706);
+  color: var(--ink, #e9ddc4);
+  font-family: var(--font-body, Georgia, serif);
+  font-size: 13px;
+}
+.onb-portrait-edit-input::placeholder { color: var(--muted, #9b8c76); }
+.onb-portrait-edit-input:focus {
+  outline: none;
+  border-color: var(--accent, #c89a4b);
+  box-shadow: 0 0 0 2px rgba(216, 180, 106, 0.22);
+}
+.onb-portrait-edit-input:disabled { opacity: 0.6; }
+.onb-portrait-edit-send {
+  flex: 0 0 auto;
+  padding: 9px 16px;
+  border-radius: 9px;
+  border: 1px solid var(--accent-border, #4a3a1e);
+  background: linear-gradient(135deg, var(--accent-bright, #d8b46a), var(--accent, #b08545));
+  color: var(--on-accent, #1a1206);
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+}
+.onb-portrait-edit-send:hover { filter: brightness(1.06); }
+.onb-portrait-edit-send:disabled { opacity: 0.55; cursor: default; filter: none; }
+.onb-portrait-upgrade {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  border: 1px solid var(--accent, #b08545);
+  background: linear-gradient(180deg, rgba(200, 154, 75, 0.14), rgba(200, 154, 75, 0.05));
+  color: var(--text, #e9ddc4);
+  font-size: 12.5px;
+}
+.onb-portrait-upgrade strong { color: var(--accent-bright, #d8b46a); }
+.onb-portrait-edit-error { font-size: 12px; color: var(--accent-2, #b94c2d); }
+.onb-portrait-edit-hint { font-size: 11.5px; color: var(--muted, #9b8c76); font-style: italic; }
+@media (max-width: 640px) {
+  .onb-portrait-editor { width: 100%; }
+}
+
 .cw-ability-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
 .cw-ab-cell { text-align: center; padding: 8px 4px; border-radius: 10px; background: var(--surface, #1c1610); border: 1px solid var(--line, #3d2f22); }
 .cw-ab-key { font-size: 11px; opacity: 0.7; }

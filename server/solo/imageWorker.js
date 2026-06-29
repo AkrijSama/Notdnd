@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { generateImage, providerSupportsReference, resolveImageProvider } from "../ai/providers.js";
+import { editImage, generateImage, providerSupportsReference, resolveImageProvider } from "../ai/providers.js";
 import { detectImageExt } from "../api/http.js";
 import {
   ensureLocationImageAsset,
@@ -266,7 +266,7 @@ function playerPortraitSeed(character = {}, world = {}) {
 // Draft asset namespace id: hashed over EVERY prompt-affecting field so any
 // change (race/class/background/pronouns/name) yields a fresh namespace and a
 // regeneration, while identical choices reuse the cached asset.
-export function computeDraftPortraitId(character = {}, nonce = 0, world = {}) {
+export function computeDraftPortraitId(character = {}, nonce = 0, world = {}, editTag = "") {
   const c = normalizePortraitCharacter(character);
   // artStyle + tone are part of the generated prompt, so they MUST be part of the
   // cache namespace. Without them, switching art style (e.g. illustrated -> anime)
@@ -275,7 +275,11 @@ export function computeDraftPortraitId(character = {}, nonce = 0, world = {}) {
   // bug. Defaulting style to "illustrated" matches buildPlayerPortraitPrompt.
   const style = isStr(world?.artStyle) ? world.artStyle.trim().toLowerCase() : "illustrated";
   const tone = isStr(world?.tone) ? world.tone.trim().toLowerCase() : "";
-  const base = `${c.name || ""}|${c.race || ""}|${c.characterClass || ""}|${c.background || ""}|${c.pronouns || ""}|${style}|${tone}`;
+  // An edit instruction (conversational portrait editor) is part of the produced
+  // image, so it joins the cache namespace — two different tweaks at the same
+  // nonce must not collide on one draftId.
+  const edit = String(editTag || "").trim().toLowerCase();
+  const base = `${c.name || ""}|${c.race || ""}|${c.characterClass || ""}|${c.background || ""}|${c.pronouns || ""}|${style}|${tone}${edit ? `|e:${edit}` : ""}`;
   // A redo nonce (>0) yields a fresh namespace so the disk cache is bypassed and
   // a NEW image is generated. nonce 0 keeps a stable id for a given combo, so
   // first-generation and carry-forward behaviour are unchanged.
@@ -613,9 +617,16 @@ export async function runDraftPortraitJob(job = {}) {
   // genuinely different image (not the same one under a fresh id). Seed also
   // varies by art style so a style change yields a different image.
   const seed = playerPortraitSeed(character, world) + Math.trunc(Number(job.nonce) || 0) * 100003;
+  const editInstruction = typeof job.editInstruction === "string" ? job.editInstruction.trim() : "";
+  const sourceImageUrl = typeof job.sourceImageUrl === "string" ? job.sourceImageUrl.trim() : "";
 
   try {
-    const result = await generateImage({ prompt, style, seed, ...PLAYER_PORTRAIT_DIMENSIONS });
+    // A conversational edit routes through editImage (kontext-first edit of the
+    // current portrait, regenerate fallback when no funded key); a plain
+    // generation/redo uses generateImage. Same prompt base so the character holds.
+    const result = editInstruction
+      ? await editImage({ sourceImageUrl, instruction: editInstruction, prompt, style, seed, ...PLAYER_PORTRAIT_DIMENSIONS })
+      : await generateImage({ prompt, style, seed, ...PLAYER_PORTRAIT_DIMENSIONS });
     const bytes = result?.bytes;
     if (!bytes || !bytes.length) {
       throw new Error("image provider returned no bytes");
@@ -891,7 +902,13 @@ export function enqueueDraftPortrait(job = {}) {
   const world = job.world || {};
   // Redo nonce: bypasses the cache (new id) and varies the seed (new image).
   const nonce = Math.trunc(Number(job.nonce) || 0);
-  const draftId = computeDraftPortraitId(character, nonce, world);
+  // Conversational portrait editor: a tweak ("longer hair", "add a scar") applied
+  // to the CURRENT portrait. editInstruction joins the cache id (so each tweak is
+  // its own version) and routes generation through editImage (kontext-first edit
+  // with a regenerate fallback) using sourceImageUrl as the base.
+  const editInstruction = typeof job.editInstruction === "string" ? job.editInstruction.trim() : "";
+  const sourceImageUrl = typeof job.sourceImageUrl === "string" ? job.sourceImageUrl.trim() : "";
+  const draftId = computeDraftPortraitId(character, nonce, world, editInstruction);
 
   // Idempotent: if already generated on disk, mark generated and skip the queue.
   const existing = findDraftPortraitOnDisk(draftId);
@@ -901,7 +918,7 @@ export function enqueueDraftPortrait(job = {}) {
   }
 
   draftPortraits.set(draftId, { status: "generating", uri: null });
-  queue.push({ kind: "draft", draftId, character, world, nonce });
+  queue.push({ kind: "draft", draftId, character, world, nonce, editInstruction, sourceImageUrl });
   Promise.resolve().then(drainQueue).catch((error) => logWorker("drain failed", error));
   return draftId;
 }

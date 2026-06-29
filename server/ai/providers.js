@@ -509,6 +509,107 @@ async function pollinationsImage({ prompt, seed, fetchImpl, width, height }) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Image EDIT (kontext / gptimage) — true source-image-preserving edits.
+// Experiment (2026-06-29) against the current keyless Pollinations setup:
+//   - GET image.pollinations.ai/prompt/<p>?model=kontext  -> 500 "kontext model
+//     is only available on enter.pollinations.ai"
+//   - GET gen.pollinations.ai/image/<p>?model=kontext&image=… -> 401 UNAUTHORIZED
+//     "Authentication required (Bearer token or ?key=)"
+//   - ?model=gptimage on the keyless base returns BYTE-IDENTICAL FLUX output
+//     (the model param is ignored), so it is NOT a real instruction-following
+//     edit and does NOT fix elf-ears.
+// Conclusion: true edits need a funded "pollen" key (INKBORNE_POLLINATIONS_KEY).
+// editImage() is therefore kontext-FIRST WITH a regenerate FALLBACK so the
+// feature ships and works either way (see editImage docstring).
+// ---------------------------------------------------------------------------
+const POLLINATIONS_EDIT_BASE =
+  (process.env.INKBORNE_POLLINATIONS_EDIT_ENDPOINT ?? process.env.NOTDND_POLLINATIONS_EDIT_ENDPOINT) ||
+  "https://gen.pollinations.ai/image";
+const POLLINATIONS_EDIT_MODEL =
+  (process.env.INKBORNE_POLLINATIONS_EDIT_MODEL ?? process.env.NOTDND_POLLINATIONS_EDIT_MODEL) || "kontext";
+
+function pollinationsEditKey() {
+  return String(process.env.INKBORNE_POLLINATIONS_KEY ?? process.env.NOTDND_POLLINATIONS_KEY ?? "").trim();
+}
+
+// True when a funded Pollinations key is configured, i.e. when editImage can do a
+// real source-image-preserving edit instead of the regenerate fallback. The
+// client surfaces this so the UI can label edits "consistent" vs "regenerated".
+export function pollinationsEditConfigured() {
+  return pollinationsEditKey().length > 0;
+}
+
+async function pollinationsEdit({ sourceImageUrl, instruction, seed, fetchImpl, width, height, key }) {
+  const w = Number(width) > 0 ? Math.trunc(Number(width)) : 512;
+  const h = Number(height) > 0 ? Math.trunc(Number(height)) : 768;
+  const encoded = encodeURIComponent(String(instruction || "").trim() || "subtle edit");
+  const params = new URLSearchParams({
+    model: POLLINATIONS_EDIT_MODEL,
+    image: String(sourceImageUrl || ""),
+    width: String(w),
+    height: String(h),
+    seed: String(pollinationsSeed(instruction, seed)),
+    nologo: "true"
+  });
+  const url = `${POLLINATIONS_EDIT_BASE}/${encoded}?${params.toString()}`;
+  const response = await fetchImpl(url, { headers: { Authorization: `Bearer ${key}` } });
+  if (!response.ok) {
+    throw makeProviderError("pollinations-edit", `Pollinations edit failed (${response.status})`, "UPSTREAM_AI_ERROR", response.status);
+  }
+  return {
+    provider: "pollinations-edit",
+    mock: false,
+    bytes: Buffer.from(await response.arrayBuffer()),
+    url,
+    edited: true
+  };
+}
+
+/**
+ * Apply ONE edit instruction to an existing portrait, keeping the same character.
+ * Kontext-FIRST with a regenerate FALLBACK (degrades gracefully):
+ *   - When a Pollinations edit key is configured AND a source image is supplied,
+ *     call the kontext/gptimage edit endpoint (source image + instruction) for a
+ *     true, consistent edit — result.edited === true.
+ *   - Otherwise (no key / no source / the edit call errors), fall back to
+ *     generateImage with the instruction folded into the prompt: a regenerate
+ *     that honours the tweak but does not guarantee the identical face —
+ *     result.edited === false.
+ * The caller's UI is identical for both paths.
+ * @param {{ sourceImageUrl?: string|null, instruction?: string, prompt?: string,
+ *   style?: string, seed?: number|null, width?: number|null, height?: number|null,
+ *   fetchImpl?: Function, mock?: boolean }} opts
+ * @returns {Promise<{ provider, bytes, url, edited: boolean }>}
+ */
+export async function editImage({
+  sourceImageUrl = null,
+  instruction = "",
+  prompt = "",
+  style = "",
+  seed = null,
+  width = null,
+  height = null,
+  fetchImpl = fetch,
+  mock = isMockImageProvider(resolveImageProvider())
+} = {}) {
+  const key = pollinationsEditKey();
+  const hasSource = typeof sourceImageUrl === "string" && sourceImageUrl.trim().length > 0;
+  // Mock mode never hits the network: it always uses the regenerate fallback so
+  // tests stay deterministic and offline.
+  if (key && hasSource && !mock) {
+    try {
+      return await pollinationsEdit({ sourceImageUrl, instruction, seed, fetchImpl, width, height, key });
+    } catch {
+      // Never hard-fail a player's edit — degrade to the regenerate fallback below.
+    }
+  }
+  const tweak = String(instruction || "").trim();
+  const editedPrompt = tweak ? `${prompt}, ${tweak}` : prompt;
+  const result = await generateImage({ prompt: editedPrompt, style, seed, width, height, fetchImpl });
+  return { ...result, edited: false };
+}
+
 // Cloudflare Workers AI — FLUX-1-schnell. Failover provider #2: keyed
 // (CF_ACCOUNT_ID + CF_API_TOKEN), a single POST that returns the generated image
 // bytes directly (not a URL). flux-1-schnell accepts num_steps but NOT

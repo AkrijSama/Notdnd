@@ -297,6 +297,16 @@ export function createApiClient(baseUrl = "") {
     async getDraftPortrait(draftId) {
       return request(`/api/onboarding/portrait/${encodeURIComponent(draftId)}`);
     },
+    // Conversational portrait editor: apply one tweak to the CURRENT portrait
+    // (sourceImageUrl). nonce bumps per edit so each version gets a fresh draftId.
+    // Returns { draftId, status, consistentEdit, entitlement } — same poll as a
+    // generation. status "quota_reached" when the daily image quota is spent.
+    async editDraftPortrait({ character, world, instruction, sourceImageUrl, nonce }) {
+      return request("/api/onboarding/portrait/edit", {
+        method: "POST",
+        body: JSON.stringify({ character, world, instruction, sourceImageUrl, nonce })
+      });
+    },
     async getGmMemory(campaignId) {
       return request(`/api/gm/memory?campaignId=${encodeURIComponent(campaignId)}`);
     },

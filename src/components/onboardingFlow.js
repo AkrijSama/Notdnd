@@ -177,6 +177,80 @@ function renderPortraitPreview(portrait = {}, options = {}) {
     </div>`;
 }
 
+// Conversational portrait editor: a chat-style "describe a change" input applied
+// to the CURRENT portrait, a thumbnail version-history strip (click to revert),
+// and an entitlement-gated "N edits left" counter that becomes a soft-upgrade
+// prompt when the daily image quota is spent. Renders only once a portrait
+// exists. Leather-tome styled (:root tokens). Reusable beyond the creator.
+function renderPortraitEditor(portrait = {}) {
+  const uri = typeof portrait.portraitUri === "string" ? portrait.portraitUri : "";
+  if (!uri) {
+    return ""; // nothing to refine until a portrait exists
+  }
+  const ent = portrait.entitlement || null;
+  const pending = portrait.editPending === true;
+  const versions = Array.isArray(portrait.versions) ? portrait.versions : [];
+  const draft = typeof portrait.editDraft === "string" ? portrait.editDraft : "";
+  const unlimited = Boolean(ent && ent.unlimited);
+  const remaining = ent && typeof ent.remaining === "number" ? ent.remaining : null;
+  const exhausted = Boolean(ent) && !unlimited && typeof remaining === "number" && remaining <= 0;
+  const quotaPrompt = exhausted || portrait.editError === "quota";
+
+  let counter = "";
+  if (unlimited) {
+    counter = "Unlimited refinements";
+  } else if (typeof remaining === "number") {
+    counter = `${remaining} edit${remaining === 1 ? "" : "s"} left today`;
+  }
+
+  const versionStrip = versions.length > 1
+    ? `<div class="onb-portrait-versions" role="list" aria-label="Portrait versions">
+        ${versions
+          .map(
+            (v, i) =>
+              `<button type="button" role="listitem" class="onb-portrait-version${v.uri === uri ? " is-current" : ""}" data-cw-portrait-revert="${esc(v.id)}" title="Version ${i + 1}" aria-label="Revert to version ${i + 1}">
+                <img src="${esc(v.uri)}" alt="Portrait version ${i + 1}" loading="lazy" />
+              </button>`
+          )
+          .join("")}
+      </div>`
+    : "";
+
+  const disabled = pending || quotaPrompt ? "disabled" : "";
+  const inputRow = `
+    <div class="onb-portrait-edit-row">
+      <input type="text" class="onb-portrait-edit-input" data-cw-portrait-edit-input
+        placeholder="Describe a change — “longer hair”, “a scar over the left eye”…"
+        value="${esc(draft)}" ${disabled} aria-label="Describe a change to the portrait" />
+      <button type="button" class="onb-portrait-edit-send" data-cw-portrait-edit-send ${disabled}>${pending ? "Applying…" : "Apply"}</button>
+    </div>`;
+
+  let foot = "";
+  if (quotaPrompt) {
+    // Soft-upgrade — the editor and the monetization gate are the same surface.
+    foot = `<div class="onb-portrait-upgrade" role="status">
+        <strong>You've used today's portrait refinements.</strong>
+        <span>Upgrade for unlimited portrait refinement.</span>
+      </div>`;
+  } else if (portrait.editError === "failed") {
+    foot = `<div class="onb-portrait-edit-error" role="status">That edit didn't complete — try rephrasing.</div>`;
+  } else if (portrait.consistentEdit === false && versions.length > 1) {
+    // Honest about the degraded path when no funded edit key is configured.
+    foot = `<div class="onb-portrait-edit-hint">Edits regenerate the portrait with your change folded in.</div>`;
+  }
+
+  return `
+    <div class="onb-portrait-editor">
+      <div class="onb-portrait-editor-head">
+        <span class="onb-kicker">Refine your portrait</span>
+        ${counter ? `<span class="onb-portrait-edits-left${exhausted ? " is-spent" : ""}">${esc(counter)}</span>` : ""}
+      </div>
+      ${versionStrip}
+      ${inputRow}
+      ${foot}
+    </div>`;
+}
+
 function renderCharIdentity(c, portrait = {}) {
   const mode = c.portraitMode || "generate";
   return `
@@ -328,6 +402,7 @@ function renderCharReview(c, portrait = {}, customContent = {}) {
         ${renderPortraitPreview(portrait, { charName: c.name, variant: "review" })}
         <div class="cw-review-name">${esc(sheet.name || "Unnamed")}</div>
         <div class="cw-review-sub">${esc([sheet.race, sheet.class, sheet.background].filter(Boolean).join(" · ") || "—")} · Level ${sheet.level}</div>
+        ${renderPortraitEditor(portrait)}
       </div>
       <div class="cw-ability-grid">${abilityCells}</div>
       <div class="cw-derived">
@@ -347,7 +422,18 @@ function renderCharacterWizard(state) {
   const step = c.step || 1;
   // Steps 1 (Identity) and 6 (Review) both show the live mid-creation portrait;
   // its status lives on the onboarding state, not the character object.
-  const portrait = { portraitUri: state.draftPortraitUri, portraitStatus: state.draftPortraitStatus, accepted: state.draftPortraitAccepted === true };
+  const portrait = {
+    portraitUri: state.draftPortraitUri,
+    portraitStatus: state.draftPortraitStatus,
+    accepted: state.draftPortraitAccepted === true,
+    // Conversational editor: version history + the entitlement-gated edit count.
+    versions: Array.isArray(state.portraitVersions) ? state.portraitVersions : [],
+    entitlement: state.portraitEntitlement || null,
+    editDraft: typeof state.portraitEditDraft === "string" ? state.portraitEditDraft : "",
+    editPending: state.portraitEditPending === true,
+    editError: state.portraitEditError || "",
+    consistentEdit: state.portraitConsistentEdit === true
+  };
   // SRD-shaped custom content catalogs (from the user's homebrew); additive to SRD.
   const custom = state.customContent || {};
   let body;
@@ -675,6 +761,25 @@ export function bindOnboardingFlow(root, handlers = {}) {
   });
   root.querySelectorAll("[data-cw-portrait-accept]").forEach((button) => {
     button.addEventListener("click", () => handlers.onPortraitAccept?.());
+  });
+  // Conversational portrait editor: chat input (Enter / Apply submits the tweak),
+  // and the version-history thumbnails (click to revert to an earlier portrait).
+  const portraitEditField = root.querySelectorAll("[data-cw-portrait-edit-input]")[0] || null;
+  const submitPortraitEdit = () => handlers.onPortraitEdit?.(portraitEditField ? portraitEditField.value : "");
+  root.querySelectorAll("[data-cw-portrait-edit-send]").forEach((button) => {
+    button.addEventListener("click", submitPortraitEdit);
+  });
+  if (portraitEditField && typeof portraitEditField.addEventListener === "function") {
+    portraitEditField.addEventListener("input", () => handlers.onPortraitEditInput?.(portraitEditField.value));
+    portraitEditField.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        submitPortraitEdit();
+      }
+    });
+  }
+  root.querySelectorAll("[data-cw-portrait-revert]").forEach((button) => {
+    button.addEventListener("click", () => handlers.onPortraitRevert?.(button.getAttribute("data-cw-portrait-revert")));
   });
   root.querySelectorAll("[data-cw-race]").forEach((button) => {
     button.addEventListener("click", () => handlers.onCharField?.("race", button.getAttribute("data-cw-race")));

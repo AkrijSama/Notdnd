@@ -30,7 +30,7 @@ loadDotenv();
 
 import { createAiJobProcessor } from "./ai/processor.js";
 import { generateNarrative, generateRaw, getCampaignUsage, getModelTiers } from "./ai/openrouter.js";
-import { generateWithProvider, listAiProviders } from "./ai/providers.js";
+import { generateWithProvider, listAiProviders, pollinationsEditConfigured } from "./ai/providers.js";
 import { detectImageExt, parseMultipartFile, readJsonBody, readRawBody, serveStatic, writeJson, writeText } from "./api/http.js";
 import { handleQuickstartBuildPayload, handleQuickstartParsePayload } from "./api/quickstartRoutes.js";
 import { tokenFromRequest } from "./auth/httpAuth.js";
@@ -1642,11 +1642,13 @@ async function handleApi(req, res) {
     try {
       const user = requireAuth(req);
       const payload = await readJsonBody(req);
+      const byok = requestHasByokKey(req);
       // Draft portraits cost a generation; gate the same as in-run art. A
       // quota-exhausted free user (no BYOK) gets a soft "quota_reached" status
       // instead of art — character creation still proceeds without a portrait.
-      if (!canGenerateImage(user, { byok: requestHasByokKey(req) }).allowed) {
-        writeJson(res, 200, { ok: true, draftId: null, status: "quota_reached" });
+      // entitlement rides every response so the creator can show "N edits left".
+      if (!canGenerateImage(user, { byok }).allowed) {
+        writeJson(res, 200, { ok: true, draftId: null, status: "quota_reached", entitlement: entitlementSummary(user, { byok }) });
         return true;
       }
       const draftId = enqueueDraftPortrait({
@@ -1654,7 +1656,46 @@ async function handleApi(req, res) {
         world: payload?.world || {},
         nonce: payload?.nonce
       });
-      writeJson(res, 200, { ok: true, draftId, status: "generating" });
+      writeJson(res, 200, { ok: true, draftId, status: "generating", entitlement: entitlementSummary(user, { byok }) });
+    } catch (error) {
+      routeError(res, error);
+    }
+    return true;
+  }
+
+  // Conversational portrait editor: apply ONE tweak ("scar over left eye", "make
+  // the coat oxblood red") to the CURRENT portrait, keeping the same character.
+  // Same entitlement gate as generation (each edit is a paid image). Returns a new
+  // draftId the client polls — kontext-first edit when a funded key exists, else a
+  // regenerate with the tweak folded into the prompt (graceful degradation).
+  if (req.method === "POST" && url.pathname === "/api/onboarding/portrait/edit") {
+    try {
+      const user = requireAuth(req);
+      const payload = await readJsonBody(req);
+      const byok = requestHasByokKey(req);
+      if (!canGenerateImage(user, { byok }).allowed) {
+        writeJson(res, 200, { ok: true, draftId: null, status: "quota_reached", entitlement: entitlementSummary(user, { byok }) });
+        return true;
+      }
+      const instruction = typeof payload?.instruction === "string" ? payload.instruction.trim() : "";
+      if (!instruction) {
+        writeJson(res, 400, { ok: false, error: "An edit instruction is required." });
+        return true;
+      }
+      const draftId = enqueueDraftPortrait({
+        character: payload?.character || {},
+        world: payload?.world || {},
+        nonce: payload?.nonce,
+        editInstruction: instruction,
+        sourceImageUrl: typeof payload?.sourceImageUrl === "string" ? payload.sourceImageUrl : ""
+      });
+      writeJson(res, 200, {
+        ok: true,
+        draftId,
+        status: "generating",
+        consistentEdit: pollinationsEditConfigured(),
+        entitlement: entitlementSummary(user, { byok })
+      });
     } catch (error) {
       routeError(res, error);
     }

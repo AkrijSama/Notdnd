@@ -609,11 +609,14 @@ function startDraftPortraitPoll(draftId, key) {
       if (res?.status === "generated" && res.uri) {
         uiState.onboarding.draftPortraitUri = res.uri;
         uiState.onboarding.draftPortraitStatus = "generated";
+        uiState.onboarding.portraitEditPending = false;
+        recordPortraitVersion(draftId, res.uri); // version history (gen / redo / edit)
         scheduleRender();
         return; // done — stop polling
       }
       if (res?.status === "failed") {
         uiState.onboarding.draftPortraitStatus = "failed";
+        uiState.onboarding.portraitEditPending = false;
         // Clear the key so the combo can be retried (e.g. on returning to the
         // Review step) instead of sticking on "failed" forever.
         uiState.onboarding.draftPortraitKey = null;
@@ -627,6 +630,7 @@ function startDraftPortraitPoll(draftId, key) {
       uiState.onboarding.draftPortraitPollTimer = setTimeout(tick, 3000);
     } else {
       uiState.onboarding.draftPortraitStatus = "failed";
+      uiState.onboarding.portraitEditPending = false;
       uiState.onboarding.draftPortraitKey = null; // allow a retry after a timeout
       scheduleRender();
     }
@@ -675,6 +679,7 @@ async function maybeRequestDraftPortrait() {
     if (uiState.onboarding.draftPortraitKey !== key) {
       return; // combo changed while awaiting — drop this response
     }
+    applyPortraitEntitlement(res?.entitlement); // surfaces "N edits left" after gen
     if (res?.draftId) {
       uiState.onboarding.draftPortraitId = res.draftId;
       startDraftPortraitPoll(res.draftId, key);
@@ -721,6 +726,142 @@ function acceptDraftPortrait() {
     return; // nothing to accept yet
   }
   uiState.onboarding.draftPortraitAccepted = true;
+  scheduleRender();
+}
+
+// ---- Conversational portrait editor (version history + entitlement gate) ----
+// Folds the daily image-quota (entitlements.canGenerateImage, surfaced on every
+// portrait response) into onboarding state so the UI can show "N edits left" and
+// a soft-upgrade prompt. unlimited === remaining null (paid / BYOK).
+function applyPortraitEntitlement(ent) {
+  if (!ent || typeof ent !== "object") {
+    return;
+  }
+  const remaining = ent.image && typeof ent.image.remaining !== "undefined"
+    ? ent.image.remaining
+    : (typeof ent.imageQuotaRemaining === "number" ? ent.imageQuotaRemaining : null);
+  uiState.onboarding.portraitEntitlement = {
+    unlimited: ent.unlimited === true || remaining === null,
+    remaining: typeof remaining === "number" ? remaining : null,
+    tier: ent.tier || null
+  };
+}
+
+// Record every generated portrait as a version (deduped by uri) so the player can
+// always revert. The poll calls this on each "generated" — covers first gen,
+// Redo, and edits alike.
+function recordPortraitVersion(id, uri) {
+  if (!uri) {
+    return;
+  }
+  const list = uiState.onboarding.portraitVersions || [];
+  if (list.some((v) => v.uri === uri)) {
+    return;
+  }
+  uiState.onboarding.portraitVersions = [...list, { id: id || `v${list.length + 1}`, uri }];
+}
+
+// Returns true when the daily image quota is spent (and not unlimited) — the
+// editor soft-gates locally before spending a network call.
+function portraitQuotaExhausted() {
+  const ent = uiState.onboarding.portraitEntitlement;
+  return Boolean(ent) && ent.unlimited !== true && typeof ent.remaining === "number" && ent.remaining <= 0;
+}
+
+function portraitEditInput(value) {
+  // Mirror charInput: update the draft without a re-render so the caret holds.
+  uiState.onboarding.portraitEditDraft = String(value || "");
+}
+
+// Apply ONE conversational tweak to the CURRENT portrait. Bumps the nonce (fresh
+// draftId), un-accepts, and polls the new version through the SAME pipeline as a
+// generation. Respects the entitlement gate; a spent quota shows the soft-upgrade
+// prompt instead of a broken call.
+async function submitPortraitEdit(rawInstruction) {
+  const instruction = String(rawInstruction || uiState.onboarding.portraitEditDraft || "").trim();
+  const sourceUri = uiState.onboarding.draftPortraitUri;
+  if (!instruction || !sourceUri || uiState.onboarding.portraitEditPending) {
+    return;
+  }
+  if (portraitQuotaExhausted()) {
+    uiState.onboarding.portraitEditError = "quota";
+    scheduleRender();
+    return;
+  }
+  const c = uiState.onboarding.character || {};
+  const world = uiState.onboarding.worldPreview || uiState.onboarding.worldDef || {};
+  uiState.onboarding.draftPortraitNonce = (uiState.onboarding.draftPortraitNonce || 0) + 1;
+  const nonce = uiState.onboarding.draftPortraitNonce;
+  // A dedicated key so the edit's poll is not dropped as "superseded" and a later
+  // race/class change still re-keys cleanly.
+  const key = `${c.race}|${c.characterClass}|${c.background || ""}|edit:${nonce}`;
+  uiState.onboarding.draftPortraitKey = key;
+  uiState.onboarding.draftPortraitStatus = "generating"; // current image stays under the overlay
+  uiState.onboarding.draftPortraitAccepted = false; // an edit un-accepts (must re-accept)
+  uiState.onboarding.draftPortraitId = null;
+  uiState.onboarding.portraitEditPending = true;
+  uiState.onboarding.portraitEditError = "";
+  stopDraftPortraitPoll();
+  scheduleRender();
+  try {
+    const res = await apiClient.editDraftPortrait({
+      character: { name: c.name, race: c.race, characterClass: c.characterClass, background: c.background, pronouns: c.pronouns },
+      world: { tone: world.tone, artStyle: world.artStyle, name: world.name },
+      instruction,
+      sourceImageUrl: sourceUri,
+      nonce
+    });
+    if (uiState.onboarding.draftPortraitKey !== key) {
+      return; // superseded by a newer action
+    }
+    applyPortraitEntitlement(res?.entitlement);
+    if (res?.status === "quota_reached") {
+      uiState.onboarding.portraitEditPending = false;
+      uiState.onboarding.portraitEditError = "quota";
+      uiState.onboarding.draftPortraitStatus = "generated"; // keep the current portrait
+      uiState.onboarding.draftPortraitKey = null;
+      scheduleRender();
+      return;
+    }
+    if (res?.draftId) {
+      uiState.onboarding.portraitConsistentEdit = res.consistentEdit === true;
+      uiState.onboarding.portraitEditDraft = "";
+      uiState.onboarding.draftPortraitId = res.draftId;
+      startDraftPortraitPoll(res.draftId, key); // poll clears pending + records the version
+    } else {
+      uiState.onboarding.portraitEditPending = false;
+      uiState.onboarding.portraitEditError = "failed";
+      uiState.onboarding.draftPortraitStatus = "generated";
+      uiState.onboarding.draftPortraitKey = null;
+      scheduleRender();
+    }
+  } catch {
+    if (uiState.onboarding.draftPortraitKey === key) {
+      uiState.onboarding.portraitEditPending = false;
+      uiState.onboarding.portraitEditError = "failed";
+      uiState.onboarding.draftPortraitStatus = "generated";
+      uiState.onboarding.draftPortraitKey = null;
+      scheduleRender();
+    }
+  }
+}
+
+// Click a thumbnail to revert: the chosen version becomes the current portrait
+// (and the one Accept will carry into the run). It un-accepts so the player
+// re-confirms the choice (preserves FIX G accept-is-terminal semantics).
+function revertPortraitVersion(id) {
+  const version = (uiState.onboarding.portraitVersions || []).find((v) => v.id === id);
+  if (!version) {
+    return;
+  }
+  stopDraftPortraitPoll();
+  uiState.onboarding.draftPortraitUri = version.uri;
+  uiState.onboarding.draftPortraitId = version.id;
+  uiState.onboarding.draftPortraitStatus = "generated";
+  uiState.onboarding.draftPortraitAccepted = false;
+  uiState.onboarding.draftPortraitKey = null;
+  uiState.onboarding.portraitEditPending = false;
+  uiState.onboarding.portraitEditError = "";
   scheduleRender();
 }
 function charInput(field, value) {
@@ -1370,6 +1511,9 @@ function renderApp() {
         onCharInput: charInput,
         onPortraitRedo: redoDraftPortrait,
         onPortraitAccept: acceptDraftPortrait,
+        onPortraitEdit: submitPortraitEdit,
+        onPortraitEditInput: portraitEditInput,
+        onPortraitRevert: revertPortraitVersion,
         onCharMethod: charMethod,
         onCharAssign: charAssign,
         onCharPointBuy: charPointBuy,
