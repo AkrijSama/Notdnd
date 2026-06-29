@@ -360,6 +360,44 @@ function roleForLocationType(type) {
   return map[key] || "Local";
 }
 
+// Coherence rule for scene population: DON'T place a person in the starting area
+// without a reason. The player starts ALONE unless presence is justified —
+//   (a) a campaign/module explicitly places one (world.startingNpc with a
+//       `reason`), or
+//   (b) a busy PUBLIC venue where a contact's presence is self-evident (a tavern
+//       has a keeper, a market a merchant, a gate a warden, a port a dockmaster).
+// An abandoned/wilderness start (the forest-ruins default, a dungeon, the wilds)
+// has no such reason, so it stays empty — an unexplained stranger is worse than
+// solitude. Returns a spec { role, reason, known } or null (start alone).
+const SELF_EVIDENT_PRESENCE = {
+  tavern: "tends this tavern and is here because it is their establishment",
+  market: "trades in this market and is here to do business",
+  "city gate": "stands watch at this gate as their posting",
+  port: "runs the comings and goings of this port"
+};
+
+function resolveStartingNpcSpec(world, resolvedWorld) {
+  // (a) Explicit module/world placement. Honoured only when it states a reason,
+  // so we never reintroduce a contextless stranger.
+  const spec = world && typeof world.startingNpc === "object" && world.startingNpc ? world.startingNpc : null;
+  if (spec && isStr(spec.reason)) {
+    return {
+      role: isStr(spec.role) ? spec.role : roleForLocationType(resolvedWorld.startingLocationType),
+      reason: spec.reason.trim(),
+      known: spec.known !== false
+    };
+  }
+  // (b) Self-evident presence at a busy public venue.
+  const key = String(resolvedWorld.startingLocationType || "").toLowerCase();
+  const evident = SELF_EVIDENT_PRESENCE[key];
+  if (evident) {
+    const role = roleForLocationType(resolvedWorld.startingLocationType);
+    return { role, reason: `the ${role.toLowerCase()} ${evident}`, known: true };
+  }
+  // Otherwise: no justified reason -> the player starts alone.
+  return null;
+}
+
 /**
  * World-generator onboarding (Tickets 38 + 39). Resolves the world from the
  * player's (partial) definition, creates the campaign + solo run, builds the
@@ -500,40 +538,51 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
     }
   }
 
-  // One tone-appropriate starting contact.
-  const npcRole = roleForLocationType(resolvedWorld.startingLocationType);
-  const npc = {
-    npcId: "npc_start_contact",
-    displayName: npcRole,
-    role: npcRole,
-    currentLocationId: "start_location",
-    known: true,
-    status: "present",
-    memoryFactIds: [],
-    tags: [slugTag(npcRole)],
-    flags: {},
-    edition: "mainline",
-    policyProfileId: "mainline_default",
-    contentTags: [],
-    origin: "procedural"
-  };
-  const identity = await generateNpcIdentity({
-    role: `${npcRole} in a ${resolvedWorld.tone} world`,
-    worldSeed: run.worldSeed,
-    npcIndex: 0
-  });
-  npc.generatedName = identity.generatedName;
-  npc.appearance = identity.appearance;
-  npc.personality = identity.personality;
-  npc.portraitPrompt = identity.portraitPrompt;
-  npc.identitySeed = identity.identitySeed;
-  npc.displayName = identity.generatedName;
-  const docId = writeNpcMemoryDoc(campaignId, npc);
-  if (docId) {
-    npc.memoryDocId = docId;
-  }
+  // Starting-area population is GATED on a real reason (see resolveStartingNpcSpec).
+  // With no justification the player starts ALONE in the ruins — no contextless
+  // stranger. When a contact IS placed, its `reason` is stored as the NPC's
+  // introInstructions, which the scene/GM turns into a directive to introduce
+  // them naturally AND explain why they're here (buildNpcIntroDirective).
   run.npcs = run.npcs || {};
-  run.npcs[npc.npcId] = npc;
+  const startingNpcSpec = resolveStartingNpcSpec(world, resolvedWorld);
+  let npc = null;
+  if (startingNpcSpec) {
+    const npcRole = startingNpcSpec.role;
+    npc = {
+      npcId: "npc_start_contact",
+      displayName: npcRole,
+      role: npcRole,
+      currentLocationId: "start_location",
+      known: startingNpcSpec.known,
+      status: "present",
+      memoryFactIds: [],
+      tags: [slugTag(npcRole)],
+      flags: {},
+      edition: "mainline",
+      policyProfileId: "mainline_default",
+      contentTags: [],
+      origin: "procedural",
+      // Why this person is in the starting area — surfaced to the GM so the
+      // scene justifies their presence instead of spawning a faceless figure.
+      introInstructions: `Justify this character's presence: ${startingNpcSpec.reason}. Introduce them naturally; do not force a conversation.`
+    };
+    const identity = await generateNpcIdentity({
+      role: `${npcRole} in a ${resolvedWorld.tone} world`,
+      worldSeed: run.worldSeed,
+      npcIndex: 0
+    });
+    npc.generatedName = identity.generatedName;
+    npc.appearance = identity.appearance;
+    npc.personality = identity.personality;
+    npc.portraitPrompt = identity.portraitPrompt;
+    npc.identitySeed = identity.identitySeed;
+    npc.displayName = identity.generatedName;
+    const docId = writeNpcMemoryDoc(campaignId, npc);
+    if (docId) {
+      npc.memoryDocId = docId;
+    }
+    run.npcs[npc.npcId] = npc;
+  }
 
   // Un-hardcode the second location: give it a tone-driven archetype name +
   // description (was the fixed "Ashenmoor Market Square" from the default graph).
@@ -671,7 +720,7 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
   run.quests.quest_main = createMainQuest(resolvedWorld, {
     secondLocationId: secondLocation ? "second_location" : null,
     secondLocationName: secondLocation?.name || null,
-    firstNpcId: secondLocation ? "npc_quest_giver" : npc.npcId,
+    firstNpcId: secondLocation ? "npc_quest_giver" : npc?.npcId || null,
     seed: worldSeed
   });
 
@@ -699,6 +748,12 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
   // a bare location dump). Generated ONCE here and stored on the run.
   const firstObjective =
     (Array.isArray(run.quests?.quest_main?.stages) && run.quests.quest_main.stages[0]?.objective) || null;
+  // Offer base-building in the opening only when the start is an adoptable place
+  // (the forest-ruins default and other abandoned/wild starts) — never for a busy
+  // public venue. The NPC's stated presence reason (introInstructions) is passed
+  // through so the opening justifies anyone present instead of "a stranger".
+  const baseBuilding = resolvedWorld.startIsBaseable === true;
+  const npcReason = npc && isStr(startingNpcSpec?.reason) ? startingNpcSpec.reason : null;
   const opening = await generateOpeningNarration({
     campaignId,
     message: buildOpeningGmMessage({
@@ -707,6 +762,8 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
       characterClass: built.class,
       world: resolvedWorld,
       npc,
+      npcReason,
+      baseBuilding,
       questObjective: firstObjective
     }),
     playerName: characterName,
@@ -717,6 +774,7 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
       characterClass: built.class,
       world: resolvedWorld,
       location: start,
+      baseBuilding,
       questObjective: firstObjective
     })
   });

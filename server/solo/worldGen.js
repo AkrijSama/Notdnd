@@ -73,6 +73,7 @@ const TONE_ARCHETYPES = {
     places: ["Market", "Ruins", "Crossing", "Watch"],
     far: ["Depths", "Reach", "Verge", "Hollow", "Expanse", "Threshold", "Descent", "Brink"],
     edge: "on the frayed edge of the known world",
+    wilds: "an old forest",
     descriptor: "weathered",
     refuge: "one of the last places that still offers shelter",
     flavor: "where old powers have fallen and the roads are no longer safe",
@@ -92,6 +93,7 @@ const TONE_ARCHETYPES = {
     places: ["Wharf", "Harbor", "Threshold"],
     far: ["Depths", "Maw", "Veil", "Threshold", "Abyss", "Descent", "Drowning"],
     edge: "at a thin place where the world wears through",
+    wilds: "a fog-bound wood",
     descriptor: "fog-bound",
     refuge: "a threshold the dread has not yet crossed",
     flavor: "where the world is thinner than anyone admits, and something on the far side is patient",
@@ -111,6 +113,7 @@ const TONE_ARCHETYPES = {
     places: ["Bazaar", "Scrapyard", "Market"],
     far: ["Wastes", "Sprawl", "Ruin", "Verge", "Reach", "Crater", "Remnant"],
     edge: "amid the rust and ruin of the old world",
+    wilds: "the overgrown wastes",
     descriptor: "rust-eaten",
     refuge: "a rare pocket of safety in the wastes",
     flavor: "where the old world is bones and the new one is scavenged from them",
@@ -130,6 +133,7 @@ const TONE_ARCHETYPES = {
     places: ["Works", "Foundry", "District"],
     far: ["Works", "Foundry", "Heights", "Spire", "Combine", "Reach"],
     edge: "in the soot and clamor of the great works",
+    wilds: "an overgrown industrial wood",
     descriptor: "soot-stained",
     refuge: "a warm berth amid the grinding machinery",
     flavor: "where smoke and ambition have outgrown the people who started them",
@@ -149,6 +153,7 @@ const TONE_ARCHETYPES = {
     places: ["Crossroads", "Bazaar", "Market"],
     far: ["Reaches", "Wilds", "Frontier", "Expanse", "Verge", "Coast", "Descent"],
     edge: "on the wild marches beyond any law",
+    wilds: "untamed forest",
     descriptor: "rough-hewn",
     refuge: "a rare place to rest a blade and a back",
     flavor: "where steel settles most arguments and sorcery the rest",
@@ -168,6 +173,7 @@ const TONE_ARCHETYPES = {
     places: ["Market", "Quarter", "Court"],
     far: ["Spire", "Vale", "Sanctum", "Reaches", "Crown", "Summit", "Verge"],
     edge: "beneath the high banners of the realm",
+    wilds: "old-growth forest",
     descriptor: "gleaming",
     refuge: "a bright and welcome haven for travelers",
     flavor: "where banners still fly and old promises still bind",
@@ -187,6 +193,7 @@ const TONE_ARCHETYPES = {
     places: ["Temple", "Sanctum", "Pantheon"],
     far: ["Throne", "Temple", "Pantheon", "Heavens", "Summit", "Threshold"],
     edge: "where the old gods are still remembered",
+    wilds: "a sacred wood",
     descriptor: "ancient",
     refuge: "a sanctuary blessed against the dark",
     flavor: "where gods still walk and their quarrels still shape the land",
@@ -206,6 +213,7 @@ const TONE_ARCHETYPES = {
     places: ["Bazaar", "Market", "Strip"],
     far: ["Sprawl", "Sector", "Undercity", "Grid", "Verge", "Deepnet", "Zero"],
     edge: "deep in the neon-drowned sprawl",
+    wilds: "a green-choked dead zone",
     descriptor: "neon-lit",
     refuge: "a rare pocket of cover off the corporate grid",
     flavor: "where the corps own the sky and everything below it is for sale",
@@ -267,6 +275,36 @@ function pickStartLocationName(tone, seed) {
   return `${pick(arch.locAdj, seed, 2)} ${pick(arch.locNoun, seed, 3)}`;
 }
 
+// Start-location types that read as a place a player could ADOPT and develop:
+// an abandoned/defensible structure or wild spot, not a busy public venue. The
+// opening offers base-building only for these (see onboarding).
+const BASEABLE_START_TYPES = new Set(["ruins", "camp", "wilderness", "dungeon"]);
+
+export function isBaseableStartType(type) {
+  return BASEABLE_START_TYPES.has(String(type || "").toLowerCase());
+}
+
+// The DEFAULT starting location when neither the player nor the AI specified one:
+// ancient ruins set within wilderness (a forest, for fantasy tones). Grounded,
+// not a vague "crossroads on the edge of the world" — and explicitly framed as a
+// foothold the player can shelter in and build up into a base of their own. Kept
+// genre-flexible via the archetype's `wilds` word (forest / fog-bound wood /
+// overgrown wastes / green-choked dead zone …); a ruined structure in the
+// wilderness is the archetype across settings.
+function buildDefaultRuinStart(tone, seed) {
+  const arch = toneArchetype(tone);
+  const adj = pick(arch.locAdj, seed, 2);
+  const wilds = isStr(arch.wilds) ? arch.wilds : "forest";
+  return {
+    type: "ruins",
+    name: `The ${adj} Ruins`,
+    description:
+      `Ancient ruins stand half-swallowed by ${wilds} — fallen walls, a roofless hall, and old ` +
+      `stone that has outlasted whoever raised it. The place is quiet, defensible, and unclaimed: ` +
+      `a foothold you could shelter in now and, in time, rebuild into a base of your own.`
+  };
+}
+
 // Second location (the stage-1 hub): "<World> <Suffix>" + a tone-matched blurb.
 // Used by onboarding to replace the old hardcoded "Ashenmoor Market Square".
 export function buildSecondLocation(tone, seed, worldName) {
@@ -323,13 +361,20 @@ function buildWorldPrompt(def) {
   if (isStr(def.startingLocationName)) known.push(`Starting location name: ${def.startingLocationName}`);
   if (isStr(def.startingLocationType)) known.push(`Starting location type: ${def.startingLocationType}`);
   if (isStr(def.flavor)) known.push(`World flavor: ${def.flavor}`);
+  const startGiven = isStr(def.startingLocationType) || isStr(def.startingLocationName);
   return [
     "You are designing the setting for a solo tabletop RPG world.",
     known.length ? `The player has defined: ${known.join("; ")}.` : "The player left all fields blank.",
     "Fill in any missing pieces, staying consistent with the defined ones. Return ONLY compact JSON with these keys:",
     '{"name": string, "tone": string, "flavor": string, "description": string, "startingLocationName": string, "startingLocationType": string, "startingLocationDescription": string}',
     "- description: 2-3 atmospheric sentences about the world.",
-    "- startingLocationDescription: 1-2 sentences describing where the player begins."
+    "- startingLocationDescription: 1-2 sentences describing where the player begins.",
+    // Default-start directive: when the player didn't pick a starting place, put
+    // them in abandoned ruins set within wilderness (a forest, for fantasy) that
+    // they can adopt as a base — NOT a crossroads/edge-of-the-world non-place.
+    startGiven
+      ? "- Keep the starting location consistent with what the player specified."
+      : '- The player did not choose a starting location. Default to ABANDONED RUINS set within wilderness (a forest, for fantasy tones): set startingLocationType to "ruins" and make startingLocationDescription ground the player in the wilderness ruins AND note they could shelter there and build it up into a base of their own.'
   ].join("\n");
 }
 
@@ -399,12 +444,28 @@ function fallbackLocationDescription(merged, seed) {
 
 function synthesize(def, parsed, seed) {
   const merged = {};
+  // Did the player or the AI actually name a starting location? When NEITHER
+  // did, we apply the cohesive forest-ruins DEFAULT below instead of a random
+  // location type (which produced the ambiguous "crossroads" start).
+  const startTypeGiven = isStr(def.startingLocationType) || isStr(parsed?.startingLocationType);
+  const startNameGiven = isStr(def.startingLocationName) || isStr(parsed?.startingLocationName);
+  const startDescGiven = isStr(parsed?.startingLocationDescription);
+  const startUnspecified = !startTypeGiven && !startNameGiven;
   for (const field of CORE_FIELDS) {
     merged[field] = isStr(def[field])
       ? def[field].trim()
       : isStr(parsed?.[field])
         ? parsed[field].trim()
         : fallbackField(def, field, seed);
+  }
+  // Default start = forest ruins usable as a base. Applied only when the start
+  // was left fully open (player + AI both silent); any explicit type/name wins.
+  const defaultStart = buildDefaultRuinStart(merged.tone, seed);
+  if (!startTypeGiven) {
+    merged.startingLocationType = defaultStart.type;
+  }
+  if (!startNameGiven) {
+    merged.startingLocationName = defaultStart.name;
   }
   merged.artStyle = ART_STYLES.includes(def.artStyle) ? def.artStyle : "illustrated";
   // Tone-derived prose phrases for the fallback templates (keyed off the
@@ -416,10 +477,15 @@ function synthesize(def, parsed, seed) {
   merged.description = isStr(parsed?.description)
     ? parsed.description.trim()
     : fallbackDescription(merged, seed);
-  const locationDescription = isStr(parsed?.startingLocationDescription)
+  const locationDescription = startDescGiven
     ? parsed.startingLocationDescription.trim()
-    : fallbackLocationDescription(merged, seed);
+    : startUnspecified
+      ? defaultStart.description
+      : fallbackLocationDescription(merged, seed);
   merged.startingLocation = { name: merged.startingLocationName, description: locationDescription };
+  // Whether the resolved start reads as an adoptable base (ruins/abandoned in
+  // the wilds). The opening offers base-building only when this is true.
+  merged.startIsBaseable = isBaseableStartType(merged.startingLocationType);
   return merged;
 }
 

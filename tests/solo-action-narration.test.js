@@ -105,3 +105,44 @@ test("opening prompt grounds the character, world, location, and NPC", () => {
   assert.match(msg, /Garrick.*Gate Warden/);
   assert.match(msg, /grimdark/);
 });
+
+test("opening prompt with a present NPC states WHY they are here (justified presence)", () => {
+  const msg = buildOpeningGmMessage({
+    characterName: "Kael",
+    world: { tone: "grimdark", startingLocation: { name: "The Ember Tavern" } },
+    npc: { generatedName: "Yarrow", role: "Tavern Keeper" },
+    npcReason: "the tavern keeper tends this tavern and is here because it is their establishment"
+  });
+  assert.match(msg, /Yarrow.*Tavern Keeper/);
+  assert.match(msg, /because the tavern keeper tends this tavern/);
+  assert.doesNotMatch(msg, /ALONE/);
+});
+
+test("opening prompt with NO NPC instructs the GM the player is ALONE (no stranger)", () => {
+  const msg = buildOpeningGmMessage({
+    characterName: "Kael",
+    world: { tone: "dark fantasy", startingLocation: { name: "The Ashen Ruins" } },
+    npc: null
+  });
+  assert.match(msg, /ALONE/);
+  assert.match(msg, /do NOT introduce any other person, figure, or stranger/);
+});
+
+test("opening prompt offers base-building only when the start is adoptable", () => {
+  const withBase = buildOpeningGmMessage({
+    characterName: "Kael",
+    world: { tone: "dark fantasy", startingLocation: { name: "The Ashen Ruins" } },
+    npc: null,
+    baseBuilding: true
+  });
+  assert.match(withBase, /rebuild into a base of their own/);
+
+  const withoutBase = buildOpeningGmMessage({
+    characterName: "Kael",
+    world: { tone: "dark fantasy", startingLocation: { name: "The Ember Tavern" } },
+    npc: { generatedName: "Yarrow", role: "Tavern Keeper" },
+    npcReason: "the tavern keeper tends this tavern",
+    baseBuilding: false
+  });
+  assert.doesNotMatch(withoutBase, /base of their own/);
+});

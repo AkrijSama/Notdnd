@@ -28,6 +28,27 @@ test("generateWorld fills every blank field offline (deterministic fallback)", a
   assert.ok(["illustrated", "anime", "cinematic"].includes(world.artStyle));
 });
 
+test("default start (player + AI silent) = forest ruins usable as a base, not a crossroads", async () => {
+  const world = await generateWorld({}); // nothing specified
+  assert.equal(world.startingLocationType, "ruins", "default start type is ruins");
+  assert.match(world.startingLocationName, /Ruins/, "default start name reads as ruins");
+  assert.equal(world.startIsBaseable, true, "ruins start is flagged baseable");
+  // Grounded in wilderness AND framed as an adoptable base.
+  assert.match(world.startingLocation.description, /forest|wood|wilds|wastes|dead zone/i);
+  assert.match(world.startingLocation.description, /base of your own|foothold/i);
+});
+
+test("an explicit starting location is never overridden by the forest-ruins default", async () => {
+  const world = await generateWorld({
+    tone: "dark fantasy",
+    startingLocationName: "The Ember Tavern",
+    startingLocationType: "tavern"
+  });
+  assert.equal(world.startingLocationType, "tavern");
+  assert.equal(world.startingLocationName, "The Ember Tavern");
+  assert.equal(world.startIsBaseable, false, "a tavern is not an adoptable base");
+});
+
 test("generateWorld keeps player-provided fields verbatim", async () => {
   const world = await generateWorld({
     name: "The Test Realm",
@@ -150,4 +171,79 @@ test("createWorldOnboardingRun honors an explicit pronoun choice", async () => {
 
   const run = getSoloRun(result.runId);
   assert.equal(run.player.pronouns, "she/her", "explicit pronouns are preserved, not overwritten by the default");
+});
+
+test("default run starts ALONE in the forest ruins — no unexplained starting NPC", async () => {
+  initializeDatabase();
+  resetDatabase();
+  const { user } = registerUser({ email: "alone@notdnd.local", password: "password123", displayName: "Alone Tester" });
+  const result = await createWorldOnboardingRun(user.id, {
+    world: {}, // blank -> forest-ruins default
+    character: {
+      name: "Bram", race: "Human", characterClass: "Rogue", background: "Criminal",
+      baseAbilityScores: { strength: 10, dexterity: 15, constitution: 13, intelligence: 14, wisdom: 12, charisma: 11 }
+    }
+  });
+  const run = getSoloRun(result.runId);
+  // Forest-ruins default applied.
+  assert.match(run.locations.start_location.name, /Ruins/);
+  assert.ok(run.locations.start_location.tags.includes("ruins"));
+  // No contextless stranger: nobody is placed in the starting area.
+  assert.equal(run.npcs.npc_start_contact, undefined, "no starting contact at an abandoned ruin");
+  const atStart = Object.values(run.npcs).filter((n) => n.currentLocationId === "start_location");
+  assert.equal(atStart.length, 0, "the player starts alone");
+});
+
+test("a self-evident venue (tavern) justifies a starting contact with a stated reason", async () => {
+  initializeDatabase();
+  resetDatabase();
+  const { user } = registerUser({ email: "venue@notdnd.local", password: "password123", displayName: "Venue Tester" });
+  const result = await createWorldOnboardingRun(user.id, {
+    world: { tone: "dark fantasy", startingLocationName: "The Ember Tavern", startingLocationType: "tavern" },
+    character: {
+      name: "Bram", race: "Human", characterClass: "Rogue", background: "Criminal",
+      baseAbilityScores: { strength: 10, dexterity: 15, constitution: 13, intelligence: 14, wisdom: 12, charisma: 11 }
+    }
+  });
+  const run = getSoloRun(result.runId);
+  const contact = run.npcs.npc_start_contact;
+  assert.ok(contact, "a tavern self-evidently has a keeper present");
+  assert.equal(contact.role, "Tavern Keeper");
+  // Their presence is justified to the GM (introInstructions drives the intro directive).
+  assert.match(contact.introInstructions, /Justify this character's presence/);
+  assert.match(contact.introInstructions, /tends this tavern/);
+});
+
+test("an explicit module-placed starting NPC is honored only with a stated reason", async () => {
+  initializeDatabase();
+  resetDatabase();
+  const { user } = registerUser({ email: "module@notdnd.local", password: "password123", displayName: "Module Tester" });
+  // Abandoned ruins (not self-evident) + an explicit reasoned placement.
+  const placed = await createWorldOnboardingRun(user.id, {
+    world: {
+      tone: "dark fantasy", startingLocationName: "The Hollow Ruins", startingLocationType: "ruins",
+      startingNpc: { role: "Fellow Scavenger", reason: "she has been picking through these ruins for salvage when you arrive" }
+    },
+    character: {
+      name: "Bram", race: "Human", characterClass: "Rogue", background: "Criminal",
+      baseAbilityScores: { strength: 10, dexterity: 15, constitution: 13, intelligence: 14, wisdom: 12, charisma: 11 }
+    }
+  });
+  const placedRun = getSoloRun(placed.runId);
+  const contact = placedRun.npcs.npc_start_contact;
+  assert.ok(contact, "explicit reasoned placement is honored");
+  assert.equal(contact.role, "Fellow Scavenger");
+  assert.match(contact.introInstructions, /picking through these ruins/);
+
+  // Same ruins WITHOUT a reason -> still alone (no contextless stranger).
+  resetDatabase();
+  const { user: user2 } = registerUser({ email: "noreason@notdnd.local", password: "password123", displayName: "NoReason" });
+  const bare = await createWorldOnboardingRun(user2.id, {
+    world: { tone: "dark fantasy", startingLocationName: "The Hollow Ruins", startingLocationType: "ruins" },
+    character: {
+      name: "Bram", race: "Human", characterClass: "Rogue", background: "Criminal",
+      baseAbilityScores: { strength: 10, dexterity: 15, constitution: 13, intelligence: 14, wisdom: 12, charisma: 11 }
+    }
+  });
+  assert.equal(getSoloRun(bare.runId).npcs.npc_start_contact, undefined, "ruins with no reason -> alone");
 });

@@ -135,7 +135,7 @@ export function buildActionGmMessage(run, resolved) {
  * @param {{characterName?:string, race?:string, characterClass?:string, world?:object, npc?:object|null}} input
  * @returns {string}
  */
-export function buildOpeningGmMessage({ characterName, race, characterClass, world = {}, npc = null, questObjective = null } = {}) {
+export function buildOpeningGmMessage({ characterName, race, characterClass, world = {}, npc = null, npcReason = null, baseBuilding = false, questObjective = null } = {}) {
   const name = isString(characterName) ? characterName : "the wanderer";
   const descriptor = [race, characterClass].filter((part) => isString(part)).join(" ");
   const who = descriptor ? `${name}, a ${descriptor},` : name;
@@ -145,10 +145,18 @@ export function buildOpeningGmMessage({ characterName, race, characterClass, wor
     ? `${loc.name}${isString(loc.description) ? `: ${loc.description}` : ""}`
     : "an unfamiliar place";
   const worldLine = isString(world.description) ? ` The wider world: ${world.description}` : "";
+  // Presence is justified, not assumed. With an NPC, hint at them AND why they're
+  // here (their reason). With nobody, state the player is ALONE so the GM never
+  // invents a contextless stranger.
   const npcHint =
     npc && isString(npc.generatedName)
-      ? ` Hint at the presence of ${npc.generatedName}${isString(npc.role) ? `, the ${npc.role}` : ""}, without forcing a conversation.`
-      : "";
+      ? ` ${npc.generatedName}${isString(npc.role) ? `, the ${npc.role},` : ""} is also here${isString(npcReason) ? ` because ${npcReason}` : ""}. Hint at their presence and make the reason they are here feel natural; do not force a conversation.`
+      : " The player is ALONE here — do NOT introduce any other person, figure, or stranger.";
+  // Base-building: for an adoptable ruin/abandoned start, explicitly offer the
+  // place as a foothold the player could claim and develop over time.
+  const baseLine = baseBuilding
+    ? " Make clear this place is defensible and unclaimed — a foothold they could shelter in and, over time, rebuild into a base of their own. Offer that possibility; do not decide it for them."
+    : "";
   // The hook: tie the opening to the main quest's first objective so the player
   // leaves with a reason to move — without the GM resolving or inventing it.
   const hookLine = isString(questObjective)
@@ -156,7 +164,7 @@ export function buildOpeningGmMessage({ characterName, race, characterClass, wor
     : "";
   return (
     `${who} arrives at ${locLine}.${worldLine} ` +
-    `Narrate their arrival in 3-5 vivid sentences of second-person ${tone} prose, grounding them in the atmosphere of the scene.${npcHint}${hookLine} ` +
+    `Narrate their arrival in 3-5 vivid sentences of second-person ${tone} prose, grounding them in the atmosphere of the scene.${npcHint}${baseLine}${hookLine} ` +
     "End by leaving the moment open and unspoken — theirs to act on. Do not use bracketed trigger tags."
   );
 }
@@ -164,7 +172,7 @@ export function buildOpeningGmMessage({ characterName, race, characterClass, wor
 // Deterministic, tone-aware opening used when the GM call fails, times out, or is
 // disabled. Always a real welcoming opening (arrival + atmosphere + hook + a beat
 // handing the moment to the player) — never a blank or a bare location dump.
-export function buildOpeningFallback({ characterName, race, characterClass, world = {}, location = {}, questObjective = null } = {}) {
+export function buildOpeningFallback({ characterName, race, characterClass, world = {}, location = {}, baseBuilding = false, questObjective = null } = {}) {
   const name = isString(characterName) ? characterName : "Wanderer";
   const descriptor = [race, characterClass].filter((part) => isString(part)).join(" ");
   const who = descriptor ? `${name}, ${descriptor}` : name;
@@ -183,6 +191,10 @@ export function buildOpeningFallback({ characterName, race, characterClass, worl
   const sentences = [
     `You are ${who}, and the ${tone} of ${worldName} settles over you as you arrive at ${placeName}.`,
     placeDesc || "The place watches you in silence, every shadow holding its own weight.",
+    // Base-building beat for an adoptable start: name the option without taking it.
+    baseBuilding
+      ? "No one holds this ground. You could make it yours — shelter here, and in time build it into a foothold of your own."
+      : "",
     isString(questObjective)
       ? `Something tugs at the edge of your purpose: ${questObjective}`
       : "Whatever brought you here, it has not finished with you yet.",
