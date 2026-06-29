@@ -79,10 +79,56 @@ function normalizeDetail(detail, location, index) {
     linkedEntityIds: detail.linkedEntityIds || [],
     linkedMemoryFactIds: detail.linkedMemoryFactIds || [],
     check: detail.check || null,
+    // Consequence spine: a search detail may award an item on reveal. Accepts a
+    // `grantItem` (or legacy `reward`) descriptor; null when the detail is lore only.
+    grantItem: isPlainObject(detail.grantItem) ? detail.grantItem : (isPlainObject(detail.reward) ? detail.reward : null),
     edition: detail.edition ?? location.edition ?? null,
     policyProfileId: detail.policyProfileId ?? location.policyProfileId ?? null,
     index
   };
+}
+
+// Adds a granted item into BOTH the run-level inventory object (keyed by itemId,
+// what useItem reads) and the state-contract player.inventory array (what the UI
+// renders). Idempotent on quantity: re-finding the same id stacks it.
+function grantItemToRun(run, descriptor) {
+  if (!isPlainObject(descriptor)) {
+    return null;
+  }
+  const itemId = isString(descriptor.itemId) ? descriptor.itemId : (isString(descriptor.id) ? descriptor.id : null);
+  if (!itemId) {
+    return null;
+  }
+  const qty = typeof descriptor.qty === "number" ? descriptor.qty : (typeof descriptor.quantity === "number" ? descriptor.quantity : 1);
+  const name = isString(descriptor.name) ? descriptor.name : itemId;
+  if (!isPlainObject(run.inventory)) {
+    run.inventory = {};
+  }
+  const existingRun = run.inventory[itemId];
+  run.inventory[itemId] = {
+    itemId,
+    name,
+    description: isString(descriptor.description) ? descriptor.description : (existingRun?.description || ""),
+    quantity: (typeof existingRun?.quantity === "number" ? existingRun.quantity : 0) + qty,
+    usable: descriptor.usable === true || existingRun?.usable === true,
+    consumable: descriptor.consumable !== false,
+    tags: Array.isArray(descriptor.tags) ? descriptor.tags : (existingRun?.tags || []),
+    flags: isPlainObject(descriptor.flags) ? descriptor.flags : (existingRun?.flags || {}),
+    use: isPlainObject(descriptor.use) ? descriptor.use : existingRun?.use
+  };
+  if (!Array.isArray(run.player?.inventory)) {
+    if (!isPlainObject(run.player)) {
+      run.player = {};
+    }
+    run.player.inventory = [];
+  }
+  const existingArr = run.player.inventory.find((entry) => isPlainObject(entry) && (entry.id === itemId || entry.itemId === itemId));
+  if (existingArr) {
+    existingArr.qty = (typeof existingArr.qty === "number" ? existingArr.qty : 0) + qty;
+  } else {
+    run.player.inventory.push({ id: itemId, name, qty });
+  }
+  return { itemId, name, quantity: run.inventory[itemId].quantity };
 }
 
 function detailFactExists(run, detailId) {
@@ -287,6 +333,14 @@ export function resolveSearchAction(run, action, options = {}) {
     };
     if (!detailFactExists(updatedRun, reveal.detailId)) {
       memoryFact = createSearchMemoryFact(updatedRun, action, reveal, { now, idFactory });
+    }
+    // Consequence spine: a successful search that reveals an item-bearing detail
+    // grants that item into the player's inventory (next turn the scene shows it).
+    if (reveal.grantItem) {
+      const granted = grantItemToRun(updatedRun, reveal.grantItem);
+      if (granted) {
+        searchResult.grantedItem = granted;
+      }
     }
   }
 

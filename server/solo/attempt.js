@@ -10,6 +10,7 @@ import {
 } from "./schema.js";
 import { getUsableInventoryItems } from "./useItem.js";
 import { POLICY_VIOLATION_NARRATION, screenPlayerIntent } from "./safety.js";
+import { applyDamage, isIncapacitated } from "./death.js";
 
 const PROVIDER_OUTPUT_FIELDS = new Set([
   "summary",
@@ -637,48 +638,15 @@ export function createAttemptTimelineEvent(run, action, attemptResult, memoryFac
   };
 }
 
-// Applies a small HP cost to the player after a failed attempt. Mutates the
-// (already-cloned) run in place: clamps HP at 0 (never negative) and marks the
-// player "downed" when they hit 0. The canonical HP store is
-// player.resources.hitPoints; top-level player.health is kept in sync when
-// present so older payloads stay consistent. Returns a structured record for
-// the action result, or null when no damageable HP gauge exists.
+// Applies a failed-attempt HP cost through the 5e lethality core (death.js).
+// Mutates the (already-cloned) run in place: clamps HP at 0 (never negative) and,
+// crucially, reaching 0 HP now sets the player 'dying' (NOT a consequence-free
+// "downed") — the first step of the real death spine. The canonical HP store is
+// player.resources.hitPoints, mirrored to resources.hp + player.health. Returns
+// the structured damage record (back-compatible: amount/hpBefore/hpAfter/max/
+// downed, plus dying/dead/instantDeath/revived), or null when no HP gauge exists.
 export function applyFailureDamage(run, amount = FAILED_ATTEMPT_DAMAGE) {
-  const player = isPlainObject(run?.player) ? run.player : null;
-  if (!player) {
-    return null;
-  }
-  const gauge = isPlainObject(player.resources?.hitPoints) ? player.resources.hitPoints : null;
-  const hpBefore = gauge && isNumber(gauge.current)
-    ? gauge.current
-    : (isNumber(player.health) ? player.health : null);
-  if (hpBefore === null) {
-    return null;
-  }
-  const max = gauge && isNumber(gauge.max)
-    ? gauge.max
-    : (isNumber(player.maxHealth) ? player.maxHealth : hpBefore);
-  const cost = Math.max(0, Math.round(amount));
-  const hpAfter = Math.max(0, hpBefore - cost);
-
-  if (gauge) {
-    gauge.current = hpAfter;
-  }
-  if (isNumber(player.health)) {
-    player.health = hpAfter;
-  }
-  const downed = hpAfter <= 0;
-  if (downed) {
-    player.status = "downed";
-  }
-
-  return {
-    amount: hpBefore - hpAfter, // actual HP lost (after clamping)
-    hpBefore,
-    hpAfter,
-    max,
-    downed
-  };
+  return applyDamage(run, amount);
 }
 
 // A flagged intent (prompt injection / explicit / empty-after-sanitize) never
@@ -771,8 +739,14 @@ export function resolveAttemptAction(run, action, options = {}) {
       disadvantage: providerOutput.disadvantage === true
     }, options);
     success = checkResult.ok === true && checkResult.success === true;
-    // Minimal failure-cost: a failed contested attempt drains a little HP.
-    damage = success ? null : applyFailureDamage(updatedRun, FAILED_ATTEMPT_DAMAGE);
+    // Failure has teeth: a failed contested attempt drains HP, and reaching 0
+    // drops the player into 'dying' (death saves begin). When the player is
+    // ALREADY incapacitated (0 HP / dying), the dying-turn death save rolled by
+    // the action dispatcher is the sole consequence — we don't also stack a
+    // damage-at-0 failure here, which would double-punish the same turn.
+    damage = (success || isIncapacitated(updatedRun))
+      ? null
+      : applyFailureDamage(updatedRun, FAILED_ATTEMPT_DAMAGE);
   } else {
     // No-stakes action: it simply happens. No roll, no failure cost — the GM
     // still narrates the outcome (the request layer replaces the line below with

@@ -5,8 +5,11 @@ import {
   validateEntityAgainstPolicy,
   validateSoloRun
 } from "./schema.js";
+import { isIncapacitated, revivePlayer } from "./death.js";
 
-const ITEM_EFFECT_TYPES = new Set(["message", "recover_resource", "reveal_note"]);
+// "revive" marks a possessed revival means (revivify scroll / resurrection token):
+// using it brings a dying OR just-dead player back ONCE, then the item is gone.
+const ITEM_EFFECT_TYPES = new Set(["message", "recover_resource", "reveal_note", "revive"]);
 
 function result(errors) {
   return {
@@ -284,9 +287,28 @@ export function resolveUseItemAction(run, action, options = {}) {
   const resourcesRecovered = [];
   let memoryFact = null;
   let revealedNote = null;
+  let revived = false;
   let summary = effect.summary || `${item.name} is used.`;
 
-  if (effectType === "recover_resource") {
+  if (effectType === "revive") {
+    // A possessed revival means: it only does anything when the player is down
+    // (dying/dead) — using it at full health wastes nothing (no effect, not
+    // consumed). On a downed player it brings them back ONCE; the consume block
+    // below removes the item.
+    if (!isIncapacitated(updatedRun)) {
+      return {
+        ok: true,
+        run: null,
+        event: null,
+        memoryFact: null,
+        useItemResult: deniedResult(action.itemId, "REVIVE_NOT_NEEDED", `${item.name} only works on the fallen.`),
+        errors: []
+      };
+    }
+    revivePlayer(updatedRun, { hp: Number(effect.amount) > 0 ? Number(effect.amount) : 1 });
+    revived = true;
+    summary = effect.summary || `${item.name} drags you back from the brink.`;
+  } else if (effectType === "recover_resource") {
     const recovered = recoverResource(updatedRun.player, effect.resource, Number(effect.amount || 0));
     if (recovered) {
       resourcesRecovered.push(recovered);
@@ -312,6 +334,18 @@ export function resolveUseItemAction(run, action, options = {}) {
   if (item.consumable === true) {
     item.quantity = Math.max(0, item.quantity - 1);
     consumed = true;
+    // Keep the state-contract player.inventory array mirror in sync: when a
+    // resolver populated it (e.g. a granted item), the scene renders from THAT
+    // array, so a consumed item must drop there too — otherwise a spent revival
+    // scroll keeps showing in the bag.
+    if (Array.isArray(updatedRun.player?.inventory)) {
+      const mirror = updatedRun.player.inventory.find(
+        (entry) => isPlainObject(entry) && (entry.id === item.itemId || entry.itemId === item.itemId)
+      );
+      if (mirror && typeof mirror.qty === "number") {
+        mirror.qty = Math.max(0, mirror.qty - 1);
+      }
+    }
   }
 
   const useItemResult = {
@@ -322,6 +356,7 @@ export function resolveUseItemAction(run, action, options = {}) {
     consumed,
     quantityRemaining: item.quantity,
     resourcesRecovered,
+    revived,
     summary,
     revealedNote,
     warningCodes: []

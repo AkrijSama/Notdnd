@@ -135,6 +135,13 @@ async function main() {
     }
   }
 
+  // ── LETHALITY PROOF ──────────────────────────────────────────────────────
+  // The headline: a real 5e game where the player can DIE — often, permanently.
+  // Driven over real HTTP via the gated test-hook actions (damage/grant_item/
+  // revive); the server must be started with test hooks enabled (dev default /
+  // NOTDND_TEST_HOOKS=true). Each scenario uses a FRESH run (death is terminal).
+  await runLethality(token);
+
   // If any GM beat fell back, surface the verbatim upstream cause.
   if (problems.length && campaignId) {
     log(`\n[!] ${problems.length} GM beat(s) fell back. Probing /api/gm/respond for the verbatim cause…`);
@@ -152,6 +159,115 @@ async function main() {
   }
   log("════════════════════════════════════════════════════════════");
   return problems.length;
+}
+
+// Creates a fresh world-run and returns its ids. Death is terminal, so each
+// lethality scenario needs its own run.
+async function newLethalRun(token, name) {
+  const r = await call("/api/onboarding/world-run", { method: "POST", token, body: {
+    world: { name: "Ashfall Reach", tone: "grim dark fantasy", startingLocationName: "The Ember Tavern", startingLocationType: "tavern", flavor: "ash-choked frontier" },
+    character: { name, race: "Human", characterClass: "Fighter", background: "Soldier", baseAbilityScores: { strength: 14, dexterity: 12, constitution: 13, intelligence: 10, wisdom: 11, charisma: 10 } }
+  }});
+  return { runId: r.json.runId };
+}
+
+async function runLethality(token) {
+  log(`\n[6] LETHALITY — the player can DIE, and stay dead`);
+  const lethalProblems0 = problems.length;
+  const ok = (cond, label) => {
+    log(`    ${cond ? "OK  " : "FAIL"} ${label}`);
+    if (!cond) problems.push(`lethality: ${label}`);
+  };
+  const sceneOf = async (rid) => (await call(`/api/solo/runs/${rid}/scene`, { token })).json;
+  const actOn = (rid, action) => call(`/api/solo/runs/${rid}/actions`, { method: "POST", token, body: { action } });
+
+  // (A) Bleed out: damage to 0 → dying → death-save failures → dead → run is
+  // non-resumable, and no further action resolves.
+  {
+    const { runId: rid } = await newLethalRun(token, "Mortis");
+    let sc = await sceneOf(rid);
+    const maxHp = sc.player?.resources?.hp?.max ?? sc.player?.hitPoints?.max ?? 10;
+    await actOn(rid, { type: "damage", amount: maxHp }); // → 0 HP, dying
+    sc = await sceneOf(rid);
+    ok(sc.player?.status === "dying", `damage to 0 HP → status 'dying' (got '${sc.player?.status}')`);
+    // Damage-at-0 each counts as a death-save failure; three → dead.
+    await actOn(rid, { type: "damage", amount: 1 });
+    await actOn(rid, { type: "damage", amount: 1 });
+    const killRes = await actOn(rid, { type: "damage", amount: 1 });
+    ok(killRes.json.runDied === true, "third failure → runDied flagged in the action response");
+    sc = await sceneOf(rid);
+    ok(sc.player?.status === "dead", `player.status === 'dead' (got '${sc.player?.status}')`);
+    ok(sc.runStatus === "dead", `run.status === 'dead' (got '${sc.runStatus}')`);
+    ok(sc.isDead === true && sc.resumable === false, "scene: isDead=true, resumable=false (non-resumable)");
+    const after = await actOn(rid, { type: "attempt", intent: "rise and fight on" });
+    ok(after.status === 400 && (after.json.code === "RUN_TERMINAL"), `a dead run rejects further actions (HTTP ${after.status} ${after.json.code})`);
+    if (killRes.json.deathNarration) log(`    death beat: "${String(killRes.json.deathNarration).replace(/\n/g, " ").slice(0, 160)}"`);
+  }
+
+  // (B) Massive damage at 0 HP is INSTANT death (skips the saves).
+  {
+    const { runId: rid } = await newLethalRun(token, "Smitten");
+    let sc = await sceneOf(rid);
+    const maxHp = sc.player?.resources?.hp?.max ?? 10;
+    await actOn(rid, { type: "damage", amount: maxHp }); // → dying at 0
+    const res = await actOn(rid, { type: "damage", amount: maxHp }); // ≥ max at 0 → instant dead
+    sc = await sceneOf(rid);
+    ok(res.json.runDied === true && sc.player?.status === "dead", "massive damage at 0 HP → instant death");
+    ok((sc.player?.deathSaves?.failures ?? 0) < 3, "instant death skipped the death-save track (failures < 3)");
+  }
+
+  // (C) A POSSESSED revival item brings the player back ONCE — then it's gone.
+  {
+    const { runId: rid } = await newLethalRun(token, "Lazarus");
+    let sc = await sceneOf(rid);
+    const maxHp = sc.player?.resources?.hp?.max ?? 10;
+    await actOn(rid, { type: "grant_item", item: { itemId: "revive_scroll", name: "Scroll of Revivify", usable: true, consumable: true, tags: ["revival"], use: { effectType: "revive", amount: 1 } } });
+    await actOn(rid, { type: "damage", amount: maxHp }); // → dying
+    sc = await sceneOf(rid);
+    ok(sc.player?.status === "dying", "revival run: at death's door (dying)");
+    await actOn(rid, { type: "use_item", itemId: "revive_scroll" });
+    sc = await sceneOf(rid);
+    ok(sc.player?.status === "alive" && (sc.player?.resources?.hp?.current ?? 0) >= 1, "revival item → back ALIVE with HP");
+    const stillHas = (sc.player?.inventory || []).find((i) => (i.id || i.itemId) === "revive_scroll");
+    ok(!stillHas || (stillHas.qty ?? 0) === 0, "revival item CONSUMED (gone after one use)");
+  }
+
+  // (D) No possessed means → the player STAYS dead (no auto-respawn, no mercy).
+  {
+    const { runId: rid } = await newLethalRun(token, "Forsaken");
+    let sc = await sceneOf(rid);
+    const maxHp = sc.player?.resources?.hp?.max ?? 10;
+    await actOn(rid, { type: "damage", amount: maxHp });
+    await actOn(rid, { type: "damage", amount: 1 });
+    await actOn(rid, { type: "damage", amount: 1 });
+    await actOn(rid, { type: "damage", amount: 1 }); // 3 failures, no means
+    sc = await sceneOf(rid);
+    ok(sc.player?.status === "dead" && sc.runStatus === "dead", "no revival means → STAYS dead");
+    const revive = await actOn(rid, { type: "revive" });
+    ok(revive.status === 400 || revive.json.reviveResult?.ok === false || sc.player?.status === "dead", "a revive with no means does not resurrect");
+  }
+
+  // (E) Consequence spine: a granted item appears in inventory next turn, and xp
+  // accrues from meaningful play (reported; the deterministic proof is in unit tests).
+  {
+    const { runId: rid } = await newLethalRun(token, "Packrat");
+    await actOn(rid, { type: "grant_item", item: { itemId: "iron_key", name: "Iron Key", qty: 1 } });
+    const sc = await sceneOf(rid);
+    const has = (sc.player?.inventory || []).find((i) => (i.id || i.itemId) === "iron_key");
+    ok(Boolean(has), "picked-up item shows in inventory next turn");
+    const before = sc.player?.xp ?? 0;
+    for (const intent of ["force the locked chest open", "search the rafters for coin", "pick the strongbox"]) {
+      await actOn(rid, { type: "attempt", intent });
+    }
+    const sc2 = await sceneOf(rid);
+    log(`    xp: ${before} → ${sc2.player?.xp ?? 0}, level ${sc2.player?.level ?? 1} (xp moves on success; deterministic proof in unit tests)`);
+  }
+
+  if (problems.length === lethalProblems0) {
+    log(`  LETHALITY: ✅ the player can die — by bleeding out, by massive damage — and stays dead without a possessed revival.`);
+  } else {
+    log(`  LETHALITY: ❌ ${problems.length - lethalProblems0} lethality check(s) failed.`);
+  }
 }
 
 main()

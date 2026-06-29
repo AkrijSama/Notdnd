@@ -721,6 +721,76 @@ function presentNpcsForVn(run) {
 // Generates real GM narration for any resolved solo action (move/talk/search/
 // rest/use_item/attempt). Bounded by GM_ACTION_TIMEOUT_MS; returns null on
 // timeout/empty so the caller keeps the mechanical template as a fallback.
+// Builds the consequence/death enforcement clause appended to the action GM
+// prompt. A real 5e DM lets damage, dying, and death LAND — this counters a
+// helpful model's reflex to soften or rescue. Returns "" when nothing of
+// consequence happened this turn.
+function buildConsequenceDirective(resolved) {
+  const damage = resolved?.attemptResult?.damage || resolved?.damageResult || null;
+  const deathSave = resolved?.deathSave || resolved?.deathSaveResult || null;
+  const died = resolved?.runDied === true || resolved?.run?.player?.status === "dead";
+  const parts = [];
+  if (died) {
+    return (
+      " The player has DIED — this is a real, permanent 5e death, not a faint or a near-miss. " +
+      "Narrate the death honestly and with weight as a final beat. Do NOT walk it back, revive them, " +
+      "or hint at a miraculous escape. The character is gone."
+    );
+  }
+  if (deathSave && deathSave.ok) {
+    if (deathSave.outcome === "nat20_revive") {
+      parts.push(" Against the odds the player claws back to consciousness (a natural 20 on a death save) — narrate the gasp of return, still gravely wounded.");
+    } else if (deathSave.stabilized) {
+      parts.push(" The player stabilizes at death's door — unconscious but no longer slipping. Narrate the fragile reprieve, not a recovery.");
+    } else {
+      parts.push(` The player is dying and just made a death saving throw (${deathSave.outcome}). Narrate the bleeding-out tension; do NOT rescue them.`);
+    }
+  }
+  if (damage && (damage.dying || damage.downed) && !died) {
+    parts.push(" The blow drops the player to 0 HP — they collapse, dying. Narrate the fall with real danger; no convenient rescue.");
+  } else if (damage && damage.amount > 0) {
+    parts.push(` The player takes ${damage.amount} damage. Let it hurt and cost them — narrate the wound honestly.`);
+  }
+  if (resolved?.attemptResult && resolved.attemptResult.success === false && !damage) {
+    parts.push(" The attempt FAILED. Narrate the failure and its consequence honestly — do not quietly let it succeed anyway.");
+  }
+  if (resolved?.questFailed) {
+    parts.push(" A quest has been LOST through a failed check. Narrate that door closing; it does not reopen.");
+  }
+  return parts.join("");
+}
+
+// Best-effort closing beat when the player has just died — mirrors the victory
+// narration, but for a permanent 5e death. Null on timeout/failure (the death
+// screen still renders).
+async function narrateDeathWithGm(run, resolved, user) {
+  if (!run?.campaignId) {
+    return null;
+  }
+  const cause = resolved?.deathSave?.outcome === "nat1_double_fail"
+    ? "their final death save failed catastrophically"
+    : (resolved?.damageResult?.instantDeath || resolved?.attemptResult?.damage?.instantDeath)
+      ? "a massive, overwhelming blow"
+      : "their wounds, bleeding out at 0 HP";
+  const message =
+    `The player has just DIED — permanently — from ${cause}. This is the final, irreversible end of the run. ` +
+    `Write a short, unflinching death narration (2-3 sentences) that gives the death weight and dignity. ` +
+    `Do NOT revive them, soften it, or hint at escape. The character is gone for good.`;
+  const result = await withGmTimeout(
+    runGmPipeline({
+      campaignId: run.campaignId,
+      message,
+      mode: "companion",
+      playerName: run.player?.displayName || "the wanderer",
+      actorUserId: user?.id,
+      edition: run.edition
+    }),
+    GM_ACTION_TIMEOUT_MS
+  );
+  const narrative = result && typeof result.narrative === "string" ? result.narrative.trim() : "";
+  return narrative || null;
+}
+
 async function narrateActionWithGm(run, resolved, user) {
   if (!run?.campaignId || !resolved) {
     return null;
@@ -737,13 +807,18 @@ async function narrateActionWithGm(run, resolved, user) {
     const objective = typeof quest.objective === "string" && quest.objective ? ` — ${quest.objective}` : "";
     message += ` The player has just advanced "${title}"${objective}. Weave this progress naturally into the narration as a turning point, without declaring further quests.`;
   }
+  // LETHALITY ENFORCEMENT (#12): a helpful-tuned model defaults to mercy. Counter
+  // it explicitly — the GM is a real 5e DM who narrates EARNED consequences and
+  // never rescues the player from them.
+  message += buildConsequenceDirective(resolved);
   const result = await withGmTimeout(
     runGmPipeline({
       campaignId: run.campaignId,
       message,
       mode: "companion",
       playerName: run.player?.displayName || "the wanderer",
-      actorUserId: user?.id
+      actorUserId: user?.id,
+      edition: run.edition
     }),
     GM_ACTION_TIMEOUT_MS
   );
@@ -772,7 +847,8 @@ async function narrateVictoryWithGm(run, quest, user) {
       message,
       mode: "companion",
       playerName: run.player?.displayName || "the wanderer",
-      actorUserId: user?.id
+      actorUserId: user?.id,
+      edition: run.edition
     }),
     GM_ACTION_TIMEOUT_MS
   );
@@ -1141,6 +1217,14 @@ async function handleApi(req, res) {
         victoryNarration = await narrateVictoryWithGm(responseRun, resolved.wonQuest, user);
       }
 
+      // Permanent death: the run is already persisted with run.status='dead' (set
+      // by the lethality core), so the resume UI marks it non-resumable (#14). Add
+      // a best-effort closing death beat, mirroring the victory narration.
+      let deathNarration = null;
+      if (resolved.runDied || responseRun?.player?.status === "dead") {
+        deathNarration = await narrateDeathWithGm(responseRun, resolved, user);
+      }
+
       writeJson(res, 200, {
         ok: true,
         run: responseRun,
@@ -1158,7 +1242,13 @@ async function handleApi(req, res) {
         availableMoves: resolved.availableMoves,
         availableActions: resolved.availableActions,
         runWon: Boolean(resolved.runWon),
-        victoryNarration
+        victoryNarration,
+        // Lethality surfaces for the client's HP/death-save/death-screen flow.
+        deathSave: resolved.deathSave || resolved.deathSaveResult || null,
+        damage: attemptResult?.damage || resolved.damageResult || null,
+        reviveResult: resolved.reviveResult || (useItemResult?.revived ? { ok: true } : null),
+        runDied: Boolean(resolved.runDied || responseRun?.player?.status === "dead"),
+        deathNarration
       });
     } catch (error) {
       routeError(res, error);

@@ -286,10 +286,15 @@ export async function runGmPipeline({
   actorUserId,
   activePlayers = [],
   stream = false,
-  onStream
+  onStream,
+  // Edition routing (Track A → Track C): "forbidden" routes the GM call to the
+  // local uncensored model; "mainline" (default) stays on cloud. The AI layer
+  // (openrouter.requestWithFallback) honors options.edition — we just thread it.
+  edition = "mainline"
 }) {
   const campaignKey = String(campaignId || "").trim();
   const input = String(message || "").trim();
+  const normalizedEdition = String(edition || "mainline").trim().toLowerCase() || "mainline";
   if (!campaignKey || !input) {
     const error = new Error("campaignId and message are required.");
     error.code = "BAD_REQUEST";
@@ -325,7 +330,7 @@ export async function runGmPipeline({
   let companionIntent = "chat";
   let selectedModel = resolveNarrativeModel(styleConfig, modelTiers);
   let promptProfile = getProfile(selectedModel);
-  let modelOptions = applyStyleModelOverrides(profileCallOptions(promptProfile, stream, onStream), styleConfig);
+  let modelOptions = { ...applyStyleModelOverrides(profileCallOptions(promptProfile, stream, onStream), styleConfig), edition: normalizedEdition };
 
   if (mode === "companion") {
     const intent = inferCompanionIntent(input);
@@ -336,7 +341,7 @@ export async function runGmPipeline({
       ? resolveUtilityModel(styleConfig, modelTiers)
       : resolveNarrativeModel(styleConfig, modelTiers);
     promptProfile = getProfile(selectedModel);
-    modelOptions = applyStyleModelOverrides(profileCallOptions(promptProfile, stream, onStream), styleConfig);
+    modelOptions = { ...applyStyleModelOverrides(profileCallOptions(promptProfile, stream, onStream), styleConfig), edition: normalizedEdition };
 
     const companionContext = await buildCompanionPlayerContext(campaignKey, input, playerName, state);
     systemPrompt = buildCompanionSystemPrompt({
@@ -395,7 +400,7 @@ export async function runGmPipeline({
   } else {
     selectedModel = resolveNarrativeModel(styleConfig, modelTiers);
     promptProfile = getProfile(selectedModel);
-    modelOptions = applyStyleModelOverrides(profileCallOptions(promptProfile, stream, onStream), styleConfig);
+    modelOptions = { ...applyStyleModelOverrides(profileCallOptions(promptProfile, stream, onStream), styleConfig), edition: normalizedEdition };
 
     systemPrompt = buildSessionSystemPrompt({
       campaignName: campaign?.name || campaignKey,

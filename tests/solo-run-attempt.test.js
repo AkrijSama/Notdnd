@@ -298,19 +298,22 @@ test("successful attempt does not cost HP", () => {
   assert.equal(result.run.player.resources.hitPoints.current, before);
 });
 
-test("HP clamps at 0 (never negative) and the player is downed at 0 HP", () => {
+test("HP clamps at 0 (never negative) and reaching 0 HP sets the player dying", () => {
   const run = createDefaultSoloRun({ now: "2026-01-01T00:00:00.000Z" });
   run.player.resources.hitPoints.current = 1; // one hit from going down
 
   const result = failingAttempt(run);
 
-  assert.equal(result.ok, true, "downed run still validates");
+  assert.equal(result.ok, true, "dying run still validates");
   assert.equal(result.attemptResult.damage.hpBefore, 1);
   assert.equal(result.attemptResult.damage.hpAfter, 0);
   assert.equal(result.attemptResult.damage.amount, 1); // only the HP actually lost
   assert.equal(result.attemptResult.damage.downed, true);
   assert.equal(result.run.player.resources.hitPoints.current, 0);
-  assert.equal(result.run.player.status, "downed");
+  // 5e lethality: reaching 0 HP is now 'dying' (death saves begin), NOT a
+  // consequence-free "downed" blackout.
+  assert.equal(result.run.player.status, "dying");
+  assert.equal(result.attemptResult.damage.dying, true);
 });
 
 test("applyFailureDamage never drives HP below zero", () => {

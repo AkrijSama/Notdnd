@@ -31,11 +31,34 @@ import {
   validateAttemptAction
 } from "./attempt.js";
 import { advanceQuests } from "./quests.js";
-import { createDefaultVnState } from "./schema.js";
+import { createDefaultVnState, validateSoloRun } from "./schema.js";
+import {
+  applyDamage,
+  attemptRevive,
+  isDead,
+  isDying,
+  rollDeathSave
+} from "./death.js";
+import { awardXp, XP_AWARDS } from "./progression.js";
 
 const IMPLEMENTED_ACTION_TYPES = new Set(["move", "inspect", "search", "talk", "rest", "use_item", "attempt"]);
 const FUTURE_ACTION_TYPES = new Set(["interact", "enter", "exit"]);
+// System/test action types for driving the lethality spine deterministically over
+// the HTTP API (applying damage, rolling a dying-turn save, reviving, granting an
+// item). They are NOT part of the normal player surface (never listed in
+// getAvailableSoloActions) and are recognized only when test hooks are enabled
+// (dev / NOTDND_TEST_HOOKS=true) — never in production. They are the only way the
+// self-play harness can prove "the player can actually die" end-to-end through
+// real HTTP, since real play rolls are non-deterministic.
+const TEST_HOOK_ACTION_TYPES = new Set(["damage", "death_save", "revive", "grant_item"]);
 const RECOGNIZED_ACTION_TYPES = new Set([...IMPLEMENTED_ACTION_TYPES, ...FUTURE_ACTION_TYPES]);
+
+export function testHooksEnabled(env = process.env) {
+  if (String(env.NOTDND_TEST_HOOKS || "").trim().toLowerCase() === "true") {
+    return true;
+  }
+  return String(env.NODE_ENV || "").trim().toLowerCase() !== "production";
+}
 
 function result(errors) {
   return {
@@ -165,8 +188,25 @@ export function validateSoloAction(run, action) {
     return result(errors);
   }
 
-  if (!RECOGNIZED_ACTION_TYPES.has(normalized.type)) {
+  const isTestHookType = TEST_HOOK_ACTION_TYPES.has(normalized.type) && testHooksEnabled();
+  if (!RECOGNIZED_ACTION_TYPES.has(normalized.type) && !isTestHookType) {
     push(errors, "action.type", `Unknown action type: ${normalized.type}`);
+    return result(errors);
+  }
+
+  if (isTestHookType) {
+    const runValidation = validateSoloRun(run);
+    if (!runValidation.ok) {
+      for (const error of runValidation.errors) {
+        push(errors, `run.${error.path}`, error.message);
+      }
+    }
+    if (normalized.type === "damage" && normalized.amount !== undefined && typeof normalized.amount !== "number") {
+      push(errors, "action.amount", "Expected number");
+    }
+    if (normalized.type === "grant_item" && !isString(normalized.itemId) && !isPlainObject(normalized.item)) {
+      push(errors, "action.item", "Expected item descriptor or itemId");
+    }
     return result(errors);
   }
 
@@ -277,14 +317,33 @@ export function getAvailableSoloActions(run, options = {}) {
 // against the post-action run and surface a win. The mutating actions carry the
 // updated run on result.run; read-only inspect has none, so fall back to the
 // original run (it can never satisfy a predicate, so this is a no-op there).
-function finalizeQuestProgress(originalRun, result) {
+function finalizeQuestProgress(originalRun, result, options = {}) {
   // Whether the action produced its own (cloned) run. inspect is read-only and
   // returns none, so we must never write scene state onto the shared input run.
   const actionProducedRun = Boolean(result.run);
   const activeRun = result.run || originalRun;
-  const { updated, wonQuest, completed, advanced } = advanceQuests(activeRun, result);
+
+  // Dying-turn death save: if the player entered this turn dying (0 HP), spending
+  // an ordinary turn rolls a death save on the post-action run. use_item is exempt
+  // (playing a heal/revival is the alternative to bleeding out). If this save (or
+  // its cascade) kills them, the run is now terminal — surface runDied and skip
+  // the reward/quest bookkeeping below (a corpse advances nothing).
+  if (actionProducedRun && result.run && isDying(originalRun) && result.action?.type !== "use_item") {
+    if (isDying(result.run)) {
+      result.deathSave = rollDeathSave(result.run, options);
+    }
+  }
+  if (actionProducedRun && result.run && isDead(result.run)) {
+    result.runDied = true;
+    result.run.vn = createDefaultVnState();
+    return result;
+  }
+  const { updated, wonQuest, completed, advanced, failed } = advanceQuests(activeRun, result);
   if (updated) {
     result.run = activeRun; // persist the flipped quest status / stage
+    if (Array.isArray(failed) && failed.length > 0) {
+      result.questFailed = failed[0];
+    }
     // The quest that moved this turn — the win, else a completed quest, else a
     // stage advance — so the GM can dramatize the progress in its narration.
     result.questJustAdvanced =
@@ -296,6 +355,34 @@ function finalizeQuestProgress(originalRun, result) {
   if (wonQuest) {
     result.runWon = true;
     result.wonQuest = wonQuest;
+  }
+
+  // Consequence spine — XP rewards. Meaningful outcomes move the xp/level needle
+  // on the (cloned, persisted) run: a contested success, a real discovery, every
+  // quest stage advanced, and the main-quest win. awardXp no-ops on a dead run.
+  if (actionProducedRun && result.run) {
+    let xp = 0;
+    if (result.attemptResult?.success === true && result.attemptResult?.needsCheck === true) {
+      xp += XP_AWARDS.attempt_success;
+    }
+    if (result.searchResult?.found === true) {
+      xp += XP_AWARDS.search_found;
+    }
+    const stagesAdvanced = Array.isArray(advanced) ? advanced.length : 0;
+    if (stagesAdvanced > 0) {
+      xp += XP_AWARDS.quest_stage * stagesAdvanced;
+    }
+    if (wonQuest) {
+      xp += XP_AWARDS.quest_complete;
+    }
+    if (xp > 0) {
+      const xpResult = awardXp(result.run, xp);
+      if (xpResult && xpResult.awarded > 0) {
+        result.xpAwarded = xpResult.awarded;
+        result.leveledUp = xpResult.leveledUp;
+        result.playerLevel = xpResult.level;
+      }
+    }
   }
 
   // VN scene state — the manual half of the ambient↔direct classifier. A talk
@@ -321,6 +408,84 @@ function finalizeQuestProgress(originalRun, result) {
   return result;
 }
 
+function cloneRun(run) {
+  return JSON.parse(JSON.stringify(run));
+}
+
+// Resolves the gated system/test lethality actions. Mutates a clone, re-validates,
+// and returns the standard resolver shape so the route persists + narrates it like
+// any other action. Never reachable in production (validateSoloAction only admits
+// these when testHooksEnabled()).
+function resolveTestHookAction(run, normalized, options = {}) {
+  const updatedRun = cloneRun(run);
+  const now = options.now instanceof Date ? options.now.toISOString() : (typeof options.now === "string" ? options.now : new Date().toISOString());
+  let payload = {};
+
+  if (normalized.type === "damage") {
+    const amount = typeof normalized.amount === "number" ? normalized.amount : 1;
+    const damage = applyDamage(updatedRun, amount, { crit: normalized.crit === true });
+    payload = { damageResult: damage };
+  } else if (normalized.type === "death_save") {
+    const deathSave = rollDeathSave(updatedRun, options);
+    payload = { deathSaveResult: deathSave };
+  } else if (normalized.type === "revive") {
+    const revive = attemptRevive(updatedRun, { hp: typeof normalized.hp === "number" ? normalized.hp : 1 });
+    payload = { reviveResult: revive };
+  } else if (normalized.type === "grant_item") {
+    const descriptor = isPlainObject(normalized.item) ? normalized.item : { itemId: normalized.itemId };
+    const itemId = isString(descriptor.itemId) ? descriptor.itemId : (isString(normalized.itemId) ? normalized.itemId : `item_${Math.random().toString(36).slice(2, 10)}`);
+    const qty = typeof descriptor.qty === "number" ? descriptor.qty : (typeof descriptor.quantity === "number" ? descriptor.quantity : 1);
+    const item = {
+      itemId,
+      name: isString(descriptor.name) ? descriptor.name : itemId,
+      description: isString(descriptor.description) ? descriptor.description : "",
+      quantity: qty,
+      usable: descriptor.usable === true,
+      consumable: descriptor.consumable !== false,
+      tags: Array.isArray(descriptor.tags) ? descriptor.tags : [],
+      flags: isPlainObject(descriptor.flags) ? descriptor.flags : {},
+      use: isPlainObject(descriptor.use) ? descriptor.use : undefined
+    };
+    if (!isPlainObject(updatedRun.inventory)) {
+      updatedRun.inventory = {};
+    }
+    updatedRun.inventory[itemId] = { ...(updatedRun.inventory[itemId] || {}), ...item };
+    // Mirror into the state-contract player.inventory array (id/name/qty + extras).
+    if (!Array.isArray(updatedRun.player.inventory)) {
+      updatedRun.player.inventory = [];
+    }
+    const existing = updatedRun.player.inventory.find((entry) => isPlainObject(entry) && (entry.id === itemId || entry.itemId === itemId));
+    if (existing) {
+      existing.qty = (typeof existing.qty === "number" ? existing.qty : 0) + qty;
+    } else {
+      updatedRun.player.inventory.push({ id: itemId, name: item.name, qty });
+    }
+    payload = { grantResult: { itemId, quantity: updatedRun.inventory[itemId].quantity } };
+  }
+
+  updatedRun.updatedAt = now;
+  const finalValidation = validateSoloRun(updatedRun);
+  if (!finalValidation.ok) {
+    return {
+      ok: false,
+      code: "ACTION_INVALID",
+      actionType: normalized.type,
+      errors: finalValidation.errors.map((error) => ({ path: `run.${error.path}`, message: error.message }))
+    };
+  }
+
+  return {
+    ok: true,
+    action: normalized,
+    run: updatedRun,
+    runDied: isDead(updatedRun),
+    availableMoves: getAvailableMoves(updatedRun),
+    availableActions: getAvailableSoloActions(updatedRun),
+    ...payload,
+    errors: []
+  };
+}
+
 export function resolveSoloAction(run, action, options = {}) {
   const normalized = normalizeSoloAction(action);
   const validation = validateSoloAction(run, normalized);
@@ -333,6 +498,28 @@ export function resolveSoloAction(run, action, options = {}) {
     };
   }
 
+  // DEATH IS TERMINAL. A dead run is non-resumable — no further actions resolve.
+  // The character is gone; only a death/review screen remains.
+  if (isDead(run)) {
+    return {
+      ok: false,
+      code: "RUN_TERMINAL",
+      actionType: normalized.type,
+      errors: [{ path: "run.status", message: "This character is dead. The run is over." }]
+    };
+  }
+
+  // System/test lethality hooks (gated). Resolved before the normal branches so a
+  // dying player can be acted on deterministically.
+  if (TEST_HOOK_ACTION_TYPES.has(normalized.type)) {
+    return resolveTestHookAction(run, normalized, options);
+  }
+
+  // The dying-turn loop (rolled in finalizeQuestProgress): while the player is at
+  // 0 HP making death saves, ANY ordinary action spends their turn rolling a death
+  // save. use_item is exempt — that is how a held heal/revival is played instead
+  // of bleeding out. This is what makes 0 HP truly perilous: every turn is a
+  // coin-flip toward death, not a safe pause.
   if (normalized.type === "move") {
     const movement = resolveMovementAction(run, normalized, options);
     if (!movement.ok) {
@@ -353,7 +540,7 @@ export function resolveSoloAction(run, action, options = {}) {
       availableMoves: getAvailableMoves(movement.run),
       availableActions: getAvailableSoloActions(movement.run),
       errors: []
-    });
+    }, options);
   }
 
   if (normalized.type === "inspect") {
@@ -378,7 +565,7 @@ export function resolveSoloAction(run, action, options = {}) {
       availableMoves: getAvailableMoves(run),
       availableActions: getAvailableSoloActions(run),
       errors: []
-    });
+    }, options);
   }
 
   if (normalized.type === "search") {
@@ -402,7 +589,7 @@ export function resolveSoloAction(run, action, options = {}) {
       availableMoves: getAvailableMoves(search.run),
       availableActions: getAvailableSoloActions(search.run),
       errors: []
-    });
+    }, options);
   }
 
   if (normalized.type === "talk") {
@@ -426,7 +613,7 @@ export function resolveSoloAction(run, action, options = {}) {
       availableMoves: getAvailableMoves(talk.run),
       availableActions: getAvailableSoloActions(talk.run),
       errors: []
-    });
+    }, options);
   }
 
   if (normalized.type === "rest") {
@@ -451,7 +638,7 @@ export function resolveSoloAction(run, action, options = {}) {
       availableMoves: getAvailableMoves(actionRun),
       availableActions: getAvailableSoloActions(actionRun),
       errors: []
-    });
+    }, options);
   }
 
   if (normalized.type === "use_item") {
@@ -476,7 +663,7 @@ export function resolveSoloAction(run, action, options = {}) {
       availableMoves: getAvailableMoves(actionRun),
       availableActions: getAvailableSoloActions(actionRun),
       errors: []
-    });
+    }, options);
   }
 
   if (normalized.type === "attempt") {
@@ -500,7 +687,7 @@ export function resolveSoloAction(run, action, options = {}) {
       availableMoves: getAvailableMoves(attempt.run),
       availableActions: getAvailableSoloActions(attempt.run),
       errors: []
-    });
+    }, options);
   }
 
   return notImplemented(normalized.type);

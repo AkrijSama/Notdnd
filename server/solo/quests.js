@@ -250,6 +250,14 @@ function playerHasItem(run, itemId) {
   return false;
 }
 
+// The d20 check resolved by THIS action (a contested attempt or a gated search),
+// or null when the action rolled no check. Lets quest stages gate on — and FAIL
+// on — the same roll the player just made.
+function actionCheckResult(actionResult) {
+  const cr = actionResult?.attemptResult?.checkResult ?? actionResult?.searchResult?.checkResult ?? null;
+  return isPlainObject(cr) ? cr : null;
+}
+
 function predicateMet(run, quest, actionResult) {
   // Read the ACTIVE stage's completion (multi-stage quests), falling back to the
   // mirrored top-level completion for legacy single-predicate quests.
@@ -267,9 +275,29 @@ function predicateMet(run, quest, actionResult) {
     }
     case "obtain_item":
       return playerHasItem(run, completion.targetId);
+    case "check": {
+      // CHECK-GATED stage — advances only when the player's roll this turn SUCCEEDS.
+      // A failed check does NOT advance (and, if failOnMiss, fails the quest below),
+      // so the player can genuinely lose a quest rather than grind it out.
+      const cr = actionCheckResult(actionResult);
+      return Boolean(cr) && cr.success === true;
+    }
     default:
       return false;
   }
+}
+
+// A check-gated, failable stage fails the quest when the player rolls and MISSES.
+// This is the teeth on the quest spine: not every objective is achievable, and a
+// botched check can end the line.
+function questFailedThisTurn(quest, actionResult) {
+  const stage = quest.stages?.[quest.stage] ?? quest;
+  const completion = stage?.completion;
+  if (!isPlainObject(completion) || completion.kind !== "check" || stage.failOnMiss !== true) {
+    return false;
+  }
+  const cr = actionCheckResult(actionResult);
+  return Boolean(cr) && cr.success === false;
 }
 
 /**
@@ -295,9 +323,17 @@ export function advanceQuests(run, actionResult = {}) {
   let wonQuest = null;
   const completed = [];
   const advanced = [];
+  const failed = [];
 
   for (const quest of Object.values(run.quests)) {
     if (!isPlainObject(quest) || quest.status !== "active") {
+      continue;
+    }
+    // Failure first: a missed failable check ends the quest in defeat.
+    if (questFailedThisTurn(quest, actionResult)) {
+      quest.status = "failed";
+      updated = true;
+      failed.push(quest);
       continue;
     }
     if (!predicateMet(run, quest, actionResult)) {
@@ -329,7 +365,7 @@ export function advanceQuests(run, actionResult = {}) {
     }
   }
 
-  return { updated, wonQuest, completed, advanced };
+  return { updated, wonQuest, completed, advanced, failed };
 }
 
 /**
