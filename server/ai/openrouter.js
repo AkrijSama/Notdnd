@@ -32,12 +32,16 @@ function resolveModelTiers() {
   };
 }
 
-function ensureApiKey() {
+function rawApiKey() {
   // INKBORNE_LLM_API_KEY is the primary name; NOTDND_LLM_API_KEY (legacy brand)
   // and OPENROUTER_API_KEY remain fallbacks so existing setups keep working.
-  const apiKey = String(
+  return String(
     (process.env.INKBORNE_LLM_API_KEY ?? process.env.NOTDND_LLM_API_KEY) || process.env.OPENROUTER_API_KEY || ""
   ).trim();
+}
+
+function ensureApiKey() {
+  const apiKey = rawApiKey();
   if (!apiKey) {
     const error = new Error("INKBORNE_LLM_API_KEY (or OPENROUTER_API_KEY) is required.");
     error.code = "MISSING_API_KEY";
@@ -45,6 +49,61 @@ function ensureApiKey() {
     throw error;
   }
   return apiKey;
+}
+
+// --- Edition-routed GM provider ---------------------------------------------
+// Forbidden Mode AND the cloud->local fallback both target a LOCAL OpenAI-
+// compatible endpoint (Ollama) serving an uncensored model — no API key, content
+// never leaves the box. Resolved at CALL TIME (never a module-level const), like
+// the cloud base/model/key, so .env loaded after import is honored.
+const LOCAL_GM_DEFAULTS = {
+  baseUrl: "http://127.0.0.1:11434/v1/chat/completions",
+  model: "dolphin-llama3:8b"
+};
+
+function resolveLocalProvider() {
+  return {
+    baseUrl:
+      (process.env.INKBORNE_FORBIDDEN_LLM_BASE_URL ?? process.env.NOTDND_FORBIDDEN_LLM_BASE_URL) ||
+      LOCAL_GM_DEFAULTS.baseUrl,
+    model:
+      (process.env.INKBORNE_FORBIDDEN_LLM_MODEL ?? process.env.NOTDND_FORBIDDEN_LLM_MODEL) ||
+      LOCAL_GM_DEFAULTS.model,
+    key: null,
+    local: true
+  };
+}
+
+/**
+ * ONE resolver: edition (+ fallback flag) -> { baseUrl, model, key, local, edition }.
+ *  - 'mainline'          -> cloud (UNCHANGED: LLM base + narrative model + key)
+ *  - 'forbidden'         -> local uncensored model (no key)
+ *  - { fallback: true }  -> local regardless of edition (the cloud->local recovery)
+ * Pure + call-time; never throws (cloud key may be empty — enforced at call time).
+ * @param {string} edition
+ * @param {{ fallback?: boolean }} [opts]
+ * @returns {{ baseUrl: string, model: string, key: string|null, local: boolean, edition: string }}
+ */
+export function resolveGmProvider(edition = "mainline", { fallback = false } = {}) {
+  const ed = String(edition || "mainline").trim().toLowerCase();
+  if (ed === "forbidden" || fallback === true) {
+    return { ...resolveLocalProvider(), edition: ed };
+  }
+  return {
+    baseUrl: resolveLlmBaseUrl(),
+    model: resolveModelTiers().narrative,
+    key: rawApiKey() || null,
+    local: false,
+    edition: ed
+  };
+}
+
+// Cloud->local fallback is ON by default; disable with INKBORNE_GM_LOCAL_FALLBACK=false.
+function localFallbackEnabled() {
+  const v = String((process.env.INKBORNE_GM_LOCAL_FALLBACK ?? process.env.NOTDND_GM_LOCAL_FALLBACK) || "")
+    .trim()
+    .toLowerCase();
+  return v !== "false" && v !== "0" && v !== "off";
 }
 
 function normalizeTokens(usage = {}) {
@@ -268,7 +327,21 @@ async function requestOpenRouter(messages, model, options = {}) {
     };
   }
 
-  const apiKey = ensureApiKey();
+  // Provider override (edition routing / cloud->local fallback): when present,
+  // target its base + key. Local providers carry no key — skip ensureApiKey and
+  // the Authorization header. Without an override, behave exactly as before.
+  const provider = options.provider || null;
+  const isLocal = Boolean(provider?.local);
+  const LLM_BASE_URL = provider?.baseUrl || resolveLlmBaseUrl();
+  let apiKey = "";
+  if (isLocal) {
+    apiKey = String(provider?.key || "").trim();
+  } else if (provider) {
+    apiKey = String(provider.key || "").trim() || ensureApiKey();
+  } else {
+    apiKey = ensureApiKey();
+  }
+
   const body = {
     model,
     messages: Array.isArray(messages) ? messages : [],
@@ -285,15 +358,17 @@ async function requestOpenRouter(messages, model, options = {}) {
     body.stop = options.stopSequences.filter((entry) => String(entry || "").trim());
   }
 
-  const LLM_BASE_URL = resolveLlmBaseUrl();
+  const headers = {
+    "Content-Type": "application/json",
+    "HTTP-Referer": "https://inkborne.com",
+    "X-Title": "Inkborne"
+  };
+  if (apiKey) {
+    headers.Authorization = `Bearer ${apiKey}`;
+  }
   const response = await fetch(LLM_BASE_URL, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-      "HTTP-Referer": "https://inkborne.com",
-      "X-Title": "Inkborne"
-    },
+    headers,
     body: JSON.stringify(body)
   });
 
@@ -328,15 +403,47 @@ async function requestOpenRouter(messages, model, options = {}) {
 }
 
 async function requestWithFallback(messages, preferredModel, options = {}) {
+  const edition = String(options.edition || "mainline").trim().toLowerCase();
+
+  // Forbidden Mode: route straight to the LOCAL uncensored model — no cloud call,
+  // no key, content never leaves the box. Edition resolved per-call (not a const).
+  if (edition === "forbidden") {
+    const local = resolveGmProvider("forbidden");
+    return requestOpenRouter(messages, local.model, { ...options, provider: local });
+  }
+
+  // Mainline: cloud preferred model -> cloud fallback model -> LOCAL fallback.
   const tiers = resolveModelTiers();
   try {
     return await requestOpenRouter(messages, preferredModel, options);
-  } catch (error) {
-    const fallbackModel = tiers.fallback;
-    if (preferredModel === fallbackModel) {
-      throw error;
+  } catch (primaryError) {
+    let cloudError = primaryError;
+    if (preferredModel !== tiers.fallback) {
+      try {
+        return await requestOpenRouter(messages, tiers.fallback, options);
+      } catch (fallbackError) {
+        cloudError = fallbackError;
+      }
     }
-    return requestOpenRouter(messages, fallbackModel, options);
+
+    // Cloud is down (429 / timeout / non-200). Instead of blanking to the canned
+    // template, fall back to the LOCAL uncensored model so normal mainline play
+    // survives a quota wall or outage. Best-effort; surfaces the cloud cause if
+    // local also fails. Skipped in mock mode so tests stay hermetic.
+    if (localFallbackEnabled() && !mockModeEnabled()) {
+      const local = resolveGmProvider("mainline", { fallback: true });
+      console.warn(
+        `[GM] cloud GM call failed (${cloudError?.statusCode || cloudError?.code || "error"}); ` +
+          `falling back to LOCAL ${local.baseUrl} (model ${local.model})`
+      );
+      try {
+        return await requestOpenRouter(messages, local.model, { ...options, provider: local, stream: false });
+      } catch (localError) {
+        console.warn(`[GM] LOCAL fallback also failed: ${String(localError?.message || localError).slice(0, 160)}`);
+      }
+    }
+
+    throw cloudError;
   }
 }
 
