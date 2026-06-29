@@ -266,6 +266,18 @@ function abilityFromRecommendation(recommendation) {
   return null;
 }
 
+// Lowercases the first character so an imperative intent ("Search the room")
+// reads naturally mid-sentence ("You search the room…"). Strips characters that
+// would trip provider-output validation (HTML/table/brace markers) since the
+// intent is player-supplied.
+function intentPhrase(intent) {
+  const cleaned = String(intent || "").replace(/[<>|{}[\]]/g, "").trim();
+  if (!cleaned) {
+    return "act";
+  }
+  return cleaned.charAt(0).toLowerCase() + cleaned.slice(1);
+}
+
 function defaultProviderOutput(input) {
   const intent = input.intent || "attempt an action";
   const lowered = intent.toLowerCase();
@@ -280,14 +292,20 @@ function defaultProviderOutput(input) {
     recommendedAbility = "investigation";
   }
 
+  // Intent-aware fallback narration. This is the deterministic line shown when
+  // the GM provider is unavailable (e.g. the request layer's bounded GM call
+  // times out or the LLM is misconfigured). Echoing what the player actually
+  // did keeps a resolved action from reading as "nothing happened" in degraded
+  // mode — the live GM narration replaces it on the normal path.
+  const phrase = intentPhrase(intent);
   return {
     summary: `You attempt: ${intent}`,
     recommendedAbility,
     dc: classifyIntentDc(intent),
     advantage: false,
     disadvantage: false,
-    successNarration: "The attempt works well enough for now.",
-    failureNarration: "The attempt does not work right now.",
+    successNarration: `You ${phrase}, and it goes well enough.`,
+    failureNarration: `You try to ${phrase}, but it doesn't come together this time.`,
     proposedEffects: []
   };
 }
@@ -764,12 +782,14 @@ export function resolveAttemptAction(run, action, options = {}) {
 
   const baseNarration = success ? providerOutput.successNarration : providerOutput.failureNarration;
   // Never leave a turn silent (FIX K, code half): if the provider narration is
-  // empty, fall back to a plain outcome line. The live attempt provider always
-  // fills these, but a thin custom provider might not — and a no-roll action must
-  // still narrate.
+  // empty, fall back to an intent-aware outcome line. The live attempt provider
+  // always fills these, but a thin custom provider might not — and a no-roll
+  // action must still narrate. Echoing the intent keeps the line from reading as
+  // "nothing happened" in degraded mode.
+  const phrase = intentPhrase(context.intent);
   const narration = isString(baseNarration)
     ? baseNarration
-    : (needsCheck ? "You make the attempt." : "You do so without trouble.");
+    : (success ? `You ${phrase}.` : `You try to ${phrase}, but it doesn't come together this time.`);
   const attemptResult = {
     intent: safeAction.intent,
     targetId: safeAction.targetId || null,

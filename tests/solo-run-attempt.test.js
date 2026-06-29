@@ -209,6 +209,51 @@ test("invalid provider output falls back safely", () => {
   assert.equal(result.attemptResult.warnings.includes("ATTEMPT_PROVIDER_FALLBACK"), true);
 });
 
+// HARDEN (K/M degraded mode): when the GM provider is unavailable the
+// deterministic fallback narration must still describe the OUTCOME by echoing
+// the player's intent — never the flat "nothing happened" line that prompted
+// this work. The live GM narration replaces it on the normal path.
+test("rolled-success fallback narration echoes the intent (not a flat filler line)", () => {
+  const run = createDefaultSoloRun({ now: "2026-01-01T00:00:00.000Z" });
+  // No attemptProviderFn -> deterministic defaultProviderOutput path.
+  const result = resolveAttemptAction(run, {
+    type: "attempt",
+    actorId: "player",
+    intent: "Search the Data Den for hidden caches"
+  }, { fixedRoll: 20 });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.attemptResult.success, true);
+  assert.ok(result.attemptResult.checkResult, "contested search still rolls");
+  // Outcome line references what the player actually did.
+  assert.match(result.attemptResult.narration, /search the Data Den for hidden caches/i);
+  assert.doesNotMatch(result.attemptResult.narration, /works well enough for now/i);
+});
+
+test("no-roll movement fallback narration echoes the intent", () => {
+  const run = createDefaultSoloRun({ now: "2026-01-01T00:00:00.000Z" });
+  const result = resolveAttemptAction(run, {
+    type: "attempt",
+    actorId: "player",
+    intent: "Head toward the night market"
+  });
+  assert.equal(result.attemptResult.needsCheck, false);
+  assert.equal(result.attemptResult.checkResult, null);
+  assert.match(result.attemptResult.narration, /head toward the night market/i);
+});
+
+test("fallback narration strips characters that would break provider validation", () => {
+  const run = createDefaultSoloRun({ now: "2026-01-01T00:00:00.000Z" });
+  const result = resolveAttemptAction(run, {
+    type: "attempt",
+    actorId: "player",
+    intent: "Search <b>the</b> room | table"
+  }, { fixedRoll: 20 });
+  assert.equal(result.ok, true);
+  // No angle brackets or pipes survive into the narration.
+  assert.doesNotMatch(result.attemptResult.narration, /[<>|]/);
+});
+
 test("failed attempt costs the player HP and surfaces the damage", () => {
   const run = createDefaultSoloRun({ now: "2026-01-01T00:00:00.000Z" });
   const before = run.player.resources.hitPoints.current; // 10 by default
