@@ -693,6 +693,65 @@ test("mountSoloSceneShell posts talk action and shows dialogue result", async ()
   assert.match(root.innerHTML, /area has been quiet/);
 });
 
+test("render() preserves focus + caret of the action input across a re-render", async () => {
+  // Regression: a direct render() (runAction finally / loadScene) rebuilds
+  // innerHTML and used to drop focus + caret of whichever text box the player was
+  // typing in — the "works for a second then freezes" bug. render() now captures
+  // the focused field (by its stable data-attr) and re-focuses it after rebuild.
+  const fakeInput = {
+    _attrs: { "data-solo-attempt-input": "" },
+    selectionStart: 3,
+    selectionEnd: 3,
+    disabled: false,
+    hasAttribute(name) {
+      return Object.prototype.hasOwnProperty.call(this._attrs, name);
+    },
+    focusCount: 0,
+    focus() {
+      this.focusCount += 1;
+    },
+    rangeCalls: [],
+    setSelectionRange(start, end) {
+      this.rangeCalls.push([start, end]);
+    }
+  };
+  const root = {
+    innerHTML: "",
+    contains() {
+      return true;
+    }, // the focused input counts as inside the shell
+    querySelectorAll() {
+      return [];
+    },
+    querySelector(selector) {
+      return selector === "[data-solo-attempt-input]" ? fakeInput : null;
+    }
+  };
+  const apiClient = {
+    async fetchSoloScene() {
+      return sampleScene();
+    },
+    async fetchSoloGmScene() {
+      return { ok: true, gmNarration: null, gmStatus: null };
+    }
+  };
+
+  const prevDocument = globalThis.document;
+  globalThis.document = { activeElement: fakeInput }; // simulate the player typing
+  try {
+    const mounted = mountSoloSceneShell(root, { apiClient, runId: "run_focus" });
+    await mounted.reload(); // loadScene → render() (start + finally) → capture/restore
+    assert.ok(fakeInput.focusCount >= 1, "the focused action input is re-focused after the rebuild");
+    assert.deepEqual(fakeInput.rangeCalls.at(-1), [3, 3], "the caret position is restored");
+  } finally {
+    if (prevDocument === undefined) {
+      delete globalThis.document;
+    } else {
+      globalThis.document = prevDocument;
+    }
+  }
+});
+
 test("mountSoloSceneShell auto-opens VN for a freeform speaker with the NPC's own line, not GM narration", async () => {
   const root = {
     innerHTML: "",

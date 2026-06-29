@@ -2620,6 +2620,14 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
 
   function render() {
     pendingExternalRender = false;
+    // Keep the live text input alive across the innerHTML rebuild. The deferral
+    // guard (externalRender) only covers TIMER renders; direct render() calls —
+    // runAction's start/finally, loadScene, click handlers — would otherwise
+    // destroy the focused <input> out from under the player and drop focus/caret.
+    // Real symptom: send a VN reply / action, click back to type the next one, and
+    // ~1s later the GM call's finally{render()} recreates the box → it "freezes".
+    // Capture which field was focused + its caret, restore both after the rebuild.
+    const focusSnapshot = captureSoloFocus();
     root.innerHTML = renderSoloSceneShell(state);
     bindSoloSceneShell(root, {
       onReload: loadScene,
@@ -2661,6 +2669,54 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       onNpcSubmit: handleNpcSubmit,
       onBringBack: handleBringBack
     });
+    restoreSoloFocus(focusSnapshot);
+  }
+
+  // Capture/restore the focused text field across a render(). Identified by a
+  // STABLE data-* attribute (the action box and the VN reply box each have a
+  // unique one) so the post-rebuild element is the same field. Returns null when
+  // nothing relevant is focused — so a render triggered by clicking elsewhere
+  // never yanks focus back. The value itself is already restored from state
+  // (attemptDraft / dialogueReplyDraft); we only recover focus + caret.
+  const SOLO_FOCUS_ATTRS = ["data-solo-attempt-input", "data-solo-dialogue-reply-input"];
+  function captureSoloFocus() {
+    if (typeof document === "undefined") {
+      return null;
+    }
+    const el = document.activeElement;
+    if (!el || (typeof root.contains === "function" && !root.contains(el))) {
+      return null;
+    }
+    const attr = typeof el.hasAttribute === "function" ? SOLO_FOCUS_ATTRS.find((a) => el.hasAttribute(a)) : null;
+    if (!attr) {
+      return null;
+    }
+    let start = null;
+    let end = null;
+    try {
+      start = el.selectionStart;
+      end = el.selectionEnd;
+    } catch {
+      // Some input types disallow selection access — focus alone is enough.
+    }
+    return { attr, start, end };
+  }
+  function restoreSoloFocus(snapshot) {
+    if (!snapshot || typeof root.querySelector !== "function") {
+      return;
+    }
+    const el = root.querySelector(`[${snapshot.attr}]`);
+    if (!el || typeof el.focus !== "function" || el.disabled) {
+      return;
+    }
+    el.focus();
+    if (snapshot.start !== null && typeof el.setSelectionRange === "function") {
+      try {
+        el.setSelectionRange(snapshot.start, snapshot.end);
+      } catch {
+        // Non-fatal — focus is restored even if caret placement isn't supported.
+      }
+    }
   }
 
   // True while the user is actively typing in a text input/textarea inside the
