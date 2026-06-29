@@ -3575,8 +3575,15 @@ button:disabled {
    danger var) so they read as "careful" without inventing phantom vars. */
 .solo-home-run-actions {
   display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  flex-shrink: 0;
+}
+/* The delete-confirm variant lays its prompt + buttons out inline (row). */
+.solo-home-run-actions--confirm {
+  flex-direction: row;
   align-items: center;
-  gap: 10px;
   flex-wrap: wrap;
   justify-content: flex-end;
 }
@@ -3636,6 +3643,145 @@ button:disabled {
 .solo-home-run-delete-cancel:hover {
   color: var(--ink, #ece1c7);
 }
+
+/* ── Resumable saved-campaign card: title row, progress lines, primary Continue,
+   secondary Rename/Delete, and the inline rename field. Leather-tome tokens
+   only; status pills use literal warm hues (no palette danger/success vars). ── */
+.solo-home-run-card { align-items: flex-start; }
+.solo-home-run-titlerow {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.solo-home-run-status {
+  font-size: 10px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  border-radius: 999px;
+  padding: 2px 9px;
+  white-space: nowrap;
+  border: 1px solid var(--border, #2e2420);
+  color: var(--muted, #95897a);
+}
+/* Active = alive (gilt); completed = settled (muted); abandoned = warning-warm. */
+.solo-home-run-status--active {
+  color: var(--accent-bright, #d8b46a);
+  border-color: var(--accent-border, #4a3a1e);
+  background: var(--gold-edge, rgba(216, 180, 106, 0.12));
+}
+.solo-home-run-status--completed {
+  color: #8fb89a;
+  border-color: #3c5a45;
+  background: rgba(60, 90, 69, 0.16);
+}
+.solo-home-run-status--abandoned {
+  color: #c79a8e;
+  border-color: #6e4034;
+  background: rgba(110, 64, 52, 0.16);
+}
+.solo-home-run-where { color: var(--text-muted, #94856f); }
+.solo-home-run-quest {
+  color: var(--text-muted, #94856f);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.solo-home-run-quest em { color: var(--accent, #b08545); font-style: normal; }
+.solo-home-run-footnote {
+  color: var(--muted, #7d7264);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  margin-top: 2px;
+}
+/* Continue — the prominent, gilt primary action that reopens the run. */
+.solo-home-run-continue {
+  font-family: var(--font-display, 'Cinzel', Georgia, serif);
+  font-size: 13px;
+  letter-spacing: 0.03em;
+  padding: 9px 20px;
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+  color: var(--on-accent, #1c1308);
+  border: 1px solid var(--accent-border, #4a3a1e);
+  background: linear-gradient(135deg, var(--accent-bright, #d8b46a), var(--accent, #b08545));
+  box-shadow: var(--elev-1, 0 8px 22px rgba(0, 0, 0, 0.5));
+  transition: transform 0.14s ease, box-shadow 0.14s ease, filter 0.14s ease;
+}
+.solo-home-run-continue:hover { transform: translateY(-1px); filter: brightness(1.06); }
+.solo-home-run-continue:active { transform: translateY(0); }
+/* Secondary cluster — quiet ghost controls under the primary action. */
+.solo-home-run-secondary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.solo-home-run-rename-btn {
+  background: transparent;
+  border: 1px solid var(--line-strong, #503f2e);
+  color: var(--muted, #95897a);
+  font-size: 12px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
+}
+.solo-home-run-rename-btn:hover {
+  color: var(--accent-bright, #d8b46a);
+  border-color: var(--accent-border, #4a3a1e);
+  background: var(--gold-edge, rgba(216, 180, 106, 0.1));
+}
+/* Inline rename form — fills the card body while editing. */
+.solo-home-run-rename {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+.solo-home-run-rename-label {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent, #b08545);
+}
+.solo-home-run-rename-input {
+  width: 100%;
+  padding: 9px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line-strong, #503f2e);
+  background: var(--input-bg, #14100b);
+  color: var(--ink, #ece1c7);
+  font-size: 14px;
+}
+.solo-home-run-rename-input:focus {
+  outline: none;
+  border-color: var(--accent, #b08545);
+  box-shadow: 0 0 0 2px var(--gold-edge, rgba(216, 180, 106, 0.16));
+}
+.solo-home-run-rename-actions { display: flex; gap: 8px; }
+.solo-home-run-rename-save {
+  font-size: 12px;
+  padding: 5px 16px;
+  border-radius: 999px;
+  cursor: pointer;
+  color: var(--on-accent, #1c1308);
+  border: 1px solid var(--accent-border, #4a3a1e);
+  background: linear-gradient(135deg, var(--accent-bright, #d8b46a), var(--accent, #b08545));
+}
+.solo-home-run-rename-save:hover { filter: brightness(1.06); }
+.solo-home-run-rename-cancel {
+  font-size: 12px;
+  padding: 5px 16px;
+  border-radius: 999px;
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid var(--line-strong, #503f2e);
+  color: var(--muted, #95897a);
+}
+.solo-home-run-rename-cancel:hover { color: var(--ink, #ece1c7); }
 .solo-login-card {
   max-width: 480px;
   margin: 0 auto;

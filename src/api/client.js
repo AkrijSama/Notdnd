@@ -140,6 +140,12 @@ export function createApiClient(baseUrl = "") {
         method: "DELETE"
       });
     },
+    async renameSoloRun(runId, title) {
+      return request(`/api/solo/runs/${encodeURIComponent(runId)}/rename`, {
+        method: "POST",
+        body: JSON.stringify({ title })
+      });
+    },
     async deleteCampaign(campaignId) {
       return request(`/api/campaigns/${encodeURIComponent(campaignId)}`, {
         method: "DELETE"

@@ -895,6 +895,8 @@ export function validateSoloRun(run) {
 
   validateRequiredString(run.runId, "runId", errors);
   validateOptionalString(run.userId, "userId", errors);
+  // Optional player-chosen display title for the home/saved-campaigns list.
+  validateOptionalString(run.title, "title", errors);
   validateOptionalString(run.narration, "narration", errors);
   validateOptionalString(run.openingNarration, "openingNarration", errors);
   // Optional VN (visual-novel) scene state. Older runs predate it and stay

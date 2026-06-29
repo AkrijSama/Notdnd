@@ -68,6 +68,7 @@ import {
   markLocationImageRegenerating,
   markNpcIntroduced,
   registerUser,
+  renameSoloRun,
   requestPasswordReset,
   resolveStorePath,
   saveSoloRun,
@@ -989,6 +990,30 @@ async function handleApi(req, res) {
         assertSoloRunAccess(user, run);
         deleteSoloRun(run.runId);
         writeJson(res, 200, { ok: true, deleted: true });
+      } catch (error) {
+        routeError(res, error);
+      }
+      return true;
+    }
+  }
+
+  // Rename a solo run (POST /api/solo/runs/:runId/rename {title}). Persists a
+  // player-chosen display title on the run blob for the saved-campaigns list. A
+  // blank title clears it (reverts to the computed default). Auth + ownership
+  // gated; sits before the generic action handler (which matches /actions only).
+  if (req.method === "POST" && url.pathname.startsWith("/api/solo/runs/") && url.pathname.endsWith("/rename")) {
+    const raw = url.pathname.slice("/api/solo/runs/".length, -"/rename".length).replace(/\/+$/, "").trim();
+    if (raw && !raw.includes("/")) {
+      try {
+        const user = requireAuth(req);
+        const run = getSoloRun(decodeURIComponent(raw));
+        if (!run) {
+          throw Object.assign(new Error("Solo run not found."), { code: "NOT_FOUND", statusCode: 404 });
+        }
+        assertSoloRunAccess(user, run);
+        const payload = await readJsonBody(req);
+        const updated = renameSoloRun(run.runId, payload?.title);
+        writeJson(res, 200, { ok: true, run: updated });
       } catch (error) {
         routeError(res, error);
       }

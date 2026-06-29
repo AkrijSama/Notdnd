@@ -10,6 +10,7 @@ import {
   initializeDatabase,
   listSoloRunsForUser,
   loginUser,
+  renameSoloRun,
   resetDatabase,
   saveSoloRun
 } from "../server/db/repository.js";
@@ -122,6 +123,51 @@ test("listSoloRunsForUser returns only that user's runs", () => {
   const ids = runs.map((run) => run.runId).sort();
 
   assert.deepEqual(ids, ["run_user_a_1", "run_user_a_2"]);
+});
+
+test("renameSoloRun persists a custom title and survives reload", () => {
+  initializeDatabase();
+  resetDatabase();
+
+  createSoloRun({ userId: "user_a", runId: "run_rename", now: "2026-01-01T00:00:00.000Z" });
+  const updated = renameSoloRun("run_rename", "  The Long Road Home  ");
+
+  // Trimmed, persisted, and still a valid run.
+  assert.equal(updated.title, "The Long Road Home");
+  assert.equal(validateSoloRun(updated).ok, true);
+  // Survives a fresh fetch (i.e. it was written, not just returned).
+  assert.equal(getSoloRun("run_rename").title, "The Long Road Home");
+});
+
+test("renameSoloRun does NOT bump updatedAt (rename is not play)", () => {
+  initializeDatabase();
+  resetDatabase();
+
+  const run = createSoloRun({ userId: "user_a", runId: "run_rename_time", now: "2026-01-01T00:00:00.000Z" });
+  const before = run.updatedAt;
+  renameSoloRun("run_rename_time", "A New Name");
+
+  assert.equal(getSoloRun("run_rename_time").updatedAt, before);
+});
+
+test("renameSoloRun with a blank title clears the custom title", () => {
+  initializeDatabase();
+  resetDatabase();
+
+  createSoloRun({ userId: "user_a", runId: "run_rename_clear" });
+  renameSoloRun("run_rename_clear", "Temporary");
+  assert.equal(getSoloRun("run_rename_clear").title, "Temporary");
+
+  const cleared = renameSoloRun("run_rename_clear", "   ");
+  assert.equal("title" in cleared, false);
+  assert.equal("title" in getSoloRun("run_rename_clear"), false);
+});
+
+test("renameSoloRun returns null for a missing run", () => {
+  initializeDatabase();
+  resetDatabase();
+
+  assert.equal(renameSoloRun("nope_missing", "X"), null);
 });
 
 test("solo runs are stored separately from campaigns/legacy data", () => {

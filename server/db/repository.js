@@ -895,6 +895,29 @@ export function deleteSoloRun(runId) {
   return true;
 }
 
+// Sets (or clears) a player-chosen display title on a run. Additive `title` field
+// on the JSON blob — no migration. A blank title clears it, reverting the home
+// card to its computed default ("<Character> — <World>"). Deliberately does NOT
+// touch updatedAt: renaming is not play, so the last-played sort stays accurate.
+export function renameSoloRun(runId, title) {
+  ensureDb();
+  const key = String(runId || "").trim();
+  const run = db.soloRuns[key];
+  if (!run) {
+    return null;
+  }
+  const clean = String(title || "").trim().slice(0, 80);
+  if (clean) {
+    run.title = clean;
+  } else {
+    delete run.title;
+  }
+  validateSoloRunOrThrow(run);
+  bumpStateVersion();
+  writeToDisk();
+  return deepClone(run);
+}
+
 // ---------------------------------------------------------------------------
 // Custom homebrew content (manually authored, per user).
 // ---------------------------------------------------------------------------

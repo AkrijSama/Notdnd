@@ -34,6 +34,8 @@ const uiState = {
   resumeRunId: null,
   soloRuns: [],
   soloRunPendingDelete: null,
+  // runId currently in inline-rename mode on the home screen (null = none).
+  soloRunPendingRename: null,
   apiHealthy: false,
   realtimeConnected: false,
   activeRealtimeCampaignId: null,
@@ -117,6 +119,43 @@ function escapeHtml(value) {
     .replace(/"/g, "&quot;");
 }
 
+// "2 hours ago" / "yesterday" / "3 days ago" from an ISO timestamp. Used for the
+// home cards' last-played line so players can tell which campaign is freshest.
+// Returns "" for an unparseable/empty value so the caller can omit the line.
+function relativeTime(iso) {
+  const then = Date.parse(iso || "");
+  if (!Number.isFinite(then)) {
+    return "";
+  }
+  const seconds = Math.round((Date.now() - then) / 1000);
+  if (seconds < 45) return "just now";
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? "" : "s"} ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+  const days = Math.round(hours / 24);
+  if (days === 1) return "yesterday";
+  if (days < 30) return `${days} days ago`;
+  const months = Math.round(days / 30);
+  if (months < 12) return `${months} month${months === 1 ? "" : "s"} ago`;
+  const years = Math.round(months / 12);
+  return `${years} year${years === 1 ? "" : "s"} ago`;
+}
+
+// The default home-card title when the player hasn't renamed a run:
+// "<Character> — <World>". Falls back gracefully on sparse runs.
+function defaultRunTitle(run) {
+  const charName = run?.player?.displayName || "Adventurer";
+  const worldName = run?.world?.name || "Untitled World";
+  return `${charName} — ${worldName}`;
+}
+
+// The shown title: a player-chosen `run.title` if present, else the default.
+function runDisplayTitle(run) {
+  const custom = typeof run?.title === "string" ? run.title.trim() : "";
+  return custom || defaultRunTitle(run);
+}
+
 // Minimal header for the solo player's surfaces (home + login). Deliberately
 // omits the 7-tab GM/multiplayer nav (renderTopbar) — solo players never see it.
 // Keeps only the brand and the auth/account affordances that bindAppEvents wires.
@@ -159,40 +198,80 @@ function renderSoloHeader(user, accountMenuOpen = false, skin = "ashen", fontSet
 }
 
 function renderSoloRunCard(run, { primary = false } = {}) {
-  const worldName = run?.world?.name || "Untitled World";
-  const charName = run?.player?.displayName || "Adventurer";
-  const status = run?.status || "unknown";
-  // Concluded runs (completed/abandoned) are read-only: greyed out, badged with
-  // their outcome, and no Resume button (you cannot re-enter a closed run).
-  const finished = status === "completed" || status === "abandoned";
-  const badgeLabel = status === "completed" ? "Completed" : status === "abandoned" ? "Abandoned" : "";
-  const outcome = run?.outcome && run.outcome !== status ? ` (${run.outcome})` : "";
   const runId = run?.runId || "";
-  // Only past/finished runs are deletable from the home (active runs are
-  // resumable, not dead). Inline confirm — no browser dialog — so it can be
-  // styled and matches the dark-fantasy aesthetic.
-  const confirming = finished && runId && uiState.soloRunPendingDelete === runId;
+  const status = run?.status || "unknown";
+  // completed/abandoned runs are concluded — still re-openable (Continue loads
+  // the scene at its final state to review), but badged so it's clear they're done.
+  const finished = status === "completed" || status === "abandoned";
+  const statusLabel = status === "completed" ? "Completed" : status === "abandoned" ? "Abandoned" : "Active";
+  const outcome = run?.outcome && run.outcome !== status ? ` (${run.outcome})` : "";
+
+  const title = runDisplayTitle(run);
+
+  // Character line: "Name · Race Class · Lv N" — built from whatever is present.
+  const charName = run?.player?.displayName || "Adventurer";
+  const race = typeof run?.player?.race === "string" ? run.player.race.trim() : "";
+  const klass = typeof run?.player?.characterClass === "string" ? run.player.characterClass.trim() : "";
+  const level = Number.isFinite(Number(run?.player?.level)) ? Number(run.player.level) : null;
+  const archetype = [race, klass].filter(Boolean).join(" ");
+  const charBits = [charName, archetype, level !== null ? `Lv ${level}` : ""].filter(Boolean).join(" · ");
+
+  // Where they are + what they're chasing.
+  const locName = run?.locations?.[run?.currentLocationId]?.name || "";
+  const quest = run?.quests?.quest_main || (run?.quests ? Object.values(run.quests)[0] : null) || null;
+  const objective = typeof quest?.objective === "string" ? quest.objective.trim() : "";
+  const turns = Array.isArray(run?.timeline) ? run.timeline.length : 0;
+  const lastPlayed = relativeTime(run?.updatedAt) || relativeTime(run?.createdAt);
+
+  const confirming = runId && uiState.soloRunPendingDelete === runId;
+  const renaming = runId && uiState.soloRunPendingRename === runId;
+  const continueLabel = finished ? "Review" : primary ? "Continue your adventure" : "Continue";
+
+  // Inline rename takes over the card body when active, so the player edits in place.
+  if (renaming) {
+    return `
+    <article class="solo-home-run-card${primary ? " primary" : ""}${finished ? " finished" : ""}">
+      <form class="solo-home-run-rename" data-action="submit-rename-run" data-run-id="${escapeHtml(runId)}">
+        <label class="solo-home-run-rename-label" for="rename-${escapeHtml(runId)}">Campaign name</label>
+        <input id="rename-${escapeHtml(runId)}" class="solo-home-run-rename-input" name="title" type="text"
+               maxlength="80" value="${escapeHtml(title)}" placeholder="${escapeHtml(defaultRunTitle(run))}"
+               aria-label="Campaign name" autocomplete="off" />
+        <div class="solo-home-run-rename-actions">
+          <button type="submit" class="solo-home-run-rename-save" data-action="save-rename-run" data-run-id="${escapeHtml(runId)}">Save</button>
+          <button type="button" class="solo-home-run-rename-cancel" data-action="cancel-rename-run" data-run-id="${escapeHtml(runId)}">Cancel</button>
+        </div>
+      </form>
+    </article>`;
+  }
+
   return `
     <article class="solo-home-run-card${primary ? " primary" : ""}${finished ? " finished" : ""}">
       <div class="solo-home-run-meta">
-        <strong>${escapeHtml(worldName)}</strong>
-        <span class="small">${escapeHtml(charName)} · ${escapeHtml(status)}${escapeHtml(outcome)}</span>
+        <div class="solo-home-run-titlerow">
+          <strong class="solo-home-run-title">${escapeHtml(title)}</strong>
+          <span class="solo-home-run-status solo-home-run-status--${escapeHtml(status)}">${escapeHtml(statusLabel)}${escapeHtml(outcome)}</span>
+        </div>
+        <span class="small solo-home-run-char">${escapeHtml(charBits)}</span>
+        ${locName ? `<span class="small solo-home-run-where">📍 ${escapeHtml(locName)}</span>` : ""}
+        ${objective ? `<span class="small solo-home-run-quest">${quest?.title ? `<em>${escapeHtml(quest.title)}:</em> ` : ""}${escapeHtml(objective)}</span>` : ""}
+        <span class="small solo-home-run-footnote">${lastPlayed ? `Last played ${escapeHtml(lastPlayed)}` : ""}${lastPlayed && turns ? " · " : ""}${turns ? `${turns} turn${turns === 1 ? "" : "s"}` : ""}</span>
       </div>
       ${
-        finished
-          ? `<div class="solo-home-run-actions">
-               <span class="solo-home-run-badge">${escapeHtml(badgeLabel)}</span>
-               ${
-                 confirming
-                   ? `<span class="solo-home-run-confirm" role="alertdialog" aria-label="Confirm delete">
-                        <span class="solo-home-run-confirm-text">Delete ${escapeHtml(worldName)}? This can't be undone.</span>
-                        <button class="solo-home-run-delete-confirm" data-action="confirm-delete-run" data-run-id="${escapeHtml(runId)}">Delete</button>
-                        <button class="solo-home-run-delete-cancel" data-action="cancel-delete-run" data-run-id="${escapeHtml(runId)}">Cancel</button>
-                      </span>`
-                   : `<button class="solo-home-run-delete" data-action="request-delete-run" data-run-id="${escapeHtml(runId)}" aria-label="Delete ${escapeHtml(worldName)}">Delete</button>`
-               }
+        confirming
+          ? `<div class="solo-home-run-actions solo-home-run-actions--confirm">
+               <span class="solo-home-run-confirm" role="alertdialog" aria-label="Confirm delete">
+                 <span class="solo-home-run-confirm-text">Delete “${escapeHtml(title)}”? This can't be undone.</span>
+                 <button class="solo-home-run-delete-confirm" data-action="confirm-delete-run" data-run-id="${escapeHtml(runId)}">Delete</button>
+                 <button class="solo-home-run-delete-cancel" data-action="cancel-delete-run" data-run-id="${escapeHtml(runId)}">Cancel</button>
+               </span>
              </div>`
-          : `<button data-action="open-run" data-run-id="${escapeHtml(runId)}">${primary ? "Continue your adventure" : "Resume"}</button>`
+          : `<div class="solo-home-run-actions">
+               <button class="solo-home-run-continue" data-action="open-run" data-run-id="${escapeHtml(runId)}">${continueLabel}</button>
+               <div class="solo-home-run-secondary">
+                 <button class="solo-home-run-rename-btn" data-action="request-rename-run" data-run-id="${escapeHtml(runId)}" aria-label="Rename “${escapeHtml(title)}”">Rename</button>
+                 <button class="solo-home-run-delete" data-action="request-delete-run" data-run-id="${escapeHtml(runId)}" aria-label="Delete “${escapeHtml(title)}”">Delete</button>
+               </div>
+             </div>`
       }
     </article>
   `;
@@ -238,7 +317,7 @@ function renderSoloHome(state) {
           ${
             pastRuns.length > 0
               ? `<section class="solo-home-past">
-                   <h3>Past adventures</h3>
+                   <h3>Saved campaigns</h3>
                    <div class="solo-home-run-list">
                      ${pastRuns.map((run) => renderSoloRunCard(run)).join("")}
                    </div>
@@ -1171,6 +1250,61 @@ function bindAppEvents() {
       const runId = button.getAttribute("data-run-id");
       if (runId) {
         window.location.search = `?soloRunId=${encodeURIComponent(runId)}`;
+      }
+    });
+  });
+
+  // Inline rename: Rename flips the card into an edit field; Save persists the
+  // title to the run (survives reload) and updates the in-memory list; Cancel
+  // backs out. Entering rename mode clears any pending delete on that card.
+  appRoot.querySelectorAll("[data-action='request-rename-run']").forEach((button) => {
+    button.addEventListener("click", () => {
+      uiState.soloRunPendingRename = button.getAttribute("data-run-id") || null;
+      uiState.soloRunPendingDelete = null;
+      scheduleRender();
+      // Focus + select the field once it has rendered, so typing replaces the title.
+      if (typeof requestAnimationFrame === "function") {
+        requestAnimationFrame(() => {
+          const input = appRoot.querySelector(".solo-home-run-rename-input");
+          if (input) {
+            input.focus();
+            if (typeof input.select === "function") input.select();
+          }
+        });
+      }
+    });
+  });
+  appRoot.querySelectorAll("[data-action='cancel-rename-run']").forEach((button) => {
+    button.addEventListener("click", () => {
+      uiState.soloRunPendingRename = null;
+      scheduleRender();
+    });
+  });
+  appRoot.querySelectorAll("[data-action='submit-rename-run']").forEach((form) => {
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const runId = form.getAttribute("data-run-id");
+      const input = form.querySelector(".solo-home-run-rename-input");
+      if (!runId || !input) {
+        return;
+      }
+      const title = String(input.value || "").trim();
+      input.disabled = true;
+      try {
+        const response = await apiClient.renameSoloRun(runId, title);
+        // Mirror the persisted title into the in-memory list so the re-render
+        // shows it immediately (server normalizes/clears; trust its echo).
+        const persisted = typeof response?.run?.title === "string" ? response.run.title : "";
+        uiState.soloRuns = (uiState.soloRuns || []).map((run) =>
+          run?.runId === runId ? { ...run, title: persisted } : run
+        );
+      } catch (error) {
+        // eslint-disable-next-line no-console
+        console.error("Failed to rename solo run", error);
+        input.disabled = false;
+      } finally {
+        uiState.soloRunPendingRename = null;
+        scheduleRender();
       }
     });
   });
