@@ -1128,7 +1128,16 @@ export function characterFromScenePlayer(player) {
   });
   const dexMod = abilityModifier(Number(ab.dexterity) || 10);
   const wisMod = abilityModifier(Number(ab.wisdom) || 10);
-  const hp = player.hitPoints && typeof player.hitPoints === "object" ? player.hitPoints : { current: 0, max: 0 };
+  // State contract: prefer player.resources.{hp,mp}; fall back to the legacy
+  // hitPoints gauge so pre-contract runs still render.
+  const res = player.resources && typeof player.resources === "object" ? player.resources : {};
+  const hp =
+    res.hp && typeof res.hp === "object"
+      ? res.hp
+      : player.hitPoints && typeof player.hitPoints === "object"
+        ? player.hitPoints
+        : { current: 0, max: 0 };
+  const mp = res.mp && typeof res.mp === "object" ? res.mp : { current: 0, max: 0 };
   const skillsObj = player.skills && typeof player.skills === "object" ? player.skills : {};
   const skills = Object.entries(skillsObj).map(([name, value]) => ({
     name: name.charAt(0).toUpperCase() + name.slice(1),
@@ -1143,6 +1152,11 @@ export function characterFromScenePlayer(player) {
     className: player.className || "Adventurer",
     level: typeof player.level === "number" && Number.isFinite(player.level) ? player.level : 1,
     hitPoints: { current: hp.current ?? 0, max: hp.max ?? 0 },
+    // State contract: HP/MP gauges, XP, inventory, conditions — surfaced live.
+    mana: { current: mp.current ?? 0, max: mp.max ?? 0 },
+    xp: typeof player.xp === "number" && Number.isFinite(player.xp) ? player.xp : 0,
+    inventory: Array.isArray(player.inventory) ? player.inventory : [],
+    conditions: Array.isArray(player.conditions) ? player.conditions : [],
     armorClass: typeof player.armorClass === "number" && Number.isFinite(player.armorClass) ? player.armorClass : 10,
     speed: typeof player.speed === "number" && Number.isFinite(player.speed) ? player.speed : 30,
     abilities,
@@ -1198,9 +1212,20 @@ export function renderSoloThemeSwitcher(skin = "ashen", fontSet = "tome") {
   `;
 }
 
+// Pct fill for a {current,max} gauge, clamped 0..100 (0 when max is 0).
+function gaugePct(gauge) {
+  const cur = Number(gauge?.current) || 0;
+  const max = Number(gauge?.max) || 0;
+  return max > 0 ? Math.max(0, Math.min(100, Math.round((cur / max) * 100))) : 0;
+}
+
 export function renderSoloCharacterSidebar(character = SOLO_SAMPLE_CHARACTER) {
   const hp = character.hitPoints || { current: 0, max: 0 };
-  const hpPct = hp.max > 0 ? Math.max(0, Math.min(100, Math.round((hp.current / hp.max) * 100))) : 0;
+  const mp = character.mana || { current: 0, max: 0 };
+  const hpPct = gaugePct(hp);
+  const mpPct = gaugePct(mp);
+  const hasMana = (Number(mp.max) || 0) > 0;
+  const xp = Number.isFinite(Number(character.xp)) ? Number(character.xp) : 0;
   const abilities = (character.abilities || [])
     .map(
       (ability) => `
@@ -1213,19 +1238,52 @@ export function renderSoloCharacterSidebar(character = SOLO_SAMPLE_CHARACTER) {
     )
     .join("");
 
+  // State contract: player.inventory[] (each {id,name,qty}). Always shown so the
+  // player can see what they carry; resolvers append to it as actions land.
+  const inventory = Array.isArray(character.inventory) ? character.inventory : [];
+  const inventoryHtml = inventory.length
+    ? inventory
+        .map((item) => {
+          const name = typeof item?.name === "string" && item.name ? item.name : item?.id || "Item";
+          const qty = Number(item?.qty);
+          const qtyTag = Number.isFinite(qty) && qty > 1 ? `<span class="solo-inv-qty">×${qty}</span>` : "";
+          return `<li class="solo-inv-item"><span class="solo-inv-name">${escapeHtml(name)}</span>${qtyTag}</li>`;
+        })
+        .join("")
+    : `<li class="solo-inv-empty">Your pack is empty.</li>`;
+
+  // State contract: player.conditions[] (each {id,name}). Replaces the old
+  // hard-coded sample condition — empty state when the player carries none.
+  const conditions = Array.isArray(character.conditions) ? character.conditions : [];
+  const conditionsHtml = conditions.length
+    ? conditions
+        .map((cond) => {
+          const name = typeof cond?.name === "string" && cond.name ? cond.name : cond?.id || "Condition";
+          const note = typeof cond?.note === "string" && cond.note ? `<div class="solo-condition-note">${escapeHtml(cond.note)}</div>` : "";
+          return `<div class="solo-condition"><span class="solo-condition-dot"></span><div><div class="solo-condition-name">${escapeHtml(name)}</div>${note}</div></div>`;
+        })
+        .join("")
+    : `<div class="solo-condition-empty">No active conditions.</div>`;
+
   return `
     <aside class="solo-game-sidebar">
       <div class="solo-portrait" data-portrait-for="player" data-portrait-img-class="solo-portrait-img">${character.portraitUri ? `<img class="solo-portrait-img" src="${escapeHtml(character.portraitUri)}" alt="${escapeHtml(character.name || "Character")} portrait" />` : `<div class="solo-portrait-pending"><span class="solo-portrait-spinner" aria-hidden="true"></span><small>Crafting your portrait… (~20s)</small></div>`}</div>
       <div class="solo-sidebar-identity">
         <div class="solo-char-name">${escapeHtml(character.name)}</div>
         <div class="solo-char-sub">${escapeHtml(character.className)} · Level ${escapeHtml(character.level)}</div>
+        <div class="solo-xp-row"><span class="solo-stat-kicker">XP</span><span class="solo-xp-value">${escapeHtml(xp)}</span></div>
       </div>
       <div class="solo-sidebar-block">
-        <div class="solo-hp-row">
+        <div class="solo-gauge-row">
           <span class="solo-stat-kicker">Hit Points</span>
           <span class="solo-hp-value">${escapeHtml(hp.current)} <span>/ ${escapeHtml(hp.max)}</span></span>
         </div>
-        <div class="solo-hp-track"><div class="solo-hp-fill" style="width:${hpPct}%;"></div></div>
+        <div class="solo-gauge-track"><div class="solo-gauge-fill solo-hp-fill" style="width:${hpPct}%;"></div></div>
+        <div class="solo-gauge-row solo-mp-row${hasMana ? "" : " is-muted"}">
+          <span class="solo-stat-kicker">${hasMana ? "Mana" : "Mana — none"}</span>
+          <span class="solo-hp-value">${escapeHtml(mp.current)} <span>/ ${escapeHtml(mp.max)}</span></span>
+        </div>
+        <div class="solo-gauge-track"><div class="solo-gauge-fill solo-mp-fill" style="width:${mpPct}%;"></div></div>
         <div class="solo-mini-stats">
           <div class="solo-mini-stat"><div class="solo-mini-val">${escapeHtml(character.armorClass)}</div><div class="solo-mini-label">Armor</div></div>
           <div class="solo-mini-stat"><div class="solo-mini-val">${escapeHtml(character.speed)}</div><div class="solo-mini-label">Speed</div></div>
@@ -1235,6 +1293,10 @@ export function renderSoloCharacterSidebar(character = SOLO_SAMPLE_CHARACTER) {
         <div class="solo-stat-kicker">Abilities</div>
         <div class="solo-ability-grid">${abilities}</div>
       </div>
+      <div class="solo-sidebar-block solo-inventory-block">
+        <div class="solo-stat-kicker">Inventory</div>
+        <ul class="solo-inv-list">${inventoryHtml}</ul>
+      </div>
       <div class="solo-sidebar-block solo-passive-block">
         <div class="solo-passive-row"><span>Passive Perception</span><span>${escapeHtml(character.passivePerception)}</span></div>
         <div class="solo-passive-row"><span>Initiative</span><span>${escapeHtml(character.initiative)}</span></div>
@@ -1242,10 +1304,7 @@ export function renderSoloCharacterSidebar(character = SOLO_SAMPLE_CHARACTER) {
       </div>
       <div class="solo-sidebar-block solo-conditions-block">
         <div class="solo-stat-kicker">Conditions</div>
-        <div class="solo-condition">
-          <span class="solo-condition-dot"></span>
-          <div><div class="solo-condition-name">Soaked</div><div class="solo-condition-note">Chilled from the rain — no penalty yet.</div></div>
-        </div>
+        ${conditionsHtml}
       </div>
     </aside>
   `;
@@ -1617,6 +1676,56 @@ export function renderSoloMapTab(scene = {}, mapState = {}) {
   `;
 }
 
+// Resolves a token's display name from the scene (player → displayName; npc →
+// cast/visibleEntities; else the raw id). Pure.
+function presenceTokenName(entityId, kind, scene) {
+  const id = String(entityId || "");
+  if (kind === "player" || id.startsWith("player:")) {
+    return (scene.player && scene.player.displayName) || "You";
+  }
+  const raw = id.includes(":") ? id.split(":").slice(1).join(":") : id;
+  const cast = Array.isArray(scene.cast) ? scene.cast : [];
+  const fromCast = cast.find((m) => m && (m.npcId === raw || m.entityId === id));
+  if (fromCast && fromCast.displayName) {
+    return fromCast.displayName;
+  }
+  const visible = Array.isArray(scene.visibleEntities) ? scene.visibleEntities : [];
+  const fromVisible = visible.find((e) => e && e.entityId === id);
+  if (fromVisible && fromVisible.displayName) {
+    return fromVisible.displayName;
+  }
+  return raw || "?";
+}
+
+// Always-on presence map (light): renders the per-scene battleMap tokens (player
+// + co-located NPCs) from the state contract so the player always has a sense of
+// being SOMEWHERE. Read-only — tactical movement / range / line-of-sight is a
+// deferred resolver track, NOT here. Reuses the .solo-token-<kind> colour classes;
+// CSS grid places each token at its (x,y).
+export function renderSoloPresenceMap(scene = {}) {
+  const bm = scene && typeof scene.battleMap === "object" && scene.battleMap ? scene.battleMap : {};
+  const tokens = Array.isArray(bm.tokens) ? bm.tokens : [];
+  const locationName = scene.location && typeof scene.location.name === "string" && scene.location.name ? scene.location.name : "Here";
+  const head = `<div class="solo-presence-head"><span class="solo-stat-kicker">Where you are</span><span class="solo-presence-loc">${escapeHtml(locationName)}</span></div>`;
+  if (!tokens.length) {
+    return `<div class="solo-presence">${head}<div class="solo-presence-empty">The ground beneath you hasn't taken shape yet.</div></div>`;
+  }
+  const width = Number.isFinite(bm.width) && bm.width > 0 ? Math.min(24, Math.trunc(bm.width)) : 12;
+  const height = Number.isFinite(bm.height) && bm.height > 0 ? Math.min(24, Math.trunc(bm.height)) : 12;
+  const clampTo = (n, max) => Math.max(0, Math.min(max - 1, Math.trunc(Number(n) || 0)));
+  const cells = tokens
+    .map((token) => {
+      const kind = token && (token.kind === "player" || token.kind === "npc" || token.kind === "item") ? token.kind : "npc";
+      const x = clampTo(token.x, width);
+      const y = clampTo(token.y, height);
+      const name = presenceTokenName(token.entityId, kind, scene);
+      const initial = String(name).trim().slice(0, 1).toUpperCase() || "?";
+      return `<span class="solo-presence-token solo-token-${escapeHtml(kind)}" style="grid-column:${x + 1};grid-row:${y + 1};" title="${escapeHtml(name)}" aria-label="${escapeHtml(name)}">${escapeHtml(initial)}</span>`;
+    })
+    .join("");
+  return `<div class="solo-presence">${head}<div class="solo-presence-grid" style="grid-template-columns:repeat(${width},1fr);grid-template-rows:repeat(${height},1fr);" role="img" aria-label="Presence map of ${escapeHtml(locationName)}">${cells}</div></div>`;
+}
+
 export function renderSoloRightRail(state = {}) {
   const scene = state.scene || {};
   // Prefer the full server-side cast roster (all run.npcs with portrait URIs);
@@ -1694,6 +1803,9 @@ export function renderSoloRightRail(state = {}) {
 
   return `
     <aside class="solo-game-rail solo-scene-side">
+      <div class="solo-rail-block solo-rail-presence">
+        ${renderSoloPresenceMap(scene)}
+      </div>
       <div class="solo-rail-block">
         <div class="solo-stat-kicker">Recent Rolls</div>
         ${recentRolls}

@@ -1672,6 +1672,51 @@ button:disabled {
   background: linear-gradient(90deg, #4f7a32, #6b9a3e);
   border-radius: 4px;
 }
+/* State-contract sidebar gauges (HP/MP), XP, inventory, condition empty-state.
+   :root tokens only. The HP fill keeps its green via .solo-hp-fill above. */
+.solo-gauge-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.solo-gauge-row .solo-stat-kicker { margin-bottom: 0; }
+.solo-gauge-row.is-muted { opacity: 0.5; }
+.solo-gauge-track {
+  height: 9px;
+  background: var(--inset, #0e0a06);
+  border-radius: 5px;
+  border: 1px solid var(--border, #2e2420);
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+.solo-gauge-fill { height: 100%; border-radius: 4px; transition: width 0.25s ease; }
+.solo-mp-fill { background: linear-gradient(90deg, #2f5a8a, #4f86c6); }
+.solo-xp-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+}
+.solo-xp-value { font-size: 13px; font-weight: 700; color: var(--accent-bright, #d8b46a); }
+.solo-inv-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.solo-inv-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text, #e8dcc8);
+  padding: 5px 9px;
+  border-radius: 7px;
+  background: var(--inset, #120c07);
+  border: 1px solid var(--border, #2e2420);
+}
+.solo-inv-qty { font-size: 11px; color: var(--text-2, #b3a48c); flex: none; }
+.solo-inv-empty,
+.solo-condition-empty { font-size: 12px; font-style: italic; color: var(--muted, #9b8c76); }
 .solo-mini-stats { display: flex; gap: 10px; margin-top: 14px; }
 .solo-mini-stat {
   flex: 1;
@@ -2054,6 +2099,48 @@ button:disabled {
 .solo-token img { width: 100%; height: 100%; object-fit: cover; object-position: center top; }
 .solo-token-player { background: var(--accent, #c8922a); color: #1c1308; border-color: #f0e4cc; }
 .solo-token-npc { background: #3a4654; color: #f0e4cc; border-color: #6e6150; }
+.solo-token-item { background: #6a4a2a; color: #f0e4cc; border-color: #a9824e; }
+/* Always-on presence map (light, read-only) — surfaces scene.battleMap tokens.
+   CSS grid places each token at its (x,y); no drag/movement/fog here. */
+.solo-rail-presence { padding-bottom: 4px; }
+.solo-presence { display: flex; flex-direction: column; gap: 8px; }
+.solo-presence-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.solo-presence-loc { font-size: 12px; font-weight: 600; color: var(--accent-bright, #d8b46a); text-align: right; }
+.solo-presence-grid {
+  display: grid;
+  gap: 1px;
+  aspect-ratio: 1 / 1;
+  width: 100%;
+  padding: 5px;
+  border-radius: 10px;
+  border: 1px solid var(--border, #2e2420);
+  background: var(--inset, #120c07);
+  box-shadow: var(--deboss, inset 0 2px 5px rgba(0, 0, 0, 0.5));
+}
+.solo-presence-token {
+  align-self: center;
+  justify-self: center;
+  width: 92%;
+  max-width: 20px;
+  aspect-ratio: 1 / 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1px solid transparent;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+}
+.solo-presence-empty {
+  font-size: 12px;
+  font-style: italic;
+  color: var(--muted, #9b8c76);
+  padding: 12px 10px;
+  text-align: center;
+  border: 1px dashed var(--border, #2e2420);
+  border-radius: 10px;
+}
 .solo-map-legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 13px; }
 .solo-map-legend-item { display: inline-flex; align-items: center; gap: 6px; }
 .solo-map-legend-item .solo-token { width: 22px; height: 22px; }
