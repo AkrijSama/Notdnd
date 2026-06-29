@@ -135,6 +135,31 @@ test("renderSoloSceneShell renders location name and description", () => {
   assert.match(html, /Neutral placeholder description/);
 });
 
+test("renderSoloSceneShell error state surfaces the message, a retry, and a way back home", () => {
+  // A failed scene load must NEVER be a silent spinner: it shows the error plus
+  // both a Retry and a Return-home control so the player is never stranded.
+  const html = renderSoloSceneShell({ error: "The request timed out — the server did not respond. Please try again." });
+  assert.match(html, /solo-scene-shell-error/);
+  assert.match(html, /did not respond/);
+  assert.match(html, /data-solo-action="reload-scene"/);
+  assert.match(html, /data-solo-home/);
+  assert.doesNotMatch(html, /Loading solo scene/);
+});
+
+test("renderSoloSceneShell death screen replaces the playable shell with an outcome + way home", () => {
+  // A terminal/dead run routes here instead of the live scene — no playable
+  // shell, no spinner, and a clear path back to the home screen.
+  const html = renderSoloSceneShell({
+    deathScreen: true,
+    runSummary: { playerName: "Bram", location: "The Ember Tavern", outcome: "dead", timePlayedMs: 1000 }
+  });
+  assert.match(html, /solo-death-screen/);
+  assert.match(html, /has fallen/);
+  assert.match(html, /data-solo-home/);
+  assert.doesNotMatch(html, /solo-scene-shell-polished/);
+  assert.doesNotMatch(html, /Loading solo scene/);
+});
+
 test("renderSoloSceneShell renders image placeholder and asset reference", () => {
   const html = renderSoloSceneShell({ scene: sampleScene() });
   assert.match(html, /Image asset: image_start/);

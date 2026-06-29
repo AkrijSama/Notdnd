@@ -2032,7 +2032,10 @@ export function renderSoloSceneShell(state = {}) {
         <div class="solo-scene-error">
           <h2>Solo Scene Unavailable</h2>
           <p>${escapeHtml(state.error)}</p>
-          <button class="ghost" data-solo-action="reload-scene">Retry</button>
+          <div class="solo-scene-error-actions">
+            <button class="ghost" data-solo-action="reload-scene">Retry</button>
+            <button class="ghost" data-solo-home>Return to your adventures</button>
+          </div>
         </div>
       </section>
     `;
@@ -3624,26 +3627,51 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
         // Reload after an action: fold any newly-visible cells into explored fog.
         accumulateReveal();
       }
-      try {
-        const gmScene = await fetchSoloGmScene(apiClient, runId, { mode: state.gmMode });
-        if (gmScene?.gmNarration) {
-          state.scene = {
-            ...state.scene,
-            gmNarration: gmScene.gmNarration,
-            gmStatus: gmScene.gmStatus || null
-          };
+      // Terminal-run detection from the server's STATE CONTRACT (runStatus /
+      // isDead / resumable / player.status). A concluded run — most importantly a
+      // DEAD run re-opened from saved campaigns — is routed to an outcome screen
+      // below; it must NOT mount the live playable shell. "downed" is the
+      // transient mid-combat death; "dead" is the terminal, persisted status.
+      const sc = state.scene || {};
+      const runIsDead =
+        sc.isDead === true ||
+        sc.runStatus === "dead" ||
+        sc.player?.status === "dead" ||
+        sc.player?.status === "downed";
+      const runIsWon = sc.runStatus === "completed" || sc.quests?.mainQuest?.status === "completed";
+      const runIsTerminal = runIsDead || runIsWon || sc.runStatus === "abandoned" || sc.resumable === false;
+      // GM ambient narration is only meaningful for a LIVE scene. Skip it for a
+      // concluded run: there's nothing to narrate, and on a degraded GM (e.g. the
+      // local fallback when cloud credits are exhausted) the call can block up to
+      // the request timeout — which is exactly the "stuck on Loading solo scene…"
+      // hang reported for re-opened dead runs. The outcome screen needs no GM.
+      if (!runIsTerminal) {
+        try {
+          const gmScene = await fetchSoloGmScene(apiClient, runId, { mode: state.gmMode });
+          if (gmScene?.gmNarration) {
+            state.scene = {
+              ...state.scene,
+              gmNarration: gmScene.gmNarration,
+              gmStatus: gmScene.gmStatus || null
+            };
+          }
+        } catch {
+          // Placeholder GM narration is optional and must not block scene rendering.
         }
-      } catch {
-        // Placeholder GM narration is optional and must not block scene rendering.
       }
-      // Player downed (0 HP, surfaced via player.status): conclude the run as a
-      // death and switch the shell to the death screen.
-      if (state.scene?.player?.status === "downed" && !state.runConcluded) {
+      // Route a concluded run straight to its outcome screen instead of the
+      // playable shell. concludeRun is idempotent server-side for an
+      // already-concluded run (it just re-fetches the summary); for a fresh
+      // mid-combat death (transient "downed") it concludes the run as "died".
+      if (runIsDead && !state.runConcluded && !state.deathScreen) {
         await concludeRun("died");
         state.deathScreen = true;
+      } else if (runIsWon && !state.runConcluded && !state.victoryScreen && !state.deathScreen) {
+        await concludeRun("victory");
+        state.victoryScreen = true;
       }
-      // Main quest completed in the scene (reload / re-entry into a won run):
-      // conclude as a victory. No-op when already concluded or downed.
+      // Main quest completed via a live action (reload / re-entry into a won run):
+      // conclude as a victory. No-op when already concluded, dead, or won above.
       await maybeConcludeVictory();
       state.detail = null;
       state.searchResult = null;

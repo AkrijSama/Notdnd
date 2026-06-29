@@ -200,10 +200,21 @@ function renderSoloHeader(user, accountMenuOpen = false, skin = "ashen", fontSet
 function renderSoloRunCard(run, { primary = false } = {}) {
   const runId = run?.runId || "";
   const status = run?.status || "unknown";
-  // completed/abandoned runs are concluded — still re-openable (Continue loads
-  // the scene at its final state to review), but badged so it's clear they're done.
-  const finished = status === "completed" || status === "abandoned";
-  const statusLabel = status === "completed" ? "Completed" : status === "abandoned" ? "Abandoned" : "Active";
+  // Status-driven, honest classification from the state contract. A DEAD run is
+  // terminal and NON-resumable — it gets an outcome label, never "Continue".
+  // completed/abandoned runs are concluded too — re-openable to read the ending,
+  // badged so it's clear they're done.
+  const isDead = run?.isDead === true || status === "dead" || run?.player?.status === "dead";
+  const isCompleted = status === "completed";
+  const isAbandoned = status === "abandoned";
+  const finished = isDead || isCompleted || isAbandoned;
+  const statusLabel = isDead
+    ? "Defeated"
+    : isCompleted
+      ? "Completed"
+      : isAbandoned
+        ? "Abandoned"
+        : "Active";
   const outcome = run?.outcome && run.outcome !== status ? ` (${run.outcome})` : "";
 
   const title = runDisplayTitle(run);
@@ -225,7 +236,16 @@ function renderSoloRunCard(run, { primary = false } = {}) {
 
   const confirming = runId && uiState.soloRunPendingDelete === runId;
   const renaming = runId && uiState.soloRunPendingRename === runId;
-  const continueLabel = finished ? "Review" : primary ? "Continue your adventure" : "Continue";
+  // Honest, status-driven action label. Dead → "View death" (terminal, no
+  // resume); completed/abandoned → "View ending" (read the outcome); active →
+  // "Continue". The word "Review" is gone — it told the player nothing.
+  const continueLabel = isDead
+    ? "View death"
+    : isCompleted || isAbandoned
+      ? "View ending"
+      : primary
+        ? "Continue your adventure"
+        : "Continue";
 
   // Inline rename takes over the card body when active, so the player edits in place.
   if (renaming) {
