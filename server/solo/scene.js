@@ -690,6 +690,45 @@ const BATTLE_MAP_RING = [
 function clampCell(value) {
   return Math.max(0, Math.min(BATTLE_MAP_SIZE - 1, value));
 }
+
+// C.12 — bridge the presence/minimap feature gap. The current LOCATION's
+// discoverable features (location.searchDetails — the ruins structure, well,
+// watchpoint, cache that Opus 1 placed) are projected onto the presence grid as
+// battleMap.features, which the "Where you are" map renders. This is a DERIVED
+// view of a single source (searchDetails), computed at scene-build and never
+// stored, so it cannot drift. It is the right SCOPE for this map: searchDetails
+// are in-LOCATION features, distinct from areaMap.pois which are region LOCATIONS.
+// searchDetails carry no coordinates, so positions are SYNTHESIZED deterministically
+// (a fixed spread ring around the player) — stable across renders. Honest to state:
+// a location with no searchDetails (e.g. the tavern) projects zero features.
+const PRESENCE_FEATURE_RING = [
+  [-4, -3], [4, -3], [-4, 3], [4, 3], [0, -5], [0, 5], [-5, 0], [5, 0], [-3, -4], [3, 4]
+];
+function presenceFeatureKind(detailId, label) {
+  const hay = `${detailId || ""} ${label || ""}`.toLowerCase();
+  if (/ruin|\bhall\b|keep|stronghold|fort/.test(hay)) return "ruins";
+  if (/well|water|spring|cistern|pool|font/.test(hay)) return "water";
+  if (/watch|tower|spire|gate|signal|lookout|sentry/.test(hay)) return "structure";
+  if (/cache|strongbox|hoard|stash|chest|vault|loot/.test(hay)) return "loot";
+  if (/shrine|altar|idol|reliqu/.test(hay)) return "shrine";
+  return "landmark";
+}
+function buildPresenceFeatures(location, centre) {
+  const details = Array.isArray(location?.searchDetails) ? location.searchDetails : [];
+  return details
+    .filter((detail) => isPlainObject(detail) && (isString(detail.label) || isString(detail.detailId)))
+    .slice(0, PRESENCE_FEATURE_RING.length)
+    .map((detail, index) => {
+      const [dx, dy] = PRESENCE_FEATURE_RING[index % PRESENCE_FEATURE_RING.length];
+      return {
+        kind: presenceFeatureKind(detail.detailId, detail.label),
+        x: clampCell(centre + dx),
+        y: clampCell(centre + dy),
+        name: isString(detail.label) ? detail.label : detail.detailId
+      };
+    });
+}
+
 export function buildBattleMapPayload(run) {
   const persisted = isPlainObject(run?.battleMap) ? run.battleMap : {};
   const savedPositions = new Map();
@@ -730,10 +769,14 @@ export function buildBattleMapPayload(run) {
     return { entityId: member.entityId, kind: member.kind, x: clampCell(centre + dx), y: clampCell(centre + dy) };
   });
 
+  const currentLocation = isPlainObject(run?.locations) ? run.locations[currentLocationId] : null;
+  const features = buildPresenceFeatures(currentLocation, centre);
+
   return {
     width: typeof persisted.width === "number" ? persisted.width : BATTLE_MAP_SIZE,
     height: typeof persisted.height === "number" ? persisted.height : BATTLE_MAP_SIZE,
-    tokens
+    tokens,
+    features
   };
 }
 
