@@ -1003,11 +1003,16 @@ export function enforceFailureConsequence(run, spec, context, now) {
 //              lock", "intimidate the king", "tell the guard I am a god" (a LIE —
 //              a deception attempt that can fail; the NPC need not believe it)
 const GATED_CATEGORIES = new Set([
-  "reality_command", "self_deification", "summon_from_nothing", "retcon_possession", "self_authority"
+  "reality_command", "self_deification", "summon_from_nothing", "retcon_possession", "self_authority",
+  // Added classes (close the 18 documented moat leaks):
+  "time_manipulation",     // (A) stopping/reversing time, commanding natural forces
+  "retcon_history",        // (B) asserting past world events as already-true by fiat
+  "npc_relationship_fiat"  // (C) declaring an NPC bond/promise/debt to compel compliance
+  // (D) self-granted identity/authority commanding mass obedience reuses self_authority.
 ]);
 // Physics-impossible categories: refused REGARDLESS of framing — you cannot
-// "deceive" reality or roll a check to bend it.
-const PHYSICS_GATED = new Set(["reality_command", "summon_from_nothing"]);
+// "deceive" reality (or time) or roll a check to bend it.
+const PHYSICS_GATED = new Set(["reality_command", "summon_from_nothing", "time_manipulation"]);
 
 // Commanding/bending reality, the world, time, the universe, the laws of nature.
 const REALITY_COMMAND_RE = /\b(reality|the world|the universe|time itself|the laws of (?:nature|physics)|the fabric of (?:reality|the world|space))\b[\s\S]{0,45}\b(obey|obeys|bend|bends|bow|comply|complies|rewrite|rewrites|reshape|reshapes|warp|warps|kneel|stop|stops|freeze|freezes|unmake|unmakes|to my will|to my command)\b/i;
@@ -1023,8 +1028,40 @@ const LEGENDARY_ITEM_RE = /\b(legendary|fabled|ancient|mythic|mythical|divine|go
 const ALWAYS_OWNED_RE = /\b(always\s+(?:owned|had|carried|possessed|kept)|i'?ve\s+always|that\s+i\s+(?:have\s+)?always|i\s+have\s+always|that\s+i\s+(?:secretly\s+)?own|hidden\s+(?:in|under)\s+my|from\s+my\s+(?:pack|cloak|belt)|my\s+own\s+(?:trusty|faithful)?)\b/i;
 // Granting oneself rulership and mass obedience by fiat.
 const SELF_AUTHORITY_RE = /\b(declare|proclaim|crown|name|appoint)\b[\s\S]{0,20}\b(myself|me)\b[\s\S]{0,28}\b(king|queen|emperor|empress|ruler|overlord|sovereign|lord|master|god-?king|chosen one|the law|in charge)\b/i;
-const MASS_OBEY_RE = /\b(everyone|all|they all|the (?:world|land|realm|kingdom|city|town|guards?|people|crowd|army|masses)|all who hear)\b[\s\S]{0,22}\b(must\s+)?(obey|obeys|bow|bows|kneel|kneels|serve|serves|submit|submits|worship|worships)\b/i;
+const MASS_OBEY_RE = /\b(everyone|everybody|all|they all|the (?:world|land|realm|kingdom|city|town|guards?|guardsmen|people|crowd|army|masses|garrison|soldiers?|men)|all who hear)\b[\s\S]{0,26}\b(must\s+)?(obey|obeys|bow|bows|kneel|kneels|serve|serves|submit|submits|worship|worships|wave\s+me|let\s+me\s+(?:in|through|pass)|fall\s+in\s+line|falls\s+in\s+line|stand\s+(?:down|aside)|make\s+way|defer)\b/i;
 const AUTHORITY_OVER_RE = /\b(of|over)\b[\s\S]{0,16}\b(the\s+(?:world|land|realm|kingdom|city|town|people|nation)|all\b|everything|reality|creation)\b/i;
+
+// ── Class A — time / natural-force manipulation (PHYSICS; gated regardless of
+// speech: you cannot stop time or command the sun by talking about it). The
+// matched legal near-neighbor ("stop the bleeding", "halt the soldiers") names no
+// temporal/celestial object, so it never matches.
+const TIME_MANIP_RE = /\b(stop|stops|stopping|freeze|freezes|freezing|halt|halts|halting|rewind|rewinds|reverse|reverses|reversing|turn\s+back|turning\s+back|wind\s+back|pause|pauses)\b[\s\S]{0,20}\b(time|the\s+clock|the\s+hands\s+of\s+time|the\s+flow\s+of\s+time)\b/i;
+const TIME_MANIP_RE2 = /\b(time|the\s+clock)\b[\s\S]{0,15}\b(stops?|stand(?:s|ing)?\s+still|freezes?|halts?|rewinds?|reverses?)\b/i;
+const GRAVITY_RE = /\bgravity\b[\s\S]{0,20}\b(revers\w+|stop\w*|fail\w*|ceas\w*|lets?\s+go|releases?|no\s+longer|disappear\w*|vanish\w*|invert\w*)\b/i;
+const NATURAL_FORCE_RE = /\b(the\s+sun|the\s+moon|the\s+stars?|the\s+sky|the\s+tide|the\s+tides|the\s+wind|the\s+winds|the\s+storm|the\s+storms|the\s+rain|the\s+river|the\s+rivers|the\s+sea|the\s+seas|the\s+ocean|the\s+earth|the\s+ground|the\s+flames?|the\s+fire|the\s+mountains?|the\s+clouds?|the\s+waters?)\b[\s\S]{0,25}\b(halt\w*|stops?|stand\s+still|stills?|freez\w*|parts?|splits?|revers\w*|bends?|obeys?|ceas\w*|calms?|bows?|kneels?|rises?|falls?|opens?)\b/i;
+const PLAYER_WILL_RE = /\b(at\s+my\s+(?:word|will|command|behest|bidding)|because\s+i\s+(?:command|will|say|wish|order)|by\s+my\s+(?:will|command|word)|i\s+(?:command|will|order|bid)\b)/i;
+
+// ── Class B — retconning world history / past events as already-true by fiat.
+const HISTORY_REWRITE_RE = /\b(rewrit\w+|rewrote|eras\w+|undo\w*|undid|alter\w*|chang\w+|unmak\w+)\b[\s\S]{0,20}\b(history|the\s+past|past\s+events|the\s+timeline|what\s+(?:happened|came\s+before))\b/i;
+const NEVER_HAPPENED_RE = /\b(never\s+(?:happened|occurred|took\s+place|existed|was\s+real)|did(?:\s+not|n'?t)\s+happen|was\s+never\s+(?:destroyed|built|barred|killed|broken|sealed|locked|lost|fought|waged|raised)|were\s+never\s+(?:barred|sealed|locked|broken|built|destroyed|raised))\b/i;
+const PAST_DEED_BROADCAST_RE = /\b(as\s+everyone\s+knows|everyone\s+knows|as\s+you\s+(?:all\s+)?know|it\s+is\s+known|history\s+records|the\s+legends?\s+(?:say|tell)|famously|as\s+is\s+well\s+known)\b[\s\S]{0,40}\bi\b[\s\S]{0,15}\b(already\s+)?(slew|slayed|slain|killed|defeated|vanquished|conquered|destroyed|saved|founded|built|won|ended)\b/i;
+const EPIC_PAST_DEED_RE = /\bi\s+(?:have\s+)?already\s+(slew|slayed|slain|vanquished|conquered)\b/i;
+
+// ── Class C — declaring an NPC relationship / promise / debt to COMPEL compliance.
+// Requires BOTH a fiat bond assertion AND a compliance/entitlement clause, so a
+// bare mention ("the merchant promised me a discount") or a request ("ask the
+// guard to let me through") never gates.
+const RELATIONSHIP_IS_RE = /\b(the\s+(?:king|queen|captain|guard|guards|lord|lady|duke|duchess|baron|count|countess|priest|priestess|mayor|general|chief|warden|commander|prince|princess|emperor|empress|knight|sergeant|innkeeper|merchant|magistrate)|he|she|they)\b[\s\S]{0,12}\b(?:is|are)\s+my\s+(brother|sister|father|mother|son|daughter|kin|family|cousin|uncle|aunt|friend|ally|servant|liege|vassal|debtor|sworn\s+\w+)\b/i;
+const PROMISE_FIAT_RE = /\b(?:the\s+\w+|he|she|they)\b[\s\S]{0,25}\b(promised|owes?|owe|granted|grants|vowed|pledged|guaranteed|assured)\b[\s\S]{0,15}\b(me|us)\b/i;
+const OATH_FIAT_RE = /\b(you\s+and\s+i|we\s+two|we)\b[\s\S]{0,20}\b(swore|sworn|made|sealed|took|share)\b[\s\S]{0,20}\b(oath|blood-?oath|pact|vow|deal|pledge|bargain|bond)\b/i;
+const COMPLIANCE_RE = /\b(so\s+(?:you|i|they|he|she)\s+(?:must|will|shall|can|take|get)|you\s+must\s+(?:help|let|give|aid|obey|serve|stand)|will\s+let\s+me|let\s+me\s+(?:through|in|pass)|has\s+granted\s+me|have\s+granted\s+me|so\s+i\s+take|i\s+take\s+(?:the|what|my)|wave\s+me\s+(?:in|through)|stand\s+aside|step\s+aside|hand\s+(?:it|them|the)\s+over)\b/i;
+
+// ── Class D — self-granted identity / title commanding mass obedience (extends
+// self_authority). IDENTITY_CLAIM + (mass obedience | commanding a body of troops).
+const IDENTITY_CLAIM_RE = /\b(i\s+am|i'?m|i\s+have\s+always\s+been|i'?ve\s+always\s+been|i\s+was\s+always|i\s+reveal\s+(?:that\s+)?i\s+am|i\s+am\s+secretly|as\s+the\s+(?:rightful\s+|true\s+)?|(?:everyone|they)\s+(?:all\s+)?(?:recognizes?|recognize|knows?|hails?|accepts?)\s+me\s+as|they\s+call\s+me)\b[\s\S]{0,20}\b(the\s+)?(rightful\s+|true\s+|long-?lost\s+)?(heir|king|queen|emperor|empress|baron|baroness|duke|duchess|count|countess|lord|lady|ruler|sovereign|monarch|prince|princess|chosen\s+one|high\s+priest|priestess|guildmaster|chieftain|warlord|messiah|prophet)\b/i;
+const COMMAND_FORCE_RE = /\bi\s+command\b[\s\S]{0,15}\b(the\s+)?(garrison|guards?|army|armies|soldiers?|men|troops|watch|militia|legion|knights?|guardsmen)\b/i;
+// Obeisance to the player, distance-independent (the subject may be far upstream).
+const OBEISANCE_RE = /\b(kneels?|bows?|grovels?|bow\s+down|kneel\s+down)\s+(?:down\s+)?(?:before|to)\s+me\b/i;
 // Speech framing — the player is COMMUNICATING a claim (a lie/bluff/boast) to
 // someone. Then a fiat power/authority/possession claim becomes a legitimate
 // DECEPTION attempt that can fail, and the NPC-canon guard keeps the listener
@@ -1037,6 +1074,9 @@ const GATE_REFUSAL = {
   summon_from_nothing: "Nothing answers the call. No blade, no ally, no host steps out of the empty air — there is only you, and what you truly carry.",
   retcon_possession: "Your hand closes on nothing. You have never owned such a thing, and wishing it into your grip does not put it there.",
   self_authority: "You claim a power no one granted you. The world owes you no obedience, and gives none — your words land on deaf stone.",
+  time_manipulation: "Time does not heed you. The clock runs on and the world keeps its motion — nothing freezes, nothing rewinds, no force halts at your word.",
+  retcon_history: "What is done is done. The past does not rearrange itself to suit your telling — it stands as it happened, indifferent to the claim.",
+  npc_relationship_fiat: "No such bond answers for you. They owe you nothing they have not truly given, and your say-so binds no one — the claim hangs unproven in the air.",
   default: "The world does not yield to the claim. Nothing rearranges itself to agree with you — it was never yours to declare."
 };
 
@@ -1067,9 +1107,16 @@ export function classifyIntentAuthority(intent, options = {}) {
   if (SUMMON_FROM_NOTHING_RE.test(text)) {
     return impossible("summon_from_nothing");
   }
+  // (A) Time / natural-force manipulation — also physics, gated regardless of
+  // framing. Commanding a natural force gates only WITH a player-will marker, so
+  // "I wait for the rain to stop" stays legitimate.
+  if (TIME_MANIP_RE.test(text) || TIME_MANIP_RE2.test(text) || GRAVITY_RE.test(text) || (NATURAL_FORCE_RE.test(text) && PLAYER_WILL_RE.test(text))) {
+    return impossible("time_manipulation");
+  }
 
-  // Fiat claims of power / authority / possession: refused UNLESS framed as speech
-  // to someone (then it's a bluff → a legitimate deception attempt that can fail).
+  // Fiat claims of power / authority / possession / history / relationships:
+  // refused UNLESS framed as speech to someone (then it's a bluff → a legitimate
+  // deception attempt that can fail, and the NPC-canon guard handles belief).
   const speech = SPEECH_FRAME_RE.test(text);
   if (!speech) {
     if (I_AM_GOD_RE.test(text) || ASCEND_GODHOOD_RE.test(text) || SELF_DEIFICATION_RE.test(text)) {
@@ -1078,8 +1125,21 @@ export function classifyIntentAuthority(intent, options = {}) {
     if (LEGENDARY_ITEM_RE.test(text) && ALWAYS_OWNED_RE.test(text)) {
       return impossible("retcon_possession");
     }
-    if (SELF_AUTHORITY_RE.test(text) && (MASS_OBEY_RE.test(text) || AUTHORITY_OVER_RE.test(text))) {
+    // (D) self-granted identity/title OR an explicit self-authority declaration,
+    // when it commands mass obedience or a body of troops.
+    if (
+      (SELF_AUTHORITY_RE.test(text) || IDENTITY_CLAIM_RE.test(text)) &&
+      (MASS_OBEY_RE.test(text) || AUTHORITY_OVER_RE.test(text) || COMMAND_FORCE_RE.test(text) || OBEISANCE_RE.test(text))
+    ) {
       return impossible("self_authority");
+    }
+    // (B) retconning world history / past events as already-true by fiat.
+    if (HISTORY_REWRITE_RE.test(text) || NEVER_HAPPENED_RE.test(text) || PAST_DEED_BROADCAST_RE.test(text) || EPIC_PAST_DEED_RE.test(text)) {
+      return impossible("retcon_history");
+    }
+    // (C) declaring an NPC relationship/promise/debt to COMPEL compliance.
+    if ((RELATIONSHIP_IS_RE.test(text) || PROMISE_FIAT_RE.test(text) || OATH_FIAT_RE.test(text)) && COMPLIANCE_RE.test(text)) {
+      return impossible("npc_relationship_fiat");
     }
   }
 

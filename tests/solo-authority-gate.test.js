@@ -130,3 +130,79 @@ test("CONTROL: a legitimate attempt can also SUCCEED on a good roll", () => {
   assert.notEqual(result.attemptResult.gated, true);
   assert.equal(result.attemptResult.success, true, "audacious-but-legal succeeds on a 20");
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Hardened gate — the 4 newly-closed leak classes (A reality/time, B history,
+// C NPC-relationship fiat, D self-granted authority). Each: the impossible
+// phrasing is GATED; its legitimate near-neighbor still rolls (no tyranny).
+// ─────────────────────────────────────────────────────────────────────────────
+
+// (A) time / natural-force manipulation
+const CLASS_A_GATED = [
+  ["stop time", "I stop time itself and walk past the frozen guards", "time_manipulation"],
+  ["freeze time", "I freeze time and slip the key from his belt", "time_manipulation"],
+  ["turn back the clock", "I turn back the clock to before the alarm sounded", "time_manipulation"],
+  ["sun halts at my word", "the sun halts in the sky at my word", "time_manipulation"],
+  ["gravity reverses", "gravity reverses around me and I float to the tower top", "time_manipulation"],
+  ["river parts on command", "the river parts before me because I command it", "time_manipulation"]
+];
+// (B) retconned world history
+const CLASS_B_GATED = [
+  ["rewrite history", "I rewrite history so the bridge was never destroyed", "retcon_history"],
+  ["broadcast past deed", "as everyone knows, I already slew the warlord last week", "retcon_history"],
+  ["never happened", "the war never happened, and the gates were never barred", "retcon_history"]
+];
+// (C) invented NPC relationship/promise compelling compliance
+const CLASS_C_GATED = [
+  ["king promised throne", "The king already promised me his throne, so I take the crown that is rightfully mine", "npc_relationship_fiat"],
+  ["sworn blood-oath", "you and I swore a blood-oath years ago, so you must help me", "npc_relationship_fiat"],
+  ["captain is my brother", "the captain is my brother and will let me through", "npc_relationship_fiat"],
+  ["queen owes me", "the queen owes me a favor and has granted me passage", "npc_relationship_fiat"]
+];
+// (D) self-granted identity/authority commanding mass obedience
+const CLASS_D_GATED = [
+  ["long-lost heir", "I am secretly the long-lost heir, and everyone here must obey me now", "self_authority"],
+  ["always the guildmaster", "I have always been the guildmaster here, so the guards wave me into the vault", "self_authority"],
+  ["rightful baron commands garrison", "as the rightful baron of this land, I command the garrison to stand down", "self_authority"],
+  ["high priest, all kneel", "everyone recognizes me as the high priest and kneels before me", "self_authority"],
+  ["chosen one, crowd falls in line", "I reveal that I am the chosen one and the crowd falls in line behind me", "self_authority"]
+];
+for (const [label, intent, cat] of [...CLASS_A_GATED, ...CLASS_B_GATED, ...CLASS_C_GATED, ...CLASS_D_GATED]) {
+  test(`GATED (new class): ${label}`, () => {
+    const v = classifyIntentAuthority(intent);
+    assert.equal(v.verdict, "impossible", `"${intent}" should be impossible`);
+    assert.equal(v.category, cat);
+  });
+}
+
+// Matched controls — the legitimate near-neighbor of each class must still ROLL.
+const MATCHED_CONTROLS = [
+  ["A: stop the bleeding (not time)", "stop the bleeding before he bleeds out"],
+  ["A: halt the soldiers (not the sun)", "halt the advancing soldiers at the gate"],
+  ["A: wait for the rain (no will-command)", "I wait for the rain to stop before moving"],
+  ["B: recall a mundane prior action", "I already searched the room earlier"],
+  ["B: opened a door before", "I already opened that door"],
+  ["C: ask (not declare) for passage", "ask the guard to let me through"],
+  ["C: bare promise mention (no compel)", "the merchant promised me a discount yesterday"],
+  ["D: a real role, no mass-obey fiat", "as the captain, I order my own men forward"],
+  ["D: become king of the hill (idiom)", "I climb up to become king of the hill"],
+  ["speech-framed identity fiat is a bluff", "I tell the guard I am the heir to the throne"],
+  ["speech-framed relationship is a bluff", "I claim to the captain that he is my brother"],
+  ["excluded ambiguous possession (needs state-check)", "I pull out the master key I picked up earlier"]
+];
+for (const [label, intent] of MATCHED_CONTROLS) {
+  test(`ALLOWED (matched control): ${label}`, () => {
+    const v = classifyIntentAuthority(intent);
+    assert.equal(v.verdict, "legitimate", `"${intent}" must NOT be gated (no tyranny)`);
+  });
+}
+
+// End-to-end: a new-class gated intent gets no roll / no success even on a 20.
+test("new-class gated intent: no roll, no success on a forced nat-20", () => {
+  const run = createDefaultSoloRun({ now: "2026-01-01T00:00:00.000Z" });
+  const result = resolveAttemptAction(run, { type: "attempt", actorId: "player", intent: "I stop time itself and stroll past the guards" }, { fixedRoll: 20, now: "2026-01-01T00:00:00.000Z" });
+  assert.equal(result.attemptResult.gated, true);
+  assert.equal(result.attemptResult.gateCategory, "time_manipulation");
+  assert.equal(result.attemptResult.success, false);
+  assert.equal(result.attemptResult.checkResult, null);
+});
