@@ -1,5 +1,6 @@
 import { generateUtility } from "../ai/openrouter.js";
 import { getAvailableMoves } from "./movement.js";
+import { getQuestPayload } from "./quests.js";
 
 // ---------------------------------------------------------------------------
 // Contextual "what could I do next?" suggestions. Three short, concrete,
@@ -49,12 +50,22 @@ function availableMoveNames(run) {
 }
 
 function activeObjective(run) {
-  const stages = run?.quests?.quest_main?.stages;
-  if (!Array.isArray(stages)) {
+  // Sandbox-aware: getQuestPayload suppresses the procedural spine in a sandbox, so
+  // suggestions don't feed the contradictory "trail of your quarry" objective into
+  // an open world. Player-authored objectives DO surface here.
+  try {
+    const { activeQuests, mainQuest } = getQuestPayload(run);
+    const quest = mainQuest || (Array.isArray(activeQuests) ? activeQuests[0] : null);
+    if (!quest) {
+      return "";
+    }
+    const stages = Array.isArray(quest.stages) ? quest.stages : null;
+    const stage = stages ? stages.find((entry) => entry && entry.status !== "complete") || stages[0] : null;
+    const objective = (stage && stage.objective) || quest.objective;
+    return isStr(objective) ? clip(objective) : "";
+  } catch {
     return "";
   }
-  const stage = stages.find((entry) => entry && entry.status !== "complete") || stages[0];
-  return stage && isStr(stage.objective) ? clip(stage.objective) : "";
 }
 
 // Deterministic, scene-aware fallback: always exactly 3, varied across
@@ -139,6 +150,66 @@ function parseSuggestions(text) {
   return lines.length >= 3 ? lines.slice(0, 3) : null;
 }
 
+// A suggested action that DIRECTS the player at a person — "approach the warden",
+// "ask the merchant", "engage the curious locals" — presupposes that person is
+// here. Exploratory calls into the unknown ("call out and see who answers") do NOT.
+const PERSON_DIRECTED = /\b(?:talk to|speak (?:to|with)|ask|approach|greet|question|confront|engage|hail|persuade|bargain with|negotiate with|interrogate|address|consult|chat with|flag down|beckon|petition|plead with|interview)\b/i;
+const PEOPLE_NOUN = /\b(?:locals?|villagers?|townsfolk|folk|crowd|guards?|soldiers?|strangers?|merchants?|patrons?|bystanders?|onlookers?|residents?|inhabitants?|the others?|companions?|allies|the party|the group|nearby (?:people|figures))\b/i;
+const EXPLORATORY = /\b(?:call out|cry out|shout|listen|see who|look for|search for|wait for|whoever|who(?:'?s| is) (?:there|here)|anyone)\b/i;
+
+// Validates ONE suggestion against current scene presence. The server already owns
+// truth for attempts/possession — the same discipline applied to scaffolding:
+// a chip that points the player at an NPC requires that NPC in the present cast.
+function suggestionIsReachable(run, suggestion, presentNamesLc) {
+  const lc = String(suggestion || "").toLowerCase();
+  if (!isStr(lc)) {
+    return false;
+  }
+  const namesPresentNpc = presentNamesLc.some((name) => name && lc.includes(name));
+  if (namesPresentNpc) {
+    return true; // explicitly references someone who is actually here
+  }
+  // Directs at / names a person or group that the scene does not contain, and is
+  // not an exploratory call into the unknown -> a phantom entity. Suppress it.
+  if ((PERSON_DIRECTED.test(lc) || PEOPLE_NOUN.test(lc)) && !EXPLORATORY.test(lc)) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Filters LLM-proposed suggestions against scene state, dropping chips that invoke
+ * entities the state says aren't here (the model can ignore the "People present"
+ * context and invent NPCs). Rejected slots are backfilled from the deterministic,
+ * scene-derived fallback so the player always sees exactly 3. Never throws.
+ * @param {object} run
+ * @param {string[]} list
+ * @returns {string[]}
+ */
+export function validateSuggestions(run, list) {
+  const presentNamesLc = presentNpcs(run)
+    .map((npc) => (isStr(npc.displayName) ? npc.displayName.toLowerCase() : ""))
+    .filter(Boolean);
+  const kept = [];
+  for (const suggestion of Array.isArray(list) ? list : []) {
+    const cleaned = clip(suggestion);
+    if (isStr(cleaned) && suggestionIsReachable(run, cleaned, presentNamesLc)) {
+      kept.push(cleaned);
+    }
+  }
+  if (kept.length < 3) {
+    for (const fb of buildFallbackSuggestions(run)) {
+      if (kept.length >= 3) {
+        break;
+      }
+      if (!kept.some((k) => k.toLowerCase() === fb.toLowerCase())) {
+        kept.push(fb);
+      }
+    }
+  }
+  return kept.slice(0, 3);
+}
+
 function withTimeout(promise, ms) {
   return Promise.race([
     promise,
@@ -159,7 +230,9 @@ export async function generateSuggestions(run) {
     );
     const parsed = parseSuggestions(result?.content);
     if (parsed) {
-      return parsed;
+      // Server owns truth for scaffolding too: drop chips that reference NPCs/
+      // entities not present in the scene; backfill from the scene-aware fallback.
+      return validateSuggestions(run, parsed);
     }
   } catch {
     // fall through to fallback

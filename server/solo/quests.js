@@ -325,8 +325,14 @@ export function advanceQuests(run, actionResult = {}) {
   const advanced = [];
   const failed = [];
 
+  const sandbox = isSandbox(run);
   for (const quest of Object.values(run.quests)) {
     if (!isPlainObject(quest) || quest.status !== "active") {
+      continue;
+    }
+    // Sandbox suppresses the procedural spine entirely — it cannot advance, win,
+    // or fail (it's hidden in getQuestPayload too). Player-authored goals still run.
+    if (sandbox && isProceduralSpine(quest)) {
       continue;
     }
     // Failure first: a missed failable check ends the quest in defeat.
@@ -374,8 +380,163 @@ export function advanceQuests(run, actionResult = {}) {
  * @returns {{ activeQuests: object[], mainQuest: object | null }}
  */
 export function getQuestPayload(run) {
+  const sandbox = isSandbox(run);
   const quests = isPlainObject(run?.quests) ? Object.values(run.quests) : [];
-  const activeQuests = quests.filter((quest) => isPlainObject(quest) && quest.status === "active");
-  const mainQuest = quests.find((quest) => isPlainObject(quest) && quest.isMain === true) || null;
+  // In a SANDBOX (open world, no spine) the procedurally-injected directed main
+  // quest is suppressed: it contradicts the open-world framing ("no one holds
+  // this ground, make it yours") with an assigned quarry the player never chose.
+  // Player-AUTHORED objectives (isMain:false, authoredBy:"player") still surface —
+  // the open world reacts to what the player actually declares (see Track A,
+  // capturePlayerObjective). Campaign runs are unchanged.
+  const visible = sandbox ? quests.filter((quest) => !isProceduralSpine(quest)) : quests;
+  const activeQuests = visible.filter((quest) => isPlainObject(quest) && quest.status === "active");
+  const mainQuest = visible.find((quest) => isPlainObject(quest) && quest.isMain === true) || null;
   return { activeQuests, mainQuest };
+}
+
+// ---------------------------------------------------------------------------
+// Track A — STATE owns NARRATIVE truth, not just mechanical truth.
+//
+// (1) Sandbox runs do not carry a directed objective: the procedural spine is
+//     suppressed at the quest layer so open-world prose isn't contradicted by an
+//     assigned quarry. (2) When the player DECLARES a durable goal and the world
+//     AGREES (a real success — not a refusal/gate), the SERVER instantiates that
+//     intent as a tracked, player-authored objective. The authority gate refuses
+//     illegitimate fiat; this CAPTURES legitimate authorship. Server owns it.
+// ---------------------------------------------------------------------------
+
+// A run is "sandbox" (open world, no quest spine) vs "campaign" (default).
+function isSandbox(run) {
+  return isPlainObject(run) && run.mode === "sandbox";
+}
+
+// The procedurally-injected directed main quest (createMainQuest / onboarding):
+// isMain with no player authorship. Distinguished from a player-authored goal so
+// the latter is never suppressed.
+function isProceduralSpine(quest) {
+  return (
+    isPlainObject(quest) &&
+    quest.isMain === true &&
+    quest.authoredBy !== "player" &&
+    quest.flags?.playerAuthored !== true
+  );
+}
+
+// First-person declaration of a DURABLE intent to establish/pursue something. The
+// lead alone (i / my goal) is not enough — "I climb the wall" is not a goal; the
+// intent must pair with a strong establish/pursue verb so flavor stays flavor.
+const GOAL_FIRST_PERSON = /\b(?:i|i'?m|i'?ll|my)\b/i;
+const GOAL_ESTABLISH = /\b(?:claim|establish|found|settle|colon(?:ize|ise)|build|rebuild|restore|reclaim|retake|take over|rule|reign|conquer|liberate|avenge|master this|hold this (?:place|ground|keep|land)|defend this (?:place|land|ground|keep)|protect this (?:place|land|ground)|make (?:this|that|the|it)\b[^,.;]*\b(?:mine|my own|my home|my base|my stronghold|a home|a base)|become (?:the|a|lord|master|ruler|king|queen)\b|forge (?:a|an|my)\b|raise (?:an?|my)\b)\b/i;
+
+/**
+ * Detects an explicit, durable player goal in an attempt's intent text. Bounded:
+ * requires a first-person declaration AND a strong establish/pursue verb. Returns
+ * { description } (objective text, 2nd person) or null for flavor/ordinary actions.
+ * @param {string} intent
+ * @returns {{ description: string } | null}
+ */
+export function detectPlayerGoal(intent) {
+  const s = String(intent || "").toLowerCase();
+  if (!isString(s)) {
+    return null;
+  }
+  if (!GOAL_FIRST_PERSON.test(s) || !GOAL_ESTABLISH.test(s)) {
+    return null;
+  }
+  const description = phraseObjectiveFromIntent(intent);
+  return isString(description) ? { description } : null;
+}
+
+// Rewrites a first-person goal declaration into a clean 2nd-person objective line,
+// dropping the intent frame ("I want to ...") and any trailing flavor clause.
+function phraseObjectiveFromIntent(intent) {
+  let s = String(intent || "").trim();
+  // Drop a "my goal is to …" frame, then a leading first-person intent frame
+  // ("I want to", "I intend to", "I will", "I'm going to"), then a bare leading
+  // "I". This collapses "I will claim X" and "I claim X" to the same objective.
+  s = s.replace(/^\s*my\s+(?:goal|aim|plan|purpose|mission|intent|intention|dream|ambition)\s+(?:is|will be)\s+to\s+/i, "");
+  s = s.replace(
+    /^\s*(?:from now on,?\s+)?i(?:'ll|'m)?\s+(?:want to|intend to|mean to|plan to|aim to|wish to|hope to|vow to|resolve to|swear to|am going to|going to|set out to|would like to|decide to|choose to|will|shall|going)\s+/i,
+    ""
+  );
+  s = s.replace(/^\s*i\s+/i, "");
+  // Keep only the goal clause — trailing "..., meditate on what it would take" is flavor.
+  s = s.split(/[,;.]/)[0].trim();
+  // 2nd-person voice (objectives read "Travel to ...", "Find ...").
+  s = s
+    .replace(/\bmy own\b/gi, "your own")
+    .replace(/\bmine\b/gi, "yours")
+    .replace(/\bmyself\b/gi, "yourself")
+    .replace(/\bmy\b/gi, "your")
+    .replace(/\bme\b/gi, "you")
+    .replace(/\bi\b/gi, "you")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!s) {
+    return "Pursue your declared aim.";
+  }
+  return s.charAt(0).toUpperCase() + s.slice(1) + (/[.!?]$/.test(s) ? "" : ".");
+}
+
+function normalizeDesc(text) {
+  return String(text || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+/**
+ * Player-authored objective capture. When an ATTEMPT declares a durable goal and
+ * the world AGREED (a real mechanical success — not a refusal/gate/unpossessed/
+ * foreclosed), instantiates a tracked, player-authored objective on run.quests and
+ * returns it. No-ops (returns null) for flavor, refused fiat, or a duplicate. The
+ * record carries no auto-completion predicate (predicateMet returns false on a
+ * null completion), so it persists as an open objective the GM/player resolve.
+ * Mutates run.quests in place (the resolver runs on a per-action run clone).
+ * @param {object} run
+ * @param {{ intent?: string, attemptResult?: object }} ctx
+ * @returns {object|null} the created quest, or null
+ */
+export function capturePlayerObjective(run, { intent, attemptResult } = {}) {
+  if (!isPlainObject(run)) {
+    return null;
+  }
+  const ar = isPlainObject(attemptResult) ? attemptResult : {};
+  // The world must have AGREED. A refusal/gate/unpossessed-claim/foreclosure is the
+  // authority gate's domain — declaring an illegitimate fiat is not authorship.
+  if (ar.success !== true || ar.gated === true || ar.unpossessed === true || ar.foreclosed === true) {
+    return null;
+  }
+  if (isPlainObject(ar.consequence) && ar.consequence.type === "refused") {
+    return null;
+  }
+  const goal = detectPlayerGoal(intent);
+  if (!goal) {
+    return null;
+  }
+  run.quests = isPlainObject(run.quests) ? run.quests : {};
+  // De-dupe: don't re-capture the same active goal the player already declared.
+  const target = normalizeDesc(goal.description);
+  const dup = Object.values(run.quests).some(
+    (q) => isPlainObject(q) && q.authoredBy === "player" && q.status === "active" && normalizeDesc(q.objective) === target
+  );
+  if (dup) {
+    return null;
+  }
+  const n = Object.keys(run.quests).filter((k) => k.startsWith("quest_player_")).length + 1;
+  const questId = `quest_player_${n}`;
+  const quest = {
+    questId,
+    status: "active",
+    isMain: false,
+    authoredBy: "player",
+    title: goal.description,
+    description: goal.description,
+    stages: [{ objective: goal.description, completion: null }],
+    stage: 0,
+    objective: goal.description,
+    completion: null,
+    relatedEntityIds: [],
+    memoryFactIds: [],
+    flags: { playerAuthored: true }
+  };
+  run.quests[questId] = quest;
+  return quest;
 }

@@ -30,7 +30,7 @@ import {
   resolveAttemptAction,
   validateAttemptAction
 } from "./attempt.js";
-import { advanceQuests } from "./quests.js";
+import { advanceQuests, capturePlayerObjective } from "./quests.js";
 import { createDefaultVnState, validateSoloRun } from "./schema.js";
 import {
   applyDamage,
@@ -355,6 +355,22 @@ function finalizeQuestProgress(originalRun, result, options = {}) {
   if (wonQuest) {
     result.runWon = true;
     result.wonQuest = wonQuest;
+  }
+
+  // Track A — narrative truth becomes state: when the player DECLARES a durable
+  // goal in an attempt and the world AGREED (a real success, not a refusal/gate),
+  // the server instantiates it as a tracked, player-authored objective on the run.
+  // Bounded by detectPlayerGoal (explicit establish/pursue intent, not flavor), so
+  // a declared land-claim ("make this place my own") becomes a real objective the
+  // GM and suggestions then reference — instead of a success paragraph with no state.
+  if (actionProducedRun && result.run && result.action?.type === "attempt") {
+    const captured = capturePlayerObjective(result.run, {
+      intent: result.action?.intent,
+      attemptResult: result.attemptResult
+    });
+    if (captured) {
+      result.playerObjectiveCaptured = captured;
+    }
   }
 
   // Consequence spine — XP rewards. Meaningful outcomes move the xp/level needle
