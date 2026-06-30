@@ -2006,7 +2006,15 @@ async function handleApi(req, res) {
       const result = await createWorldOnboardingRun(user.id, {
         world: payload?.world || {},
         character: payload?.character || {},
-        draftPortraitId: payload?.draftPortraitId || null
+        draftPortraitId: payload?.draftPortraitId || null,
+        // C.13: the solo "new adventure" IS the sandbox flow (see onboardingFlow.js
+        // — the loctype picker was removed because sandbox defaults to forest-ruins;
+        // modules/campaigns carry their own start). Default to sandbox so a pure
+        // open world with ZERO authored objective is what real play creates (owner
+        // decision a), and the sandbox-gated behavior (C.5 quarry suppression,
+        // player-authored goals) is actually REACHABLE live instead of inert. A
+        // module/campaign start passes an explicit mode to opt back into the spine.
+        mode: payload?.mode || "sandbox"
       });
       incrementSessionCount(user.id);
       writeJson(res, 200, { ok: true, ...result });
