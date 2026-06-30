@@ -841,6 +841,15 @@ async function narrateActionWithGm(run, resolved, user) {
   if (!run?.campaignId || !resolved) {
     return null;
   }
+  // GATED short-circuit: an authority-gated attempt already carries a grounded,
+  // per-category, in-fiction refusal line (attemptResult.narration, set by
+  // buildGatedAttempt). It cannot succeed and nothing mutated, so a live GM call
+  // would only re-skin a fixed refusal at ~5-8s of model latency (worse on the
+  // local model). Return null so the caller keeps the deterministic refusal —
+  // gated refusals are near-instant on any provider.
+  if (resolved.attemptResult?.gated === true) {
+    return null;
+  }
   let message = buildActionGmMessage(run, resolved);
   if (!message) {
     return null;
