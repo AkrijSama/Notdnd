@@ -51,27 +51,45 @@ const PLAYER_NO_SHEET =
 const PLAYER_PORTRAIT_ART_DIRECTION =
   `${PLAYER_SINGLE_SUBJECT}, painterly fantasy illustration, dramatic rim lighting, highly detailed, plain dark background, ${PLAYER_NO_SHEET}`;
 
+// Shared LOCATION composition: location backgrounds render into the wide scene
+// banner (3:2, LANDSCAPE_DIMENSIONS), so they must compose AS a backdrop the scene
+// sits in front of — a wide establishing shot, not a centered subject. This is the
+// composition cue ONLY; the per-style aesthetic (painterly / anime / cinematic)
+// lives in each style's `location` surface so a scene matches the run's art style.
+const LOCATION_COMPOSITION =
+  "wide establishing shot, landscape orientation, environmental scene, " +
+  "atmospheric depth, background backdrop, no people, no characters";
+
 // Per-art-style base direction. generateImage() appends ", <style> style" as the
 // medium cue (providers.js); this base must AGREE with that cue instead of always
 // asserting "painterly illustration", which fights anime/cinematic runs. Player
-// entries are single-subject (no reference sheet); NPC entries are single busts.
+// entries are single-subject (no reference sheet); NPC entries are single busts;
+// location entries pair the per-style aesthetic with LOCATION_COMPOSITION so a
+// scene image carries the player's selected style (anime run -> anime scene).
 const ART_STYLE_DIRECTION = {
-  illustrated: { npc: PORTRAIT_ART_DIRECTION, player: PLAYER_PORTRAIT_ART_DIRECTION },
+  illustrated: {
+    npc: PORTRAIT_ART_DIRECTION,
+    player: PLAYER_PORTRAIT_ART_DIRECTION,
+    location: `painterly fantasy illustration, detailed environment, dramatic lighting, ${LOCATION_COMPOSITION}`
+  },
   anime: {
     npc: "anime portrait, clean line art, cel shaded, anime style, expressive face, upper body, plain background",
     player:
-      `${PLAYER_SINGLE_SUBJECT}, clean line art, cel shaded, anime style, expressive face, plain background, ${PLAYER_NO_SHEET}`
+      `${PLAYER_SINGLE_SUBJECT}, clean line art, cel shaded, anime style, expressive face, plain background, ${PLAYER_NO_SHEET}`,
+    location: `anime background art, clean line art, cel shaded scenery, anime style, vibrant, ${LOCATION_COMPOSITION}`
   },
   cinematic: {
     npc: "cinematic character portrait, moody cinematic, film noir, high contrast, dramatic lighting, detailed face, upper body, dark background",
     player:
-      `${PLAYER_SINGLE_SUBJECT}, moody cinematic, film noir, high contrast, dramatic lighting, dark background, ${PLAYER_NO_SHEET}`
+      `${PLAYER_SINGLE_SUBJECT}, moody cinematic, film noir, high contrast, dramatic lighting, dark background, ${PLAYER_NO_SHEET}`,
+    location: `cinematic establishing shot, moody cinematic, film noir, high contrast, dramatic lighting, ${LOCATION_COMPOSITION}`
   }
 };
 
-// Resolves the base art direction for a run's art style + portrait surface
-// ("npc" | "player"). Unknown/missing styles fall back to illustrated.
-function artStyleDirection(style, surface) {
+// Resolves the base art direction for a run's art style + surface
+// ("npc" | "player" | "location"). Unknown/missing styles fall back to illustrated.
+// Exported for art-style coverage (C.6): a scene's art direction must track the run.
+export function artStyleDirection(style, surface) {
   const key = String(style || "").trim().toLowerCase();
   const entry = ART_STYLE_DIRECTION[key] || ART_STYLE_DIRECTION.illustrated;
   return entry[surface];
@@ -698,16 +716,6 @@ export function copyDraftPortraitToRun(draftId, runId) {
   }
 }
 
-// Shared art direction for location backgrounds. These render into the wide
-// scene banner (3:2, matching LANDSCAPE_DIMENSIONS), so they must compose AS a
-// backdrop the scene sits in front of — a wide cinematic establishing shot,
-// not a centered subject. Appended to every location prompt in
-// runLocationImageJob so the composition holds whether the prompt came from the
-// caller or the fallback below.
-const LOCATION_ART_DIRECTION =
-  "wide cinematic establishing shot, landscape orientation, environmental scene, " +
-  "atmospheric depth, background backdrop, no people, no characters";
-
 // Fallback subject when the caller did not supply a prompt: just location name +
 // world tone. The establishing-shot composition is added by LOCATION_ART_DIRECTION
 // in runLocationImageJob, so it is intentionally not repeated here.
@@ -746,13 +754,22 @@ export async function runLocationImageJob(job = {}) {
   }
 
   const location = run?.locations?.[locationId] || null;
-  const style = job.style ? String(job.style).trim() : "";
+  // The run's selected art style (C.6): prefer the job's style, else read it off
+  // the run (world.artStyle is the authoritative source delivered to this worker;
+  // flags.artStyle is the enqueue mirror). Drives BOTH the location art direction
+  // and generateImage's medium cue, so an anime run yields an anime scene image.
+  const style =
+    (job.style && String(job.style).trim()) ||
+    (isStr(run?.world?.artStyle) ? run.world.artStyle.trim() : "") ||
+    (isStr(run?.flags?.artStyle) ? run.flags.artStyle.trim() : "") ||
+    "illustrated";
   const seed = Number.isFinite(Number(job.seed)) ? Number(job.seed) : null;
   // Compose FOR the wide banner: the subject (caller prompt or fallback) plus the
-  // shared establishing-shot art direction, so the result reads as a backdrop
-  // rather than a centered subject.
+  // STYLE-AWARE location art direction (per-style aesthetic + establishing-shot
+  // composition), so the scene reads as a backdrop in the run's actual art style.
   const subject = String(job.basePrompt || buildLocationPromptFallback(run, location, locationId)).trim();
-  const prompt = subject ? `${subject}, ${LOCATION_ART_DIRECTION}` : LOCATION_ART_DIRECTION;
+  const locationDirection = artStyleDirection(style, "location");
+  const prompt = subject ? `${subject}, ${locationDirection}` : locationDirection;
   // Filesystem-safe folder segment for this location's assets.
   const folder = `location_${locationId}`;
 

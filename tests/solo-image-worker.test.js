@@ -20,7 +20,7 @@ const {
   ensureNpcImageAssets,
   updateImageAssetStatus
 } = await import("../server/db/repository.js");
-const { runImageJob, runVariantImageJob, runVnBodyImageJob } = await import("../server/solo/imageWorker.js");
+const { runImageJob, runVariantImageJob, runVnBodyImageJob, artStyleDirection } = await import("../server/solo/imageWorker.js");
 const { NPC_EXPRESSIONS } = await import("../server/solo/schema.js");
 const { resolveVnBodyUri } = await import("../server/solo/scene.js");
 const { serveStatic } = await import("../server/api/http.js");
@@ -218,4 +218,41 @@ test("serveStatic serves generated png assets under data/assets (path is covered
 
   assert.equal(head.code, 200);
   assert.equal(head.headers["Content-Type"], "image/png");
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// C.6 — a scene/location image must carry the run's selected ART STYLE, not a
+// hardcoded cinematic/dark-fantasy direction. artStyleDirection now has a
+// "location" surface per style; anime runs must produce anime scene direction.
+// ─────────────────────────────────────────────────────────────────────────────
+test("location art direction differs per art style (anime scene != cinematic scene)", () => {
+  const anime = artStyleDirection("anime", "location");
+  const cinematic = artStyleDirection("cinematic", "location");
+  const illustrated = artStyleDirection("illustrated", "location");
+
+  // Each carries its own aesthetic keyword.
+  assert.match(anime, /anime/i, "anime location direction asserts anime");
+  assert.doesNotMatch(anime, /film noir/i, "anime location is NOT cinematic dark-fantasy");
+  assert.match(cinematic, /cinematic|film noir/i, "cinematic location asserts cinematic");
+  assert.match(illustrated, /painterly/i, "illustrated location asserts painterly");
+
+  // The three are genuinely distinct directions.
+  assert.notEqual(anime, cinematic);
+  assert.notEqual(anime, illustrated);
+  assert.notEqual(cinematic, illustrated);
+});
+
+test("every location direction keeps the shared establishing-shot composition", () => {
+  for (const style of ["illustrated", "anime", "cinematic"]) {
+    const dir = artStyleDirection(style, "location");
+    assert.match(dir, /establishing shot/i, `${style} location composes as a banner`);
+    assert.match(dir, /no people, no characters/i, `${style} location has no subject`);
+  }
+});
+
+test("unknown/missing art style falls back to the illustrated location direction", () => {
+  const fallback = artStyleDirection("illustrated", "location");
+  assert.equal(artStyleDirection("nonexistent-style", "location"), fallback);
+  assert.equal(artStyleDirection("", "location"), fallback);
+  assert.equal(artStyleDirection(undefined, "location"), fallback);
 });
