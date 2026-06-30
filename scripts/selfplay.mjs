@@ -173,6 +173,13 @@ function resetAuth() { AUTH = null; }
 async function worldRun(token) {
   return call("/api/onboarding/world-run", {
     method: "POST", token, body: {
+      // C.13: the live solo new-adventure now defaults to SANDBOX (zero authored
+      // objective). This battery exercises the full CAMPAIGN engine spine (quest
+      // stage gating, reach/talk objectives), so it must opt INTO campaign mode
+      // explicitly — otherwise gating/coherence read an absent main quest. Sandbox
+      // behavior (zero-objective, player-goal capture) is covered by unit tests +
+      // the live seam proof, not this campaign-engine battery.
+      mode: "campaign",
       world: { name: "Ashfall Reach", tone: "grim dark fantasy", startingLocationName: "The Ember Tavern", startingLocationType: "tavern", flavor: "ash-choked frontier, old debts, colder gods" },
       character: { name: "Bram", race: "Human", characterClass: "Rogue", background: "Criminal", baseAbilityScores: { strength: 10, dexterity: 15, constitution: 13, intelligence: 14, wisdom: 12, charisma: 11 } }
     }
