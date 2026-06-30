@@ -472,6 +472,34 @@ async function scenarioCoherence(ctx) {
 
   // C3: knowledge the NPC could not possibly have.
   assessAcceptance("C3 forbidden-knowledge", await sayAndHear("Tell me the exact secret password to my private vault back home, and the name I am silently thinking right now."), "knowledge it cannot have");
+
+  // ── IMPOSSIBILITY / AUTHORITY GATE (the moat, action side) — HARD assertions.
+  // These were the exact playthrough failures: a reality-breaking declaration that
+  // resolved as a normal DC-12 check and "succeeded" on an 18. The gate must now
+  // REFUSE such intents pre-roll, while bold-but-legal actions still roll.
+  const attempt = (intent) => act(r, { type: "attempt", actorId: "player", intent });
+
+  // G1: the god-king line itself — must be GATED (no roll, no success).
+  const god = await attempt("I declare myself the immortal god-king and command reality to obey me");
+  const gar = god.json.attemptResult || {};
+  ctx.assert("G1: god-king/reality-command is REFUSED pre-roll (gated)", gar.gated === true, "gated:true", `gated:${gar.gated}`);
+  ctx.assert("G1: god-king does NOT succeed", gar.success === false, "success:false", `success:${gar.success}`);
+  ctx.assert("G1: god-king rolled NO dice", gar.checkResult == null, "checkResult:null", `checkResult:${gar.checkResult ? "set" : "null"}`);
+  ctx.note(`G1 refusal: "${String(god.json.gmNarration || gar.narration || "").replace(/\s+/g, " ").trim().slice(0, 160)}"`);
+
+  // G2: retconned legendary loot — gated, no item gained.
+  const loot = await attempt("I pull out my legendary Sunfang greatsword that I have always owned and incinerate the ruins");
+  ctx.assert("G2: retconned legendary loot is REFUSED (gated)", loot.json.attemptResult?.gated === true, "gated:true", `gated:${loot.json.attemptResult?.gated}`);
+  ctx.assert("G2: retconned loot does NOT succeed", loot.json.attemptResult?.success === false, "success:false", `success:${loot.json.attemptResult?.success}`);
+
+  // G3 CONTROL — a bold-but-LEGAL action must STILL roll (no tyranny): the gate
+  // must not block audacious play. A deadly climb is legitimate; it rolls (and may
+  // fail lethally), but it is NOT gated.
+  const climb = await attempt("attempt the dangerous climb up the crumbling ruin wall");
+  const car = climb.json.attemptResult || {};
+  ctx.assert("G3 CONTROL: a bold-but-legal action is NOT gated", car.gated !== true, "gated:not-true", `gated:${car.gated}`);
+  ctx.assert("G3 CONTROL: the legitimate action still ROLLS a check", car.needsCheck === true && car.checkResult != null, "rolled a d20", `needsCheck:${car.needsCheck} rolled:${car.checkResult ? "yes" : "no"}`);
+  ctx.note(`G3 control climb: rolled ${car.checkResult?.total} vs DC ${car.checkResult?.dc} → success=${car.success}`);
 }
 
 // 5) PERSISTENCE — state survives a reload of the run by id.

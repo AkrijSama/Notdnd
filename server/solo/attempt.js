@@ -982,6 +982,174 @@ export function enforceFailureConsequence(run, spec, context, now) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// IMPOSSIBILITY / AUTHORITY GATE — the coherence moat.
+//
+// A player's stated INTENT is classified BEFORE any d20. Most intents are
+// LEGITIMATE and roll normally — including audacious, reckless, doomed ones (a
+// suicidal climb, a desperate bluff, attacking something far stronger). Those
+// MUST still roll and be allowed to fail, lethally; gating them would build the
+// tyrant GM, which is as bad as the pushover. Only a narrow class is REFUSED
+// pre-roll: reality-breaking / authority-by-fiat / summon-from-nothing /
+// retconned-ownership / power one does not have. For those the world simply does
+// NOT comply — no roll, no success (a forced nat-20 can't make it land), no state
+// change. Server-OWNED and FAILS OPEN: anything not clearly impossible defaults
+// to "legitimate", so an edge case is allowed rather than tyrannized.
+//
+// The distinction is impossible-in-principle vs audacious-but-possible:
+//   gated    : "command reality to obey", "I am a god", "summon an army from
+//              nothing", "my legendary sword I've always owned", "all kneel to me"
+//   allowed  : "climb the deadly cliff", "bluff the guard I'm a noble", "pick the
+//              lock", "intimidate the king", "tell the guard I am a god" (a LIE —
+//              a deception attempt that can fail; the NPC need not believe it)
+const GATED_CATEGORIES = new Set([
+  "reality_command", "self_deification", "summon_from_nothing", "retcon_possession", "self_authority"
+]);
+// Physics-impossible categories: refused REGARDLESS of framing — you cannot
+// "deceive" reality or roll a check to bend it.
+const PHYSICS_GATED = new Set(["reality_command", "summon_from_nothing"]);
+
+// Commanding/bending reality, the world, time, the universe, the laws of nature.
+const REALITY_COMMAND_RE = /\b(reality|the world|the universe|time itself|the laws of (?:nature|physics)|the fabric of (?:reality|the world|space))\b[\s\S]{0,45}\b(obey|obeys|bend|bends|bow|comply|complies|rewrite|rewrites|reshape|reshapes|warp|warps|kneel|stop|stops|freeze|freezes|unmake|unmakes|to my will|to my command)\b/i;
+const REALITY_COMMAND_RE2 = /\b(command|will|order|force|make|compel|bend)\b[\s\S]{0,30}\b(reality|the world|the universe|time|nature|existence)\b[\s\S]{0,25}\b(to\s+)?(obey|bend|comply|kneel|change|stop|freeze|submit|yield)\b/i;
+// Summoning matter / allies from nothing, or at flatly impossible scale.
+const SUMMON_FROM_NOTHING_RE = /\b(summon|conjure|materialize|manifest|spawn|create|will into existence|pull|wish)\b[\s\S]{0,45}\b(army|armies|legion|legions|horde|navy|fleet|dragon|dragons|out of (?:thin air|nothing)|from (?:thin air|nothing|the void|nowhere)|into existence|into being)\b/i;
+// Declaring oneself a god / omnipotent (claiming the POWER, not lying about it).
+const SELF_DEIFICATION_RE = /\b(declare|proclaim|crown|make|become|turn)\b[\s\S]{0,25}\b(myself|me|into)\b[\s\S]{0,18}\b(a\s+|the\s+)?(god|goddess|deity|divine being|god-?king|god-?queen|omnipotent|all-?powerful|immortal (?:god|sovereign|ruler))\b/i;
+const I_AM_GOD_RE = /\bi\s+am\s+(?:now\s+)?(?:a\s+|the\s+)?(god|goddess|deity|divine being|god-?king|omnipotent|all-?powerful|immortal god)\b/i;
+const ASCEND_GODHOOD_RE = /\bascend(?:ing|s)?\b[\s\S]{0,25}\b(godhood|divinity|to\s+(?:a\s+)?god|to\s+a\s+higher\s+plane)\b/i;
+// Retconned legendary loot: a powerful item asserted as already-owned.
+const LEGENDARY_ITEM_RE = /\b(legendary|fabled|ancient|mythic|mythical|divine|godly|holy|cursed|enchanted|magical|named)\b[\s\S]{0,28}\b([a-z]*sword|blade|weapon|axe|spear|bow|staff|wand|armou?r|shield|amulet|ring|artifact|relic|crown|gauntlet|warhammer|hammer|dagger|mace|glaive|halberd)\b/i;
+const ALWAYS_OWNED_RE = /\b(always\s+(?:owned|had|carried|possessed|kept)|i'?ve\s+always|that\s+i\s+(?:have\s+)?always|i\s+have\s+always|that\s+i\s+(?:secretly\s+)?own|hidden\s+(?:in|under)\s+my|from\s+my\s+(?:pack|cloak|belt)|my\s+own\s+(?:trusty|faithful)?)\b/i;
+// Granting oneself rulership and mass obedience by fiat.
+const SELF_AUTHORITY_RE = /\b(declare|proclaim|crown|name|appoint)\b[\s\S]{0,20}\b(myself|me)\b[\s\S]{0,28}\b(king|queen|emperor|empress|ruler|overlord|sovereign|lord|master|god-?king|chosen one|the law|in charge)\b/i;
+const MASS_OBEY_RE = /\b(everyone|all|they all|the (?:world|land|realm|kingdom|city|town|guards?|people|crowd|army|masses)|all who hear)\b[\s\S]{0,22}\b(must\s+)?(obey|obeys|bow|bows|kneel|kneels|serve|serves|submit|submits|worship|worships)\b/i;
+const AUTHORITY_OVER_RE = /\b(of|over)\b[\s\S]{0,16}\b(the\s+(?:world|land|realm|kingdom|city|town|people|nation)|all\b|everything|reality|creation)\b/i;
+// Speech framing — the player is COMMUNICATING a claim (a lie/bluff/boast) to
+// someone. Then a fiat power/authority/possession claim becomes a legitimate
+// DECEPTION attempt that can fail, and the NPC-canon guard keeps the listener
+// from believing it. Physics-impossibilities are NOT downgraded by speech.
+const SPEECH_FRAME_RE = /\b(tell|telling|told|say|saying|said|claim|claiming|claimed|insist|insisting|lie|lying|bluff|bluffing|boast|boasting|brag|bragging|convince|convincing|persuade|persuading|deceive|deceiving|pretend|pretending|announce to|inform)\b/i;
+
+const GATE_REFUSAL = {
+  reality_command: "Reality does not bend to your words. The world holds its shape, wholly indifferent to the command — nothing stirs, nothing obeys.",
+  self_deification: "You are no god, and the saying of it does not make it so. The words ring out, die in the still air, and nothing answers them.",
+  summon_from_nothing: "Nothing answers the call. No blade, no ally, no host steps out of the empty air — there is only you, and what you truly carry.",
+  retcon_possession: "Your hand closes on nothing. You have never owned such a thing, and wishing it into your grip does not put it there.",
+  self_authority: "You claim a power no one granted you. The world owes you no obedience, and gives none — your words land on deaf stone.",
+  default: "The world does not yield to the claim. Nothing rearranges itself to agree with you — it was never yours to declare."
+};
+
+function gateRefusal(category) {
+  return GATE_REFUSAL[category] || GATE_REFUSAL.default;
+}
+
+/**
+ * Classifies a player intent BEFORE any roll. Returns
+ * { verdict: "legitimate"|"impossible", category, reason }. Pure + deterministic
+ * (the server owns the decision); fails OPEN — anything not clearly impossible is
+ * "legitimate". An optional advisory classifier (options.intentGateFn) may add a
+ * verdict, but the server re-validates it against the same rubric (a known gated
+ * category, and — for fiat categories — no speech framing) before honoring it, so
+ * the model never unilaterally tyrannizes a legitimate action.
+ */
+export function classifyIntentAuthority(intent, options = {}) {
+  const text = String(intent || "").toLowerCase();
+  if (!text.trim()) {
+    return { verdict: "legitimate", category: null, reason: "" };
+  }
+  const impossible = (category) => ({ verdict: "impossible", category, reason: gateRefusal(category) });
+
+  // Physics-impossible: refused regardless of framing.
+  if (REALITY_COMMAND_RE.test(text) || REALITY_COMMAND_RE2.test(text)) {
+    return impossible("reality_command");
+  }
+  if (SUMMON_FROM_NOTHING_RE.test(text)) {
+    return impossible("summon_from_nothing");
+  }
+
+  // Fiat claims of power / authority / possession: refused UNLESS framed as speech
+  // to someone (then it's a bluff → a legitimate deception attempt that can fail).
+  const speech = SPEECH_FRAME_RE.test(text);
+  if (!speech) {
+    if (I_AM_GOD_RE.test(text) || ASCEND_GODHOOD_RE.test(text) || SELF_DEIFICATION_RE.test(text)) {
+      return impossible("self_deification");
+    }
+    if (LEGENDARY_ITEM_RE.test(text) && ALWAYS_OWNED_RE.test(text)) {
+      return impossible("retcon_possession");
+    }
+    if (SELF_AUTHORITY_RE.test(text) && (MASS_OBEY_RE.test(text) || AUTHORITY_OVER_RE.test(text))) {
+      return impossible("self_authority");
+    }
+  }
+
+  // Advisory model classifier — re-validated by the server; fails open.
+  if (typeof options.intentGateFn === "function") {
+    try {
+      const verdict = options.intentGateFn({ intent: text });
+      if (verdict && verdict.verdict === "impossible" && GATED_CATEGORIES.has(verdict.category)) {
+        const physics = PHYSICS_GATED.has(verdict.category);
+        if (physics || !speech) {
+          return { verdict: "impossible", category: verdict.category, reason: isString(verdict.reason) ? verdict.reason : gateRefusal(verdict.category) };
+        }
+      }
+    } catch {
+      // Classifier failure → fail open (allow the action).
+    }
+  }
+
+  return { verdict: "legitimate", category: null, reason: "" };
+}
+
+// Builds the refused-attempt result for a gated intent: NO roll, NO success, NO
+// state mutation — only a grounded in-fiction refusal and a timeline beat. The run
+// is unchanged but for the event (no HP, no item, no canon shift).
+function buildGatedAttempt(run, action, context, authority, options = {}) {
+  const now = isoFromOption(options.now ?? action.createdAt);
+  const attemptResult = {
+    intent: action.intent,
+    targetId: action.targetId || null,
+    success: false,
+    summary: `You attempt: ${context.intent}`,
+    checkResult: null,
+    // No dice were rolled — the world refused before any check.
+    needsCheck: false,
+    narration: isString(authority.reason) ? authority.reason : gateRefusal(authority.category),
+    warnings: ["ATTEMPT_GATED"],
+    proposedEffects: [],
+    damage: null,
+    // A "refused" consequence: nothing was enforced on the run; it documents WHY
+    // the world did not comply so the GM prose can be grounded in the refusal.
+    consequence: { type: "refused", applied: false, category: authority.category, reason: authority.reason || "" },
+    foreclosed: false,
+    // Pre-roll gate flags — the request layer keys grounded-refusal narration off
+    // these, and the client can style the beat as the world not complying.
+    gated: true,
+    gateCategory: authority.category
+  };
+  const event = createAttemptTimelineEvent(run, action, attemptResult, null, options);
+  run.timeline.push(event);
+  run.updatedAt = now;
+  const finalValidation = validateSoloRun(run);
+  if (!finalValidation.ok) {
+    return {
+      ok: false,
+      errors: finalValidation.errors.map((error) => ({ path: `run.${error.path}`, message: error.message }))
+    };
+  }
+  return {
+    ok: true,
+    run,
+    event,
+    memoryFact: null,
+    attemptResult,
+    attemptContext: context,
+    providerInput: null,
+    providerErrors: [],
+    errors: []
+  };
+}
+
 // A flagged intent (prompt injection / explicit / empty-after-sanitize) never
 // reaches the AI: it resolves to a no-op, in-character refusal. Nothing is rolled
 // or damaged, and the raw offending text is neither echoed nor persisted. The
@@ -1040,6 +1208,19 @@ export function resolveAttemptAction(run, action, options = {}) {
       errors: context.errors
     };
   }
+
+  // IMPOSSIBILITY / AUTHORITY GATE (pre-roll). Runs BEFORE the provider call and
+  // the d20: reality-breaking, godhood/authority-by-fiat, summon-from-nothing, and
+  // retconned-ownership intents are REFUSED outright — no roll, no success (a
+  // forced nat-20 can't make them land), no state mutation. Audacious-but-possible
+  // actions fall through to a normal, fail-able roll. Fails OPEN (uncertainty →
+  // legitimate), so it never tyrannizes bold-but-legal play. This is the seam
+  // BEFORE the roll; the failure-consequence engine runs AFTER a failed roll.
+  const authority = classifyIntentAuthority(context.intent, options);
+  if (authority.verdict === "impossible") {
+    return buildGatedAttempt(updatedRun, safeAction, context, authority, options);
+  }
+
   const providerInput = buildAttemptProviderInput(context, options);
   const providerResult = resolveProviderOutput(context, providerInput, options);
   const providerOutput = providerResult.output;

@@ -730,6 +730,18 @@ function buildConsequenceDirective(resolved) {
   const deathSave = resolved?.deathSave || resolved?.deathSaveResult || null;
   const died = resolved?.runDied === true || resolved?.run?.player?.status === "dead";
   const parts = [];
+  // IMPOSSIBILITY / AUTHORITY GATE: the server refused this intent pre-roll. The
+  // action did not and cannot succeed — reinforce that the GM narrates ONLY the
+  // world refusing (the prompt builder already steers this; this is the anti-
+  // softening backstop, mirroring the lethality directive).
+  if (resolved?.attemptResult?.gated === true) {
+    return (
+      " The player tried something the world refuses to allow (impossible or not theirs to declare). " +
+      "It did NOT succeed and CANNOT — reality does not bend, no item or power appears, no one is compelled. " +
+      "Narrate ONLY the world quietly not complying, grounded in the fiction. Do NOT let it work even partially, " +
+      "do NOT invent the thing into existence, do NOT scold or break character."
+    );
+  }
   if (died) {
     return (
       " The player has DIED — this is a real, permanent 5e death, not a faint or a near-miss. " +

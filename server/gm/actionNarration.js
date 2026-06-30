@@ -47,6 +47,19 @@ export function buildActionGmMessage(run, resolved) {
     if (resolved.action?.scriptedAttempt === true) {
       return null;
     }
+    // IMPOSSIBILITY / AUTHORITY GATE refusal: the server already refused this
+    // intent pre-roll (reality-breaking / authority-by-fiat / summon-from-nothing /
+    // retconned loot). The action did NOT and CANNOT succeed. Steer the GM to
+    // narrate the world simply NOT complying — grounded, in-fiction, atmospheric —
+    // never a system error, never a scolding, never secretly letting it work.
+    if (ar.gated === true) {
+      return (
+        `In the current scene, the player tries something the world will not allow: "${String(ar.intent || "an action")}". ` +
+        `This does NOT happen and CANNOT happen — reality does not bend, no item appears, no power answers, no one is compelled. ` +
+        `Narrate ONLY the world quietly refusing to comply, grounded in the fiction (e.g. the words die in the air, the hand closes on nothing). ` +
+        `Do NOT let it succeed even partially, do NOT mock the player, do NOT mention rules or systems. ${suffix}`
+      );
+    }
     const cr = ar.checkResult;
     const rollText = cr && cr.total !== undefined && cr.total !== null ? ` (rolled ${cr.total} vs DC ${cr.dc})` : "";
     return (
@@ -85,12 +98,26 @@ export function buildActionGmMessage(run, resolved) {
         .map((turn) => `${turn.role === "player" ? "Player" : speaker}: ${turn.text.trim()}`)
         .join("\n");
       const beatHint = tr.found && isString(tr.line) ? ` ${speaker} may draw on what they know: "${tr.line}".` : "";
+      // INVENTED-CANON GUARD (the coherence moat, NPC side): a player can SAY
+      // anything, but the NPC must not let a player's words rewrite the world. If
+      // the player asserts facts, shared history, names, debts, or authority the
+      // NPC has no genuine basis to know are true (e.g. a war buddy and a battle
+      // that never happened), ${speaker} does NOT confirm them as real. They stay
+      // skeptical, uncertain, guarded, or noncommittal — they may humor or probe
+      // the claim, but never validate invented backstory as established truth.
+      const canonGuard =
+        ` Important: ${speaker} only knows what they genuinely would. If the player ` +
+        `asserts facts, shared history, or claims about the world that ${speaker} has no ` +
+        `real basis to know are true, ${speaker} does NOT accept them as fact — they react ` +
+        `with honest skepticism, confusion, or guarded non-commitment, and never confirm ` +
+        `invented backstory or unearned authority as real. Do not rewrite the world to fit ` +
+        `the player's claim.`;
       return (
         `The player is mid-conversation with ${speaker}.${persona}${appearance} ` +
         `${transcript ? `Conversation so far:\n${transcript}\n` : ""}` +
         `The player just said to them: "${playerMessage}". ` +
         `Respond AS ${speaker}, in character, directly answering or reacting to what the player just said. ` +
-        `Do NOT repeat an earlier greeting or a line already spoken; advance the exchange.${beatHint} ` +
+        `Do NOT repeat an earlier greeting or a line already spoken; advance the exchange.${beatHint}${canonGuard} ` +
         `Voice ${speaker}'s spoken reply (1-3 sentences of dialogue), then a brief line of narration. ${suffix}`
       );
     }
