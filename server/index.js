@@ -744,6 +744,16 @@ function buildConsequenceDirective(resolved) {
       "do NOT invent the thing into existence, do NOT scold or break character."
     );
   }
+  if (resolved?.attemptResult?.unpossessed === true) {
+    const item = typeof resolved.attemptResult.claimedItem === "string" && resolved.attemptResult.claimedItem
+      ? resolved.attemptResult.claimedItem
+      : "the item they claimed";
+    return (
+      ` The action relied on ${item}, which the player does NOT actually carry. It is not in their possession and does ` +
+      "NOT appear — narrate the absence in-fiction (they reach for it and it simply is not there). Do NOT let the item " +
+      "materialize, do NOT let the action succeed on its strength, do NOT scold or break character."
+    );
+  }
   if (died) {
     return (
       " The player has DIED — this is a real, permanent 5e death, not a faint or a near-miss. " +

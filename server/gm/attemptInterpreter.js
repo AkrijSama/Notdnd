@@ -45,7 +45,10 @@ const ALLOWED_OUTPUT_FIELDS = new Set([
   "successNarration",
   "failureNarration",
   "proposedEffects",
-  "failureConsequence"
+  "failureConsequence",
+  // POSSESSION: flags an action that relies on a specific claimed item; the server
+  // verifies it against real inventory (resolvePossessionClaim).
+  "requiredItem"
 ]);
 
 const INTERPRETER_TIMEOUT_MS = 15000;
@@ -126,8 +129,14 @@ export function buildAttemptInterpreterMessages(providerInput) {
     '    "objectState": string|null, // for "objectState": its new broken state (e.g. "jammed","torn")',
     `    "retryEffect": ${retryValues},  // for "objectState": "blocked" forecloses retrying it; "harder" raises the bar; "none" leaves it open`,
     '    "reason": string|null       // short justification, consistent with failureNarration',
-    "  }",
+    "  },",
+    '  "requiredItem": { "name": string, "specific": boolean } | null  // see POSSESSION below',
     "}",
+    "",
+    "POSSESSION — does this action RELY ON the player already carrying a SPECIFIC item?",
+    '- If yes (e.g. "unlock it with the brass key I have", "poison his drink with the vial from my boot", "show the guard my writ of passage"), set requiredItem to { "name": "<the item, e.g. brass key>", "specific": true }. The SERVER checks whether the player truly holds it and fails the action if they do not — so you do NOT need to know their inventory; just NAME the claimed item.',
+    '- If the action uses GENERIC or improvised gear the fiction plausibly provides (a rock, a stick, a torch from a rag, mud, rope), or does not depend on a specific carried item at all, set requiredItem: null.',
+    "- When unsure, set requiredItem: null. Do NOT flag ordinary improvisation — only a SPECIFIC named item the player explicitly claims to be carrying.",
     "",
     "PER-CASE INTEGRITY — this is the whole point. Do NOT reflexively punish every failure:",
     '- type "none" is valid and COMMON. A failed perception in an empty room, a failed recall, a clumsy-but-harmless try → {"type":"none"}. No cost.',
@@ -178,6 +187,7 @@ export function coerceInterpreterOutput(parsed, context = {}) {
   // default stand rather than fabricating a full proposal from nothing.
   const hasSignal =
     out.failureConsequence !== undefined ||
+    out.requiredItem !== undefined ||
     out.dc !== undefined ||
     out.recommendedAbility !== undefined ||
     isString(out.summary) ||

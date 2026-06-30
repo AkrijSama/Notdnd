@@ -284,6 +284,53 @@ async function scenarioConsequence(ctx) {
   ctx.note(`xp ${baseXp} → ${xpOf(afterXp)} via ${xpSource}`);
 }
 
+// 1a2) POSSESSION STATE-CHECK — the ambiguous-possession class the authority gate
+// leaves fail-open is closed by STATE, not text: an action relying on a SPECIFIC
+// claimed item is verified against real inventory. Held → proceeds; specifically
+// claimed-but-absent → fails (no item, no roll, no success); generic improvisation
+// → still rolls. Driven deterministically via the attempt test-hook's requiredItem
+// flag (the model's job) so the SERVER's verification is what's under test.
+async function scenarioPossession(ctx) {
+  const r = await newRun("possession"); ctx.runId = r.runId; ctx.token = r.token;
+  const KEY = "selfplay_brass_key";
+  // Drive an attempt whose interpreter flags a required item, with a known roll.
+  const tryWithItem = (intent, requiredItem, fixedRoll = 20) =>
+    act(r, { type: "attempt", intent, testHook: { fixedRoll, providerOutput: {
+      summary: `You attempt: ${intent}`, recommendedAbility: "dexterity", dc: 12, needsCheck: true,
+      advantage: false, disadvantage: false, successNarration: "The lock gives.", failureNarration: "It holds.",
+      proposedEffects: [], requiredItem
+    } } });
+
+  // (a) Player HAS the Brass Key → the claim is verified, the action PROCEEDS and rolls.
+  await act(r, { type: "grant_item", itemId: KEY, item: { name: "Brass Key", usable: true, consumable: false, quantity: 1 } });
+  ctx.assert("brass key is in inventory", invQty((await scene(r)).json, KEY) === 1, "qty 1", `qty ${invQty((await scene(r)).json, KEY)}`);
+  const has = await tryWithItem("unlock the iron chest with the brass key", { name: "brass key", specific: true }, 20);
+  const har = has.json.attemptResult || {};
+  ctx.assert("HAS item → not refused for absence", har.unpossessed !== true, "unpossessed:not-true", `unpossessed:${har.unpossessed}`);
+  ctx.assert("HAS item → the action ROLLS a real check", har.needsCheck === true && har.checkResult != null, "rolled a d20", `needsCheck:${har.needsCheck} rolled:${har.checkResult ? "yes" : "no"}`);
+  ctx.assert("HAS item + nat-20 → succeeds", har.success === true, "success:true", `success:${har.success}`);
+
+  // (b) Player does NOT have the claimed item → the claim FAILS (no item, no roll,
+  // no success even on a forced nat-20) — the possession-retcon leak, closed by state.
+  const invBefore = (await scene(r)).json;
+  const lacks = await tryWithItem("show the guard the royal writ of passage I have always carried", { name: "royal writ of passage", specific: true }, 20);
+  const lar = lacks.json.attemptResult || {};
+  ctx.assert("LACKS item → refused (unpossessed)", lar.unpossessed === true, "unpossessed:true", `unpossessed:${lar.unpossessed}`);
+  ctx.assert("LACKS item → does NOT succeed on a forced nat-20", lar.success === false, "success:false", `success:${lar.success}`);
+  ctx.assert("LACKS item → NO dice rolled", lar.checkResult == null, "checkResult:null", `checkResult:${lar.checkResult ? "set" : "null"}`);
+  ctx.assert("LACKS item → grounded absence narration (not a system error)", /reach for|nothing|never|not .*on you|do not (?:have|carry)/i.test(String(lacks.json.gmNarration || lar.narration || "")), "absence prose", String(lacks.json.gmNarration || lar.narration || "").slice(0, 80));
+  // No phantom item materialized into inventory.
+  const invAfter = (await scene(r)).json;
+  ctx.assert("LACKS item → no phantom item conjured into inventory", (invAfter.player?.inventory || []).length === (invBefore.player?.inventory || []).length, "inventory unchanged", `${(invBefore.player?.inventory||[]).length} → ${(invAfter.player?.inventory||[]).length}`);
+
+  // (c) ANTI-TYRANNY: generic/improvised gear still rolls (and can fail) — never refused.
+  const generic = await tryWithItem("grab a nearby rock and hurl it at the rusted lever", { name: "a nearby rock", specific: true }, 1);
+  const gar = generic.json.attemptResult || {};
+  ctx.assert("GENERIC improvisation → NOT refused", gar.unpossessed !== true, "unpossessed:not-true", `unpossessed:${gar.unpossessed}`);
+  ctx.assert("GENERIC improvisation → still ROLLS (can fail)", gar.needsCheck === true && gar.checkResult != null, "rolled a d20", `needsCheck:${gar.needsCheck} rolled:${gar.checkResult ? "yes" : "no"}`);
+  ctx.note(`possession: held brass key proceeds; claimed-but-absent writ refused ("${String(lar.narration || "").replace(/\s+/g, " ").trim().slice(0, 90)}"); rock improvisation still rolls`);
+}
+
 // 1b) MEANINGFUL FAILURE — a failed check's GM-proposed consequence becomes REAL,
 // persistent state (not just prose), and retry is foreclosed only where it fits.
 // Driven deterministically via the gated attempt test-hook (fixedRoll + a scripted
@@ -949,6 +996,7 @@ async function scenarioGmHealth(ctx) {
 
 const SCENARIOS = [
   { key: "consequence", title: "CONSEQUENCE — actions mutate persisted state", fn: scenarioConsequence },
+  { key: "possession", title: "POSSESSION — claimed items checked vs real inventory (retcons fail, improvisation rolls)", fn: scenarioPossession },
   { key: "failure", title: "MEANINGFUL FAILURE (hook) — engine enforces every consequence type", fn: scenarioFailureConsequence },
   { key: "failure_live", title: "MEANINGFUL FAILURE (LIVE) — real failures vary, not flat-2HP; fallback rate", fn: scenarioFailureLive },
   { key: "lethality", title: "LETHALITY — 0 HP kills; death is permanent & terminal", fn: scenarioLethality },

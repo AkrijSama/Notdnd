@@ -26,7 +26,11 @@ const PROVIDER_OUTPUT_FIELDS = new Set([
   "proposedEffects",
   // MEANINGFUL FAILURE: a STRUCTURED consequence the GM proposes for a failed
   // (or partial) check, which the server makes REAL. See FAILURE_CONSEQUENCE_*.
-  "failureConsequence"
+  "failureConsequence",
+  // POSSESSION CLAIM: when an action RELIES ON a specific item the player claims
+  // to carry, the interpreter flags it here ({ name, specific }); the SERVER then
+  // verifies possession against real inventory. See resolvePossessionClaim.
+  "requiredItem"
 ]);
 const ALLOWED_EFFECT_TYPES = new Set(["timeline_event", "memory_fact", "narration", "damage"]);
 
@@ -528,7 +532,15 @@ export function buildAttemptProviderInput(context, options = {}) {
         objectState: "string|null",
         retryEffect: OBJECT_RETRY_EFFECT_VALUES.join("|"),
         reason: "string|null"
-      }
+      },
+      // POSSESSION: if (and only if) the action RELIES ON the player already
+      // carrying a SPECIFIC item they claim to have (a named key, a particular
+      // vial, a specific document), name it here with specific:true — the SERVER
+      // verifies they truly hold it and fails the action if they do not. For
+      // generic/improvised gear the fiction plausibly provides (a rock, a torch
+      // from a rag, a stick) set requiredItem null. When unsure, set null — do NOT
+      // flag ordinary improvisation.
+      requiredItem: { name: "string", specific: "boolean" }
     }
   };
 }
@@ -611,6 +623,20 @@ export function validateAttemptProviderOutput(output, options = {}) {
     }
   }
 
+  if (output.requiredItem !== undefined && output.requiredItem !== null) {
+    const ri = output.requiredItem;
+    if (!isPlainObject(ri)) {
+      push(errors, "requiredItem", "Expected object");
+    } else {
+      if (!isString(ri.name)) {
+        push(errors, "requiredItem.name", "Expected non-empty item name");
+      }
+      if (ri.specific !== undefined && typeof ri.specific !== "boolean") {
+        push(errors, "requiredItem.specific", "Expected boolean");
+      }
+    }
+  }
+
   const text = [output.summary, output.successNarration, output.failureNarration].join(" ");
   if (/\b(SYSTEM|USER):/i.test(text)) {
     push(errors, "output", "Provider output appeared to include a raw prompt dump");
@@ -684,6 +710,15 @@ export function sanitizeAttemptProviderOutput(output, options = {}) {
   // (server enforces exactly that, including an explicit "none" = no cost).
   if (output && typeof output === "object" && "failureConsequence" in output) {
     sanitized.failureConsequence = normalizeFailureConsequence(output.failureConsequence);
+  }
+  // Possession claim: normalize to { name, specific } or null. Default specific to
+  // FALSE (fail open) so an under-specified flag never blocks — only an explicit
+  // specific:true claim of a named item can be refused for absence.
+  if (output && typeof output === "object" && "requiredItem" in output) {
+    const ri = output.requiredItem;
+    sanitized.requiredItem = isPlainObject(ri) && isString(ri.name)
+      ? { name: sanitizeText(ri.name), specific: ri.specific === true }
+      : null;
   }
   return sanitized;
 }
@@ -1210,6 +1245,178 @@ function buildGatedAttempt(run, action, context, authority, options = {}) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// POSSESSION STATE-CHECK — the ambiguous-possession class the authority gate
+// deliberately leaves fail-open. The classifier cannot tell "the brass key I
+// found" (legitimate) from "the brass key I've always carried" (retconned) by
+// TEXT — it depends on whether the player ACTUALLY HOLDS the item. So the model
+// (attempt interpreter) FLAGS that an action relies on a specific claimed item
+// (providerOutput.requiredItem), and the SERVER verifies possession against real
+// inventory + run-state. Possessed → proceed; specifically claimed-but-absent →
+// the claim fails (no roll, no success, the item does not materialize). Fails
+// OPEN: only an explicit specific claim that matches NOTHING the player holds is
+// refused; generic/improvised gear and any plausible match proceed.
+
+// Stopwords stripped when reducing a claimed item to its salient content words,
+// so "the brass key I've always carried" → ["brass","key"].
+const ITEM_STOPWORDS = new Set([
+  "the", "a", "an", "my", "mine", "his", "her", "their", "your", "our", "with", "from", "of", "in",
+  "on", "to", "i", "ive", "i've", "have", "always", "carried", "carry", "kept", "keep", "owned",
+  "own", "that", "this", "it", "some", "any", "and", "out", "use", "using", "used", "pull", "draw",
+  "produce", "show", "present", "old", "trusty", "faithful", "spare", "little", "small", "good",
+  "for", "at", "by", "as", "into", "up", "down", "here", "there", "still", "earlier", "before",
+  "secretly", "hidden", "tucked", "pocket", "boot", "cloak", "pack", "belt", "bag", "pouch"
+]);
+// Generic/improvised gear that should NEVER be refused for absence — the fiction
+// plausibly furnishes these, so a claim resting on one stays legitimate.
+const GENERIC_ITEM_WORDS = new Set([
+  "rock", "stone", "stick", "branch", "rag", "cloth", "rope", "torch", "dirt", "sand", "mud",
+  "water", "fire", "wood", "log", "plank", "board", "nail", "string", "twig", "leaf", "ash",
+  "snow", "ice", "gravel", "pebble", "debris", "rubble", "bone", "thorn", "vine", "reed", "weed"
+]);
+// Category nouns name a KIND of item; the DISTINCTIVE qualifier ("brass", "silver
+// skeleton") is what identifies the specific one. So a claim with a distinctive
+// word must match THAT (holding a brass key doesn't satisfy a "silver skeleton
+// key" claim); a bare category claim ("my key") matches any held item of the kind.
+const ITEM_CATEGORY_NOUNS = new Set([
+  "key", "sword", "blade", "dagger", "knife", "axe", "spear", "bow", "staff", "wand", "vial",
+  "potion", "flask", "bottle", "elixir", "draught", "rope", "torch", "lantern", "document",
+  "paper", "papers", "letter", "scroll", "map", "deed", "writ", "pass", "token", "coin", "gold",
+  "ring", "amulet", "necklace", "cloak", "armor", "shield", "gem", "stone", "crystal", "powder",
+  "poison", "antidote", "salve", "herb", "herbs", "tool", "tools", "lockpick", "lockpicks", "pick",
+  "picks", "kit", "gloves", "boots", "hat", "mask", "charm", "talisman", "seal", "badge", "medallion"
+]);
+
+function itemContentWords(text) {
+  return [...new Set(
+    String(text || "")
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .filter((word) => word.length >= 3 && !ITEM_STOPWORDS.has(word))
+  )];
+}
+
+// All item names/ids the player demonstrably holds: the persisted run.inventory
+// (quantity > 0), the state-contract player.inventory[] mirror, and player assets.
+function playerHeldItemTokens(run) {
+  const tokens = new Set();
+  const add = (text) => {
+    for (const word of itemContentWords(text)) {
+      tokens.add(word);
+    }
+  };
+  const inv = isPlainObject(run?.inventory) ? Object.values(run.inventory) : [];
+  for (const item of inv) {
+    if (isPlainObject(item) && (typeof item.quantity !== "number" || item.quantity > 0)) {
+      add(item.name);
+      add(item.itemId);
+    }
+  }
+  const arr = Array.isArray(run?.player?.inventory) ? run.player.inventory : [];
+  for (const entry of arr) {
+    if (isPlainObject(entry) && (typeof entry.qty !== "number" || entry.qty > 0)) {
+      add(entry.name);
+      add(entry.id || entry.itemId);
+    }
+  }
+  const assets = isPlainObject(run?.playerAssets) ? Object.values(run.playerAssets) : [];
+  for (const asset of assets) {
+    if (isPlainObject(asset)) {
+      add(asset.name);
+      add(asset.assetId);
+    }
+  }
+  return tokens;
+}
+
+/**
+ * Verifies a claimed-required item against what the player actually holds.
+ * Returns { possessed, refuse, claimWords }. FAIL-OPEN:
+ *   - no claim / not flagged specific → refuse:false (proceed).
+ *   - the claim is purely generic gear (a rock, a rag) → refuse:false (proceed).
+ *   - any salient word of the claim matches a held item → possessed:true (proceed).
+ *   - ONLY a specific named item whose every salient word is absent from inventory
+ *     → refuse:true (the player does not have it).
+ */
+export function resolvePossessionClaim(run, requiredItem) {
+  if (!isPlainObject(requiredItem) || requiredItem.specific !== true || !isString(requiredItem.name)) {
+    return { possessed: false, refuse: false, claimWords: [] };
+  }
+  const claimWords = itemContentWords(requiredItem.name);
+  if (!claimWords.length) {
+    return { possessed: false, refuse: false, claimWords };
+  }
+  // Generic/improvised gear is never refused for absence (anti-tyranny): if the
+  // claim names ANY generic/environmental item, the fiction can furnish it.
+  if (claimWords.some((word) => GENERIC_ITEM_WORDS.has(word))) {
+    return { possessed: false, refuse: false, claimWords };
+  }
+  const held = playerHeldItemTokens(run);
+  // Match on the DISTINCTIVE descriptor when the claim has one (so "silver skeleton
+  // key" is NOT satisfied by a held "brass key"); fall back to the category noun
+  // only for a bare claim ("my key" matches any held key). Fail-open: any match
+  // proceeds; refuse only when nothing the player holds answers the claim.
+  const distinctive = claimWords.filter((word) => !ITEM_CATEGORY_NOUNS.has(word));
+  const matchWords = distinctive.length ? distinctive : claimWords;
+  const possessed = matchWords.some((word) => held.has(word));
+  return { possessed, refuse: !possessed, claimWords };
+}
+
+// Composes a grounded, in-fiction absence line for a specifically-claimed item the
+// player does not hold (never a system error). Pure.
+function unpossessedNarration(itemName) {
+  const name = isString(itemName) ? itemName.trim() : "the item";
+  return `You reach for ${/^(the|a|an|my|your|his|her|their)\b/i.test(name) ? name : `the ${name}`} — and find nothing of the kind on you. It was never in your pack; wishing it there does not make it so.`;
+}
+
+// Builds the refused-attempt result when an action depends on a specific item the
+// player does NOT possess: NO roll, NO success, NO item materializes — only a
+// grounded absence beat. Mirrors buildGatedAttempt (pre-roll, no state mutation).
+function buildUnpossessedAttempt(run, action, context, claim, options = {}) {
+  const now = isoFromOption(options.now ?? action.createdAt);
+  const itemName = isString(claim?.name) ? claim.name : "the item";
+  const narration = unpossessedNarration(itemName);
+  const attemptResult = {
+    intent: action.intent,
+    targetId: action.targetId || null,
+    success: false,
+    summary: `You attempt: ${context.intent}`,
+    checkResult: null,
+    needsCheck: false,
+    narration,
+    warnings: ["ATTEMPT_ITEM_UNPOSSESSED"],
+    proposedEffects: [],
+    damage: null,
+    consequence: { type: "refused", applied: false, category: "unpossessed_item", reason: narration, claimedItem: itemName },
+    foreclosed: false,
+    // Possession-check flags (parallel to the gate's `gated`): the request layer
+    // grounds the live narration in the absence, and the client can style it.
+    unpossessed: true,
+    claimedItem: itemName
+  };
+  const event = createAttemptTimelineEvent(run, action, attemptResult, null, options);
+  run.timeline.push(event);
+  run.updatedAt = now;
+  const finalValidation = validateSoloRun(run);
+  if (!finalValidation.ok) {
+    return {
+      ok: false,
+      errors: finalValidation.errors.map((error) => ({ path: `run.${error.path}`, message: error.message }))
+    };
+  }
+  return {
+    ok: true,
+    run,
+    event,
+    memoryFact: null,
+    attemptResult,
+    attemptContext: context,
+    providerInput: null,
+    providerErrors: [],
+    errors: []
+  };
+}
+
 // A flagged intent (prompt injection / explicit / empty-after-sanitize) never
 // reaches the AI: it resolves to a no-op, in-character refusal. Nothing is rolled
 // or damaged, and the raw offending text is neither echoed nor persisted. The
@@ -1284,6 +1491,18 @@ export function resolveAttemptAction(run, action, options = {}) {
   const providerInput = buildAttemptProviderInput(context, options);
   const providerResult = resolveProviderOutput(context, providerInput, options);
   const providerOutput = providerResult.output;
+
+  // POSSESSION STATE-CHECK (pre-roll). When the interpreter flags that the action
+  // RELIES ON a specific claimed item, the server verifies possession against real
+  // inventory. A specifically-claimed item the player does NOT hold fails outright
+  // (no roll, no success, nothing materializes) — closing the possession-retcon
+  // leak via STATE, not text. Fails OPEN: generic gear and any plausible match
+  // proceed to a normal roll, so legitimate improvisation is never blocked. Runs
+  // AFTER the authority gate, BEFORE the roll.
+  const possession = resolvePossessionClaim(updatedRun, providerOutput.requiredItem);
+  if (possession.refuse) {
+    return buildUnpossessedAttempt(updatedRun, safeAction, context, providerOutput.requiredItem, options);
+  }
 
   // Roll gate (FIX H): only genuinely uncertain/contested actions roll a d20.
   // Pure movement/travel/observation resolves narratively — no dice, no "vs DC".
