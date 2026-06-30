@@ -247,3 +247,42 @@ test("an explicit module-placed starting NPC is honored only with a stated reaso
   });
   assert.equal(getSoloRun(bare.runId).npcs.npc_start_contact, undefined, "ruins with no reason -> alone");
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// C.5 — a SANDBOX run does NOT inject the procedural quarry-quest (owner decision
+// (a): zero authored objective). Campaign runs still get their directed spine.
+// Stop CREATING the dead record upstream, not just suppressing it downstream.
+// ─────────────────────────────────────────────────────────────────────────────
+test("CAMPAIGN run (default mode) still injects the procedural main quest", async () => {
+  initializeDatabase();
+  resetDatabase();
+  const { user } = registerUser({ email: "camp@notdnd.local", password: "password123", displayName: "Camp" });
+  const result = await createWorldOnboardingRun(user.id, {
+    world: { name: "Realm", tone: "grimdark", startingLocationName: "Gate", startingLocationType: "city gate", flavor: "rust" },
+    character: { name: "Bram", race: "Human", characterClass: "Rogue", background: "Criminal", baseAbilityScores: { strength: 10, dexterity: 15, constitution: 13, intelligence: 14, wisdom: 12, charisma: 11 } }
+  });
+  const run = getSoloRun(result.runId);
+  assert.equal(run.mode, "campaign", "default run is campaign mode");
+  assert.ok(run.quests.quest_main, "campaign run has the directed main quest");
+  assert.equal(run.quests.quest_main.isMain, true);
+});
+
+test("SANDBOX run creates NO quest_main and no quest-linked spine NPCs (and stays schema-valid)", async () => {
+  initializeDatabase();
+  resetDatabase();
+  const { user } = registerUser({ email: "sand@notdnd.local", password: "password123", displayName: "Sand" });
+  const result = await createWorldOnboardingRun(user.id, {
+    world: { name: "Realm", tone: "grimdark", startingLocationName: "Gate", startingLocationType: "city gate", flavor: "rust" },
+    character: { name: "Bram", race: "Human", characterClass: "Rogue", background: "Criminal", baseAbilityScores: { strength: 10, dexterity: 15, constitution: 13, intelligence: 14, wisdom: 12, charisma: 11 } },
+    mode: "sandbox"
+  });
+  const run = getSoloRun(result.runId);
+  assert.equal(run.mode, "sandbox", "run is flagged sandbox");
+  assert.equal(run.quests.quest_main, undefined, "NO procedural quarry-quest injected");
+  assert.equal(Object.keys(run.quests || {}).length, 0, "sandbox starts with zero authored objectives");
+  // The quest-linked procedural contacts are not created (no dangling linkedQuestIds).
+  assert.equal(run.npcs.npc_quest_giver, undefined, "no directed quest-giver in a sandbox");
+  assert.equal(run.npcs.npc_far_witness, undefined, "no directed far-witness in a sandbox");
+  // The run still opens with real prose (open-world, no objective hook).
+  assert.ok(typeof run.narration === "string" && run.narration.trim().length > 0, "sandbox opening narration still generated");
+});

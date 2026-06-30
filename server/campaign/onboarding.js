@@ -439,7 +439,7 @@ async function generateOpeningNarration({ campaignId, message, playerName, actor
   }
 }
 
-export async function createWorldOnboardingRun(userId, { world = {}, character = {}, draftPortraitId = null } = {}) {
+export async function createWorldOnboardingRun(userId, { world = {}, character = {}, draftPortraitId = null, mode = "campaign" } = {}) {
   const actorUserId = String(userId || "").trim();
   if (!actorUserId) {
     const error = new Error("userId is required to create a world onboarding run.");
@@ -481,6 +481,14 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
   const createdRun = createSoloRun({ userId: actorUserId });
   const run = getSoloRun(createdRun.runId);
   run.campaignId = campaignId;
+  // C.5 / owner decision (a): a SANDBOX is a pure open world with ZERO authored
+  // objective — it reacts to player-authored goals (Track A capturePlayerObjective)
+  // instead of an assigned quarry. So we STOP CREATING the procedural spine (the
+  // directed main quest + its quest-linked contacts) for sandbox runs, rather than
+  // creating-then-suppressing it. Track A's quest-layer suppression remains as a
+  // belt-and-suspenders net. Campaign/module runs are unchanged.
+  const sandbox = String(mode || "").trim().toLowerCase() === "sandbox";
+  run.mode = sandbox ? "sandbox" : "campaign";
   run.world = {
     ...run.world,
     name: resolvedWorld.name,
@@ -604,7 +612,7 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
   // Seed stage-1 content at the second location: a quest-giver NPC whose arrival
   // beat is linked to the main quest (talking there completes stage 1), plus
   // tone-flavoured lore/hint/ambient beats for ongoing conversation.
-  if (secondLocation) {
+  if (secondLocation && !sandbox) {
     run.npcs.npc_quest_giver = {
       npcId: "npc_quest_giver",
       displayName: "A waiting figure",
@@ -671,7 +679,10 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
     // Static plot NPC at the destination (mirrors npc_quest_giver): no identity
     // mint, faceless until the player arrives. Two beats — a reaction to the
     // player reaching the edge, and repeatable lore on how the world got here.
-    run.npcs.npc_far_witness = {
+    // SANDBOX: skipped — these beats link the procedural quest_main, which a
+    // sandbox does not create (a dangling linkedQuestId would fail validation).
+    if (!sandbox) {
+      run.npcs.npc_far_witness = {
       npcId: "npc_far_witness",
       displayName: "A figure at the edge",
       role: "witness",
@@ -710,33 +721,38 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
           contentTags: []
         }
       ]
-    };
+      };
+    }
   }
 
   // Seed the two-stage MVP main quest: travel to the second location (stage 0),
   // then speak with the figure waiting there (stage 1). The tone-keyed template
   // (quests.js) supplies the title/objectives; targets resolve to this run.
-  run.quests = run.quests || {};
-  run.quests.quest_main = createMainQuest(resolvedWorld, {
-    secondLocationId: secondLocation ? "second_location" : null,
-    secondLocationName: secondLocation?.name || null,
-    firstNpcId: secondLocation ? "npc_quest_giver" : npc?.npcId || null,
-    seed: worldSeed
-  });
-
-  // Extend the arc to the far location: after the figure at the second location,
-  // press on to the third location and SPEAK WITH the witness there. The win
-  // fires on that conversation (talk_beat -> npc_far_witness), not on arrival —
-  // so the player actually reaches the climax: arrives, meets the witness, hears
-  // the closing beat, then wins. (advanceQuests resolves talk_beat by matching
-  // the talk's linkedQuestIds against the quest id; the witness's beats carry
-  // ["quest_main"].) Appended here rather than in the shared createMainQuest
-  // contract, which tests lock to two stages.
-  if (thirdLocation && Array.isArray(run.quests.quest_main?.stages)) {
-    run.quests.quest_main.stages.push({
-      objective: `Press on to ${thirdLocation.name} and seek out the figure waiting at the edge.`,
-      completion: { kind: "talk_beat", targetId: "npc_far_witness" }
+  // SANDBOX (C.5 / owner decision a): the directed spine is NOT injected — a pure
+  // open world has no assigned quarry; it reacts to player-authored goals instead.
+  if (!sandbox) {
+    run.quests = run.quests || {};
+    run.quests.quest_main = createMainQuest(resolvedWorld, {
+      secondLocationId: secondLocation ? "second_location" : null,
+      secondLocationName: secondLocation?.name || null,
+      firstNpcId: secondLocation ? "npc_quest_giver" : npc?.npcId || null,
+      seed: worldSeed
     });
+
+    // Extend the arc to the far location: after the figure at the second location,
+    // press on to the third location and SPEAK WITH the witness there. The win
+    // fires on that conversation (talk_beat -> npc_far_witness), not on arrival —
+    // so the player actually reaches the climax: arrives, meets the witness, hears
+    // the closing beat, then wins. (advanceQuests resolves talk_beat by matching
+    // the talk's linkedQuestIds against the quest id; the witness's beats carry
+    // ["quest_main"].) Appended here rather than in the shared createMainQuest
+    // contract, which tests lock to two stages.
+    if (thirdLocation && Array.isArray(run.quests.quest_main?.stages)) {
+      run.quests.quest_main.stages.push({
+        objective: `Press on to ${thirdLocation.name} and seek out the figure waiting at the edge.`,
+        completion: { kind: "talk_beat", targetId: "npc_far_witness" }
+      });
+    }
   }
 
   await rebuildCampaignIndex(campaignId);
