@@ -13,7 +13,9 @@ test("world-definition step renders fields, chips, art styles, and disclaimer", 
   assert.match(html, /class="onb-chip active" data-world-tone="grimdark"/);
   // selected art style is active
   assert.match(html, /class="onb-art-card active" data-world-artstyle="anime"/);
-  assert.match(html, /data-world-loctype="tavern"/);
+  // The starting-location-type picker was removed from the sandbox flow (sandbox
+  // defaults to forest-ruins engine-side); assert it is genuinely gone.
+  assert.doesNotMatch(html, /data-world-loctype/);
 });
 
 test("world-preview step renders the generated world + confirm/regenerate controls", () => {
