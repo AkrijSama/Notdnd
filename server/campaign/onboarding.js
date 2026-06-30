@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { applyOperation, createSoloRun, getSoloRun, listUserHomebrew, saveSoloRun } from "../db/repository.js";
+import { logTurnEvent } from "../logging/sessionLog.js";
 import { normalizeContentForBuild } from "../homebrew/customContent.js";
 import { ensureCampaignMemoryDocsAsync, rebuildCampaignIndex } from "../gm/memoryStore.js";
 import { runGmPipeline } from "../gm/prompting.js";
@@ -179,6 +180,59 @@ function buildQuestGiverBeats(world = {}, place = "this place") {
 function capitalizeFirst(value) {
   const s = String(value || "").trim();
   return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+}
+
+// Procedural STARTING-AREA features for an adoptable forest-ruins base. The
+// default location graph (schema.js) ships only a bare "Scuffed Mark"; a base the
+// player is invited to claim should have REAL, server-owned, discoverable content
+// worth exploring + mapping — the ruins structure as a landmark plus a few POIs.
+// Deterministic per world (tone/name flavor the prose), genre-consistent with the
+// forest-ruins archetype. Returned as `searchDetails` (revealed by the search
+// action), so the world has content — we never fake map markers.
+function buildStartAreaFeatures(world = {}, seed = 0) {
+  const tone = isStr(world.tone) ? world.tone.trim() : "dark fantasy";
+  const worldName = isStr(world.name) ? world.name.trim() : "this world";
+  const detail = (detailId, label, description) => ({
+    detailId,
+    label,
+    description,
+    revealed: false,
+    contentTags: [],
+    linkedEntityIds: ["start_location"],
+    linkedMemoryFactIds: [],
+    edition: "mainline",
+    policyProfileId: "mainline_default"
+  });
+  // A small deterministic pick so two worlds don't read identically.
+  const pick = (list) => list[Math.abs(Math.trunc(Number(seed) || 0)) % list.length];
+  const heart = pick(["collapsed great hall", "roofless feast hall", "fallen keep's core"]);
+  const watchpoint = pick(["leaning watchtower", "broken signal spire", "toppled gate-arch"]);
+  return [
+    detail(
+      "start_location_ruins_hall",
+      "The Collapsed Hall",
+      `The ${heart} is the heart of these ruins — fire-scarred pillars still hold a span of roof, dry and defensible. ` +
+        `This is the shell you could make your own: clear the rubble and it becomes a hearth, a wall, a foothold in ${worldName}.`
+    ),
+    detail(
+      "start_location_old_well",
+      "The Old Well",
+      `A stone well-mouth, half-choked with leaves and creeper. The rope is long rotted, but the shaft runs deep and the air off it ` +
+        `is cold and wet — there is water down there still, which means this place could keep someone alive.`
+    ),
+    detail(
+      "start_location_watch",
+      "The Broken Watchpoint",
+      `A ${watchpoint} leans at the tree-line, its stair half-swallowed by roots. From its top a watcher could see anyone ` +
+        `approaching through the ${tone} wood long before they reached the stones — the makings of a guarded threshold.`
+    ),
+    detail(
+      "start_location_cache",
+      "An Ash-Buried Cache",
+      `Under a fall of soot and forest litter, the corner of a buried strongbox shows — whoever held these ruins last left ` +
+        `in a hurry, or never left at all. Worth digging out: ruins like these reward the patient scavenger.`
+    )
+  ];
 }
 
 async function seedOnboardingMemory(campaignId, replacements) {
@@ -413,7 +467,7 @@ const OPENING_NARRATION_TIMEOUT_MS = 15000;
 // Generates the world-entry opening via the real GM pipeline, bounded so a slow
 // or unconfigured provider never blocks onboarding. Falls back to the starting
 // location description on timeout/empty/error.
-async function generateOpeningNarration({ campaignId, message, playerName, actorUserId, fallback }) {
+async function generateOpeningNarration({ campaignId, runId, message, playerName, actorUserId, fallback }) {
   let timer = null;
   const timeout = new Promise((resolve) => {
     timer = setTimeout(() => resolve(null), OPENING_NARRATION_TIMEOUT_MS);
@@ -421,6 +475,7 @@ async function generateOpeningNarration({ campaignId, message, playerName, actor
       timer.unref();
     }
   });
+  const t0 = Date.now();
   try {
     const result = await Promise.race([
       Promise.resolve(runGmPipeline({ campaignId, message, mode: "companion", playerName, actorUserId })).catch(() => null),
@@ -430,11 +485,18 @@ async function generateOpeningNarration({ campaignId, message, playerName, actor
       clearTimeout(timer);
     }
     const narrative = result && typeof result.narrative === "string" ? result.narrative.trim() : "";
+    if (!narrative) {
+      // FORMERLY SILENT (#9): the opening GM call timed out/failed/empty and a
+      // deterministic opening stood in — at the most-noticed moment (first entry).
+      // Now LOUD in the run transcript so a quiet opening is explainable.
+      logTurnEvent(runId, `OPENING narration fell back to deterministic prose after ${Date.now() - t0}ms (GM timeout ${OPENING_NARRATION_TIMEOUT_MS}ms / empty / error).`);
+    }
     return narrative || fallback;
-  } catch {
+  } catch (error) {
     if (timer) {
       clearTimeout(timer);
     }
+    logTurnEvent(runId, `OPENING narration ERRORED after ${Date.now() - t0}ms (${String(error?.message || error).slice(0, 120)}) — deterministic opening used.`);
     return fallback;
   }
 }
@@ -511,6 +573,17 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
       slugTag(resolvedWorld.startingLocationType)
     ])
   );
+  // Populate the starting area with real, server-owned, discoverable FEATURES so
+  // it isn't bare terrain. An adoptable forest-ruins base (the default sandbox
+  // start) gets the ruins structure as a landmark + a few POIs (well, watchpoint,
+  // cache); explicit non-baseable venues (a tavern) keep the bare default. This is
+  // the WORLD having content — the area generator placing it, not faked markers.
+  if (resolvedWorld.startIsBaseable === true) {
+    start.searchDetails = buildStartAreaFeatures(
+      resolvedWorld,
+      contentSeed(`${resolvedWorld.name}|${resolvedWorld.startingLocationName}|features`)
+    );
+  }
 
   // Apply the full 5e character onto run.player, including any of the user's
   // custom homebrew content. Custom races/classes/backgrounds resolve through
@@ -772,6 +845,7 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
   const npcReason = npc && isStr(startingNpcSpec?.reason) ? startingNpcSpec.reason : null;
   const opening = await generateOpeningNarration({
     campaignId,
+    runId: run.runId,
     message: buildOpeningGmMessage({
       characterName,
       race: built.race,

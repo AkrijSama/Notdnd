@@ -31,6 +31,20 @@ const DEFAULT_MODELS = {
 
 const usageByCampaign = {};
 
+// Per-attempt request timeouts (see requestOpenRouter). LOCAL gets a generous
+// window because an 8b on a single consumer GPU under load is legitimately slow;
+// CLOUD gets a tight one so a hung/over-quota cloud call fails fast and the chain
+// drops to local rather than stalling the player's turn. Read at call time so a
+// deploy can tune without a code change.
+function gmLocalTimeoutMs() {
+  const v = Number(process.env.NOTDND_GM_LOCAL_TIMEOUT_MS || process.env.INKBORNE_GM_LOCAL_TIMEOUT_MS);
+  return Number.isFinite(v) && v > 0 ? v : 60000;
+}
+function gmCloudTimeoutMs() {
+  const v = Number(process.env.NOTDND_GM_CLOUD_TIMEOUT_MS || process.env.INKBORNE_GM_CLOUD_TIMEOUT_MS);
+  return Number.isFinite(v) && v > 0 ? v : 25000;
+}
+
 function resolveModelTiers() {
   return {
     narrative: (process.env.INKBORNE_GM_MODEL ?? process.env.NOTDND_GM_MODEL) || DEFAULT_MODELS.narrative,
@@ -377,11 +391,39 @@ async function requestOpenRouter(messages, model, options = {}) {
   if (apiKey) {
     headers.Authorization = `Bearer ${apiKey}`;
   }
-  const response = await fetch(LLM_BASE_URL, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(body)
-  });
+  // PER-PROVIDER TIMEOUT (the "GM goes quiet" fix). A LOCAL 8b generation on the
+  // owner's RTX 4060 is legitimately slower than a cloud call, so it gets a far
+  // larger window; a CLOUD call that exceeds its (tight) window is treated as hung
+  // and aborted so requestWithFallback drops to local instead of stalling the turn.
+  // This distinguishes "slow-local-but-working" from "dead-cloud" WITHOUT masking:
+  // a cloud call can never silently eat the whole budget, and a local call is given
+  // the time it genuinely needs. Tunable via NOTDND_GM_{LOCAL,CLOUD}_TIMEOUT_MS.
+  const perAttemptTimeoutMs = isLocal ? gmLocalTimeoutMs() : gmCloudTimeoutMs();
+  const controller = typeof AbortController === "function" ? new AbortController() : null;
+  const timer = controller ? setTimeout(() => controller.abort(), perAttemptTimeoutMs) : null;
+  let response;
+  try {
+    response = await fetch(LLM_BASE_URL, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+      ...(controller ? { signal: controller.signal } : {})
+    });
+  } catch (fetchError) {
+    if (fetchError?.name === "AbortError") {
+      console.warn(`[GM] ${isLocal ? "LOCAL" : "cloud"} call ABORTED after ${perAttemptTimeoutMs}ms (model ${model}) — ${isLocal ? "local 8b exceeded its window" : "treating as hung; will fall back"}`);
+      const timeoutError = new Error(`GM request timed out after ${perAttemptTimeoutMs}ms (${isLocal ? "local" : "cloud"} model ${model})`);
+      timeoutError.code = "GM_TIMEOUT";
+      timeoutError.statusCode = 504;
+      timeoutError.local = isLocal;
+      throw timeoutError;
+    }
+    throw fetchError;
+  } finally {
+    if (timer) {
+      clearTimeout(timer);
+    }
+  }
 
   if (!response.ok) {
     const rawBody = await response.text();

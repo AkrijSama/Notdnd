@@ -30,6 +30,7 @@ loadDotenv();
 
 import { createAiJobProcessor } from "./ai/processor.js";
 import { generateNarrative, generateRaw, getCampaignUsage, getModelTiers } from "./ai/openrouter.js";
+import { appendTurnLog, logTurnEvent } from "./logging/sessionLog.js";
 import { generateWithProvider, listAiProviders, pollinationsEditConfigured } from "./ai/providers.js";
 import { detectImageExt, parseMultipartFile, readJsonBody, readRawBody, serveStatic, writeJson, writeText } from "./api/http.js";
 import { handleQuickstartBuildPayload, handleQuickstartParsePayload } from "./api/quickstartRoutes.js";
@@ -691,25 +692,37 @@ function makeSceneLocationImageEnqueuer(run) {
 // the action is never blocked beyond the budget. The mechanical result is
 // already committed (saveSoloRun) before this runs.
 const GM_ACTION_TIMEOUT_MS = Number(process.env.NOTDND_GM_ACTION_TIMEOUT_MS || 12000);
+// The LOCAL 8b's legitimate generation window (mirrors openrouter's per-attempt
+// local timeout). The ROUTE-level backstop must never be SMALLER than this, or it
+// would kill a slow-but-working local generation before it finishes (the literal
+// "GM goes quiet" bug). So the effective action timeout is raised to sit just
+// above the local window — the route stops being a pre-emptor and becomes a true
+// final backstop, while openrouter's per-provider timeouts (cloud-tight,
+// local-generous) do the real cloud-vs-local distinction.
+const GM_LOCAL_TIMEOUT_MS = Number(process.env.NOTDND_GM_LOCAL_TIMEOUT_MS || 60000);
+function effectiveActionTimeoutMs() {
+  return Math.max(GM_ACTION_TIMEOUT_MS, GM_LOCAL_TIMEOUT_MS + 5000);
+}
 
+// Bounds a GM call and reports HOW it ended: { timedOut, value, error }. Unlike a
+// bare value|null, this lets the caller log the previously-SILENT timeout path
+// loudly (which provider, how long, that the timeout fired) instead of a silent
+// "GM goes quiet".
 function withGmTimeout(promise, ms) {
-  let timer = null;
-  const timeout = new Promise((resolve) => {
-    timer = setTimeout(() => resolve(null), ms);
-  });
-  return Promise.race([
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(result);
+    };
+    const timer = setTimeout(() => finish({ timedOut: true, value: null, error: null }), ms);
     Promise.resolve(promise).then(
-      (value) => {
-        if (timer) clearTimeout(timer);
-        return value;
-      },
-      () => {
-        if (timer) clearTimeout(timer);
-        return null;
-      }
-    ),
-    timeout
-  ]);
+      (value) => finish({ timedOut: false, value, error: null }),
+      (error) => finish({ timedOut: false, value: null, error })
+    );
+  });
 }
 
 // NPCs at the run's current location — the candidate speakers the automatic VN
@@ -822,7 +835,7 @@ async function narrateDeathWithGm(run, resolved, user) {
     `The player has just DIED — permanently — from ${cause}. This is the final, irreversible end of the run. ` +
     `Write a short, unflinching death narration (2-3 sentences) that gives the death weight and dignity. ` +
     `Do NOT revive them, soften it, or hint at escape. The character is gone for good.`;
-  const result = await withGmTimeout(
+  const { value } = await withGmTimeout(
     runGmPipeline({
       campaignId: run.campaignId,
       message,
@@ -831,15 +844,20 @@ async function narrateDeathWithGm(run, resolved, user) {
       actorUserId: user?.id,
       edition: run.edition
     }),
-    GM_ACTION_TIMEOUT_MS
+    effectiveActionTimeoutMs()
   );
-  const narrative = result && typeof result.narrative === "string" ? result.narrative.trim() : "";
+  const narrative = value && typeof value.narrative === "string" ? value.narrative.trim() : "";
   return narrative || null;
 }
 
+// Returns a RICH result so the per-turn transcript can record the narration
+// source + provider + latency (no more silent "GM goes quiet"):
+//   { narration: string|null, source, provider, model, latencyMs, timedOut }
+// source ∈ no-campaign | gated-refusal | no-message | provider | template-timeout
+//        | template-error | template-empty.
 async function narrateActionWithGm(run, resolved, user) {
   if (!run?.campaignId || !resolved) {
-    return null;
+    return { narration: null, source: "no-campaign" };
   }
   // GATED short-circuit: an authority-gated attempt already carries a grounded,
   // per-category, in-fiction refusal line (attemptResult.narration, set by
@@ -848,11 +866,11 @@ async function narrateActionWithGm(run, resolved, user) {
   // local model). Return null so the caller keeps the deterministic refusal —
   // gated refusals are near-instant on any provider.
   if (resolved.attemptResult?.gated === true) {
-    return null;
+    return { narration: null, source: "gated-refusal" };
   }
   let message = buildActionGmMessage(run, resolved);
   if (!message) {
-    return null;
+    return { narration: null, source: "no-message" };
   }
   // Quest advancement: when this action advanced a quest, fold it into the scene
   // context so the GM dramatizes the progress as a meaningful beat.
@@ -866,7 +884,9 @@ async function narrateActionWithGm(run, resolved, user) {
   // it explicitly — the GM is a real 5e DM who narrates EARNED consequences and
   // never rescues the player from them.
   message += buildConsequenceDirective(resolved);
-  const result = await withGmTimeout(
+  const ceiling = effectiveActionTimeoutMs();
+  const t0 = Date.now();
+  const { timedOut, value, error } = await withGmTimeout(
     runGmPipeline({
       campaignId: run.campaignId,
       message,
@@ -875,10 +895,123 @@ async function narrateActionWithGm(run, resolved, user) {
       actorUserId: user?.id,
       edition: run.edition
     }),
-    GM_ACTION_TIMEOUT_MS
+    ceiling
   );
-  const narrative = result && typeof result.narrative === "string" ? result.narrative.trim() : "";
-  return narrative || null;
+  const latencyMs = Date.now() - t0;
+  // FORMERLY SILENT (#5/#6): the route-level backstop fired before the model
+  // returned. Now LOUD — which run, how long, that the deterministic template is
+  // standing in. (openrouter already logged the per-provider abort; this is the
+  // turn-layer record.)
+  if (timedOut) {
+    logTurnEvent(run.runId, `GM narration BACKSTOP-TIMED-OUT after ${latencyMs}ms (ceiling ${ceiling}ms) — using deterministic template. A working LOCAL gen should fit under ${GM_LOCAL_TIMEOUT_MS}ms; exceeding the backstop means a genuinely stuck call.`);
+    return { narration: null, source: "template-timeout", latencyMs, timedOut: true };
+  }
+  if (error) {
+    logTurnEvent(run.runId, `GM narration FAILED after ${latencyMs}ms (${String(error?.message || error).slice(0, 140)}) — using deterministic template.`);
+    return { narration: null, source: "template-error", latencyMs };
+  }
+  const narrative = value && typeof value.narrative === "string" ? value.narrative.trim() : "";
+  const model = value?.meta?.model || "unknown";
+  const provider = gmProviderForModel(model);
+  if (!narrative) {
+    logTurnEvent(run.runId, `GM returned EMPTY narration (${provider} ${model}, ${latencyMs}ms) — using deterministic template.`);
+    return { narration: null, source: "template-empty", provider, model, latencyMs };
+  }
+  return { narration: narrative, source: "provider", provider, model, latencyMs };
+}
+
+// Classifies the answering model as cloud vs the local 8b fallback for the
+// transcript. The local model is the configured forbidden/fallback model.
+function gmProviderForModel(model) {
+  const m = String(model || "").trim().toLowerCase();
+  if (!m || m === "unknown") {
+    return "unknown";
+  }
+  const local = String(
+    (process.env.INKBORNE_FORBIDDEN_LLM_MODEL ?? process.env.NOTDND_FORBIDDEN_LLM_MODEL) || "inkborne-gm:8b"
+  ).trim().toLowerCase();
+  return m === local ? "local" : "cloud";
+}
+
+// Builds the human-readable per-turn transcript block: the full causal chain of a
+// solo turn, with every formerly-silent fallback made explicit. Pure + defensive
+// (every field optional). See server/logging/sessionLog.js.
+function buildTurnTranscript(resolved, gmResult = {}, suggestionsResult) {
+  const action = resolved?.action || {};
+  const type = action.type || "unknown";
+  const ar = resolved?.attemptResult || null;
+  const lines = [];
+  lines.push(`action: ${type}${type === "attempt" && ar?.intent ? ` — "${String(ar.intent).slice(0, 120)}"` : ""}${action.targetEntityId ? ` (target ${action.targetEntityId})` : ""}`);
+
+  if (type === "attempt" && ar) {
+    // Authority gate verdict.
+    if (ar.gated === true) {
+      lines.push(`gate: REFUSED pre-roll (category ${ar.gateCategory || "?"}) — no roll, no success, no state change`);
+    } else {
+      lines.push("gate: legitimate (allowed to proceed)");
+    }
+    // Possession check.
+    if (ar.unpossessed === true) {
+      lines.push("possession: REFUSED — claimed a specific item the player does not hold");
+    }
+    // Interpreter result vs fallback (formerly silent #11/#12).
+    const warnings = Array.isArray(ar.warnings) ? ar.warnings : [];
+    if (warnings.includes("ATTEMPT_PROVIDER_FALLBACK")) {
+      lines.push("interpreter: FELL BACK to defaultProviderOutput (model output invalid/empty) — legacy mechanics used");
+    } else if (!ar.gated && !ar.unpossessed) {
+      lines.push("interpreter: model proposal used (structured)");
+    }
+    // Roll / DC.
+    if (ar.checkResult && ar.checkResult.total != null) {
+      lines.push(`roll: ${ar.checkResult.total} vs DC ${ar.checkResult.dc} -> ${ar.success ? "SUCCESS" : "FAIL"}${ar.foreclosed ? " (retry foreclosed/penalized)" : ""}`);
+    } else if (ar.needsCheck === false) {
+      lines.push("roll: none (no-stakes action, resolved narratively)");
+    }
+    // Consequence applied + state delta.
+    const c = ar.consequence || null;
+    if (c) {
+      const detail =
+        c.type === "damage" ? `${ar.damage?.amount ?? c.amount ?? "?"} HP` :
+        c.type === "condition" ? c.condition :
+        c.type === "objectState" ? `${c.label || c.objectState}/${c.retryEffect}` :
+        c.type === "resource" ? `${c.amount} ${c.resource}` : "";
+      lines.push(`consequence: ${c.type}${detail ? `(${detail})` : ""}${c.applied === false ? " [not applied]" : ""}`);
+    }
+    if (ar.damage && (ar.damage.dying || ar.damage.dead || ar.damage.instantDeath)) {
+      lines.push(`lethality: ${ar.damage.dead || ar.damage.instantDeath ? "DEAD" : "DYING (0 HP)"}`);
+    }
+  } else if (type === "talk" && resolved?.talkResult) {
+    lines.push(`talk: ${resolved.talkResult.found ? "scripted beat" : "freeform"} with ${resolved.talkResult.speakerName || resolved.talkResult.npcId || "NPC"}`);
+  }
+
+  if (resolved?.questJustAdvanced) {
+    lines.push(`quest: advanced "${resolved.questJustAdvanced.title || "main"}"`);
+  }
+  if (resolved?.runWon) {
+    lines.push("run: WON (main quest complete)");
+  }
+
+  // Provider + latency + narration source (formerly silent #5/#6).
+  const g = gmResult || {};
+  if (g.source === "provider") {
+    lines.push(`narration: ${g.provider || "?"} (${g.model || "?"}) in ${g.latencyMs ?? "?"}ms — provider prose`);
+  } else if (g.source === "template-timeout") {
+    lines.push(`narration: TIMEOUT after ${g.latencyMs ?? "?"}ms — deterministic template (GM went quiet; see backstop log above)`);
+  } else if (g.source === "template-error") {
+    lines.push(`narration: ERROR after ${g.latencyMs ?? "?"}ms — deterministic template`);
+  } else if (g.source === "template-empty") {
+    lines.push(`narration: EMPTY from ${g.provider || "?"} (${g.model || "?"}, ${g.latencyMs ?? "?"}ms) — deterministic template`);
+  } else if (g.source === "gated-refusal") {
+    lines.push("narration: skipped (gated refusal keeps its deterministic in-fiction line) — near-instant");
+  } else {
+    lines.push(`narration: template (${g.source || "no GM call"})`);
+  }
+
+  const sugCount = Array.isArray(suggestionsResult)
+    ? suggestionsResult.length
+    : Array.isArray(suggestionsResult?.suggestions) ? suggestionsResult.suggestions.length : null;
+  lines.push(`suggestions: ${sugCount != null ? `${sugCount} generated` : "refreshed"}`);
+  return lines;
 }
 
 // LIVE attempt interpreter wiring. On a real freeform attempt we ask the GM to
@@ -972,7 +1105,7 @@ async function narrateVictoryWithGm(run, quest, user) {
     `moment of the run — the journey is won. Write a short, evocative victory narration ` +
     `(2-3 sentences) celebrating this hard-won conclusion. Do not introduce new quests, ` +
     `rewards, locations, or unresolved threads — this is a closing beat.`;
-  const result = await withGmTimeout(
+  const { value } = await withGmTimeout(
     runGmPipeline({
       campaignId: run.campaignId,
       message,
@@ -981,9 +1114,9 @@ async function narrateVictoryWithGm(run, quest, user) {
       actorUserId: user?.id,
       edition: run.edition
     }),
-    GM_ACTION_TIMEOUT_MS
+    effectiveActionTimeoutMs()
   );
-  const narrative = result && typeof result.narrative === "string" ? result.narrative.trim() : "";
+  const narrative = value && typeof value.narrative === "string" ? value.narrative.trim() : "";
   return narrative || null;
 }
 
@@ -1277,10 +1410,19 @@ async function handleApi(req, res) {
       // Generate the next scene's suggested actions in parallel with the GM
       // narration (overlapping its latency), so they're cached and ready by the
       // time the client reloads the scene — no extra wait, no blank suggestions.
-      const [gmNarration] = await Promise.all([
+      const [gmResult, suggestionsResult] = await Promise.all([
         narrateActionWithGm(responseRun, resolved, user),
         refreshSceneSuggestions(responseRun, setSoloRunSuggestions)
       ]);
+      const gmNarration = gmResult?.narration || null;
+      // PER-TURN SESSION TRANSCRIPT (data/logs/runs/<runId>.log) — the full causal
+      // chain of this turn, including every formerly-silent fallback, so the owner
+      // can tail it during a detached playtest and see exactly what happened.
+      try {
+        appendTurnLog(responseRun.runId, buildTurnTranscript(resolved, gmResult, suggestionsResult));
+      } catch {
+        // transcript must never break a turn
+      }
       if (gmNarration) {
         const actionType = resolved.action?.type;
         if (actionType === "attempt" && attemptResult) {
