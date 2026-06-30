@@ -31,7 +31,7 @@ const CLOUD_ENV = {
   OPENROUTER_API_KEY: undefined,
   INKBORNE_FORBIDDEN_LLM_BASE_URL: "http://127.0.0.1:11434/v1/chat/completions",
   NOTDND_FORBIDDEN_LLM_BASE_URL: undefined,
-  INKBORNE_FORBIDDEN_LLM_MODEL: "dolphin-llama3:8b",
+  INKBORNE_FORBIDDEN_LLM_MODEL: "inkborne-gm:8b",
   NOTDND_FORBIDDEN_LLM_MODEL: undefined
 };
 
@@ -60,7 +60,7 @@ test("gm-provider routing", async (t) => {
       const p = resolveGmProvider("forbidden");
       assert.equal(p.local, true);
       assert.equal(p.baseUrl, "http://127.0.0.1:11434/v1/chat/completions");
-      assert.equal(p.model, "dolphin-llama3:8b");
+      assert.equal(p.model, "inkborne-gm:8b");
       assert.equal(p.key, null);
       assert.equal(p.edition, "forbidden");
     });
@@ -71,7 +71,7 @@ test("gm-provider routing", async (t) => {
       const p = resolveGmProvider("mainline", { fallback: true });
       assert.equal(p.local, true);
       assert.equal(p.baseUrl, "http://127.0.0.1:11434/v1/chat/completions");
-      assert.equal(p.model, "dolphin-llama3:8b");
+      assert.equal(p.model, "inkborne-gm:8b");
       assert.equal(p.key, null);
     });
   });
@@ -93,7 +93,7 @@ test("gm-provider routing", async (t) => {
       () => {
         const p = resolveGmProvider("forbidden");
         assert.equal(p.baseUrl, "http://127.0.0.1:11434/v1/chat/completions");
-        assert.equal(p.model, "dolphin-llama3:8b");
+        assert.equal(p.model, "inkborne-gm:8b");
         assert.equal(p.local, true);
       }
     );

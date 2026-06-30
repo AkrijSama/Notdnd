@@ -58,7 +58,11 @@ function ensureApiKey() {
 // the cloud base/model/key, so .env loaded after import is honored.
 const LOCAL_GM_DEFAULTS = {
   baseUrl: "http://127.0.0.1:11434/v1/chat/completions",
-  model: "dolphin-llama3:8b"
+  // Current 8B uncensored GM (Nous Hermes 3 / Llama 3.1, Q4_K_M) with context
+  // capped to 8192 via Modelfile so it stays fully GPU-resident on an 8GB card —
+  // stronger structured-output/function-calling than the retired Llama-3.0
+  // dolphin-llama3:8b. Overridable via INKBORNE_FORBIDDEN_LLM_MODEL.
+  model: "inkborne-gm:8b"
 };
 
 function resolveLocalProvider() {
