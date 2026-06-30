@@ -1790,6 +1790,23 @@ function presenceTerrainClass(scene = {}) {
 // CSS grid places each token at its (x,y). A terrain+grid layer is rendered
 // BENEATH the tokens (explicitly-placed background cells) so the tokens sit on a
 // readable ground, not in a void.
+// Glyphs for state-placed area features on the presence map. Legible at the small
+// tactical scale; kind-keyed so the server can label exits/landmarks/structure.
+const PRESENCE_FEATURE_GLYPH = {
+  exit: "⤳",
+  door: "▢",
+  landmark: "◆",
+  poi: "◆",
+  site: "◆",
+  ruins: "▲",
+  structure: "⌂",
+  building: "⌂",
+  shrine: "✦",
+  hazard: "⚠",
+  water: "≈",
+  cover: "▮",
+  loot: "✚"
+};
 export function renderSoloPresenceMap(scene = {}) {
   const bm = scene && typeof scene.battleMap === "object" && scene.battleMap ? scene.battleMap : {};
   const tokens = Array.isArray(bm.tokens) ? bm.tokens : [];
@@ -1817,6 +1834,25 @@ export function renderSoloPresenceMap(scene = {}) {
     }
   }
 
+  // Area-feature layer (POIs / landmarks / exits / the ruins structure) — drawn
+  // BENEATH the tokens so the player/NPCs stay on top. PURELY state-driven: read
+  // from scene.battleMap.features (positioned { kind, x, y, name }, the same grid
+  // as tokens). Honest to state — when the server places none, nothing is drawn
+  // (no invented markers). Track A/backend populates this field; this is the
+  // render side, built generically so placed features appear without more UI work.
+  const features = Array.isArray(bm.features) ? bm.features : [];
+  const featureCells = features
+    .filter((f) => f && typeof f === "object" && Number.isFinite(Number(f.x)) && Number.isFinite(Number(f.y)))
+    .map((feature) => {
+      const kind = typeof feature.kind === "string" && feature.kind ? feature.kind : "site";
+      const glyph = PRESENCE_FEATURE_GLYPH[kind] || PRESENCE_FEATURE_GLYPH.site;
+      const x = clampTo(feature.x, width);
+      const y = clampTo(feature.y, height);
+      const name = typeof feature.name === "string" && feature.name ? feature.name : kind;
+      return `<span class="solo-presence-feature solo-feature-${escapeHtml(kind)}" style="grid-column:${x + 1};grid-row:${y + 1};" title="${escapeHtml(name)}" aria-label="${escapeHtml(name)}"><span class="solo-feature-glyph">${glyph}</span></span>`;
+    })
+    .join("");
+
   const cells = tokens
     .map((token) => {
       const kind = token && (token.kind === "player" || token.kind === "npc" || token.kind === "item") ? token.kind : "npc";
@@ -1827,7 +1863,7 @@ export function renderSoloPresenceMap(scene = {}) {
       return `<span class="solo-presence-token solo-token-${escapeHtml(kind)}" style="grid-column:${x + 1};grid-row:${y + 1};" title="${escapeHtml(name)}" aria-label="${escapeHtml(name)}">${escapeHtml(initial)}</span>`;
     })
     .join("");
-  return `<div class="solo-presence">${head}<div class="solo-presence-grid ${terrainClass}" style="grid-template-columns:repeat(${width},1fr);grid-template-rows:repeat(${height},1fr);" role="img" aria-label="Presence map of ${escapeHtml(locationName)}">${ground.join("")}${cells}</div></div>`;
+  return `<div class="solo-presence">${head}<div class="solo-presence-grid ${terrainClass}" style="grid-template-columns:repeat(${width},1fr);grid-template-rows:repeat(${height},1fr);" role="img" aria-label="Presence map of ${escapeHtml(locationName)}">${ground.join("")}${featureCells}${cells}</div></div>`;
 }
 
 export function renderSoloRightRail(state = {}) {
@@ -2844,6 +2880,13 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
   // external — clears it, so a deferred flush never double-renders.
   let pendingExternalRender = false;
 
+  // While an action is in flight (submit -> "GM is thinking" -> result), renders
+  // should ANCHOR the view on the live turn (the latest outcome + the thinking
+  // banner + the input), not just preserve the prior scroll. Set across the whole
+  // runAction lifecycle and cleared after its final render; passive poll renders
+  // (anchor off) still preserve scroll position.
+  let anchorLiveTurnPending = false;
+
   function render() {
     pendingExternalRender = false;
     // Keep the live text input alive across the innerHTML rebuild. The deferral
@@ -2897,7 +2940,13 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       onBringBack: handleBringBack
     });
     restoreSoloFocus(focusSnapshot);
-    restoreSoloScroll(scrollSnapshot);
+    // Action render -> keep the player's eye on the live turn (their action went
+    // through, the GM is working); passive render -> preserve where they were.
+    if (anchorLiveTurnPending) {
+      scrollLiveTurnIntoView();
+    } else {
+      restoreSoloScroll(scrollSnapshot);
+    }
   }
 
   // Preserve/restore the scroll position of the in-scene scrolling container
@@ -2930,6 +2979,52 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       el.scrollTop = snapshot.top;
     } catch {
       // Non-fatal — restoring scroll is best-effort.
+    }
+  }
+
+  // Scroll the in-scene container so the LIVE TURN is visible after an action: the
+  // freshest anchor wins — the "GM is thinking…" banner while the call is pending,
+  // else the latest action outcome, else the input bar (always at the foot of the
+  // scene). The player lands on "your action went through, the GM is working,"
+  // never yanked to the top, and the thinking banner stays in view while pending.
+  // Reflow-safe: the scene art <img> usually loads AFTER this render and grows the
+  // container, so we re-anchor once it loads (one-shot) to avoid being stranded.
+  const SOLO_LIVE_TURN_ANCHORS = [".solo-thinking", ".solo-action-outcome", ".solo-scene-input"];
+  function scrollLiveTurnIntoView() {
+    if (typeof root.querySelector !== "function") {
+      return;
+    }
+    const container = root.querySelector(SOLO_SCROLL_SELECTOR);
+    if (!container) {
+      return;
+    }
+    const pickAnchor = () => {
+      for (const sel of SOLO_LIVE_TURN_ANCHORS) {
+        const el = root.querySelector(sel);
+        if (el) {
+          return el;
+        }
+      }
+      return null;
+    };
+    const apply = () => {
+      const anchor = pickAnchor();
+      try {
+        if (anchor && typeof anchor.scrollIntoView === "function") {
+          anchor.scrollIntoView({ block: "center" });
+        } else if (typeof container.scrollHeight === "number") {
+          container.scrollTop = container.scrollHeight;
+        }
+      } catch {
+        // Best-effort — never let an auto-scroll throw into the render path.
+      }
+    };
+    apply();
+    // Re-anchor after the scene image reflows the container (load OR error).
+    const img = typeof container.querySelector === "function" ? container.querySelector(".solo-scene-art img") : null;
+    if (img && img.complete !== true && typeof img.addEventListener === "function") {
+      img.addEventListener("load", apply, { once: true });
+      img.addEventListener("error", apply, { once: true });
     }
   }
 
@@ -3200,6 +3295,10 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     state.busy = label;
     state.banner = "";
     clearLag();
+    // Anchor every render for this action's lifecycle on the live turn (submit ->
+    // thinking banner -> result), so the player keeps their place and the "GM is
+    // thinking" indicator stays visible while the call is pending.
+    anchorLiveTurnPending = true;
     if (typeof setTimeout === "function") {
       // Timer-triggered: the "GM is thinking" lag indicator must not rebuild the
       // DOM (and drop focus) if the player is mid-keystroke in a text field.
@@ -3224,6 +3323,9 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       // screen before the final render.
       await maybeConcludeVictory();
       render();
+      // The result render has anchored on the live turn; subsequent passive poll
+      // renders resume preserving the player's scroll position.
+      anchorLiveTurnPending = false;
     }
   }
 

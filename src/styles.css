@@ -2139,7 +2139,7 @@ button:disabled {
 .solo-presence-grid.terrain-forest { --solo-terrain: #213a33; }
 .solo-presence-grid.terrain-water  { --solo-terrain: #1c2a36; }
 .solo-presence-grid.terrain-sand   { --solo-terrain: #3a3122; }
-.solo-presence-grid .solo-presence-token { z-index: 1; }
+.solo-presence-grid .solo-presence-token { z-index: 2; }
 .solo-presence-token {
   align-self: center;
   justify-self: center;
@@ -2155,6 +2155,30 @@ button:disabled {
   font-weight: 700;
   line-height: 1;
 }
+/* State-placed area features (POIs / landmarks / exits / structure) — markers
+   that sit ON the ground, BENEATH the player/NPC tokens (z-index 1 < token 2).
+   Cobalt accent so they read as charted terrain, not actors. */
+.solo-presence-grid .solo-presence-feature { z-index: 1; }
+.solo-presence-feature {
+  align-self: center;
+  justify-self: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  color: var(--solo-accent, #6ea8fe);
+  opacity: 0.82;
+  pointer-events: none;
+}
+.solo-presence-feature .solo-feature-glyph {
+  font-size: 11px;
+  line-height: 1;
+  text-shadow: 0 0 3px rgba(8, 14, 28, 0.9);
+}
+.solo-presence-feature.solo-feature-exit { color: #8fd6a8; opacity: 0.95; }
+.solo-presence-feature.solo-feature-hazard { color: #e0a35a; opacity: 0.95; }
+.solo-presence-feature.solo-feature-loot { color: #e9d27a; opacity: 0.95; }
 .solo-presence-empty {
   font-size: 12px;
   font-style: italic;
