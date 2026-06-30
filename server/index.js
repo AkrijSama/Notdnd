@@ -106,7 +106,9 @@ import { MAX_PDF_BYTES, emptyCandidates, extractPdfText, parseSourcebookText } f
 import { fetchHomebrewUrl } from "./homebrew/urlImport.js";
 import { validateCustomItem, normalizeContentForBuild, CUSTOM_CONTENT_TYPES } from "./homebrew/customContent.js";
 import { createWsHub } from "./realtime/wsHub.js";
-import { resolveSoloAction } from "./solo/actions.js";
+import { resolveSoloAction, testHooksEnabled } from "./solo/actions.js";
+import { buildAttemptContext, buildAttemptProviderInput } from "./solo/attempt.js";
+import { interpretAttemptWithGm } from "./gm/attemptInterpreter.js";
 import { classifyNarrationVn, resolveGmNarration } from "./solo/gmProvider.js";
 import { buildGmRuntimeStatus } from "./solo/gmSmoke.js";
 import { enqueueDraftPortrait, enqueueImageJob, enqueueLocationImageJob, enqueuePlayerImageJob, enqueueVariantImageJob, enqueueVnBodyImageJob, getDraftPortrait, writeUploadedBasePortrait } from "./solo/imageWorker.js";
@@ -860,6 +862,68 @@ async function narrateActionWithGm(run, resolved, user) {
   return narrative || null;
 }
 
+// LIVE attempt interpreter wiring. On a real freeform attempt we ask the GM to
+// adjudicate the mechanics — recommended ability, DC, needsCheck, and the
+// structured failureConsequence — BEFORE resolveSoloAction rolls the check, then
+// hand the result to the engine as a (synchronous) attemptProviderFn. This is
+// what lights up the structured failure-consequence engine in live play: without
+// it the engine uses defaultProviderOutput, which proposes no consequence, so
+// every real failure decays to the legacy flat HP cost.
+//
+// Returns options to spread into resolveSoloAction:
+//   - { attemptProviderFn } when the live interpreter produced a usable proposal
+//   - {} otherwise — the engine then uses its own sane default (so an interpreter
+//     miss never blocks or crashes the turn). The engine ALSO re-validates and
+//     sanitizes whatever we pass (validateAttemptProviderOutput →
+//     defaultProviderOutput fallback on junk), so this is graceful end-to-end.
+//
+// Skipped for non-attempt actions and for the gated test-hook path (the self-play
+// harness supplies its own deterministic providerOutput via action.testHook).
+//
+// SEAM (Opus 2, pre-roll impossibility gate "G"): an impossibility classification
+// belongs immediately before this — if an action is impossible, short-circuit and
+// return the refusal before we interpret or roll. The two compose cleanly.
+async function buildLiveAttemptOptions(run, action, user) {
+  if (!action || action.type !== "attempt") {
+    return {};
+  }
+  // The test-hook providerOutput (selfplay) overrides any live provider anyway;
+  // skip the model call entirely when it's present so the harness stays hermetic.
+  if (testHooksEnabled() && action.testHook && typeof action.testHook === "object" && action.testHook.providerOutput) {
+    return {};
+  }
+  if (!run?.campaignId) {
+    return {};
+  }
+  try {
+    const context = buildAttemptContext(run, action);
+    if (!context || context.ok !== true) {
+      return {};
+    }
+    const providerInput = buildAttemptProviderInput(context);
+    if (!providerInput || providerInput.ok !== true) {
+      return {};
+    }
+    const structured = await interpretAttemptWithGm({
+      providerInput,
+      campaignId: run.campaignId,
+      edition: run.edition,
+      actorUserId: user?.id
+    });
+    if (!structured || typeof structured !== "object") {
+      return {};
+    }
+    // Synchronous closure: the engine calls providerFn() inline (it does not
+    // await), so the model output must already be resolved here. The engine
+    // validates/sanitizes `structured` and falls back to defaultProviderOutput if
+    // it's invalid — so we can hand it the raw parsed object safely.
+    return { attemptProviderFn: () => structured };
+  } catch {
+    // Never let interpreter wiring break a turn — fall back to the engine default.
+    return {};
+  }
+}
+
 // TASK B: one final GM call for the victory moment. Builds a "closing narration"
 // scene context (the completed quest + a victory hint) and returns the GM's
 // triumphant sign-off, or null on timeout/failure (the victory screen still
@@ -1145,7 +1209,12 @@ async function handleApi(req, res) {
       assertSoloRunAccess(user, run);
       const payload = await readJsonBody(req);
       const action = payload.action || payload;
-      const resolved = resolveSoloAction(run, action);
+      // LIVE attempt interpreter: for a real freeform attempt, adjudicate the
+      // mechanics (incl. structured failureConsequence) via the GM first, then
+      // pass it into the engine so per-case consequences + retry-foreclosure
+      // actually fire in live play. No-op for non-attempt / test-hook actions.
+      const attemptOptions = await buildLiveAttemptOptions(run, action, user);
+      const resolved = resolveSoloAction(run, action, attemptOptions);
       if (!resolved.ok) {
         throw Object.assign(new Error("Solo action could not be resolved."), {
           code: resolved.code || "ACTION_INVALID",
