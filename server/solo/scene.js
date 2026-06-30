@@ -542,6 +542,26 @@ export function buildCastRoster(run, policyProfile) {
 
   return Object.values(run.npcs)
     .filter((npc) => isPlainObject(npc) && policyAllows(npc, policyProfile))
+    // Don't surface never-encountered procedural placeholders that aren't here.
+    // The default forest-ruins start seeds latent plot NPCs ("A waiting figure",
+    // "A figure at the edge") at remote locations with present=false; on a
+    // deliberately-alone start they'd pollute the roster and undercut the "you
+    // are alone" framing. Identity is minted only when an NPC becomes visible
+    // (co-located), so a procedural NPC with no generatedName that isn't present
+    // has genuinely never been met — hide it until the player reaches it. Present
+    // NPCs (e.g. a justified tavern keeper) and any already-encountered (named)
+    // NPC are always kept, so this never hides a real cast member.
+    .filter((npc) => {
+      const present = npc.currentLocationId === run.currentLocationId;
+      if (present) {
+        return true;
+      }
+      const encountered = isString(npc.generatedName) && npc.generatedName.trim().length > 0;
+      if (encountered) {
+        return true;
+      }
+      return npc.origin !== "procedural";
+    })
     .map((npc) => {
       const variants = isPlainObject(npc.expressionVariants) ? npc.expressionVariants : {};
       const expressionVariants = {};
