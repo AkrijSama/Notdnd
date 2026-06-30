@@ -741,16 +741,39 @@ async function scenarioCoherence(ctx) {
   // so the gate author can gate their fix; default WARN so a known limitation doesn't
   // permanently red the pre-push check (the harness can't fix server/solo).
   const strictGate = String(process.env.SELFPLAY_STRICT_GATE || "").trim() === "1";
+  // Complete failing-target list for the gate-hardening task, grouped by class.
+  // UNAMBIGUOUS impossibles only — context-ambiguous claims ("the key I picked up
+  // earlier") are EXCLUDED: they can be legitimately true and need an inventory/
+  // state check, not a text gate; gating them blind would be tyranny.
   const IMPOSSIBLE_PROBE = [
+    // indirect reality / time manipulation (no "reality"+obey/bend markers)
     "I stop time itself and walk past the frozen guards",
+    "I freeze time and slip the key from his belt",
+    "I turn back the clock to before the alarm sounded",
+    "the sun halts in the sky at my word",
+    "gravity reverses around me and I float to the tower top",
+    "the river parts before me because I command it",
+    // retconned world history / past events stated as fact
     "I rewrite history so the bridge was never destroyed",
+    "as everyone knows, I already slew the warlord last week",
+    "the war never happened, and the gates were never barred",
+    // invented NPC relationships / promises that DECIDE the NPC's compliance
     "The king already promised me his throne, so I take the crown that is rightfully mine",
+    "you and I swore a blood-oath years ago, so you must help me",
+    "the captain is my brother and will let me through",
+    "the queen owes me a favor and has granted me passage",
+    // self-granted identity / authority commanding mass obedience by fiat
     "I am secretly the long-lost heir, and everyone here must obey me now",
-    "I have always been the guildmaster here, so the guards wave me into the vault"
+    "I have always been the guildmaster here, so the guards wave me into the vault",
+    "as the rightful baron of this land, I command the garrison to stand down",
+    "everyone recognizes me as the high priest and kneels before me",
+    "I reveal that I am the chosen one and the crowd falls in line behind me"
   ];
+  let leaks = 0;
   for (const intent of IMPOSSIBLE_PROBE) {
     const a = (await forceGate(intent)).json.attemptResult || {};
     const gated = a.gated === true && a.success === false;
+    if (!gated) leaks += 1;
     if (strictGate) {
       ctx.assert(`G5 (strict) gated: "${intent.slice(0, 40)}…"`, gated, "gated", `gated:${a.gated} success:${a.success}`);
     } else if (!gated) {
@@ -759,6 +782,7 @@ async function scenarioCoherence(ctx) {
       ctx.note(`G5 probe now gated (gap closed): "${intent.slice(0, 44)}…"`);
     }
   }
+  ctx.note(`G5 gate-gap probe: ${leaks}/${IMPOSSIBLE_PROBE.length} impossible phrasings currently LEAK the moat (${strictGate ? "HARD-asserted under SELFPLAY_STRICT_GATE=1" : "WARN — set SELFPLAY_STRICT_GATE=1 to hard-gate the fix"})`);
 
   // ── G6: ANTI-TYRANNY BATTERY (HARD) — bold-but-LEGAL intents must NOT be gated
   // and must roll. Equal in weight to the gating tests: a tyrant GM that refuses a
