@@ -16,10 +16,17 @@ function resolveLlmBaseUrl() {
   );
 }
 
+// ZERO-COST defaults (no deposit/credit). The previous defaults pointed at PAID
+// models (x-ai/grok-3) and credit-gated/throughput-limited ':free' tiers that 402/429
+// on a no-credit account. Verified 2026-06-30: the clean, genuinely-$0-serving free
+// pool is Google gemma-4 INSTRUCT (reasoning models like nemotron/gpt-oss/openrouter-
+// free leak chain-of-thought into `content`). These rate-limit intermittently, so
+// requestWithFallback degrades cleanly to the local inkborne-gm:8b workhorse. .env
+// (gitignored) overrides these; a deploy MUST mirror them in its own env.
 const DEFAULT_MODELS = {
-  narrative: "x-ai/grok-3",
-  utility: "venice/uncensored:free",
-  fallback: "meta-llama/llama-3.3-70b-instruct:free"
+  narrative: "google/gemma-4-26b-a4b-it:free",
+  utility: "google/gemma-4-31b-it:free",
+  fallback: "google/gemma-4-31b-it:free"
 };
 
 const usageByCampaign = {};
