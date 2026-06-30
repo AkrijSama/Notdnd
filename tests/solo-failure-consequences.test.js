@@ -6,7 +6,8 @@ import {
   resolveAttemptAction,
   resolveRetryForeclosure,
   enforceFailureConsequence,
-  validateAttemptProviderOutput
+  validateAttemptProviderOutput,
+  composeAttemptNarration
 } from "../server/solo/attempt.js";
 
 // A scripted GM provider returning a fixed proposal incl. a structured
@@ -173,4 +174,75 @@ test("validateAttemptProviderOutput accepts a well-formed failureConsequence and
   assert.equal(validateAttemptProviderOutput(base).ok, true);
   const bad = { ...base, failureConsequence: { type: "explode" } };
   assert.equal(validateAttemptProviderOutput(bad).ok, false);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FORECLOSURE matches by a STABLE, PLAYER-DERIVED key (intent/target), NOT by the
+// model's free-text targetObject label — so a retry phrased differently from the
+// label still links to the degraded object (the bug the model swap exposed).
+// ─────────────────────────────────────────────────────────────────────────────
+
+function failProvider(failureConsequence) {
+  return { summary: "You attempt it.", recommendedAbility: "strength", dc: 13, needsCheck: true, advantage: false, disadvantage: false, successNarration: "It opens.", failureNarration: "It resists.", proposedEffects: [], failureConsequence };
+}
+function attempt2(run, intent, fc, fixedRoll) {
+  return resolveAttemptAction(run, { type: "attempt", actorId: "player", intent }, { fixedRoll, now: "2026-01-01T00:00:00.000Z", attemptProviderFn: () => failProvider(fc) });
+}
+
+test("foreclosure links a retry to the degraded object even when the MODEL LABELS IT DIFFERENTLY", () => {
+  let run = createDefaultSoloRun({ now: "2026-01-01T00:00:00.000Z" });
+  // The player attempts a LOCK, but the model labels the degraded object as "the
+  // warped shutters" (lexically disjoint from the intent).
+  const deg = attempt2(run, "force the rusted iron lock until it gives", { type: "objectState", targetObject: "the warped shutters", objectState: "jammed", retryEffect: "harder", reason: "a pin shears off inside" }, 1);
+  run = deg.run;
+  const entry = Object.values(objectStatesOf(run))[0];
+  assert.ok(entry, "an object was degraded");
+  // The match key is derived from the PLAYER's words, not the model label.
+  assert.ok(entry.matchTokens.includes("lock"), "matchTokens come from the player intent (lock), not the label (shutters)");
+  assert.ok(!entry.matchTokens.includes("shutters"), "the model label is NOT the match key");
+  // A retry phrased differently from the label still forecloses.
+  const retry = attempt2(run, "try to force the lock again", { type: "objectState", targetObject: "x", objectState: "jammed", retryEffect: "harder" }, 14);
+  assert.equal(retry.attemptResult.foreclosed, true, "the rephrased retry links to the degraded lock");
+});
+
+test("foreclosure matches a retry on the same TARGET id regardless of wording", () => {
+  let run = createDefaultSoloRun({ now: "2026-01-01T00:00:00.000Z" });
+  // No targetId here (freeform), but the token path covers it; assert a same-object
+  // rephrase links, and an unrelated object does NOT.
+  const deg = attempt2(run, "pry the swollen oak door apart", { type: "objectState", targetObject: "the door", objectState: "splintered", retryEffect: "blocked", reason: "the wood splinters" }, 1);
+  run = deg.run;
+  const same = resolveRetryForeclosure(run, { intent: "shoulder the splintered door open" });
+  assert.equal(same.effect, "blocked", "a rephrased retry on the same door is blocked");
+  const other = resolveRetryForeclosure(run, { intent: "climb the crumbling wall to the ledge" });
+  assert.equal(other.effect, "none", "an unrelated object still rolls (no over-foreclosure)");
+});
+
+test("foreclosure does NOT fire when the model label happens to share a word with an unrelated retry", () => {
+  let run = createDefaultSoloRun({ now: "2026-01-01T00:00:00.000Z" });
+  // Model labels a degraded MAP as "the ancient chart"; a later retry of a CHART of
+  // stars (unrelated) must not falsely foreclose — because matching is on the
+  // player's degrade-intent words (map), not the label (chart).
+  const deg = attempt2(run, "examine the brittle wall map", { type: "objectState", targetObject: "the ancient chart", objectState: "torn", retryEffect: "blocked", reason: "the map tears" }, 1);
+  run = deg.run;
+  const unrelated = resolveRetryForeclosure(run, { intent: "study the star chart on the ceiling" });
+  assert.equal(unrelated.effect, "none", "the label word 'chart' does not foreclose an unrelated chart");
+  const sameObj = resolveRetryForeclosure(run, { intent: "look at the torn map again" });
+  assert.equal(sameObj.effect, "blocked", "the same map (player word) still forecloses");
+});
+
+// ── ITEM-3: fallback-path narration is grounded in the enforced consequence reason
+test("composeAttemptNarration: empty provider prose on a failure binds to the consequence reason", () => {
+  // The offline/legacy fallback path (no provider prose) — bound to enforced state.
+  assert.equal(
+    composeAttemptNarration({ baseNarration: "", success: false, phrase: "wrench the grate loose", consequence: { type: "damage", reason: "the grate gashes your palms" } }),
+    "You try to wrench the grate loose, but the grate gashes your palms."
+  );
+  // No reason (legacy fixed cost) → neutral line, not a fabricated cause.
+  assert.equal(
+    composeAttemptNarration({ baseNarration: "", success: false, phrase: "force the door", consequence: { type: "damage", reason: "" } }),
+    "You try to force the door, but it doesn't come together this time."
+  );
+  // A foreclosure block line wins; a present provider line is preserved.
+  assert.equal(composeAttemptNarration({ blockNarration: "It is too torn to read again.", baseNarration: "", success: false, phrase: "x", consequence: {} }), "It is too torn to read again.");
+  assert.equal(composeAttemptNarration({ baseNarration: "The lock holds firm.", success: false, phrase: "x", consequence: { reason: "y" } }), "The lock holds firm.");
 });

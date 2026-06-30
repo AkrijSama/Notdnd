@@ -80,11 +80,27 @@ function slugify(value) {
 
 // Stopwords stripped when deriving an object's match tokens from intent text, so
 // "examine the torn map" tokenizes to ["torn","map"], not the verb/article noise.
+// Includes the common ACTION verbs (force/wrench/pry/…) so what remains is the
+// OBJECT (noun + descriptors), keeping the match anchored on the thing acted on.
 const OBJECT_STOPWORDS = new Set([
   "the", "a", "an", "this", "that", "these", "those", "with", "at", "to", "on", "in", "of", "for", "and",
+  "again", "more", "my", "your", "his", "her", "their", "its", "it", "into", "from", "over", "under",
+  // action verbs — the verb is not the object; foreclosure matches the OBJECT
   "examine", "inspect", "read", "study", "look", "search", "open", "pry", "force", "pick", "use", "try",
-  "again", "more", "my", "your", "his", "her", "their", "it", "into", "from", "over", "under"
+  "wrench", "snap", "tear", "smash", "bash", "shove", "heave", "lift", "push", "pull", "twist", "yank",
+  "strike", "slice", "grab", "hurl", "scale", "leap", "wade", "decipher", "unlock", "break", "cut",
+  "throw", "climb", "kick", "barge", "shoulder", "slam"
 ]);
+
+// Words that introduce a TOOL / COMPANION / RESULT clause — the object being acted
+// on is the HEAD of the intent, before any of these. Cutting here drops noise like
+// "with Esk" (a companion) or "until it gives" (a result) from the object anchor.
+const OBJECT_CLAUSE_BOUNDARY = /\b(?:with|using|until|so\s+that|so\s+i\b|because|to\s+read|to\s+open|to\s+reach|and\s+then|in\s+order|off\s+the|loose\b)/;
+
+// The OBJECT-anchor text: the head of the intent up to the first tool/result clause.
+function objectAnchorText(intent) {
+  return String(intent || "").toLowerCase().split(OBJECT_CLAUSE_BOUNDARY)[0];
+}
 
 // Meaningful word-tokens (len>=3, not stopwords) used to recognize a later
 // attempt as targeting the SAME degraded object (retry foreclosure matching).
@@ -343,6 +359,32 @@ function intentPhrase(intent) {
     return "act";
   }
   return cleaned.charAt(0).toLowerCase() + cleaned.slice(1);
+}
+
+// Composes the DETERMINISTIC attempt narration (the line shown when the live GM
+// narration is unavailable — the offline/legacy fallback path). Order of truth:
+//   1. a foreclosure block line (already grounded in the object's degraded state),
+//   2. the provider's success/failure prose when present,
+//   3. on a FAILURE with no provider prose, a line GROUNDED in the enforced
+//      consequence's REASON (ITEM-3 — so the fallback narration AGREES with what
+//      actually happened to state, the same source the live GM directive uses),
+//   4. else a neutral intent-aware safety line.
+// Pure; never throws.
+export function composeAttemptNarration({ blockNarration, baseNarration, success, phrase, consequence } = {}) {
+  if (isString(blockNarration)) {
+    return blockNarration;
+  }
+  if (isString(baseNarration)) {
+    return baseNarration;
+  }
+  const safePhrase = isString(phrase) ? phrase : "act";
+  if (success) {
+    return `You ${safePhrase}.`;
+  }
+  const reason = consequence && isString(consequence.reason) ? consequence.reason.trim().replace(/[.!?]+$/, "") : "";
+  return reason
+    ? `You try to ${safePhrase}, but ${reason}.`
+    : `You try to ${safePhrase}, but it doesn't come together this time.`;
 }
 
 function defaultProviderOutput(input) {
@@ -845,18 +887,27 @@ function currentLocation(run) {
   return locations[run?.currentLocationId] || null;
 }
 
-// Resolves the stable object key + human label + match tokens for the object a
-// consequence acts on: the GM's targetObject when given, else the salient nouns
-// of the player's intent. The key is what we persist degraded state under; the
-// tokens are how a later attempt is recognized as targeting the SAME object.
+// Resolves a degraded object's identity. CRITICAL: the FORECLOSURE MATCH KEY
+// (matchTokens + targetId) is derived from what the PLAYER ACTUALLY ATTEMPTED
+// (their intent's object anchor + the action's target id) — NOT from the model's
+// free-text targetObject label. The model can name the object differently from the
+// retry intent (e.g. it labels "force the rusted iron lock" as "the warped
+// shutters"); matching on that label is lexically disjoint from the retry and
+// silently misses the foreclosure. The label is kept only as the storage key +
+// display string, never as the match key. So "force the rusted iron lock" → later
+// "try the lock again" links reliably on the shared player word "lock".
 function deriveObjectIdentity(context, spec) {
   const labelSource = isString(spec?.targetObject) ? spec.targetObject : "";
-  const tokensFromLabel = objectTokens(labelSource);
-  const tokensFromIntent = objectTokens(context?.intent);
-  const tokens = (tokensFromLabel.length ? tokensFromLabel : tokensFromIntent).slice(0, 6);
-  const label = labelSource || tokens.join(" ") || "it";
-  const objectId = slugify(labelSource || tokens.join("-") || context?.intent || "object") || "object";
-  return { objectId, label, matchTokens: tokens };
+  const targetId = isString(context?.targetId) ? context.targetId : "";
+  // Match tokens: the player's own object words (anchored before any tool/result
+  // clause), so a rephrased retry shares them. The label is NOT used for matching.
+  const matchTokens = objectTokens(objectAnchorText(context?.intent)).slice(0, 6);
+  // Storage/display key: prefer the model's label slug (stable, human-readable key
+  // that downstream readers look up), else the player-derived anchor. Matching never
+  // depends on this — only on matchTokens / targetId above.
+  const objectId = slugify(labelSource || targetId || matchTokens.join("-") || context?.intent || "object") || "object";
+  const label = labelSource || matchTokens.join(" ") || "it";
+  return { objectId, label, targetId: targetId || null, matchTokens };
 }
 
 // Marks the acted-on object/feature with its degraded state on the current
@@ -882,7 +933,9 @@ function markObjectDegraded(run, context, spec, now) {
     state: isString(spec.objectState) ? spec.objectState : "degraded",
     retryEffect,
     reason: isString(spec.reason) ? spec.reason : "",
+    // Player-derived match key (NOT the model label) — see deriveObjectIdentity.
     matchTokens: identity.matchTokens,
+    targetId: identity.targetId,
     sourceIntent: isString(context?.intent) ? context.intent : "",
     since: now
   };
@@ -901,14 +954,22 @@ export function resolveRetryForeclosure(run, context) {
   if (!states) {
     return { effect: "none", object: null };
   }
-  const words = new Set(objectTokens(context?.intent));
+  // Derive the retry's identity from the PLAYER's intent the SAME way the degrade
+  // did — its object-anchor words + the action's target id — so a rephrased retry
+  // ("try the lock again") links to the degraded object ("force the rusted iron
+  // lock") on the shared player word, independent of the model's label.
+  const words = new Set(objectTokens(objectAnchorText(context?.intent)));
+  const retryTargetId = isString(context?.targetId) ? context.targetId : null;
   let harderMatch = null;
   for (const entry of Object.values(states)) {
-    if (!isPlainObject(entry) || !Array.isArray(entry.matchTokens) || entry.retryEffect === "none" || !entry.retryEffect) {
+    if (!isPlainObject(entry) || entry.retryEffect === "none" || !entry.retryEffect) {
       continue;
     }
-    const hit = entry.matchTokens.some((token) => words.has(token));
-    if (!hit) {
+    // Match on the same tracked target id (a true stable id), OR overlap on the
+    // player-derived object tokens. Only the actually-degraded object forecloses.
+    const idHit = Boolean(retryTargetId) && Boolean(entry.targetId) && retryTargetId === entry.targetId;
+    const tokenHit = Array.isArray(entry.matchTokens) && entry.matchTokens.some((token) => words.has(token));
+    if (!idHit && !tokenHit) {
       continue;
     }
     if (entry.retryEffect === "blocked") {
@@ -1651,18 +1712,17 @@ export function resolveAttemptAction(run, action, options = {}) {
   // A foreclosed (blocked) retry narrates the closed door, not a fresh attempt —
   // grounding the prose in the object's persisted degraded state. Otherwise the
   // provider's success/failure line stands (with the intent-aware safety net).
-  const baseNarration = blockNarration
-    ? blockNarration
-    : (success ? providerOutput.successNarration : providerOutput.failureNarration);
   // Never leave a turn silent (FIX K, code half): if the provider narration is
-  // empty, fall back to an intent-aware outcome line. The live attempt provider
-  // always fills these, but a thin custom provider might not — and a no-roll
-  // action must still narrate. Echoing the intent keeps the line from reading as
-  // "nothing happened" in degraded mode.
-  const phrase = intentPhrase(context.intent);
-  const narration = isString(baseNarration)
-    ? baseNarration
-    : (success ? `You ${phrase}.` : `You try to ${phrase}, but it doesn't come together this time.`);
+  // empty (thin/offline/legacy fallback path), fall back to an intent-aware line —
+  // grounded, on a failure, in the enforced consequence's REASON so the fallback
+  // narration AGREES with what actually happened to state (ITEM-3).
+  const narration = composeAttemptNarration({
+    blockNarration,
+    baseNarration: success ? providerOutput.successNarration : providerOutput.failureNarration,
+    success,
+    phrase: intentPhrase(context.intent),
+    consequence
+  });
   const attemptResult = {
     intent: safeAction.intent,
     targetId: safeAction.targetId || null,

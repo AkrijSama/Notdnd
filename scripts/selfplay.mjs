@@ -555,36 +555,38 @@ async function scenarioFailureLive(ctx) {
   // emits usable structured output.
   if (fallbackPct > 40) ctx.warn(`F-live: HIGH interpreter fallback rate (${fallbackPct}%)`, `${fallbackCount}/${total} live failures fell back to the legacy flat HP cost — F is only half-live on this model (${prov.model}). On a 402 cloud→local session this is the local model's weakness, not a server regression.`);
 
-  // LIVE retry-foreclosure: fail object-targeting actions live; if the LIVE model
-  // degrades an object with a retry penalty, prove a re-attempt is foreclosed (you
-  // cannot brute-force a blocked object) — WITHOUT a test-hook proposal.
-  const OBJ_INTENTS = [
-    "force the rusted iron lock until it gives",
-    "tear the brittle parchment map open to read it",
-    "wrench the jammed portcullis chain loose",
-    "snap the corroded padlock off the gate"
-  ];
-  let degradedIntent = null, degradedKey = null, degradedEffect = null;
-  for (const intent of OBJ_INTENTS) {
-    await failLive(intent);
-    const states = (await scene(r)).json.location?.flags?.objectStates || {};
-    const hit = Object.values(states).find((e) => e && (e.retryEffect === "blocked" || e.retryEffect === "harder"));
-    if (hit) { degradedIntent = intent; degradedKey = hit.objectId; degradedEffect = hit.retryEffect; break; }
-  }
-  if (degradedIntent) {
-    ctx.note(`live object degradation: "${degradedKey}" → retryEffect:${degradedEffect} (from "${degradedIntent}")`);
-    // Re-attempt the SAME object, forcing a winning roll — a blocked object must
-    // still refuse; a harder object must at least not silently succeed unchecked.
-    const retry = await act(r, { type: "attempt", intent: degradedIntent, testHook: { fixedRoll: 20 } });
-    const rar = retry.json.attemptResult || {};
-    if (degradedEffect === "blocked") {
-      ctx.assert("F-live: blocked object is FORECLOSED live (no brute-force on a 20)", rar.foreclosed === true && rar.success === false, "foreclosed, no success", `foreclosed:${rar.foreclosed} success:${rar.success}`);
-    } else {
-      ctx.assert("F-live: harder object retry is penalized live (flagged foreclosed)", rar.foreclosed === true, "foreclosed:true", `foreclosed:${rar.foreclosed}`);
-    }
-  } else {
-    ctx.warn("F-live: live model did not degrade any object across the probe", "could not verify retry-foreclosure on the LIVE path this run (the deterministic 'failure' scenario HARD-proves the engine). Likely a weak/again-fallback model not emitting objectState.");
-  }
+  // Informational: how often did the LIVE model emit a degrading objectState this
+  // run (the thing the matcher fix is for)? Not a hard gate — the model is
+  // nondeterministic about it; the matcher itself is proven DETERMINISTICALLY next.
+  const objStateSeen = (dist.objectState || 0);
+  ctx.note(`live objectState consequences emitted: ${objStateSeen}/${total} (model-dependent)`);
+
+  // RETRY-FORECLOSURE matches a retry to a degraded object by a STABLE, PLAYER-
+  // DERIVED key (the player's intent words), NOT the model's free-text label — the
+  // bug the model swap exposed (label↔retry lexically disjoint → missed
+  // foreclosure). Proven RELIABLY here end-to-end over HTTP, isolated on a fresh run
+  // (one degraded object, no interference), and DISJOINT-by-construction: the model
+  // labels the object "the warped shutters" while the player attempts a "lock", and
+  // the retry is phrased differently again — yet it must still foreclose.
+  const fr = await newRun("failure_live");
+  const degHook = (intent, retryEffect) => act(fr, { type: "attempt", intent, testHook: { fixedRoll: 1, providerOutput: {
+    summary: "You attempt it.", recommendedAbility: "strength", dc: 13, needsCheck: true, advantage: false, disadvantage: false,
+    successNarration: "It gives.", failureNarration: "It resists.", proposedEffects: [],
+    failureConsequence: { type: "objectState", targetObject: "the warped shutters", objectState: "jammed", retryEffect, reason: "a pin shears off inside" }
+  } } });
+  const roll = (intent, dc, fixedRoll) => act(fr, { type: "attempt", intent, testHook: { fixedRoll, providerOutput: { summary: "x", recommendedAbility: "strength", dc, needsCheck: true, advantage: false, disadvantage: false, successNarration: "It opens.", failureNarration: "It holds.", proposedEffects: [] } } });
+
+  const deg = await degHook("force the rusted iron lock until it gives", "blocked");
+  const dloc = (await scene(fr)).json.location?.flags?.objectStates || {};
+  const dEntry = Object.values(dloc)[0] || {};
+  ctx.assert("F-live: object degraded with a player-derived match key (not the model label)", deg.json.attemptResult?.consequence?.type === "objectState" && Array.isArray(dEntry.matchTokens) && dEntry.matchTokens.includes("lock") && !dEntry.matchTokens.includes("shutters"), "matchTokens from intent (lock), not label (shutters)", `consequence:${deg.json.attemptResult?.consequence?.type} matchTokens:${JSON.stringify(dEntry.matchTokens)}`);
+  // Retry phrased DIFFERENTLY from BOTH the label and the original intent — forced 20.
+  const reBlk = (await roll("try to force the lock once more", 1, 20)).json.attemptResult || {};
+  ctx.assert("F-live: blocked object FORECLOSED on a REPHRASED retry (no brute-force on a 20)", reBlk.foreclosed === true && reBlk.success === false && reBlk.checkResult == null, "foreclosed, no success, no roll", `foreclosed:${reBlk.foreclosed} success:${reBlk.success} rolled:${reBlk.checkResult ? "yes" : "no"}`);
+  // Anti-tyranny: an UNRELATED action still rolls (no over-foreclosure).
+  const unrel = (await roll("climb the crumbling wall to the ledge", 10, 14)).json.attemptResult || {};
+  ctx.assert("F-live: an unrelated action still ROLLS (no over-foreclosure)", unrel.foreclosed !== true && unrel.checkResult != null, "rolled, not foreclosed", `foreclosed:${unrel.foreclosed} rolled:${unrel.checkResult ? "yes" : "no"}`);
+  ctx.note(`foreclosure: degraded "${dEntry.objectId}" (label) keyed on player tokens ${JSON.stringify(dEntry.matchTokens)}; rephrased retry foreclosed reliably`);
 }
 
 // 2) LETHALITY — the headline product identity. Driven deterministically.
