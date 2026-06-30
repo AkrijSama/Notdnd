@@ -296,8 +296,9 @@ async function scenarioConsequence(ctx) {
 // leaves fail-open is closed by STATE, not text: an action relying on a SPECIFIC
 // claimed item is verified against real inventory. Held → proceeds; specifically
 // claimed-but-absent → fails (no item, no roll, no success); generic improvisation
-// → still rolls. Driven deterministically via the attempt test-hook's requiredItem
-// flag (the model's job) so the SERVER's verification is what's under test.
+// → still rolls. Verified BOTH with the interpreter flag AND — crucially — with NO
+// flag (the weak-model case the autoplay found leaking), proving the server detects
+// and refuses the claim deterministically, independent of the model.
 async function scenarioPossession(ctx) {
   const r = await newRun("possession"); ctx.runId = r.runId; ctx.token = r.token;
   const KEY = "selfplay_brass_key";
@@ -337,6 +338,29 @@ async function scenarioPossession(ctx) {
   ctx.assert("GENERIC improvisation → NOT refused", gar.unpossessed !== true, "unpossessed:not-true", `unpossessed:${gar.unpossessed}`);
   ctx.assert("GENERIC improvisation → still ROLLS (can fail)", gar.needsCheck === true && gar.checkResult != null, "rolled a d20", `needsCheck:${gar.needsCheck} rolled:${gar.checkResult ? "yes" : "no"}`);
   ctx.note(`possession: held brass key proceeds; claimed-but-absent writ refused ("${String(lar.narration || "").replace(/\s+/g, " ").trim().slice(0, 90)}"); rock improvisation still rolls`);
+
+  // (d) THE CLOSED LIVE GAP — DETERMINISTIC, MODEL-INDEPENDENT. The autoplay found
+  // that on the weak local model the interpreter often OMITS requiredItem, letting
+  // "the silver key I've always carried" retcon slip through live. Simulate that
+  // weak model: a providerOutput that carries NO requiredItem flag. The SERVER must
+  // detect the claim itself and refuse — proving the leak is closed without the model.
+  const noFlag = (intent, fixedRoll = 20) =>
+    act(r, { type: "attempt", intent, testHook: { fixedRoll, providerOutput: {
+      summary: `You attempt: ${intent}`, recommendedAbility: "dexterity", dc: 12, needsCheck: true,
+      advantage: false, disadvantage: false, successNarration: "The lock gives.", failureNarration: "It holds.",
+      proposedEffects: [] // NO requiredItem — the weak-model case
+    } } });
+  const gap = await noFlag("I unlock the strongbox with the silver skeleton key I have always carried", 20);
+  const gapr = gap.json.attemptResult || {};
+  ctx.assert("NO-FLAG retcon item → server catches it (deterministic, model-independent)", gapr.unpossessed === true, "unpossessed:true", `unpossessed:${gapr.unpossessed}`);
+  ctx.assert("NO-FLAG retcon item → no success on a forced nat-20", gapr.success === false, "success:false", `success:${gapr.success}`);
+  ctx.assert("NO-FLAG retcon item → NO dice rolled", gapr.checkResult == null, "checkResult:null", `checkResult:${gapr.checkResult ? "set" : "null"}`);
+  // Anti-tyranny WITHOUT a flag: bare-hands / bare-category / generic / held all proceed.
+  for (const intent of ["force the gate open with my bare hands", "attack the warden with my sword", "smash the latch with a heavy rock", "unlock it with the brass key"]) {
+    const a = (await noFlag(intent, 5)).json.attemptResult || {};
+    ctx.assert(`NO-FLAG anti-tyranny: "${intent.slice(0, 30)}…" proceeds + rolls`, a.unpossessed !== true && a.checkResult != null, "proceeds+rolled", `unpossessed:${a.unpossessed} rolled:${a.checkResult ? "yes" : "no"}`);
+  }
+  ctx.note(`closed gap: claimed-but-absent "silver skeleton key" with NO interpreter flag → unpossessed=${gapr.unpossessed} ("${String(gapr.narration || "").replace(/\s+/g, " ").trim().slice(0, 80)}")`);
 }
 
 // 1b) MEANINGFUL FAILURE — a failed check's GM-proposed consequence becomes REAL,

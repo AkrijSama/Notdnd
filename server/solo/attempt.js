@@ -1284,7 +1284,9 @@ const ITEM_CATEGORY_NOUNS = new Set([
   "paper", "papers", "letter", "scroll", "map", "deed", "writ", "pass", "token", "coin", "gold",
   "ring", "amulet", "necklace", "cloak", "armor", "shield", "gem", "stone", "crystal", "powder",
   "poison", "antidote", "salve", "herb", "herbs", "tool", "tools", "lockpick", "lockpicks", "pick",
-  "picks", "kit", "gloves", "boots", "hat", "mask", "charm", "talisman", "seal", "badge", "medallion"
+  "picks", "kit", "gloves", "boots", "hat", "mask", "charm", "talisman", "seal", "badge", "medallion",
+  "pardon", "ledger", "ticket", "tome", "grimoire", "relic", "artifact", "orb", "horn", "whistle",
+  "compass", "mirror", "crown", "gauntlet", "banner", "contract", "warrant", "sigil", "emblem", "lockbox"
 ]);
 
 function itemContentWords(text) {
@@ -1352,14 +1354,63 @@ export function resolvePossessionClaim(run, requiredItem) {
     return { possessed: false, refuse: false, claimWords };
   }
   const held = playerHeldItemTokens(run);
-  // Match on the DISTINCTIVE descriptor when the claim has one (so "silver skeleton
-  // key" is NOT satisfied by a held "brass key"); fall back to the category noun
-  // only for a bare claim ("my key" matches any held key). Fail-open: any match
-  // proceeds; refuse only when nothing the player holds answers the claim.
+  // A claim is only refused when it carries a DISTINCTIVE descriptor (an adjective
+  // or proper noun beyond the item KIND) that the player demonstrably lacks — so
+  // "silver skeleton key" is NOT satisfied by a held "brass key". A BARE category
+  // claim ("my key", "my sword") names only a KIND, not a specific item, so it is
+  // ALWAYS fail-open (never a retcon to refuse) — anti-tyranny. Refuse only when a
+  // distinctive descriptor exists and nothing held answers it.
   const distinctive = claimWords.filter((word) => !ITEM_CATEGORY_NOUNS.has(word));
-  const matchWords = distinctive.length ? distinctive : claimWords;
-  const possessed = matchWords.some((word) => held.has(word));
+  if (!distinctive.length) {
+    return { possessed: claimWords.some((word) => held.has(word)), refuse: false, claimWords };
+  }
+  const possessed = distinctive.some((word) => held.has(word));
   return { possessed, refuse: !possessed, claimWords };
+}
+
+// Deterministic SERVER-SIDE item-claim detector — the source of truth that does
+// NOT depend on the LLM interpreter emitting requiredItem (a weak model often
+// omits it, which let the "silver key I've always carried" retcon slip through in
+// live play). Extracts a claimed item phrase from possession/use framings in the
+// raw intent, and returns { name, specific:true } ONLY when the phrase names a
+// real ITEM KIND (a category noun) — so "with my bare hands", "with all my
+// strength", generic improvisation, and non-item actions are never flagged.
+// resolvePossessionClaim is the conservative gate over the result (bare category →
+// fail-open; generic → fail-open; specific-but-unheld → refuse).
+const ITEM_CLAIM_FRAMES = [
+  // "...with/using my|the <item>..."
+  /\b(?:with|using)\s+(?:my|the|a|an|his|her|their|your)\s+([a-z][a-z' -]{1,46}?)(?=\s+(?:and|to|that|which|i\b|from\b|so\b|then\b|at\b|on\b|into\b|in\b|,|\.)|$)/i,
+  // "...draw/pull out/produce/brandish/wield/... my|the <item>..."
+  /\b(?:draw|drew|pull\s+out|pulled\s+out|produce|brandish|wield|unsheathe|whip\s+out|take\s+out|took\s+out|retrieve|raise|reveal)\s+(?:my|the|a|an|his|her|their|your)\s+([a-z][a-z' -]{1,46}?)(?=\s+(?:and|to|that|which|i\b|from\b|so\b|then\b|at\b|on\b|,|\.)|$)/i,
+  // "...show/present/hand over/... my <item>..." (NPC object may sit between)
+  /\b(?:show|present|hand\s+over|flash|produce|reveal|wave)\b[\s\S]{0,24}?\bmy\s+([a-z][a-z' -]{1,46}?)(?=\s+(?:and|to|that|which|i\b|so\b|then\b|at\b|on\b|,|\.)|$)/i,
+  // "...the <item> (that) I (have)(always) carried/owned/kept/had..." (the RETCON signature)
+  /\bthe\s+([a-z][a-z' -]{1,46}?)\s+(?:that\s+)?i\s+(?:have\s+)?(?:always\s+)?(?:carried|carry|owned|own|kept|keep|had|possess|hold|wear)\b/i,
+  // "...<item> from my boot/pack/cloak/pocket/belt/..."
+  /\b([a-z][a-z' -]{1,40}?)\s+from\s+my\s+(?:boot|pack|cloak|pocket|belt|bag|pouch|satchel|sleeve)\b/i
+];
+export function detectClaimedItem(intent) {
+  const text = String(intent || "").toLowerCase();
+  if (!text.trim()) {
+    return null;
+  }
+  for (const re of ITEM_CLAIM_FRAMES) {
+    const m = text.match(re);
+    if (!m || !m[1]) {
+      continue;
+    }
+    const phrase = m[1].trim().replace(/^(?:my|the|a|an|his|her|their|your)\s+/, "");
+    const words = itemContentWords(phrase);
+    if (!words.length) {
+      continue;
+    }
+    const namesAnItem = words.some((word) => ITEM_CATEGORY_NOUNS.has(word));
+    const allGeneric = words.every((word) => GENERIC_ITEM_WORDS.has(word));
+    if (namesAnItem && !allGeneric) {
+      return { name: phrase, specific: true };
+    }
+  }
+  return null;
 }
 
 // Composes a grounded, in-fiction absence line for a specifically-claimed item the
@@ -1492,16 +1543,23 @@ export function resolveAttemptAction(run, action, options = {}) {
   const providerResult = resolveProviderOutput(context, providerInput, options);
   const providerOutput = providerResult.output;
 
-  // POSSESSION STATE-CHECK (pre-roll). When the interpreter flags that the action
-  // RELIES ON a specific claimed item, the server verifies possession against real
-  // inventory. A specifically-claimed item the player does NOT hold fails outright
-  // (no roll, no success, nothing materializes) — closing the possession-retcon
-  // leak via STATE, not text. Fails OPEN: generic gear and any plausible match
-  // proceed to a normal roll, so legitimate improvisation is never blocked. Runs
-  // AFTER the authority gate, BEFORE the roll.
-  const possession = resolvePossessionClaim(updatedRun, providerOutput.requiredItem);
+  // POSSESSION STATE-CHECK (pre-roll), DETERMINISTIC + MODEL-INDEPENDENT. The
+  // server itself detects an item-dependent claim from the intent text
+  // (detectClaimedItem) and verifies it against real inventory — so the
+  // retcon-possession leak is closed even when the weak interpreter omits the
+  // requiredItem flag (the live gap the autoplay found). The interpreter's flag is
+  // a HINT that takes precedence when present; otherwise the server's own
+  // detection stands. A specifically-claimed item the player does NOT hold fails
+  // outright (no roll, no success, nothing materializes). Fails OPEN: generic gear,
+  // bare-category claims, and any plausible match proceed. Runs AFTER the authority
+  // gate, BEFORE the roll.
+  const flaggedItem = isPlainObject(providerOutput.requiredItem) && providerOutput.requiredItem.specific === true
+    ? providerOutput.requiredItem
+    : null;
+  const claimedItem = flaggedItem || detectClaimedItem(context.intent);
+  const possession = resolvePossessionClaim(updatedRun, claimedItem);
   if (possession.refuse) {
-    return buildUnpossessedAttempt(updatedRun, safeAction, context, providerOutput.requiredItem, options);
+    return buildUnpossessedAttempt(updatedRun, safeAction, context, claimedItem, options);
   }
 
   // Roll gate (FIX H): only genuinely uncertain/contested actions roll a d20.
