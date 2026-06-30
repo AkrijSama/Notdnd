@@ -427,23 +427,24 @@ function renderAuthPanel(state) {
     `;
   }
 
+  const registering = uiState.authMode === "register";
   return `
     <section class="module-card">
       <div class="module-header">
-        <h3>Authentication Required</h3>
-        <span class="tag">Secure Collaboration</span>
+        <h3>${registering ? "Create your free account" : "Sign in to play"}</h3>
+        <span class="tag">Solo AI RPG</span>
       </div>
       <div class="inline">
-        <button class="ghost" data-action="auth-mode-login">Login</button>
-        <button class="ghost" data-action="auth-mode-register">Register</button>
+        <button class="ghost" data-action="auth-mode-login">Sign In</button>
+        <button class="ghost" data-action="auth-mode-register">Create Account</button>
       </div>
       <form id="auth-form" class="field">
-        <input name="displayName" placeholder="Display Name (register only)" ${uiState.authMode === "register" ? "" : "style='display:none;'"} />
+        <input name="displayName" placeholder="Display Name (new accounts only)" ${registering ? "" : "style='display:none;'"} />
         <input name="email" type="email" placeholder="email" required />
         <input name="password" type="password" placeholder="password (min 8 chars)" required />
-        <button type="submit">${uiState.authMode === "register" ? "Create account" : "Login"}</button>
+        <button type="submit">${registering ? "Create account & begin" : "Sign in"}</button>
       </form>
-      <div class="small">Default bootstrap account: demo@notdnd.local / demo1234</div>
+      <div class="small">Free to start. Your adventure saves automatically.</div>
     </section>
   `;
 }
@@ -1611,8 +1612,9 @@ function renderApp() {
         ${authMessageHtml}
         <main class="panel main solo-home-main">
           <section class="module-card solo-login-card">
-            <h2>Welcome to Inkborne</h2>
-            <p class="small">Sign in to begin or continue your solo adventure.</p>
+            <h2>Inkborne</h2>
+            <p class="solo-login-tagline">An atmospheric solo RPG with an AI game master that remembers every choice you make.</p>
+            <p class="small">Create a free account or sign in to begin your adventure.</p>
           </section>
           ${renderAuthPanel(state)}
         </main>
