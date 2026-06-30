@@ -107,7 +107,7 @@ import { fetchHomebrewUrl } from "./homebrew/urlImport.js";
 import { validateCustomItem, normalizeContentForBuild, CUSTOM_CONTENT_TYPES } from "./homebrew/customContent.js";
 import { createWsHub } from "./realtime/wsHub.js";
 import { resolveSoloAction, testHooksEnabled } from "./solo/actions.js";
-import { buildAttemptContext, buildAttemptProviderInput } from "./solo/attempt.js";
+import { buildAttemptContext, buildAttemptProviderInput, classifyIntentAuthority } from "./solo/attempt.js";
 import { interpretAttemptWithGm } from "./gm/attemptInterpreter.js";
 import { classifyNarrationVn, resolveGmNarration } from "./solo/gmProvider.js";
 import { buildGmRuntimeStatus } from "./solo/gmSmoke.js";
@@ -903,6 +903,20 @@ async function buildLiveAttemptOptions(run, action, user) {
     return {};
   }
   if (!run?.campaignId) {
+    return {};
+  }
+  // GATE BEFORE INTERPRET (the seam, now realized). The authority gate is a pure,
+  // deterministic, server-owned classifier — run it FIRST. An impossible intent
+  // ("I declare myself god-king", "I draw my legendary sword I've always owned")
+  // is refused pre-roll inside resolveSoloAction regardless; calling the
+  // interpreter for it only burns full model latency (≈15s on the local fallback)
+  // before the inevitable refusal, which under sustained load blew past the
+  // harness fetch timeout → flaky G1/G2. Skipping the interpreter here makes the
+  // refusal FAST and pays no model cost. The verdict is recomputed identically
+  // inside resolveAttemptAction (single source of truth), so the refusal itself
+  // is never skipped — only the wasted interpretation is. Legitimate intents fall
+  // through to interpret → possession-check → roll → failure-consequence as before.
+  if (typeof action.intent === "string" && action.intent.trim() && classifyIntentAuthority(action.intent).verdict === "impossible") {
     return {};
   }
   try {

@@ -49,7 +49,15 @@
 // use a headless browser for those.
 
 const BASE = process.env.SELFPLAY_BASE || `http://127.0.0.1:${process.env.PORT || 4173}`;
-const FETCH_TIMEOUT_MS = Number(process.env.SELFPLAY_FETCH_TIMEOUT_MS || 25000);
+// Per-call HTTP budget. Default 45s tolerates the LOCAL fallback model
+// (dolphin-8b) on live interpret→roll turns, which legitimately take ~10-15s and
+// can stack under a full-suite run when cloud (OpenRouter) is out of credit.
+// This does NOT mask real failures: a broken path returns an HTTP error / `code`
+// / undefined attemptResult immediately, well before the timeout — only a
+// slow-but-correct response is spared a FALSE timeout. Lower it (e.g.
+// SELFPLAY_FETCH_TIMEOUT_MS=15000) for a strict cloud run where any >15s call is
+// itself a regression.
+const FETCH_TIMEOUT_MS = Number(process.env.SELFPLAY_FETCH_TIMEOUT_MS || 45000);
 
 // ───────────────────────────── HTTP plumbing ─────────────────────────────
 
