@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { editImage, generateImage, providerSupportsReference, resolveImageProvider } from "../ai/providers.js";
+import { editImage, generateImage } from "../ai/providers.js";
 import { detectImageExt } from "../api/http.js";
 import {
   ensureLocationImageAsset,
@@ -422,58 +422,21 @@ export async function runVariantImageJob(job = {}) {
   if (!NPC_EXPRESSIONS.includes(expression)) {
     return { ok: false, reason: `unknown expression: ${expression}` };
   }
-  // Txt2img-only providers (TXT2IMG_ONLY_IMAGE_PROVIDERS, currently none) skip
-  // variants entirely; the UI falls back to the base portrait for every expression.
-  if (!providerSupportsReference(resolveImageProvider())) {
-    return { ok: true, skipped: true, reason: "provider does not generate variants" };
-  }
-
-  const linked = ensureNpcImageAssets(runId, npcId, { style: job.style });
-  if (!linked) {
-    return { ok: false, reason: "run or npc not found" };
-  }
-  const assetId = linked.variants[expression];
-  if (!assetId) {
-    return { ok: false, reason: `no slot for expression: ${expression}` };
-  }
-
-  const run = getSoloRun(runId);
-  // Generate-once / cache-forever: a variant already generated is reused as-is.
-  const existing = run?.imageAssets?.[assetId] || null;
-  if (existing && existing.status === "generated" && typeof existing.uri === "string" && existing.uri) {
-    return { ok: true, variant: { slot: expression, ok: true, uri: existing.uri, reused: true } };
-  }
-
-  const npc = run?.npcs?.[npcId] || null;
-  const style = job.style ? String(job.style).trim() : "";
-  // Seed-locked to the base so the variant reads as the same character.
-  const seed = Number.isFinite(Number(npc?.identitySeed)) ? Number(npc.identitySeed) : null;
-  const basePrompt = String(
-    job.basePrompt ||
-    npc?.portraitPrompt ||
-    `portrait of a ${npc?.role || npcId}, dark fantasy, detailed`
-  ).trim();
-
-  // Anchor on the base portrait when it exists (IP-Adapter providers); txt2img
-  // ignores it and relies on the shared seed + prompt delta.
-  const baseAsset = run?.imageAssets?.[linked.base] || null;
-  const referenceImageUrl =
-    baseAsset && baseAsset.status === "generated" && typeof baseAsset.uri === "string" && baseAsset.uri
-      ? referenceUrlFor(baseAsset.uri)
-      : null;
-
-  const variant = await generateSlot({
-    runId,
-    npcId,
-    slot: expression,
-    assetId,
-    prompt: `${basePrompt}, ${expression} expression, ${artStyleDirection(style, "npc")}`,
-    style,
-    seed,
-    referenceImageUrl,
-    ...PORTRAIT_DIMENSIONS
-  });
-  return { ok: true, variant };
+  // EXPRESSION VARIANTS DISABLED (intentional removal). We no longer generate a
+  // fresh per-expression txt2img. The base bust and each expression variant were
+  // INDEPENDENT generations that did not share a face, so a recurring NPC's face
+  // mutated every appearance — directly contradicting the "a world that remembers"
+  // promise. Now every expression reuses the single cached BASE portrait: the UI
+  // falls back to it whenever no variant URI exists (see renderSoloDialogueOverlay
+  // and resolveExpressionVariantUris), so this skip yields a stable, recognizable
+  // face — not a broken image. One image per character (the base), reused for all
+  // expressions, less quota burn.
+  //
+  // The IP-Adapter reference seam (generateSlot + referenceImageUrl, still used by
+  // the base portrait + VN body) is intentionally left INTACT and DORMANT — it is
+  // the future cross-run consistency lever via a reference-capable provider swap.
+  // We route variant requests to the cached base; we do not delete the seam.
+  return { ok: true, skipped: true, reason: "expression variants disabled — reusing cached base portrait" };
 }
 
 /**
@@ -854,24 +817,14 @@ export function enqueueImageJob(job = {}) {
 }
 
 /**
- * Enqueues a lazy single-expression-variant job. Fire-and-forget; safe from a
- * request path. The worker skips it if that variant is already generated, so
- * it's cheap to call on every talk beat.
+ * No-op: per-expression variant generation is disabled (see runVariantImageJob).
+ * Kept as a stable export so the request path can keep calling it harmlessly;
+ * it enqueues nothing, so no fresh per-expression txt2img is ever produced and
+ * the UI reuses the single cached base portrait for every expression.
  * @param {{ runId: string, npcId: string, expression: string, style?: string, basePrompt?: string }} job
  */
-export function enqueueVariantImageJob(job = {}) {
-  if (!job || !job.runId || !job.npcId || !job.expression) {
-    return;
-  }
-  queue.push({
-    kind: "variant",
-    runId: job.runId,
-    npcId: job.npcId,
-    expression: job.expression,
-    style: job.style,
-    basePrompt: job.basePrompt
-  });
-  Promise.resolve().then(drainQueue).catch((error) => logWorker("drain failed", error));
+export function enqueueVariantImageJob(/* job */) {
+  // Intentionally does nothing — characters collapse to one cached portrait.
 }
 
 /**

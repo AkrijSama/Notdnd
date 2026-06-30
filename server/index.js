@@ -111,7 +111,7 @@ import { buildAttemptContext, buildAttemptProviderInput, classifyIntentAuthority
 import { interpretAttemptWithGm } from "./gm/attemptInterpreter.js";
 import { classifyNarrationVn, resolveGmNarration } from "./solo/gmProvider.js";
 import { buildGmRuntimeStatus } from "./solo/gmSmoke.js";
-import { enqueueDraftPortrait, enqueueImageJob, enqueueLocationImageJob, enqueuePlayerImageJob, enqueueVariantImageJob, enqueueVnBodyImageJob, getDraftPortrait, writeUploadedBasePortrait } from "./solo/imageWorker.js";
+import { enqueueDraftPortrait, enqueueImageJob, enqueueLocationImageJob, enqueuePlayerImageJob, enqueueVnBodyImageJob, getDraftPortrait, writeUploadedBasePortrait } from "./solo/imageWorker.js";
 import { enqueueIdentityJob, runIdentityJob } from "./solo/npcIdentity.js";
 import { buildNpcIntroDirective, buildSoloScenePayload, collectNpcsWithPendingIntro } from "./solo/scene.js";
 import { refreshSceneSuggestions } from "./solo/suggestions.js";
@@ -1327,23 +1327,10 @@ async function handleApi(req, res) {
         }
       }
 
-      // Lazy expression variants: a talk beat tells us which expression the NPC
-      // needs — generate ONLY that one variant on demand (the worker skips it if
-      // already generated), instead of eagerly producing all six on encounter.
-      // "neutral" is skipped: the base portrait already is the neutral face and
-      // the client falls back to it.
-      if (
-        resolved.action?.type === "talk" &&
-        talkResult?.npcId &&
-        talkResult?.expression &&
-        talkResult.expression !== "neutral"
-      ) {
-        enqueueVariantImageJob({
-          runId: responseRun.runId,
-          npcId: talkResult.npcId,
-          expression: talkResult.expression
-        });
-      }
+      // Expression-variant generation removed: every NPC now reuses its single
+      // cached BASE portrait for all expressions (one image per character, stable
+      // recognizable face within a run). The client falls back to the base when no
+      // variant URI exists, so no per-expression generation is requested here.
 
       // Victory narration: when the main quest was just completed, one final GM
       // call writes the closing beat shown on the victory screen before the

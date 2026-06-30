@@ -43,7 +43,7 @@ function seedRunWithNpc(runId) {
   saveSoloRun(run);
 }
 
-test("runImageJob generates ONLY the base; variants are lazy (runVariantImageJob on demand)", async () => {
+test("runImageJob generates ONLY the base; expression variants are DISABLED (reuse base, no fresh gen)", async () => {
   seedRunWithNpc("run_img_a");
   const result = await runImageJob({
     runId: "run_img_a",
@@ -62,15 +62,17 @@ test("runImageJob generates ONLY the base; variants are lazy (runVariantImageJob
   assert.equal(baseAsset.uri, "/data/assets/run_img_a/tavern_keeper/base.png");
   assert.ok(fs.existsSync(path.join(process.env.NOTDND_ASSETS_ROOT, "run_img_a", "tavern_keeper", "base.png")));
 
-  // ...but NO expression variants are generated eagerly — every variant slot
-  // stays queued until a talk beat asks for it.
+  // ...and NO expression variants are generated at all — every variant slot
+  // stays queued (the slots remain for the dormant reference seam), so the UI
+  // reuses the single cached BASE portrait for every expression.
   for (const expression of NPC_EXPRESSIONS) {
     const assetId = run.npcs.tavern_keeper.expressionVariants[expression];
     assert.equal(assetId, `img_tavern_keeper_${expression}`);
-    assert.equal(run.imageAssets[assetId].status, "queued", `${expression} should stay queued (lazy)`);
+    assert.equal(run.imageAssets[assetId].status, "queued", `${expression} should stay queued (no gen)`);
   }
 
-  // Lazy on-demand: generate only the "warm" variant.
+  // Requesting a variant is now a NO-OP: it skips generation and the caller
+  // falls back to the cached base portrait (stable, recognizable face).
   const warmResult = await runVariantImageJob({
     runId: "run_img_a",
     npcId: "tavern_keeper",
@@ -78,20 +80,15 @@ test("runImageJob generates ONLY the base; variants are lazy (runVariantImageJob
     style: "illustrated"
   });
   assert.equal(warmResult.ok, true);
+  assert.equal(warmResult.skipped, true);
 
   run = getSoloRun("run_img_a");
   const warmId = run.npcs.tavern_keeper.expressionVariants.warm;
-  assert.equal(run.imageAssets[warmId].status, "generated");
-  assert.equal(run.imageAssets[warmId].uri, "/data/assets/run_img_a/tavern_keeper/warm.png");
-  assert.ok(fs.existsSync(path.join(process.env.NOTDND_ASSETS_ROOT, "run_img_a", "tavern_keeper", "warm.png")));
-  // Only the requested variant was produced; the rest remain queued.
-  assert.equal(run.imageAssets[run.npcs.tavern_keeper.expressionVariants.angry].status, "queued");
+  // No fresh generation: the slot stays queued and no variant file is written.
+  assert.equal(run.imageAssets[warmId].status, "queued");
+  assert.ok(!fs.existsSync(path.join(process.env.NOTDND_ASSETS_ROOT, "run_img_a", "tavern_keeper", "warm.png")));
 
-  // Generate-once / cache-forever: re-requesting the same variant reuses it.
-  const again = await runVariantImageJob({ runId: "run_img_a", npcId: "tavern_keeper", expression: "warm" });
-  assert.equal(again.variant.reused, true);
-
-  // The run is still schema-valid after the narrow worker writes.
+  // The run is still schema-valid after the base-only worker writes.
   assert.doesNotThrow(() => saveSoloRun(getSoloRun("run_img_a")));
 });
 

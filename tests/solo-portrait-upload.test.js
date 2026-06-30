@@ -76,7 +76,7 @@ function seedRunWithNpc(runId) {
   saveSoloRun(run);
 }
 
-test("uploaded base is reused (not regenerated); a requested variant generates from it", async () => {
+test("uploaded base is reused (not regenerated); requested variants are skipped (reuse base)", async () => {
   seedRunWithNpc("run_up_a");
 
   const { uri } = writeUploadedBasePortrait("run_up_a", "guard", "png", PNG);
@@ -98,15 +98,17 @@ test("uploaded base is reused (not regenerated); a requested variant generates f
   run = getSoloRun("run_up_a");
   // Base uri unchanged (upload preserved, not overwritten by a generated base.png record).
   assert.equal(run.imageAssets[linked.base].uri, uri);
-  // Variants are lazy: runImageJob did NOT generate any of them.
+  // No expression variants are generated: runImageJob produced only the base.
   for (const expression of NPC_EXPRESSIONS) {
     const assetId = run.npcs.guard.expressionVariants[expression];
-    assert.equal(run.imageAssets[assetId].status, "queued", `${expression} should stay queued (lazy)`);
+    assert.equal(run.imageAssets[assetId].status, "queued", `${expression} should stay queued (no gen)`);
   }
 
-  // On demand, a single variant generates from the uploaded base.
+  // Requesting a variant is a NO-OP — it skips, the uploaded base is reused for
+  // every expression (stable face), and no variant file is generated.
   const variant = await runVariantImageJob({ runId: "run_up_a", npcId: "guard", expression: "warm", style: "illustrated" });
   assert.equal(variant.ok, true);
+  assert.equal(variant.skipped, true);
   run = getSoloRun("run_up_a");
-  assert.equal(run.imageAssets[run.npcs.guard.expressionVariants.warm].status, "generated");
+  assert.equal(run.imageAssets[run.npcs.guard.expressionVariants.warm].status, "queued");
 });
