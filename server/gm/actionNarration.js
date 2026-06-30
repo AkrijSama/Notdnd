@@ -20,6 +20,144 @@ function styleSuffix(run) {
   );
 }
 
+// --- NPC invented-canon defense (the coherence moat, NPC side) ---------------
+// A player can SAY anything; the NPC must not let the player's words rewrite the
+// world. The model handles the nuance of HOW an NPC reacts (skeptical, amused,
+// guarded), but it should not have to GUESS what is genuinely true — so we derive
+// the ground truth from run-state and hand it to the prompt. State provides the
+// facts where they exist; the model supplies the in-character delivery.
+
+// The entity ids the player is referred to by across run-state (memory facts use
+// the literal "player"/actorId; relationships may use the player's playerId).
+function playerEntityIds(run) {
+  const ids = new Set(["player"]);
+  const pid = run?.player?.playerId;
+  if (isString(pid)) {
+    ids.add(pid);
+  }
+  return ids;
+}
+
+// The entity ids an NPC is referred to by (raw id and the "npc:"-prefixed form).
+function npcEntityIds(npc) {
+  const ids = new Set();
+  if (isString(npc?.npcId)) {
+    ids.add(npc.npcId);
+    ids.add(`npc:${npc.npcId}`);
+  }
+  return ids;
+}
+
+// Pure. Reads run-state to determine what an NPC GENUINELY has with the player:
+// an established relationship (run.relationships linking the two), whether they
+// are acquainted (npc.known), and how many canonical shared-history facts link
+// them. This is the deterministic backstop — anything the player asserts beyond
+// this is, by definition, unverified.
+export function npcEstablishedWithPlayer(run, npc) {
+  const players = playerEntityIds(run);
+  const npcs = npcEntityIds(npc);
+  const linksBoth = (entityIds) => {
+    if (!Array.isArray(entityIds)) {
+      return false;
+    }
+    let hasPlayer = false;
+    let hasNpc = false;
+    for (const id of entityIds) {
+      if (players.has(id)) hasPlayer = true;
+      if (npcs.has(id)) hasNpc = true;
+    }
+    return hasPlayer && hasNpc;
+  };
+
+  // Established relationship: a run.relationships entry whose two endpoints are
+  // the player and this NPC (in either direction).
+  let relationship = null;
+  const relationships = run && typeof run.relationships === "object" && run.relationships ? run.relationships : {};
+  for (const entry of Object.values(relationships)) {
+    if (!entry || typeof entry !== "object") {
+      continue;
+    }
+    const endpoints = new Set();
+    const src = isString(entry.sourceEntityId) ? entry.sourceEntityId.replace(/^npc:/, "") : "";
+    const tgt = isString(entry.targetEntityId) ? entry.targetEntityId.replace(/^npc:/, "") : "";
+    endpoints.add(src);
+    endpoints.add(tgt);
+    const pairsPlayer = [...players].some((id) => endpoints.has(id.replace(/^npc:/, "")));
+    const pairsNpc = [...npcs].some((id) => endpoints.has(id.replace(/^npc:/, "")));
+    if (pairsPlayer && pairsNpc) {
+      relationship = entry;
+      break;
+    }
+  }
+
+  // Canonical shared-history facts that link both the player and this NPC.
+  const facts = Array.isArray(run?.memoryFacts) ? run.memoryFacts : [];
+  const sharedFacts = facts
+    .filter((fact) => fact && fact.canonical !== false && linksBoth(fact.entityIds))
+    .map((fact) => (isString(fact.text) ? fact.text.trim() : ""))
+    .filter(Boolean);
+
+  return {
+    known: npc?.known === true,
+    relationship,
+    sharedFacts
+  };
+}
+
+// Describes an established relationship in plain words for the prompt, drawing on
+// the free-form flags (kind/label/descriptor) the relationship may carry, with a
+// generic fallback. Never throws on partial data.
+function describeRelationship(relationship) {
+  const flags = relationship && typeof relationship.flags === "object" && relationship.flags ? relationship.flags : {};
+  const label = [flags.kind, flags.label, flags.descriptor, flags.type]
+    .find((value) => isString(value));
+  return isString(label) ? label.trim() : "an established relationship recorded in the world's history";
+}
+
+// Pure. Builds the hardened invented-canon guard for a talk turn, grounded in
+// run-state. Two halves:
+//   1. GROUND TRUTH from state — what (if anything) is genuinely established
+//      between this NPC and the player, so a real bond is HONORED (anti-tyranny)
+//      and the absence of one is explicit.
+//   2. The DISCIPLINE — the NPC does not accept player-asserted history,
+//      relationships, promises, or authority it has no basis to know are true,
+//      and never grants compliance (passage, goods, obedience) on the strength of
+//      an unverified claim alone. A real persuasion/deception attempt still rolls
+//      separately; the point is the claim isn't auto-true.
+export function buildNpcCanonGuard(run, npc, speaker) {
+  const who = isString(speaker) ? speaker : (isString(npc?.displayName) ? npc.displayName : "the NPC");
+  const established = npcEstablishedWithPlayer(run, npc);
+
+  let groundTruth;
+  if (established.relationship) {
+    groundTruth =
+      ` GROUND TRUTH (from the world's records — this IS real, honor it): ${who} and the player share ` +
+      `${describeRelationship(established.relationship)}. Treat that bond as genuine and respond accordingly.`;
+  } else if (established.known || established.sharedFacts.length > 0) {
+    const sample = established.sharedFacts.slice(-2).join(" | ");
+    groundTruth =
+      ` GROUND TRUTH (from the world's records): ${who} has only met the player in passing — the ONLY real history ` +
+      `between them is${sample ? ` what has actually happened in play (e.g. "${sample}")` : " this encounter"}. ` +
+      `There is NO deeper bond, kinship, debt, or shared past on record.`;
+  } else {
+    groundTruth =
+      ` GROUND TRUTH (from the world's records): ${who} does NOT know the player. There is NO prior relationship, ` +
+      `shared history, kinship, debt, oath, or promise between them on record. The player is a stranger to ${who}.`;
+  }
+
+  const discipline =
+    ` ${who} only knows what they genuinely would. The player may CLAIM anything — invented shared history ` +
+    `("we fought together at Blackmoor"), a fabricated relationship ("I'm your brother / the captain's kin"), a ` +
+    `made-up promise or obligation ("the king granted me passage", "you owe me"), or any backstory the records above ` +
+    `do NOT support. ${who} must NOT accept such a claim as established fact and must NOT rewrite the world to fit it. ` +
+    `${who} may be skeptical, dismissive, confused, or play along noncommittally — but never confirm the invented ` +
+    `claim as true. Crucially, ${who} does NOT grant compliance — passage, goods, secrets, obedience — on the strength ` +
+    `of an unverified claimed relationship or promise alone. (The player is free to try to persuade or deceive; that ` +
+    `is a separate effort that can fail — the claim itself is not automatically true.)`;
+
+  return groundTruth + discipline;
+}
+
 /**
  * Builds a GM-narration prompt for a resolved solo action, or null when the
  * action type carries no narration (e.g. inspect). Pure.
@@ -98,20 +236,12 @@ export function buildActionGmMessage(run, resolved) {
         .map((turn) => `${turn.role === "player" ? "Player" : speaker}: ${turn.text.trim()}`)
         .join("\n");
       const beatHint = tr.found && isString(tr.line) ? ` ${speaker} may draw on what they know: "${tr.line}".` : "";
-      // INVENTED-CANON GUARD (the coherence moat, NPC side): a player can SAY
-      // anything, but the NPC must not let a player's words rewrite the world. If
-      // the player asserts facts, shared history, names, debts, or authority the
-      // NPC has no genuine basis to know are true (e.g. a war buddy and a battle
-      // that never happened), ${speaker} does NOT confirm them as real. They stay
-      // skeptical, uncertain, guarded, or noncommittal — they may humor or probe
-      // the claim, but never validate invented backstory as established truth.
-      const canonGuard =
-        ` Important: ${speaker} only knows what they genuinely would. If the player ` +
-        `asserts facts, shared history, or claims about the world that ${speaker} has no ` +
-        `real basis to know are true, ${speaker} does NOT accept them as fact — they react ` +
-        `with honest skepticism, confusion, or guarded non-commitment, and never confirm ` +
-        `invented backstory or unearned authority as real. Do not rewrite the world to fit ` +
-        `the player's claim.`;
+      // INVENTED-CANON GUARD (hardened, state-backed): the NPC must not let the
+      // player's words rewrite the world. The guard carries the GROUND TRUTH from
+      // run-state (a real relationship is honored; its absence is explicit) plus
+      // the discipline (don't accept invented history/relationships/promises;
+      // don't grant compliance on an unverified claim alone). See buildNpcCanonGuard.
+      const canonGuard = buildNpcCanonGuard(run, npc, speaker);
       return (
         `The player is mid-conversation with ${speaker}.${persona}${appearance} ` +
         `${transcript ? `Conversation so far:\n${transcript}\n` : ""}` +
@@ -126,8 +256,11 @@ export function buildActionGmMessage(run, resolved) {
       tr.found && isString(tr.line)
         ? `They have something specific to say: "${tr.line}".`
         : "This is a brief first exchange; nothing momentous is revealed.";
+    // The same invented-canon discipline applies to the opening exchange: even a
+    // first line must not confirm a fabricated bond the player leads with.
+    const canonGuard = buildNpcCanonGuard(run, npc, speaker);
     return (
-      `The player speaks with ${speaker}.${persona}${appearance} ${content} ` +
+      `The player speaks with ${speaker}.${persona}${appearance} ${content}${canonGuard} ` +
       `Voice ${speaker}'s spoken reply in-character (1-3 sentences of dialogue), then a brief line of narration. ${suffix}`
     );
   }

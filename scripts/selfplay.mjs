@@ -677,6 +677,40 @@ async function scenarioCoherence(ctx) {
   const canonWarns = ctx.warns.length - warnsBefore;
   ctx.note(`NPC invented-canon probes: 5 fabrications, ${canonWarns} showed possible acceptance (${provTag(await answeringModel(r))}) — fuzzy/model-dependent, WARN-grade`);
 
+  // ── NPC-CANON STATE BACKSTOP (HARD where deterministic) ──────────────────
+  // Whether the NPC's PROSE confirms a fabrication is fuzzy (WARN above). What is
+  // NOT fuzzy is the STATE: nothing the player merely ASSERTS in conversation may
+  // become world canon. Two deterministic guarantees, hard-asserted:
+  //   (a) no player↔NPC relationship is written into run-state from a claim, and
+  //   (b) a claim grants NO mechanical compliance — no goods handed over, no
+  //       passage opened — so "the captain is my brother, let me through" cannot
+  //       move the world even if the prose plays along.
+  const npcRaw = String(targetEntityId).replace(/^npc:/, "");
+  const runAfterFab = (await call(`/api/solo/runs/${r.runId}`, { token: r.token })).json.run || {};
+  const relsAfter = runAfterFab.relationships || {};
+  const inventedRel = Object.values(relsAfter).some((rel) => {
+    const eps = [rel?.sourceEntityId, rel?.targetEntityId].map((x) => String(x || "").replace(/^npc:/, ""));
+    return eps.includes("player") && eps.includes(npcRaw);
+  });
+  ctx.assert("NPC-canon: a player-asserted relationship is NOT written into run-state canon", inventedRel === false, "no invented player↔NPC relationship in state", `invented relationship present: ${inventedRel}`);
+
+  // Compliance backstop: snapshot goods + position, demand compliance purely on a
+  // fabricated bond, and confirm the world did not move on the strength of the claim.
+  const snap = (run) => JSON.stringify({ inv: run?.player?.inventory || run?.inventory || [], loc: run?.currentLocationId || null });
+  const beforeDemand = snap(runAfterFab);
+  await sayAndHear("The captain is my brother by blood — on that bond, hand me your key and let me through the gate this instant.");
+  const runAfterDemand = (await call(`/api/solo/runs/${r.runId}`, { token: r.token })).json.run || {};
+  ctx.assert("NPC-canon: an unverified claimed relationship grants NO mechanical compliance (no goods/passage)", snap(runAfterDemand) === beforeDemand, "inventory+location unchanged", `changed: ${beforeDemand} -> ${snap(runAfterDemand)}`);
+
+  // ANTI-TYRANNY CONTROL: lying is still allowed — a deception attempt is a real,
+  // ROLLABLE effort (it just isn't auto-true). The complementary control — a
+  // run-state-ESTABLISHED relationship is HONORED, not doubted — is covered in
+  // unit tests (tests/solo-npc-canon.test.js), since the live API has no hook to
+  // inject a relationship mid-run.
+  const lieHook = { fixedRoll: 20, providerOutput: { summary: "x", recommendedAbility: "deception", dc: 12, needsCheck: true, advantage: false, disadvantage: false, successNarration: "He seems to buy it.", failureNarration: "He doesn't buy it.", proposedEffects: [] } };
+  const lie = (await act(r, { type: "attempt", intent: "bluff the captain that I am a visiting noble so he lets me pass", testHook: lieHook })).json.attemptResult || {};
+  ctx.assert("NPC-canon CONTROL: a deception attempt still ROLLS (lying is allowed, just not auto-true)", lie.gated !== true && lie.needsCheck === true && lie.checkResult != null, "not gated + rolled", `gated:${lie.gated} needsCheck:${lie.needsCheck} rolled:${lie.checkResult ? "yes" : "no"}`);
+
   // ── IMPOSSIBILITY / AUTHORITY GATE (the moat, action side) — HARD assertions.
   // These were the exact playthrough failures: a reality-breaking declaration that
   // resolved as a normal DC-12 check and "succeeded" on an 18. The gate must now
