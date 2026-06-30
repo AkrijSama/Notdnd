@@ -7,19 +7,23 @@
      hosts cyberpunk / cosmic-horror worlds as comfortably as fantasy. Other
      skins (dragon/lava/wood) override these same var NAMES via soloThemeVarString.
      ------------------------------------------------------------------------- */
-  --bg: #0c0a09;
-  --panel: #17120f;
-  --panel-alt: #1e1714;
-  --surface: #141009;
-  --surface-strong: #1f1813;
-  --input-bg: #0a0706;
-  --ink: #e9ddc4;
-  --muted: #9b8c76;
-  --accent: #b08545;        /* aged gold — desaturated, not bright acid-gold */
+  /* Re-themed brown/leather -> very dark DEEP COBALT at the token root (every
+     panel/border/chip/tab inherits via these vars — no per-component cobalt).
+     The aged-GOLD accents below are deliberately preserved as the accent against
+     cobalt (strong gold-on-cobalt contrast). */
+  --bg: #060912;
+  --panel: #0c1322;
+  --panel-alt: #15203a;
+  --surface: #0a1020;
+  --surface-strong: #16233e;
+  --input-bg: #070b16;
+  --ink: #dde5f4;           /* cool vellum — reads on cobalt */
+  --muted: #8493ad;
+  --accent: #b08545;        /* aged gold — PRESERVED accent on cobalt */
   --accent-2: #b94c2d;      /* warm red — legacy GM surfaces; semantics unchanged */
   --accent-3: #6f8fc4;
-  --line: #382a20;          /* oxblood-tinged leather seam */
-  --line-strong: #513d2a;
+  --line: #233453;          /* deep-cobalt seam */
+  --line-strong: #32486e;
   --good: #7faf60;
   --warn: #d9a23d;
   --pill-good-bg: rgba(127, 175, 96, 0.18);
@@ -32,16 +36,16 @@
      home/onboarding surfaces override these via soloThemeVarString on a themed
      root. Defining them HERE means they are never phantom: any surface resolves
      a real value with or without a skin applied. Fonts default to "Tome". */
-  --card: #19130f;
-  --inset: #0a0706;
-  --text: #e9ddc4;
-  --text-bright: #f4ebd6;
-  --text-2: #b6a589;
-  --text-muted: #94856f;
-  --border: #2c2018;
-  --border-strong: #3d2d1f;
-  --on-accent: #1a1206;
-  --accent-border: #4a3a1e; /* gold-tooled edge under foil controls */
+  --card: #101a30;
+  --inset: #070b16;
+  --text: #dde5f4;
+  --text-bright: #f0f4fb;
+  --text-2: #aab6cf;
+  --text-muted: #8493ad;
+  --border: #1d2b46;
+  --border-strong: #2c3f63;
+  --on-accent: #0b1020;     /* dark cobalt ink on gold foil */
+  --accent-border: #4a3a1e; /* gold-tooled edge under foil controls (PRESERVED) */
   /* Lighter gold highlight (the skins' --accent-2). Separate name so it never
      collides with :root --accent-2 (a warm red used by legacy GM surfaces). */
   --accent-bright: #d8b46a; /* gold leaf — the foil edge / highlight */
@@ -50,7 +54,7 @@
 
   /* ---- Depth & material system (CSS only — no binary assets) ----
      Reused everywhere so the UI reads as layered leather, not flat panels. */
-  --oxblood: #2a0f0e;
+  --oxblood: #0c1830;       /* re-themed: deep-cobalt depth shadow (was leather oxblood) */
   /* Hot-foil gradient for stamped display type (background-clip: text). */
   --gold-foil: linear-gradient(176deg, #f0dca2 0%, #d8b46a 36%, #b08545 64%, #8a6326 100%);
   --gold-edge: rgba(216, 180, 106, 0.16);   /* hairline gold rule on key surfaces */
@@ -378,7 +382,7 @@ button.alt:hover {
   padding: 12px;
   border-radius: var(--radius-md);
   border: 1px solid var(--line);
-  background: linear-gradient(180deg, #2b2118 0%, #1f1810 100%);
+  background: linear-gradient(180deg, var(--panel-alt, #15203a) 0%, var(--panel, #0c1322) 100%);
 }
 
 .metric-value {
@@ -513,7 +517,7 @@ button.alt:hover {
   overflow: hidden;
   display: grid;
   grid-template-columns: repeat(10, 1fr);
-  background: linear-gradient(180deg, #1a130c 0%, #221a12 100%);
+  background: linear-gradient(180deg, var(--inset, #070b16) 0%, var(--card, #101a30) 100%);
 }
 
 .map-cell {
@@ -590,7 +594,7 @@ button.alt:hover {
 
 .progress {
   height: 10px;
-  background: #2a2018;
+  background: var(--surface-strong, #16233e);
   border-radius: 999px;
   overflow: hidden;
   border: 1px solid var(--line);
@@ -2124,14 +2128,15 @@ button:disabled {
   border-right: 1px solid rgba(0, 0, 0, 0.28);
   border-bottom: 1px solid rgba(0, 0, 0, 0.28);
   border-radius: 1px;
-  background: var(--solo-terrain, #2a2018);
+  background: var(--solo-terrain, #28324a);
   box-shadow: inset 0 0 3px rgba(0, 0, 0, 0.35);
 }
-/* Leather-tome terrain skins. --solo-terrain is the base ground; the cell mottle
-   (inline brightness) varies it per-cell so the floor never looks flat. */
-.solo-presence-grid.terrain-stone  { --solo-terrain: #2f2820; }
-.solo-presence-grid.terrain-ruins  { --solo-terrain: #34302a; }
-.solo-presence-grid.terrain-forest { --solo-terrain: #233022; }
+/* Terrain skins — re-themed to deep-cobalt tones (was leather-brown) so the
+   presence-map ground matches the cobalt panels. --solo-terrain is the base
+   ground; the inline per-cell brightness mottle keeps the floor from looking flat. */
+.solo-presence-grid.terrain-stone  { --solo-terrain: #2a3344; }
+.solo-presence-grid.terrain-ruins  { --solo-terrain: #2e3850; }
+.solo-presence-grid.terrain-forest { --solo-terrain: #213a33; }
 .solo-presence-grid.terrain-water  { --solo-terrain: #1c2a36; }
 .solo-presence-grid.terrain-sand   { --solo-terrain: #3a3122; }
 .solo-presence-grid .solo-presence-token { z-index: 1; }
@@ -2288,6 +2293,10 @@ button:disabled {
   background-size: var(--texture-size, auto);
   border-left: 1px solid var(--border, #2e2420);
   overflow-y: auto;
+  /* Reserve a clean top band for the absolutely-positioned settings cog
+     (.solo-settings: top 14px + 38px tall = ~52px) so it gets its own corner
+     and never overlaps the "Where you are" header at the rail's top. */
+  padding-top: 46px;
 }
 .solo-rail-block { padding: 18px 20px; border-bottom: 1px solid var(--border, #2e2420); }
 .solo-condition {

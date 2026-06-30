@@ -28,7 +28,10 @@ const ONBOARDING_LOADING_PHRASES = [
 const NARRATOR_LABEL = "Narrator";
 
 const TONE_CHIPS = ["dark fantasy", "high fantasy", "grimdark", "sword and sorcery", "post-apocalyptic", "cosmic horror", "steampunk", "mythic"];
-const LOCATION_TYPE_CHIPS = ["tavern", "city gate", "wilderness", "dungeon", "port", "market", "temple", "ruins", "camp", "crossroads"];
+// NOTE: the "starting location type" picker was removed from the sandbox flow —
+// sandbox defaults to forest-ruins (engine-side); modules/campaigns carry their
+// own start. (Leaving startingLocationType blank lets generateWorld apply the
+// default.) Module authoring lives in campaignForge.js and is unaffected.
 const ART_STYLE_OPTIONS = [
   { id: "illustrated", label: "Illustrated Dark Fantasy", blurb: "Painterly, dramatic, card-art", sample: "/public/assets/art-illustrated.jpg" },
   { id: "anime", label: "Anime VN", blurb: "Clean line art, expressive faces", sample: "/public/assets/art-anime.jpg" },
@@ -51,7 +54,6 @@ function renderWorldStep(state) {
   const def = state.worldDef || {};
   const loading = Boolean(state.loading);
   const toneChips = TONE_CHIPS.map((tone) => renderChip(tone, def.tone === tone, `data-world-tone="${esc(tone)}"`)).join("");
-  const locChips = LOCATION_TYPE_CHIPS.map((type) => renderChip(type, def.startingLocationType === type, `data-world-loctype="${esc(type)}"`)).join("");
   const artCards = ART_STYLE_OPTIONS.map(
     (option) => `
       <button type="button" class="onb-art-card ${(def.artStyle || "illustrated") === option.id ? "active" : ""}" data-world-artstyle="${option.id}">
@@ -83,12 +85,6 @@ function renderWorldStep(state) {
       <div class="onb-field">
         <label>Starting region / location name</label>
         <input data-world-field="startingLocationName" maxlength="80" placeholder="The Ashen Wastes" value="${esc(def.startingLocationName || "")}" ${loading ? "disabled" : ""} />
-      </div>
-
-      <div class="onb-field">
-        <label>Starting location type</label>
-        <div class="onb-chips">${locChips}</div>
-        <input data-world-field="startingLocationType" maxlength="60" placeholder="…or type your own" value="${esc(def.startingLocationType || "")}" ${loading ? "disabled" : ""} />
       </div>
 
       <div class="onb-field">
@@ -707,9 +703,6 @@ export function bindOnboardingFlow(root, handlers = {}) {
   // ---- World generator (Ticket 39) ----
   root.querySelectorAll("[data-world-tone]").forEach((button) => {
     button.addEventListener("click", () => handlers.onWorldField?.("tone", button.getAttribute("data-world-tone")));
-  });
-  root.querySelectorAll("[data-world-loctype]").forEach((button) => {
-    button.addEventListener("click", () => handlers.onWorldField?.("startingLocationType", button.getAttribute("data-world-loctype")));
   });
   root.querySelectorAll("[data-world-artstyle]").forEach((button) => {
     button.addEventListener("click", () => handlers.onWorldField?.("artStyle", button.getAttribute("data-world-artstyle")));

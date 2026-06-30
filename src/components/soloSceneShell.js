@@ -970,14 +970,18 @@ export const SOLO_SKINS = {
   // fantasy). Mirrors the :root leather-tome palette so the scene shell matches
   // the home/onboarding surfaces. Texture is a fine gradient cross-hatch (grain)
   // — kept quote-free so it's safe inside the inline style="" attribute.
+  // Default skin — re-themed brown/leather -> very dark DEEP COBALT. Gold/amber
+  // accents (--accent / --accent-2 / --accent-bright / --accent-grad-* /
+  // --accent-border) are PRESERVED as the accent against cobalt. Mirrors the
+  // :root cobalt token map so the scene shell matches home/onboarding surfaces.
   ashen: {
-    "--bg": "#0c0a09", "--panel": "#17120f", "--card": "#19130f", "--inset": "#0a0706",
-    "--card-dim": "#120d09", "--tabbar": "#0e0b09", "--border": "#2c2018", "--border-faint": "#201711",
-    "--border-strong": "#3d2d1f", "--text": "#e9ddc4", "--text-bright": "#f4ebd6", "--text-2": "#b6a589",
-    "--text-muted": "#94856f", "--text-label": "#8a7c64", "--text-faint": "#6a5d4c", "--accent": "#b08545",
+    "--bg": "#060912", "--panel": "#0c1322", "--card": "#101a30", "--inset": "#070b16",
+    "--card-dim": "#0a1426", "--tabbar": "#080d18", "--border": "#1d2b46", "--border-faint": "#16223a",
+    "--border-strong": "#2c3f63", "--text": "#dde5f4", "--text-bright": "#f0f4fb", "--text-2": "#aab6cf",
+    "--text-muted": "#8493ad", "--text-label": "#7d8aa6", "--text-faint": "#5d6884", "--accent": "#b08545",
     "--accent-2": "#d8b46a", "--accent-bright": "#d8b46a", "--accent-grad-a": "#c79a4e", "--accent-grad-b": "#946f30",
-    "--accent-border": "#4a3a1e", "--on-accent": "#1a1206",
-    "--texture": "repeating-linear-gradient(34deg,rgba(216,180,106,.022) 0 1px,transparent 1px 3px),repeating-linear-gradient(-22deg,rgba(0,0,0,.16) 0 1px,transparent 1px 4px)",
+    "--accent-border": "#4a3a1e", "--on-accent": "#0b1020",
+    "--texture": "repeating-linear-gradient(34deg,rgba(216,180,106,.022) 0 1px,transparent 1px 3px),repeating-linear-gradient(-22deg,rgba(0,0,0,.20) 0 1px,transparent 1px 4px)",
     "--texture-size": "auto"
   },
   dragon: {
@@ -1019,13 +1023,13 @@ export const SOLO_FONTS = {
 };
 
 const SOLO_SKIN_SWATCHES = {
-  ashen: "linear-gradient(135deg,#d8b46a,#0c0a09)",
+  ashen: "linear-gradient(135deg,#d8b46a,#0c1322)",
   dragon: "linear-gradient(135deg,#cf5236,#0f1411)",
   lava: "linear-gradient(135deg,#ff6a1f,#16100d)",
   wood: "linear-gradient(135deg,#86a544,#161310)"
 };
 
-const SOLO_SKIN_LABELS = { ashen: "Ashen Keep", dragon: "Dragonscale", lava: "Molten Forge", wood: "Wildwood" };
+const SOLO_SKIN_LABELS = { ashen: "Cobalt Keep", dragon: "Dragonscale", lava: "Molten Forge", wood: "Wildwood" };
 const SOLO_FONT_LABELS = { tome: "Tome", court: "Court", iron: "Iron" };
 
 export const SOLO_TABS = [

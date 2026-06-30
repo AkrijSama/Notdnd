@@ -1,14 +1,12 @@
 import { createApiClient } from "./api/client.js";
-import { renderAiGmConsole, bindAiGmConsole } from "./components/aiGmConsole.js";
-import { renderCampaignForge, bindCampaignForge } from "./components/campaignForge.js";
-import { renderCharacterVault, bindCharacterVault } from "./components/characterVault.js";
-import { renderCommandCenter, bindCommandCenter } from "./components/commandCenter.js";
-import { renderCompendium, bindCompendium } from "./components/compendium.js";
-import { renderHomebrewStudio, bindHomebrewStudio } from "./components/homebrewStudio.js";
+// Dead 7-tab "cockpit" components (commandCenter/campaignForge/characterVault/
+// compendium/homebrewStudio/aiGmConsole/sidebar/vttTable + topbar) were removed:
+// the live app is solo-first (onboarding -> solo run via mountSoloSceneShell) and
+// their render/bind dispatchers (renderActiveTab + the activeTab bind switch) were
+// never reached. Only homebrewManager survives — it IS used on the live solo path.
 import { renderHomebrewManager, bindHomebrewManager, homebrewDraftToItem, itemToDraft } from "./components/homebrewManager.js";
 import { renderOnboardingFlow, bindOnboardingFlow } from "./components/onboardingFlow.js";
 import { ABILITIES, pointBuyCost, rollAbilityScores } from "../server/solo/dndData.js";
-import { renderSidebar } from "./components/sidebar.js";
 import {
   mountSoloSceneShell,
   soloThemeVarString,
@@ -20,8 +18,6 @@ import {
   SOLO_SKIN_STORAGE_KEY,
   SOLO_FONT_STORAGE_KEY
 } from "./components/soloSceneShell.js";
-import { renderTopbar } from "./components/topbar.js";
-import { renderVttTable, bindVttTable } from "./components/vttTable.js";
 import { createRealtimeClient } from "./realtime/client.js";
 import { createStore } from "./state/store.js";
 
@@ -29,7 +25,6 @@ const apiClient = createApiClient("");
 const store = createStore({ apiClient });
 
 const uiState = {
-  activeTab: "command",
   compendiumQuery: "",
   resumeRunId: null,
   soloRuns: [],
@@ -156,9 +151,9 @@ function runDisplayTitle(run) {
   return custom || defaultRunTitle(run);
 }
 
-// Minimal header for the solo player's surfaces (home + login). Deliberately
-// omits the 7-tab GM/multiplayer nav (renderTopbar) — solo players never see it.
-// Keeps only the brand and the auth/account affordances that bindAppEvents wires.
+// Minimal header for the solo player's surfaces (home + login). Solo-first: there
+// is no 7-tab GM/multiplayer nav (the legacy cockpit was removed). Keeps only the
+// brand and the auth/account affordances that bindAppEvents wires.
 function renderSoloHeader(user, accountMenuOpen = false, skin = "ashen", fontSet = "tome") {
   return `
     <header class="topbar solo-topbar">
@@ -356,35 +351,6 @@ function renderSoloHome(state) {
       </div>
     </main>
   `;
-}
-
-function renderActiveTab(state) {
-  switch (uiState.activeTab) {
-    case "command":
-      return renderCommandCenter(state, {
-        pendingDeleteCampaignId: uiState.pendingDeleteCampaignId
-      });
-    case "forge":
-      return renderCampaignForge(state);
-    case "vtt":
-      return renderVttTable(state, {
-        presenceUsers: uiState.presenceUsers,
-        cursorState: uiState.cursorState,
-        lockState: uiState.lockState
-      });
-    case "characters":
-      return renderCharacterVault(state);
-    case "compendium":
-      return renderCompendium(state, uiState.compendiumQuery);
-    case "homebrew":
-      return renderHomebrewStudio(state);
-    case "ai":
-      return renderAiGmConsole(state);
-    default:
-      return renderCommandCenter(state, {
-        pendingDeleteCampaignId: uiState.pendingDeleteCampaignId
-      });
-  }
 }
 
 function renderAuthPanel(state) {
@@ -1163,7 +1129,6 @@ function openOnboardingCampaignDashboard() {
     thinking: false,
     loading: false
   };
-  uiState.activeTab = "command";
   scheduleRender();
 }
 
@@ -1210,13 +1175,6 @@ async function handleAuthSubmit(form) {
 }
 
 function bindAppEvents() {
-  appRoot.querySelectorAll("[data-tab]").forEach((button) => {
-    button.addEventListener("click", () => {
-      uiState.activeTab = String(button.getAttribute("data-tab"));
-      scheduleRender();
-    });
-  });
-
   const toggleAuth = appRoot.querySelector("[data-action='toggle-auth']");
   if (toggleAuth) {
     toggleAuth.addEventListener("click", () => {
@@ -1449,7 +1407,6 @@ function bindAppEvents() {
       };
       store.clearAuth();
       // Redirect to the login screen.
-      uiState.activeTab = "command";
       uiState.showAuthPanel = true;
       uiState.authMode = "login";
       uiState.authMessage = "Signed out.";
@@ -1485,56 +1442,6 @@ function bindAppEvents() {
       }
       scheduleRender();
     });
-  }
-
-  const activeModule = appRoot.querySelector("#active-module");
-  if (!activeModule) {
-    return;
-  }
-
-  switch (uiState.activeTab) {
-    case "command":
-      bindCommandCenter(activeModule, store, {
-        onSetPendingDelete(campaignId) {
-          uiState.pendingDeleteCampaignId = campaignId;
-          if (campaignId === null) {
-            uiState.onboarding.step = "completed";
-          }
-          scheduleRender();
-        }
-      });
-      break;
-    case "forge":
-      bindCampaignForge(activeModule, store, {
-        onLaunchToVtt() {
-          uiState.activeTab = "vtt";
-          scheduleRender();
-        }
-      });
-      break;
-    case "vtt":
-      bindVttTable(activeModule, store, {
-        realtimeClient,
-        lockState: uiState.lockState
-      });
-      break;
-    case "characters":
-      bindCharacterVault(activeModule, store);
-      break;
-    case "compendium":
-      bindCompendium(activeModule, (query) => {
-        uiState.compendiumQuery = query;
-        scheduleRender();
-      });
-      break;
-    case "homebrew":
-      bindHomebrewStudio(activeModule, store);
-      break;
-    case "ai":
-      bindAiGmConsole(activeModule, store);
-      break;
-    default:
-      break;
   }
 
   const resetButton = appRoot.querySelector("[data-action='reset-state']");
