@@ -1,3 +1,6 @@
+-- ⚠️ LEGACY / UNUSED — DO NOT BUILD AGAINST. Companion to schema.sql; the live app
+-- seeds via code (NOTDND_BOOTSTRAP_DEMO) into better-sqlite3, not this file. Nothing
+-- in server/ or scripts/ reads it (verified by grep, 2026-06). Safe to delete.
 INSERT OR IGNORE INTO app_meta(key, value) VALUES ('selected_campaign_id', 'cmp_001');
 
 INSERT OR IGNORE INTO campaigns (

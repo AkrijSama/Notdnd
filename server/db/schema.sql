@@ -1,3 +1,7 @@
+-- ⚠️ LEGACY / UNUSED — DO NOT BUILD AGAINST. The live app uses better-sqlite3
+-- (server/db/database.js → notdnd.sqlite) and creates its schema in code; nothing
+-- in server/ or scripts/ reads this file (verified by grep, 2026-06). Kept only as
+-- a historical reference of the relational shape. Safe to delete.
 PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
 
