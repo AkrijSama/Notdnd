@@ -91,7 +91,10 @@ function normalizeDetail(detail, location, index) {
 // Adds a granted item into BOTH the run-level inventory object (keyed by itemId,
 // what useItem reads) and the state-contract player.inventory array (what the UI
 // renders). Idempotent on quantity: re-finding the same id stacks it.
-function grantItemToRun(run, descriptor) {
+// EXPORTED: the shared inventory-commit primitive reused by the take mechanic and
+// the quest-reward lifecycle (a takeable object / a delivery payout both land here),
+// so a picked-up object and a quest reward mutate state exactly like a search grant.
+export function grantItemToRun(run, descriptor) {
   if (!isPlainObject(descriptor)) {
     return null;
   }
@@ -129,6 +132,45 @@ function grantItemToRun(run, descriptor) {
     run.player.inventory.push({ id: itemId, name, qty });
   }
   return { itemId, name, quantity: run.inventory[itemId].quantity };
+}
+
+// Removes `qty` of an item from BOTH inventory mirrors (run.inventory object +
+// player.inventory array). Deletes the entry when the count reaches zero. Returns
+// { itemId, consumed } when something was removed, else null. Used by the quest
+// lifecycle: handing over a delivered item on completion removes it from the bag,
+// so "you delivered it" is true in state (the crate is gone), not just narrated.
+export function consumeItemFromRun(run, itemId, qty = 1) {
+  if (!isString(itemId)) {
+    return null;
+  }
+  let removed = false;
+  if (isPlainObject(run.inventory) && isPlainObject(run.inventory[itemId])) {
+    const current = typeof run.inventory[itemId].quantity === "number" ? run.inventory[itemId].quantity : 0;
+    const next = current - qty;
+    if (next > 0) {
+      run.inventory[itemId].quantity = next;
+    } else {
+      delete run.inventory[itemId];
+    }
+    removed = true;
+  }
+  if (Array.isArray(run.player?.inventory)) {
+    const index = run.player.inventory.findIndex(
+      (entry) => isPlainObject(entry) && (entry.id === itemId || entry.itemId === itemId)
+    );
+    if (index >= 0) {
+      const entry = run.player.inventory[index];
+      const current = typeof entry.qty === "number" ? entry.qty : 0;
+      const next = current - qty;
+      if (next > 0) {
+        entry.qty = next;
+      } else {
+        run.player.inventory.splice(index, 1);
+      }
+      removed = true;
+    }
+  }
+  return removed ? { itemId, consumed: qty } : null;
 }
 
 function detailFactExists(run, detailId) {

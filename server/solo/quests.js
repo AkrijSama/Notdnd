@@ -10,6 +10,8 @@
 // works on a per-action run clone, and the route persists that clone.
 // ---------------------------------------------------------------------------
 
+import { grantItemToRun, consumeItemFromRun } from "./search.js";
+
 export const MAIN_QUEST_ID = "quest_main";
 
 // The default location graph (schema.createDefaultLocationGraph) always provides
@@ -275,6 +277,16 @@ function predicateMet(run, quest, actionResult) {
     }
     case "obtain_item":
       return playerHasItem(run, completion.targetId);
+    case "deliver":
+      // DELIVER-GATED stage: completes only when the player is AT the target
+      // location AND still carries the item — a real committed delivery, not a
+      // narrated one. Reward + hand-over (item consumption) fire on completion.
+      return (
+        isString(completion.itemId) &&
+        isString(completion.targetLocationId) &&
+        playerHasItem(run, completion.itemId) &&
+        run.currentLocationId === completion.targetLocationId
+      );
     case "check": {
       // CHECK-GATED stage — advances only when the player's roll this turn SUCCEEDS.
       // A failed check does NOT advance (and, if failOnMiss, fails the quest below),
@@ -312,7 +324,7 @@ function questFailedThisTurn(quest, actionResult) {
  *
  * @param {object} run         post-action run (carries run.quests + state)
  * @param {object} actionResult resolver result (may carry talkResult, etc.)
- * @returns {{ updated: boolean, wonQuest: object | null, completed: object[], advanced: object[] }}
+ * @returns {{ updated: boolean, wonQuest: object | null, completed: object[], advanced: object[], failed: object[], rewarded: object[] }}
  */
 export function advanceQuests(run, actionResult = {}) {
   if (!isPlainObject(run) || !isPlainObject(run.quests)) {
@@ -324,6 +336,7 @@ export function advanceQuests(run, actionResult = {}) {
   const completed = [];
   const advanced = [];
   const failed = [];
+  const rewarded = [];
 
   const sandbox = isSandbox(run);
   for (const quest of Object.values(run.quests)) {
@@ -365,13 +378,33 @@ export function advanceQuests(run, actionResult = {}) {
       quest.status = "completed";
       updated = true;
       completed.push(quest);
+      // REWARD ON COMPLETION — the missing lifecycle piece. A quest carrying a
+      // `reward` grants it into tracked state the moment it completes: hand over
+      // the delivered item (consumeItemId — so "you delivered it" is TRUE in the
+      // bag, not just narrated), grant a payout item, and record xp for the
+      // resolver to award. Quests with no `reward` field are unaffected.
+      if (isPlainObject(quest.reward)) {
+        const entry = { questId: quest.questId, grantedItem: null, consumed: null, xp: 0 };
+        if (isString(quest.reward.consumeItemId)) {
+          entry.consumed = consumeItemFromRun(run, quest.reward.consumeItemId, 1);
+        }
+        if (isPlainObject(quest.reward.item)) {
+          entry.grantedItem = grantItemToRun(run, quest.reward.item);
+        }
+        if (Number.isFinite(Number(quest.reward.xp)) && Number(quest.reward.xp) > 0) {
+          entry.xp = Number(quest.reward.xp);
+        }
+        quest.flags = isPlainObject(quest.flags) ? quest.flags : {};
+        quest.flags.rewardGranted = true;
+        rewarded.push(entry);
+      }
       if (quest.isMain && !wonQuest) {
         wonQuest = quest;
       }
     }
   }
 
-  return { updated, wonQuest, completed, advanced, failed };
+  return { updated, wonQuest, completed, advanced, failed, rewarded };
 }
 
 /**

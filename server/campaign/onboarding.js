@@ -13,7 +13,7 @@ import { generateNpcIdentity } from "../solo/npcIdentity.js";
 import { writeNpcMemoryDoc } from "../solo/npcMemory.js";
 import { buildFarLocation, buildSecondLocation, generateWorld } from "../solo/worldGen.js";
 import { createMainQuest } from "../solo/quests.js";
-import { buildTrialQuest, TRIAL_QUEST_ID } from "./authoredQuests.js";
+import { buildTrialQuest, TRIAL_QUEST_ID, buildDeliveryOffer } from "./authoredQuests.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -797,6 +797,19 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
       ]
       };
     }
+  }
+
+  // DELIVERY ARC — one complete, fully-committed loop: the quest-giver at the second
+  // location OFFERS a delivery job. Accepting it (free-text) instantiates a real
+  // tracked quest and drops a takeable crate here; the player takes the crate, carries
+  // it to the far location, and hands it over for a committed reward. Campaign-only
+  // (sandbox carries no authored quests), and only when both endpoints exist.
+  if (!sandbox && secondLocation && thirdLocation && run.npcs?.npc_quest_giver) {
+    run.npcs.npc_quest_giver.questOffer = buildDeliveryOffer(resolvedWorld, {
+      giverLocationName: secondLocation.name,
+      destinationId: "third_location",
+      destinationName: thirdLocation.name
+    });
   }
 
   // Seed the two-stage MVP main quest: travel to the second location (stage 0),

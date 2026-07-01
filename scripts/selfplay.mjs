@@ -1021,6 +1021,60 @@ async function scenarioMovement(ctx) {
     "back-exit named", `onward names: ${JSON.stringify(onward.map((m) => m.name))}`);
 }
 
+// DELIVERY LOOP — the one complete, fully-committed interaction the owner watched
+// break: accept a job -> take a real crate -> carry it -> deliver -> reward. Driven
+// with NATURAL free-text; every step must change TRACKED state (a quest exists, the
+// crate is in inventory, the reward is paid, the crate is consumed). A narrate-only
+// run FAILS this by construction (quests:{}, empty inventory).
+async function scenarioDelivery(ctx) {
+  const r = await newRun("delivery"); ctx.runId = r.runId; ctx.token = r.token;
+  const s0 = (await scene(r)).json;
+  const xp0 = xpOf(s0);
+
+  // Travel to the quest-giver (second location — a discovered named exit for a campaign).
+  const toGiver = (s0.availableMoves || []).find((m) => m && m.discovered && m.locationId === "second_location" && m.name);
+  if (!toGiver) { ctx.pending("no route to the quest-giver location (campaign graph missing second_location exit)"); return; }
+  await act(r, { type: "attempt", intent: `Head toward ${toGiver.name}` });
+  const sGiver = (await scene(r)).json;
+  ctx.note(`at ${sGiver.location?.name}; job-giver present: ${(sGiver.cast || sGiver.visibleEntities || []).map((c) => c.displayName).join(", ") || "(none)"}`);
+
+  // 1) ACCEPT the job (free-text) -> a REAL tracked quest is created (not quests:{}).
+  const accept = await act(r, { type: "attempt", intent: "Yes, I'll take the job." });
+  const sAcc = (await scene(r)).json;
+  const deliveryActive = (sAcc.quests?.activeQuests || []).some((q) => q && q.questId === "quest_delivery");
+  ctx.assert("ACCEPT: free-text acceptance CREATES a real tracked quest (not narrate into quests:{})",
+    deliveryActive || accept.json.questAccepted?.questId === "quest_delivery",
+    "quest_delivery active", `routed:${accept.json.action?.type} active:${deliveryActive}`);
+
+  // 2) TAKE the crate (free-text) -> committed to inventory; obtain_item advances the quest.
+  const take = await act(r, { type: "attempt", intent: "Grab the crate and sling it over my shoulder." });
+  const sTake = (await scene(r)).json;
+  const crate = contractInvEntry(sTake, "quest_crate");
+  ctx.assert("TAKE: free-text pickup COMMITS the crate to inventory (not a narrated pickup)",
+    Boolean(crate) && take.json.action?.type === "take",
+    "crate in inventory", `routed:${take.json.action?.type} crate:${Boolean(crate)}`);
+
+  // 3) DELIVER: carry it to the destination (free-text named move). Arriving WITH the
+  //    crate completes the quest and grants the reward — all committed.
+  const toDest = (sTake.availableMoves || []).find((m) => m && m.locationId === "third_location");
+  const deliver = await act(r, { type: "attempt", intent: `Head on to ${toDest?.name || "the far edge"} and hand it over.` });
+  const sDone = (await scene(r)).json;
+  const pay = contractInvEntry(sDone, "delivery_pay");
+  const crateGone = !contractInvEntry(sDone, "quest_crate");
+  ctx.assert("DELIVER: arriving with the crate COMPLETES the quest and GRANTS a reward (committed to inventory)",
+    Boolean(pay), "reward paid", `routed:${deliver.json.action?.type} reward:${deliver.json.questReward?.grantedItem?.itemId || "none"} pay:${Boolean(pay)}`);
+  ctx.assert("DELIVER: the crate was HANDED OVER (consumed), not still carried",
+    crateGone, "crate consumed", `crate still held: ${!crateGone}`);
+  ctx.assert("DELIVER: reward xp was awarded — player state actually changed",
+    xpOf(sDone) > xp0, `xp > ${xp0}`, `xp ${xpOf(sDone)}`);
+
+  // Load-bearing: the WHOLE loop committed. A prose-only run cannot pass this.
+  ctx.assert("FULL LOOP: accept -> take -> deliver -> reward ALL committed to tracked state",
+    (deliveryActive || accept.json.questAccepted) && Boolean(crate) && Boolean(pay) && crateGone,
+    "every step committed", `quest:${deliveryActive} crate:${Boolean(crate)} pay:${Boolean(pay)} handedOver:${crateGone}`);
+  ctx.note(`delivery loop: quest created -> crate taken -> delivered to ${sDone.location?.name} -> paid ${deliver.json.questReward?.grantedItem?.name || pay?.name || "(reward)"} (+xp ${xp0}->${xpOf(sDone)})`);
+}
+
 async function scenarioPersistence(ctx) {
   const r = await newRun("persistence"); ctx.runId = r.runId; ctx.token = r.token;
 
@@ -1132,6 +1186,7 @@ const SCENARIOS = [
   { key: "coherence", title: "COHERENCE — the world resists invented nonsense", fn: scenarioCoherence },
   { key: "substance", title: "SUBSTANCE — a natural free-text session ADVANCES world state (hollow-core guard)", fn: scenarioSubstance },
   { key: "movement", title: "MOVEMENT — a move-intent COMMITS the position (M.1) + geo-fog (M.2)", fn: scenarioMovement },
+  { key: "delivery", title: "DELIVERY LOOP — accept -> take -> deliver -> reward, all committed (fully-committed loop)", fn: scenarioDelivery },
   { key: "persistence", title: "PERSISTENCE — state survives a reload", fn: scenarioPersistence },
   { key: "gm_health", title: "GM HEALTH — real prose, responsive, on-topic", fn: scenarioGmHealth }
 ];

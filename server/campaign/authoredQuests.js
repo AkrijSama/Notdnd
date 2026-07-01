@@ -102,3 +102,134 @@ function capitalizeFirst(value) {
   const s = String(value || "").trim();
   return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
 }
+
+// ---------------------------------------------------------------------------
+// DELIVERY ARC — the one complete, fully-committed interaction loop:
+//   accept a job (real quest created) -> take a real crate (committed to inventory)
+//   -> carry it to the destination -> deliver (quest completes, reward granted).
+//
+// This is the vertical slice that proves a fully-committed loop, not a general
+// system. It exercises the take mechanic AND the quest lifecycle (obtain_item ->
+// deliver predicate -> reward-on-completion). Authored into CAMPAIGN runs only.
+// ---------------------------------------------------------------------------
+
+export const DELIVERY_QUEST_ID = "quest_delivery";
+export const DELIVERY_CRATE_ID = "quest_crate";
+export const DELIVERY_PAY_ID = "delivery_pay";
+export const DELIVERY_CRATE_DETAIL_ID = "delivery_crate";
+
+// Tone-flavored framing for the crate + payout so the job reads in-world.
+const DELIVERY_FLAVOR = {
+  default: { cargo: "a sealed crate", pay: "a purse of coin", keywords: ["crate", "cargo", "box", "parcel"] },
+  dark_fantasy: { cargo: "a wax-sealed strongbox", pay: "a purse of tarnished silver", keywords: ["strongbox", "crate", "box"] },
+  grimdark: { cargo: "a wax-sealed strongbox", pay: "a purse of tarnished silver", keywords: ["strongbox", "crate", "box"] },
+  cosmic_horror: { cargo: "a lead-lined casket", pay: "an envelope of hush-money", keywords: ["casket", "crate", "box"] },
+  post_apocalyptic: { cargo: "a strapped supply crate", pay: "a handful of ration-chits", keywords: ["crate", "supplies", "cargo", "box"] },
+  steampunk: { cargo: "a brass-bound cargo case", pay: "a roll of banknotes", keywords: ["case", "crate", "cargo", "box"] },
+  sword_sorcery: { cargo: "an iron-banded chest", pay: "a pouch of gold", keywords: ["chest", "crate", "box"] },
+  high_fantasy: { cargo: "a rune-marked coffer", pay: "a pouch of gold marks", keywords: ["coffer", "crate", "chest", "box"] },
+  mythic: { cargo: "a consecrated reliquary case", pay: "a boon of gold", keywords: ["case", "crate", "reliquary", "box"] },
+  cyberpunk: { cargo: "a shielded data-case", pay: "a loaded cred-stick", keywords: ["case", "crate", "package", "box"] }
+};
+
+/**
+ * Builds an NPC questOffer for the delivery arc: the quest (obtain_item -> deliver
+ * with a reward), the takeable crate detail placed on accept, and the offer/accept
+ * flavor text. Attach to an NPC as `npc.questOffer`; resolveQuestAccept instantiates
+ * it when the player accepts.
+ *
+ * @param {object} world resolved world (for tone flavor)
+ * @param {{ giverLocationName?: string, destinationId?: string, destinationName?: string }} [options]
+ * @returns {object} questOffer descriptor
+ */
+export function buildDeliveryOffer(world = {}, options = {}) {
+  const destinationId = isStr(options.destinationId) ? options.destinationId : "third_location";
+  const destinationName = isStr(options.destinationName) ? options.destinationName : "the far edge";
+  const giverName = isStr(options.giverLocationName) ? options.giverLocationName : "here";
+  const f = DELIVERY_FLAVOR[toneKey(world.tone)] || DELIVERY_FLAVOR.default;
+  const crateName = capitalizeFirst(f.cargo);
+  const payName = capitalizeFirst(f.pay);
+
+  const crateItem = {
+    itemId: DELIVERY_CRATE_ID,
+    name: crateName,
+    description: `${crateName} entrusted to you for delivery to ${destinationName}. Best it arrives unopened.`,
+    qty: 1,
+    usable: false,
+    consumable: false,
+    tags: ["quest", "delivery"]
+  };
+
+  const takeableDetail = {
+    detailId: DELIVERY_CRATE_DETAIL_ID,
+    label: crateName,
+    description: `${crateName} the figure has set at your feet — pick it up to carry it to ${destinationName}.`,
+    revealed: true,
+    takeable: true,
+    taken: false,
+    takeKeywords: f.keywords,
+    grantItem: crateItem,
+    linkedEntityIds: [],
+    linkedMemoryFactIds: [],
+    contentTags: [],
+    edition: "mainline",
+    policyProfileId: "mainline_default"
+  };
+
+  const quest = {
+    questId: DELIVERY_QUEST_ID,
+    status: "active",
+    isMain: false,
+    authoredBy: "module",
+    title: `Deliver to ${destinationName}`,
+    description:
+      `The figure at ${giverName} needs ${f.cargo} carried to ${destinationName}. ` +
+      `Take the crate, make the journey, and hand it over for payment.`,
+    stages: [
+      {
+        objective: `Take ${f.cargo} the figure entrusted to you.`,
+        completion: { kind: "obtain_item", targetId: DELIVERY_CRATE_ID }
+      },
+      {
+        objective: `Carry ${f.cargo} to ${destinationName} and hand it over.`,
+        completion: { kind: "deliver", itemId: DELIVERY_CRATE_ID, targetLocationId: destinationId }
+      }
+    ],
+    stage: 0,
+    // Mirror the active stage onto the top-level fields (back-compat, as createMainQuest does).
+    objective: `Take ${f.cargo} the figure entrusted to you.`,
+    completion: { kind: "obtain_item", targetId: DELIVERY_CRATE_ID },
+    // REWARD ON COMPLETION: hand over the crate (consumed) and receive payment + xp.
+    reward: {
+      consumeItemId: DELIVERY_CRATE_ID,
+      item: {
+        itemId: DELIVERY_PAY_ID,
+        name: payName,
+        description: `${payName}, paid on delivery to ${destinationName}.`,
+        qty: 1,
+        usable: false,
+        consumable: false,
+        tags: ["reward"]
+      },
+      xp: 120
+    },
+    relatedEntityIds: [],
+    memoryFactIds: [],
+    flags: { authoredArc: "delivery" }
+  };
+
+  return {
+    accepted: false,
+    destinationId,
+    offerText:
+      `"I've ${f.cargo} that needs to reach ${destinationName}, and I'm not the one to carry it. ` +
+      `Do this for me and you'll be paid on delivery. Say the word."`,
+    acceptedText: `You took the job: carry ${f.cargo} to ${destinationName} and hand it over for ${payName.toLowerCase()}.`,
+    quest,
+    takeableDetail
+  };
+}
+
+function isStr(value) {
+  return typeof value === "string" && value.trim().length > 0;
+}

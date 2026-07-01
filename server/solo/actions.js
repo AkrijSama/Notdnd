@@ -14,6 +14,14 @@ import {
   validateSearchAction
 } from "./search.js";
 import {
+  detectTakeIntent,
+  resolveTakeAction
+} from "./take.js";
+import {
+  detectQuestAcceptIntent,
+  resolveQuestAccept
+} from "./questFlow.js";
+import {
   getTalkableNpcs,
   resolveTalkAction,
   validateTalkAction
@@ -340,11 +348,16 @@ function finalizeQuestProgress(originalRun, result, options = {}) {
     result.run.vn = createDefaultVnState();
     return result;
   }
-  const { updated, wonQuest, completed, advanced, failed } = advanceQuests(activeRun, result);
+  const { updated, wonQuest, completed, advanced, failed, rewarded } = advanceQuests(activeRun, result);
   if (updated) {
     result.run = activeRun; // persist the flipped quest status / stage
     if (Array.isArray(failed) && failed.length > 0) {
       result.questFailed = failed[0];
+    }
+    // Reward-on-completion (item + consumed hand-over) already committed inside
+    // advanceQuests; surface it so the GM can name the payout in its narration.
+    if (Array.isArray(rewarded) && rewarded.length > 0) {
+      result.questReward = rewarded[0];
     }
     // The quest that moved this turn — the win, else a completed quest, else a
     // stage advance — so the GM can dramatize the progress in its narration.
@@ -392,6 +405,11 @@ function finalizeQuestProgress(originalRun, result, options = {}) {
     }
     if (wonQuest) {
       xp += XP_AWARDS.quest_complete;
+    }
+    // Explicit per-quest reward xp (delivery payout etc.), granted on completion by
+    // advanceQuests' reward lifecycle. Independent of the main-quest win award above.
+    if (Array.isArray(rewarded) && rewarded.length > 0) {
+      xp += rewarded.reduce((sum, entry) => sum + (Number.isFinite(Number(entry?.xp)) ? Number(entry.xp) : 0), 0);
     }
     if (xp > 0) {
       const xpResult = awardXp(result.run, xp);
@@ -741,6 +759,52 @@ export function resolveSoloAction(run, action, options = {}) {
   }
 
   if (normalized.type === "attempt") {
+    // QUEST-ACCEPT COMMIT (delivery loop). Free-text acceptance of a present NPC's
+    // job offer ("ok, I'll do it") instantiates a REAL tracked quest + places the
+    // takeable item — instead of narrating "you take the job" while quests stays {}.
+    // Fires only when a live offer is actually present (questFlow firewall).
+    const acceptIntent = detectQuestAcceptIntent(run, normalized.intent);
+    if (acceptIntent) {
+      const acceptAction = { type: "quest_accept", actorId: normalized.actorId ?? "player", npcId: acceptIntent.npcId };
+      const accepted = resolveQuestAccept(run, acceptAction, options);
+      if (accepted.ok) {
+        return finalizeQuestProgress(run, {
+          ok: true,
+          action: { ...acceptAction, intent: normalized.intent, acceptedViaIntent: true },
+          run: accepted.run,
+          event: accepted.event,
+          memoryFact: accepted.memoryFact,
+          questAccepted: accepted.questAccepted,
+          availableMoves: getAvailableMoves(accepted.run),
+          availableActions: getAvailableSoloActions(accepted.run),
+          errors: []
+        }, options);
+      }
+      // Accept failed validation — fall through to the normal attempt path.
+    }
+    // TAKE-INTENT COMMIT (delivery loop). Free-text "take the crate" grabs a PRESENT,
+    // DISCOVERED, TAKEABLE object into inventory (committed via grantItemToRun) rather
+    // than narrating a pickup that never mutates state. Fires only when the target
+    // resolves to a real in-state takeable object (take.js firewall: never mints one).
+    const takeIntent = detectTakeIntent(run, normalized.intent);
+    if (takeIntent) {
+      const takeAction = { type: "take", actorId: normalized.actorId ?? "player", detailId: takeIntent.detailId, targetLocationId: run.currentLocationId };
+      const take = resolveTakeAction(run, takeAction, options);
+      if (take.ok) {
+        return finalizeQuestProgress(run, {
+          ok: true,
+          action: { ...takeAction, intent: normalized.intent, takenViaIntent: true },
+          run: take.run,
+          event: take.event,
+          memoryFact: take.memoryFact,
+          takeResult: take.takeResult,
+          availableMoves: getAvailableMoves(take.run),
+          availableActions: getAvailableSoloActions(take.run),
+          errors: []
+        }, options);
+      }
+      // Take failed validation — fall through to the normal attempt path.
+    }
     // M.1 — MOVE-INTENT COMMIT. A directed move sent as free-text ("Head toward
     // The Gilded Kingdoms Watch") would otherwise resolve as narrative flavor: the
     // GM narrates arriving while run.currentLocationId never changes. Detect it and
