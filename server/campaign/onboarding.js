@@ -13,6 +13,7 @@ import { generateNpcIdentity } from "../solo/npcIdentity.js";
 import { writeNpcMemoryDoc } from "../solo/npcMemory.js";
 import { buildFarLocation, buildSecondLocation, generateWorld } from "../solo/worldGen.js";
 import { createMainQuest } from "../solo/quests.js";
+import { buildTrialQuest, TRIAL_QUEST_ID } from "./authoredQuests.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -824,6 +825,20 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
       run.quests.quest_main.stages.push({
         objective: `Press on to ${thirdLocation.name} and seek out the figure waiting at the edge.`,
         completion: { kind: "talk_beat", targetId: "npc_far_witness" }
+      });
+    }
+
+    // Authored, LOSABLE trial side-quest — the only content path that exercises the
+    // check-gated / failOnMiss quest primitive end-to-end (reach the second
+    // location, then one decisive d20: pass -> completed, MISS -> quest FAILED in
+    // tracked state). Seeded only when a second location exists to ground its reach
+    // stage. isMain:false, so it never wins/loses the run — it proves "fail a check
+    // -> lose the quest" without ending the session. Campaign-only; sandbox carries
+    // no authored quests.
+    if (secondLocation) {
+      run.quests[TRIAL_QUEST_ID] = buildTrialQuest(resolvedWorld, {
+        secondLocationId: "second_location",
+        secondLocationName: secondLocation.name
       });
     }
   }

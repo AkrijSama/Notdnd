@@ -984,6 +984,12 @@ function buildTurnTranscript(resolved, gmResult = {}, suggestionsResult) {
     lines.push(`talk: ${resolved.talkResult.found ? "scripted beat" : "freeform"} with ${resolved.talkResult.speakerName || resolved.talkResult.npcId || "NPC"}`);
   }
 
+  if (resolved?.questFailed) {
+    // Check-gated failable stage missed -> quest LOST in tracked state. Logged
+    // loudly so the fail->lose consequence is provable in the transcript, not just
+    // narrated (closes the last "doctrine not provable in content" gap).
+    lines.push(`quest: FAILED — "${resolved.questFailed.title || resolved.questFailed.questId}" lost on a missed check (status -> failed, irrecoverable)`);
+  }
   if (resolved?.questJustAdvanced) {
     lines.push(`quest: advanced "${resolved.questJustAdvanced.title || "main"}"`);
   }
