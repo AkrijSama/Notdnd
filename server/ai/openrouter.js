@@ -53,6 +53,84 @@ function resolveModelTiers() {
   };
 }
 
+// --- TESTING-ONLY two-lane free cloud chain (Gemini Flash -> Groq -> local) -----
+// Purpose: let the owner run a validation playthrough on fast, good-quality free
+// cloud prose without paying and without capping to the slow local 8b mid-session.
+// Gemini's free tier TRAINS ON PROMPTS and has no SLA — fine for solo validation,
+// WRONG for shipped product — so this is strictly behind a flag and is NEVER the
+// unconditional default. When the flag is unset/off, requestWithFallback behaves
+// byte-for-byte as before (the OpenRouter path). Both providers expose OpenAI-
+// compatible chat/completions endpoints, so the existing requestOpenRouter request
+// path is reused via a per-lane `provider` override. Each lane's key is optional:
+// a missing key SKIPS that lane (logged) and the chain tries the next, then local.
+// Endpoints/models are env-overridable so a provider URL/model change needs no code
+// edit (CONFIRM current free-tier models at ai.google.dev / console.groq.com).
+const CLOUD_LANE_DEFAULTS = {
+  gemini: {
+    baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+    model: "gemini-2.5-flash",
+    keyEnv: ["GEMINI_API_KEY", "INKBORNE_GEMINI_API_KEY"],
+    baseEnv: "GEMINI_BASE_URL",
+    modelEnv: "GEMINI_MODEL"
+  },
+  groq: {
+    baseUrl: "https://api.groq.com/openai/v1/chat/completions",
+    model: "llama-3.3-70b-versatile",
+    keyEnv: ["GROQ_API_KEY", "INKBORNE_GROQ_API_KEY"],
+    baseEnv: "GROQ_BASE_URL",
+    modelEnv: "GROQ_MODEL"
+  }
+};
+
+function envFirst(names) {
+  for (const name of names) {
+    const v = String(process.env[name] || "").trim();
+    if (v) {
+      return v;
+    }
+  }
+  return "";
+}
+
+// Builds ONE cloud lane: { name, provider } when its key is present, else
+// { name, skip } so the chain logs and moves on. Unknown lane names return null.
+function buildCloudLane(name) {
+  const key = String(name || "").trim().toLowerCase();
+  const spec = CLOUD_LANE_DEFAULTS[key];
+  if (!spec) {
+    return null;
+  }
+  const apiKey = envFirst(spec.keyEnv);
+  if (!apiKey) {
+    return { name: key, skip: `no ${spec.keyEnv[0]}` };
+  }
+  return {
+    name: key,
+    provider: {
+      baseUrl: String(process.env[spec.baseEnv] || "").trim() || spec.baseUrl,
+      model: String(process.env[spec.modelEnv] || "").trim() || spec.model,
+      key: apiKey,
+      local: false
+    }
+  };
+}
+
+// Resolves the testing cloud chain from NOTDND_CLOUD_PROVIDER_CHAIN (or the
+// INKBORNE_ alias). Off/unset/false/0 -> null (unchanged OpenRouter behavior).
+// "on"/"true" -> the default gemini->groq order; an explicit ordered list like
+// "gemini-groq" or "gemini,groq" is honored. Read at CALL TIME.
+export function resolveCloudChain() {
+  const raw = String(
+    (process.env.NOTDND_CLOUD_PROVIDER_CHAIN ?? process.env.INKBORNE_CLOUD_PROVIDER_CHAIN) || ""
+  ).trim().toLowerCase();
+  if (!raw || raw === "off" || raw === "0" || raw === "false") {
+    return null;
+  }
+  const order = raw === "on" || raw === "true" || raw === "1" ? ["gemini", "groq"] : raw.split(/[\s,>-]+/).filter(Boolean);
+  const lanes = order.map(buildCloudLane).filter(Boolean);
+  return lanes.length ? lanes : null;
+}
+
 function rawApiKey() {
   // INKBORNE_LLM_API_KEY is the primary name; NOTDND_LLM_API_KEY (legacy brand)
   // and OPENROUTER_API_KEY remain fallbacks so existing setups keep working.
@@ -455,6 +533,57 @@ async function requestOpenRouter(messages, model, options = {}) {
   };
 }
 
+// Executes the TESTING cloud chain: each cloud lane in order (Gemini -> Groq),
+// then the LOCAL 8b as LAST RESORT. A lane error/cap/timeout falls to the NEXT
+// cloud lane (never straight to local); local is reached only after every cloud
+// lane fails. Each hop is logged (served-by / skipped / failed + latency + reason)
+// so the trail is visible in the server log; the RETURNED response carries the
+// real serving model in `.model` (so the per-turn transcript attributes the right
+// model, e.g. "cloud (gemini-2.5-flash)") plus providerLabel/latencyMs metadata.
+export async function requestViaCloudChain(messages, lanes, options = {}) {
+  // Injectable request seam so the routing (order / fallback / local-last-resort)
+  // is unit-testable WITHOUT mutating global fetch — a global-fetch stub leaks
+  // across the parallel test runner and flakes unrelated (server-spawning) suites.
+  // Real calls omit __requestFn and use requestOpenRouter unchanged.
+  const requestFn = typeof options.__requestFn === "function" ? options.__requestFn : requestOpenRouter;
+  const laneOptions = { ...options };
+  delete laneOptions.__requestFn;
+  let lastError = null;
+  for (const lane of Array.isArray(lanes) ? lanes : []) {
+    if (lane.skip) {
+      console.warn(`[GM] cloud chain: SKIP ${lane.name} (${lane.skip}) — trying next lane`);
+      continue;
+    }
+    const t0 = Date.now();
+    try {
+      const res = await requestFn(messages, lane.provider.model, { ...laneOptions, provider: lane.provider });
+      const latencyMs = Date.now() - t0;
+      console.warn(`[GM] cloud chain: SERVED by ${lane.name} (${lane.provider.model}) in ${latencyMs}ms`);
+      return { ...res, providerLabel: lane.name, latencyMs };
+    } catch (laneError) {
+      lastError = laneError;
+      const latencyMs = Date.now() - t0;
+      console.warn(
+        `[GM] cloud chain: ${lane.name} (${lane.provider.model}) FAILED ` +
+          `(${laneError?.statusCode || laneError?.code || "error"}) in ${latencyMs}ms — falling to next lane`
+      );
+    }
+  }
+  // Every cloud lane failed/skipped -> LOCAL 8b as the LAST resort (never before).
+  if (localFallbackEnabled() && !mockModeEnabled()) {
+    const local = resolveGmProvider("mainline", { fallback: true });
+    console.warn(`[GM] cloud chain EXHAUSTED; falling back to LOCAL ${local.baseUrl} (model ${local.model})`);
+    const t0 = Date.now();
+    try {
+      const res = await requestFn(messages, local.model, { ...laneOptions, provider: local, stream: false });
+      return { ...res, providerLabel: "local", latencyMs: Date.now() - t0 };
+    } catch (localError) {
+      console.warn(`[GM] cloud chain: LOCAL last-resort ALSO failed: ${String(localError?.message || localError).slice(0, 160)}`);
+    }
+  }
+  throw lastError || Object.assign(new Error("cloud chain: all providers failed"), { code: "CLOUD_CHAIN_EXHAUSTED", statusCode: 502 });
+}
+
 async function requestWithFallback(messages, preferredModel, options = {}) {
   const edition = String(options.edition || "mainline").trim().toLowerCase();
 
@@ -463,6 +592,16 @@ async function requestWithFallback(messages, preferredModel, options = {}) {
   if (edition === "forbidden") {
     const local = resolveGmProvider("forbidden");
     return requestOpenRouter(messages, local.model, { ...options, provider: local });
+  }
+
+  // TESTING two-lane cloud chain (flagged, off by default). When active it REPLACES
+  // the OpenRouter cloud portion with Gemini -> Groq, keeping local as last resort;
+  // mock mode skips it so tests stay hermetic. Unset/off => the unchanged path below.
+  if (!mockModeEnabled()) {
+    const chain = resolveCloudChain();
+    if (chain) {
+      return await requestViaCloudChain(messages, chain, options);
+    }
   }
 
   // Mainline: cloud preferred model -> cloud fallback model -> LOCAL fallback.
