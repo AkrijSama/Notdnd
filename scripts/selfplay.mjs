@@ -956,6 +956,171 @@ async function substanceRun() {
 }
 const discoveredCount = (s) => (Array.isArray(s.discoveredDetails) ? s.discoveredDetails.length : 0);
 
+// ═══════════════ ANTI-NARRATE-INTO-VOID CORE (the general guard) ═══════════════
+// Root cause of the "970 green tests, unplayable game" miss: the suite drove the
+// engine with PERFECT STRUCTURED INPUTS ({type:"move"}, {type:"search"}, testHook
+// providerOutput), proving each handler works in isolation, while a real player's
+// NATURAL FREE-TEXT ("search the ruins", "go deeper", "take the crate", "I'll do
+// it") had to pass a detect→route layer the suite never exercised — so every
+// free-text turn fell through to narrate-only and the game was hollow in play.
+//
+// The generalized invariant encoded here: FOR ANY TURN THE ENGINE SIGNALS AS A
+// MECHANICAL SUCCESS, SERVER STATE MUST HAVE CHANGED. A turn that "succeeds" but
+// commits nothing (no location/discovery/inventory/quest/xp/object delta) is the
+// narrate-into-void class and is a HARD FAIL, whatever the prose said.
+
+// Fingerprint of every state surface a narrated success could legitimately claim.
+function advancementSnapshot(s) {
+  const inv = Array.isArray(s.player?.inventory) ? s.player.inventory : [];
+  const usable = Array.isArray(s.playerInventory) ? s.playerInventory : [];
+  const quests = Array.isArray(s.quests?.activeQuests) ? s.quests.activeQuests : [];
+  return {
+    loc: s.location?.locationId || null,
+    discovered: discoveredCount(s),
+    inv: inv.map((i) => `${i.id || i.itemId}:${i.qty ?? i.quantity ?? 1}`).sort().join(",")
+      + "|" + usable.map((i) => `${i.itemId}:${i.quantity}`).sort().join(","),
+    quests: quests.map((q) => `${q.questId}@${q.stage ?? 0}:${q.status}`).sort().join(","),
+    mainStage: s.quests?.mainQuest?.stage ?? null,
+    xp: xpOf(s),
+    hp: hpOf(s).current ?? null,
+    objects: JSON.stringify(s.location?.flags?.objectStates || {})
+  };
+}
+// Which state domains changed between two snapshots (empty array = STATIC turn).
+function advancementDelta(a, b) {
+  const domains = [];
+  if (a.loc !== b.loc) domains.push("location");
+  if (b.discovered > a.discovered) domains.push("discovery");
+  if (a.inv !== b.inv) domains.push("inventory");
+  if (a.quests !== b.quests || a.mainStage !== b.mainStage) domains.push("quests");
+  if (a.xp !== b.xp) domains.push("xp");
+  if (a.hp !== b.hp) domains.push("hp");
+  if (a.objects !== b.objects) domains.push("objects");
+  return domains;
+}
+// Did THIS action response make a MECHANICAL claim of success? Reads only the
+// deterministic result surfaces (takeResult/questAccepted/searchResult/moved) —
+// never the prose and never a bare attempt `success` (a roleplay beat like "I
+// whistle a tune" legitimately succeeds while committing nothing; prose-level
+// void is bounded by the SESSION-cumulative static guard instead). A response
+// that raises one of these surfaces and commits nothing is a lying result — the
+// exact shape of the M.1 phantom-arrival bug — and hard-fails per turn.
+function turnSignaledSuccess(j) {
+  if (!j || j.ok !== true) return false;
+  if (j.takeResult) return j.takeResult.taken === true;
+  if (j.questAccepted) return true;
+  if (j.searchResult) return j.searchResult.found === true;
+  if (j.moved || j.action?.type === "move") return true;
+  return false;
+}
+
+// Plays ONE natural free-text turn and enforces the invariant: signaled success ⇒
+// some state delta. Returns { res, domains, signaled, before, after } for the
+// scenario's own domain-specific assertions on top.
+async function playFreeTextTurn(ctx, r, intent, { hook } = {}) {
+  const before = advancementSnapshot((await scene(r)).json);
+  const action = { type: "attempt", intent };
+  if (hook) action.testHook = hook;
+  const res = await act(r, action);
+  const after = advancementSnapshot((await scene(r)).json);
+  const domains = advancementDelta(before, after);
+  const signaled = turnSignaledSuccess(res.json);
+  ctx.assert(
+    `anti-void: "${intent.slice(0, 44)}" — signaled success ⇒ committed state delta`,
+    !signaled || domains.length > 0,
+    "success ⇒ ≥1 domain changed",
+    `signaled:${signaled} delta:[${domains.join("|") || "NONE — narrated into the void"}]`
+  );
+  return { res, domains, signaled, before, after };
+}
+
+// 5b) FREE-TEXT ADVANCEMENT — the harness plays like a HUMAN. Natural phrasings
+// only (no structured types, no scripted interpreter output on the routed turns),
+// with the per-turn anti-void invariant plus the cumulative substance invariant:
+// over a scripted free-text session, discovery MUST rise, position MUST commit,
+// and inventory-or-quests MUST mutate. A run that only accumulates narration with
+// zero state delta (the owner's 0/13 session) FAILS here, hard.
+async function scenarioAdvancement(ctx) {
+  const r = await substanceRun(); ctx.runId = r.runId; ctx.token = r.token; // sandbox: placed features, no authored spine
+  const start = advancementSnapshot((await scene(r)).json);
+  const turns = [];
+  // discoveredDetails is per-LOCATION, so cumulative discovery is the SUM of
+  // per-turn positive deltas (a later move must not erase the tally).
+  let revealedTotal = 0;
+  const play = async (intent, opts) => {
+    const t = await playFreeTextTurn(ctx, r, intent, opts);
+    turns.push(t);
+    revealedTotal += Math.max(0, t.after.discovered - t.before.discovered);
+    return t;
+  };
+
+  // The actual phrasings a player types, in a natural order.
+  const t1 = await play("search the ruins for anything useful");
+  ctx.assert("free-text SEARCH reveals a real feature (discovery domain committed)",
+    t1.domains.includes("discovery"), "discovery delta", `delta:[${t1.domains.join("|") || "NONE"}] found:${t1.res.json.searchResult?.found}`);
+
+  await play("look around for anything else hidden");
+
+  // Free-text TAKE of whatever the searches surfaced. If a takeable object is
+  // present the pickup MUST commit to inventory; if nothing here is takeable, a
+  // takeResult claiming a pickup with no delta is a lying surface (anti-void).
+  const t3 = await play("take anything worth carrying and pocket it");
+  if (t3.res.json.takeResult?.taken === true) {
+    ctx.assert("free-text TAKE commits the item into inventory (not just narrated)",
+      t3.domains.includes("inventory"), "inventory delta", `delta:[${t3.domains.join("|") || "NONE"}] took:${t3.res.json.takeResult?.name}`);
+    ctx.note(`free-text take committed: ${t3.res.json.takeResult?.name}`);
+  } else if ((t3.res.json.attemptResult?.success === true) && t3.domains.length === 0) {
+    // Prose-void tell (can't be hard-gated deterministically — the prose may
+    // honestly say "nothing worth taking"): surface it LOUDLY for the interpreter
+    // owner. The committed-take path is HARD-proven in the delivery scenario.
+    ctx.warn("possible prose-void: an acquisition-verbed intent auto-succeeded with zero state delta",
+      `"take anything worth carrying" → attempt success with delta:[NONE]; if the narration reads as a pickup, this is the narrate-into-void class (nothing takeable is placed here)`);
+  } else {
+    ctx.note(`no takeable object bound here (takeResult:${JSON.stringify(t3.res.json.takeResult ?? null)}) — anti-void invariant enforced on the turn`);
+  }
+
+  // Free-text MOVE: "go deeper" must COMMIT the position (M.1 class).
+  const t4 = await play("go deeper into the ruins");
+  ctx.assert("free-text MOVE ('go deeper') commits the location (no phantom arrival)",
+    t4.domains.includes("location"), "location delta", `delta:[${t4.domains.join("|") || "NONE"}] loc:${t4.after.loc}`);
+
+  // Free-text GOAL DECLARATION: a durable declared aim becomes a TRACKED quest
+  // (player-authored objective capture), not just prose. fixedRoll pins only the
+  // die so a rolled check can't flake the capture; the interpreter stays live.
+  // Phrasing uses a detector-covered establish verb ("claim … as my own").
+  let goal = await play("I claim this place as my own and vow to rebuild it", { hook: { fixedRoll: 20 } });
+  if (!goal.domains.includes("quests")) {
+    goal = await play("I will make this ruin my stronghold", { hook: { fixedRoll: 20 } });
+  }
+  ctx.assert("free-text GOAL DECLARATION creates a real tracked quest (quest domain committed)",
+    goal.domains.includes("quests"), "quests delta", `signaled:${goal.res.json.attemptResult?.success} delta:[${goal.domains.join("|") || "NONE"}]`);
+  // Detector-coverage probe (WARN-grade, like G5): a natural plural phrasing that
+  // players actually type. GOAL_ESTABLISH covers this|that|the|it but not "these".
+  const plural = await play("I will make these ruins my stronghold", { hook: { fixedRoll: 20 } });
+  if (!plural.domains.includes("quests")) {
+    ctx.warn("goal-capture GAP: plural phrasing not captured",
+      `"I will make these ruins my stronghold" succeeded but created no tracked objective — GOAL_ESTABLISH misses "these <noun>" (players type plurals; a real coverage gap for the quest owner)`);
+  }
+
+  // ── THE DEEPER GUARD: cumulative substance over the whole scripted session. A
+  // static world under a session of free-text play is the hollow-core condition
+  // itself — each line below would have HARD-FAILED the 0/13 playthrough.
+  const end = advancementSnapshot((await scene(r)).json);
+  const cumulative = advancementDelta(start, end);
+  ctx.assert("SESSION: features were revealed over the free-text session (cumulative discovery > 0)",
+    revealedTotal > 0, "> 0 revealed", `${revealedTotal} revealed across ${turns.length} turns`);
+  ctx.assert("SESSION: position committed at least once over the free-text session",
+    end.loc !== start.loc, `left ${start.loc}`, `${end.loc}`);
+  ctx.assert("SESSION: inventory or quests mutated over the free-text session",
+    end.inv !== start.inv || end.quests !== start.quests || end.mainStage !== start.mainStage,
+    "inventory/quests delta", `inv-changed:${end.inv !== start.inv} quests-changed:${end.quests !== start.quests}`);
+  const voidTurns = turns.filter((t) => t.signaled && t.domains.length === 0).length;
+  ctx.assert("SESSION: zero lying result surfaces (every mechanical success committed state)",
+    voidTurns === 0, "0 void turns", `${voidTurns}/${turns.length} turns raised a success surface with NO state delta`);
+  ctx.note(`session advanced domains: [${cumulative.join(", ")}] over ${turns.length} free-text turns; +${revealedTotal} features revealed`);
+  ctx.note(`loc ${start.loc} -> ${end.loc}`);
+}
+
 async function scenarioSubstance(ctx) {
   const r = await substanceRun(); ctx.runId = r.runId; ctx.token = r.token;
   const s0 = (await scene(r)).json;
@@ -1185,6 +1350,7 @@ const SCENARIOS = [
   { key: "gating", title: "QUEST GATING — progress is earned, not handed out", fn: scenarioGating },
   { key: "coherence", title: "COHERENCE — the world resists invented nonsense", fn: scenarioCoherence },
   { key: "substance", title: "SUBSTANCE — a natural free-text session ADVANCES world state (hollow-core guard)", fn: scenarioSubstance },
+  { key: "advancement", title: "ADVANCEMENT — free-text play like a human; narrated success MUST commit state (anti-void)", fn: scenarioAdvancement },
   { key: "movement", title: "MOVEMENT — a move-intent COMMITS the position (M.1) + geo-fog (M.2)", fn: scenarioMovement },
   { key: "delivery", title: "DELIVERY LOOP — accept -> take -> deliver -> reward, all committed (fully-committed loop)", fn: scenarioDelivery },
   { key: "persistence", title: "PERSISTENCE — state survives a reload", fn: scenarioPersistence },
