@@ -1182,7 +1182,13 @@ export function createDefaultLocationGraph(options = {}) {
       connectedLocationIds: ["start_location", "third_location"],
       state: {
         visited: false,
-        discovered: true
+        // M.2 — geography is server-owned knowledge: an adjacent location is NOT
+        // known for free. It starts UNDISCOVERED (an unnamed path in
+        // getAvailableMoves) and becomes a named exit only via a reveal event —
+        // arrival (resolveMovementAction), or a campaign quest that TELLS the
+        // player its destination (onboarding marks it discovered when it seeds the
+        // "travel to" quest). Sandbox runs discover it by actually going there.
+        discovered: false
       },
       memoryFactIds: [],
       tags: ["ashenmoor", "market", "curfew"],

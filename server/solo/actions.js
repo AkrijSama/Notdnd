@@ -1,5 +1,6 @@
 import {
   getAvailableMoves,
+  detectMoveIntent,
   resolveMovementAction,
   validateMovementAction
 } from "./movement.js";
@@ -525,6 +526,39 @@ function resolveTestHookAction(run, normalized, options = {}) {
   };
 }
 
+// M.1 — a move-intent naming a KNOWN place that is NOT reachable from here is
+// REFUSED, not narrated as an arrival. Shaped like an authority-gate refusal
+// (gated:true, refused consequence, deterministic in-fiction line) so the request
+// layer keeps the grounded refusal and never lets the GM narrate a move that
+// couldn't happen. Read-only: run is untouched (result.run omitted).
+function buildUnreachableMoveResult(run, normalized, moveIntent) {
+  const here = isString(run?.locations?.[run.currentLocationId]?.name)
+    ? run.locations[run.currentLocationId].name
+    : "here";
+  const place = isString(moveIntent?.name) ? moveIntent.name : "there";
+  return {
+    ok: true,
+    action: normalized,
+    attemptResult: {
+      actorId: normalized.actorId ?? "player",
+      intent: normalized.intent,
+      success: false,
+      needsCheck: false,
+      checkResult: null,
+      consequence: { type: "refused", applied: false, category: "unreachable_move", reason: "no known path from here" },
+      foreclosed: false,
+      unpossessed: false,
+      gated: true,
+      gateCategory: "unreachable_move",
+      narration: `You can't simply cross to ${place} from ${here} — no path you know leads there yet.`,
+      damage: null
+    },
+    availableMoves: getAvailableMoves(run),
+    availableActions: getAvailableSoloActions(run),
+    errors: []
+  };
+}
+
 export function resolveSoloAction(run, action, options = {}) {
   const normalized = normalizeSoloAction(action);
   const validation = validateSoloAction(run, normalized);
@@ -706,6 +740,37 @@ export function resolveSoloAction(run, action, options = {}) {
   }
 
   if (normalized.type === "attempt") {
+    // M.1 — MOVE-INTENT COMMIT. A directed move sent as free-text ("Head toward
+    // The Gilded Kingdoms Watch") would otherwise resolve as narrative flavor: the
+    // GM narrates arriving while run.currentLocationId never changes. Detect it and
+    // ROUTE TO THE MOVE RESOLVER so the position actually commits (success on a move
+    // = you moved). A move-intent naming a KNOWN but NOT-reachable place is refused
+    // (no false-arrival prose). A non-move / unidentified-destination intent falls
+    // through to the normal attempt path unchanged.
+    const moveIntent = detectMoveIntent(run, normalized.intent);
+    if (moveIntent?.reachable) {
+      const moveAction = { type: "move", actorId: normalized.actorId ?? "player", toLocationId: moveIntent.toLocationId };
+      const movement = resolveMovementAction(run, moveAction, options);
+      if (movement.ok) {
+        return finalizeQuestProgress(run, {
+          ok: true,
+          // Preserve the player's words + mark that a free-text intent committed a
+          // move, so the GM narrates the ARRIVAL (now true) not a generic attempt.
+          action: { ...moveAction, intent: normalized.intent, movedViaIntent: true },
+          run: movement.run,
+          event: movement.event,
+          memoryFact: movement.memoryFact,
+          moved: { fromLocationId: run.currentLocationId, toLocationId: moveIntent.toLocationId, name: moveIntent.name },
+          availableMoves: getAvailableMoves(movement.run),
+          availableActions: getAvailableSoloActions(movement.run),
+          errors: []
+        }, options);
+      }
+      // Movement failed validation (e.g. destination vanished) — fall through to
+      // the normal attempt path rather than dropping the turn.
+    } else if (moveIntent?.knownUnreachable) {
+      return finalizeQuestProgress(run, buildUnreachableMoveResult(run, normalized, moveIntent), options);
+    }
     // Deterministic test-hook injection (gated like the other test hooks): an
     // attempt may carry `testHook: { fixedRoll, providerOutput }` so the self-play
     // harness can drive a KNOWN roll + a KNOWN GM consequence proposal over real

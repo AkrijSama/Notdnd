@@ -934,6 +934,40 @@ async function scenarioCoherence(ctx) {
 }
 
 // 5) PERSISTENCE — state survives a reload of the run by id.
+// M.4 — MOVEMENT COMMIT. The class of bug that broke every playthrough: a move
+// sent as free-text ("Head toward X") narrated a successful arrival while
+// run.currentLocationId never changed. The old persistence check only ever used
+// explicit {type:"move"} actions, so it stayed green. This drives the ACTUAL
+// repro path (a move-INTENT attempt) and asserts the position truly committed —
+// plus the M.2 geo-fog (an undiscovered onward location is not a free named exit).
+async function scenarioMovement(ctx) {
+  const r = await newRun("movement"); ctx.runId = r.runId; ctx.token = r.token;
+  const s0 = (await scene(r)).json;
+  const fromLoc = s0.location?.locationId;
+  const exit = (s0.availableMoves || []).find((m) => m && m.discovered && m.name && m.locationId);
+  if (!exit) {
+    ctx.pending("no discovered named exit from the start location to probe move-commit");
+    return;
+  }
+  // M.1 — the exact repro: a directed move sent as a FREE-TEXT attempt.
+  const mv = await act(r, { type: "attempt", intent: `Head toward ${exit.name}` });
+  const s1 = (await scene(r)).json;
+  const moved = s1.location?.locationId === exit.locationId && s1.location?.locationId !== fromLoc;
+  ctx.assert("M.1: a move-intent ATTEMPT commits the location change (not just narrated)", moved, `location -> ${exit.locationId}`, `location ${s1.location?.locationId} (from ${fromLoc})`);
+  ctx.assert("M.1: a move narrated as success == a REAL committed position change (no phantom arrival)", !(mv.json.ok === true && !moved), "success => committed", `ok:${mv.json.ok} moved:${moved}`);
+  ctx.note(`committed move ${fromLoc} -> ${s1.location?.name} via free-text "Head toward ${exit.name}"`);
+  // M.2 — geography is server-owned: an UNDISCOVERED onward connection presents as
+  // an unnamed path, not a free named exit; the just-left location IS now named.
+  const onward = s1.availableMoves || [];
+  ctx.assert("M.2: an undiscovered onward location is NOT a free named exit (geo-fog)",
+    onward.some((m) => m.discovered === false && m.name === "An unexplored path"),
+    "an unnamed path present",
+    `onward: ${JSON.stringify(onward.map((m) => ({ n: m.name, d: m.discovered })))}`);
+  ctx.assert("M.2: the location you just LEFT is a named, discovered exit (reveal-on-visit works)",
+    onward.some((m) => m.discovered === true && m.locationId === fromLoc && m.name && m.name !== "An unexplored path"),
+    "back-exit named", `onward names: ${JSON.stringify(onward.map((m) => m.name))}`);
+}
+
 async function scenarioPersistence(ctx) {
   const r = await newRun("persistence"); ctx.runId = r.runId; ctx.token = r.token;
 
@@ -1043,6 +1077,7 @@ const SCENARIOS = [
   { key: "lethality", title: "LETHALITY — 0 HP kills; death is permanent & terminal", fn: scenarioLethality },
   { key: "gating", title: "QUEST GATING — progress is earned, not handed out", fn: scenarioGating },
   { key: "coherence", title: "COHERENCE — the world resists invented nonsense", fn: scenarioCoherence },
+  { key: "movement", title: "MOVEMENT — a move-intent COMMITS the position (M.1) + geo-fog (M.2)", fn: scenarioMovement },
   { key: "persistence", title: "PERSISTENCE — state survives a reload", fn: scenarioPersistence },
   { key: "gm_health", title: "GM HEALTH — real prose, responsive, on-topic", fn: scenarioGmHealth }
 ];

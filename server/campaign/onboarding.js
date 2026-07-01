@@ -813,6 +813,15 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
       seed: worldSeed
     });
 
+    // M.2 — the main quest TELLS the player where to go ("Travel to <second
+    // location>"), and the opening narration names it. That is a legitimate
+    // told-of knowledge event, so the destination is DISCOVERED for a campaign
+    // run (a named exit from the start). A SANDBOX run gets no such reveal — its
+    // adjacent location stays an unnamed path until the player actually goes there.
+    if (secondLocation?.state) {
+      secondLocation.state.discovered = true;
+    }
+
     // Extend the arc to the far location: after the figure at the second location,
     // press on to the third location and SPEAK WITH the witness there. The win
     // fires on that conversation (talk_beat -> npc_far_witness), not on arrival —

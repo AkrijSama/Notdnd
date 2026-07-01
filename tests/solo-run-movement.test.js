@@ -39,15 +39,34 @@ function legalMove(overrides = {}) {
   };
 }
 
-test("getAvailableMoves returns connected locations from currentLocationId", () => {
+test("getAvailableMoves gates an UNDISCOVERED connection's name (M.2 geo-fog)", () => {
   const run = createDefaultSoloRun({ runId: "run_moves" });
   run.locations.second_location.imageAssetId = "image_second_location";
+  // Default: the adjacent location is undiscovered -> an unnamed path, no name/art leaked.
+  const moves = getAvailableMoves(run);
+  assert.deepEqual(moves, [
+    {
+      locationId: "second_location",
+      name: "An unexplored path",
+      discovered: false,
+      direction: null,
+      imageAssetId: null,
+      edition: "mainline",
+      policyProfileId: "mainline_default"
+    }
+  ]);
+});
 
+test("getAvailableMoves exposes the real name once the connection is DISCOVERED", () => {
+  const run = createDefaultSoloRun({ runId: "run_moves_known" });
+  run.locations.second_location.imageAssetId = "image_second_location";
+  run.locations.second_location.state.discovered = true; // a reveal event happened
   const moves = getAvailableMoves(run);
   assert.deepEqual(moves, [
     {
       locationId: "second_location",
       name: "Ashenmoor Market Square",
+      discovered: true,
       direction: null,
       imageAssetId: "image_second_location",
       edition: "mainline",
