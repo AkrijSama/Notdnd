@@ -198,6 +198,10 @@ export function resolveQuestAccept(run, action, options = {}) {
   if (isPlainObject(updatedRun.quests[quest.questId])) {
     return { ok: false, errors: [{ path: "offer.quest.questId", message: "Job already accepted" }] };
   }
+  // The player CHOSE this undertaking (vs seeded side content) — suggestions and
+  // GM context rank an explicitly-accepted job above the ambient main spine.
+  quest.flags = isPlainObject(quest.flags) ? quest.flags : {};
+  quest.flags.playerAccepted = true;
   updatedRun.quests[quest.questId] = quest;
 
   // Place the takeable item into the world so the next step (take) is real.

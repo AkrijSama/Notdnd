@@ -175,3 +175,57 @@ test("COHERENCE: a take with no object present stays a normal attempt (nothing c
   assert.notEqual(res.action.type, "take", "no takeable present -> not routed to take");
   assert.equal(invQty(res.run, DELIVERY_CRATE_ID), 0, "no item conjured from thin air");
 });
+
+// ── CLI-1 fixes: narration branches + suggestion ordering ────────────────────
+import { buildActionGmMessage } from "../server/gm/actionNarration.js";
+import { activeObjective } from "../server/solo/suggestions.js";
+
+test("NARRATION: a committed take gets a real GM beat grounded in the taken item", () => {
+  const run = deliveryRun();
+  const accepted = resolveQuestAccept(run, { type: "quest_accept", npcId: "npc_quest_giver" }, { now: T(1) });
+  const detailId = getTakeableDetails(accepted.run)[0].detailId;
+  const take = resolveTakeAction(accepted.run, { type: "take", detailId, targetLocationId: "second_location" }, { now: T(2) });
+  const msg = buildActionGmMessage(take.run, { action: { type: "take" }, takeResult: take.takeResult });
+  assert.ok(msg, "take now produces a GM message (was null -> silent beat)");
+  assert.match(msg, /wax-sealed strongbox/i, "grounded in the REAL taken item");
+  assert.match(msg, /committed it to their inventory/i, "prose is anchored to committed state");
+});
+
+test("NARRATION: a committed quest-accept voices the giver and the first objective", () => {
+  const run = deliveryRun();
+  const accepted = resolveQuestAccept(run, { type: "quest_accept", npcId: "npc_quest_giver" }, { now: T(1) });
+  const msg = buildActionGmMessage(accepted.run, {
+    action: { type: "quest_accept" },
+    questAccepted: accepted.questAccepted
+  });
+  assert.ok(msg, "quest_accept now produces a GM message (was null -> silent beat)");
+  assert.match(msg, /A waiting figure/, "voices the actual giver");
+  assert.match(msg, /Deliver to The Ashen Edge/, "names the real accepted quest");
+  assert.match(msg, /Take .*strongbox|first step/i, "hands the player the first objective");
+});
+
+test("SUGGESTIONS: an explicitly-ACCEPTED job outranks the ambient main quest in the objective feed", () => {
+  const run = deliveryRun();
+  // Give the run a main quest too (the ambient spine).
+  run.quests = {
+    quest_main: {
+      questId: "quest_main", status: "active", isMain: true, title: "Blood Debt",
+      stages: [{ objective: "Travel to the crossing.", completion: { kind: "reach_location", targetId: "second_location" } }],
+      stage: 0, objective: "Travel to the crossing.", completion: { kind: "reach_location", targetId: "second_location" },
+      relatedEntityIds: [], memoryFactIds: [], flags: {}
+    }
+  };
+  assert.match(activeObjective(run), /Travel to the crossing/, "main quest surfaces before any acceptance");
+  const accepted = resolveQuestAccept(run, { type: "quest_accept", npcId: "npc_quest_giver" }, { now: T(1) });
+  assert.match(activeObjective(accepted.run), /Take .*strongbox/i, "the accepted delivery objective now leads");
+});
+
+test("SUGGESTIONS: the objective tracks the quest's ACTUAL stage index (not stuck on stage 0)", () => {
+  const run = deliveryRun();
+  const accepted = resolveQuestAccept(run, { type: "quest_accept", npcId: "npc_quest_giver" }, { now: T(1) }).run;
+  const detailId = getTakeableDetails(accepted)[0].detailId;
+  const withCrate = resolveTakeAction(accepted, { type: "take", detailId, targetLocationId: "second_location" }, { now: T(2) }).run;
+  advanceQuests(withCrate, { attemptResult: { success: true } }); // obtain_item -> stage 1
+  assert.match(activeObjective(withCrate), /Carry .*to The Ashen Edge/i,
+    "after taking the crate the chip objective is the DELIVER stage, not the already-done take stage");
+});

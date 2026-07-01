@@ -49,18 +49,29 @@ function availableMoveNames(run) {
   }
 }
 
-function activeObjective(run) {
+export function activeObjective(run) {
   // Sandbox-aware: getQuestPayload suppresses the procedural spine in a sandbox, so
   // suggestions don't feed the contradictory "trail of your quarry" objective into
   // an open world. Player-authored objectives DO surface here.
   try {
     const { activeQuests, mainQuest } = getQuestPayload(run);
-    const quest = mainQuest || (Array.isArray(activeQuests) ? activeQuests[0] : null);
+    const quests = Array.isArray(activeQuests) ? activeQuests : [];
+    // Ordering: an undertaking the player EXPLICITLY took on (an accepted job, a
+    // declared goal) outranks the ambient main spine — otherwise an in-flight
+    // delivery never reaches the chips while quest_main is active. Seeded side
+    // content (no player choice) does not jump the queue.
+    const chosen = quests.find(
+      (q) => q && (q.flags?.playerAccepted === true || q.flags?.playerAuthored === true || q.authoredBy === "player")
+    );
+    const quest = chosen || mainQuest || quests[0] || null;
     if (!quest) {
       return "";
     }
     const stages = Array.isArray(quest.stages) ? quest.stages : null;
-    const stage = stages ? stages.find((entry) => entry && entry.status !== "complete") || stages[0] : null;
+    // Progress is tracked by the quest.stage INDEX (advanceQuests) — stages carry
+    // no per-stage status field, so the old `find(status !== "complete")` always
+    // returned stage 0 and the chips kept suggesting an already-done objective.
+    const stage = stages ? stages[Number.isInteger(quest.stage) ? quest.stage : 0] || stages[0] : null;
     const objective = (stage && stage.objective) || quest.objective;
     return isStr(objective) ? clip(objective) : "";
   } catch {

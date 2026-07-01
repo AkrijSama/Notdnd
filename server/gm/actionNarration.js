@@ -282,6 +282,42 @@ export function buildActionGmMessage(run, resolved) {
     );
   }
 
+  if (type === "take") {
+    // Committed pickup (delivery loop): the item is ALREADY in inventory — the
+    // server committed it before this prose. Narrate acquiring the real thing.
+    const tk = resolved.takeResult;
+    if (!tk || tk.taken !== true) {
+      return null;
+    }
+    const what = isString(tk.name) ? tk.name : "the object";
+    return (
+      `The player picks up ${what} at ${isString(loc.name) ? loc.name : "this place"} — a REAL object now in ` +
+      `their possession (the game has committed it to their inventory). Narrate the physical act of taking it — ` +
+      `its weight, feel, and what carrying it means for what comes next. Do NOT invent additional items or ` +
+      `contents beyond what it is, and do not second-guess the acquisition — it happened. ${suffix}`
+    );
+  }
+
+  if (type === "quest_accept") {
+    // Committed job acceptance (delivery loop): the quest NOW EXISTS in state.
+    // Voice the giver sealing the deal and hand the player their first concrete step.
+    const qa = resolved.questAccepted;
+    if (!qa) {
+      return null;
+    }
+    const giver = (run?.npcs || {})[qa.npcId] || {};
+    const giverName = isString(giver.displayName) ? giver.displayName : "the one offering the work";
+    const title = isString(qa.title) ? qa.title : "the job";
+    const objective = isString(run?.quests?.[qa.questId]?.objective) ? run.quests[qa.questId].objective : null;
+    return (
+      `The player has just ACCEPTED a job from ${giverName}: "${title}". This is now a real, tracked ` +
+      `undertaking${objective ? ` — their first step: ${objective}` : ""}. ` +
+      `Voice ${giverName} sealing the arrangement in character (1-2 sentences of dialogue — terms, a warning, or ` +
+      `what's at stake), then narrate the handover moment so the player knows exactly what to do next. ` +
+      `Do NOT invent extra rewards, destinations, or conditions beyond the arrangement itself. ${suffix}`
+    );
+  }
+
   if (type === "rest") {
     const rr = resolved.restResult;
     const kind = rr && rr.restType === "long" ? "a long rest" : "a short rest";
