@@ -2169,7 +2169,12 @@ button:disabled {
   height: 100%;
   color: var(--solo-accent, #6ea8fe);
   opacity: 0.82;
-  pointer-events: none;
+  /* Keep pointer events so the native `title` tooltip fires on hover — without
+     this the feature markers were mute (aria-label is screen-reader-only, never
+     a visible tooltip), unlike the player token which shows its name. Features
+     sit BENEATH tokens (z-index 1 < 2), so a token still wins hover on overlap. */
+  pointer-events: auto;
+  cursor: help;
 }
 .solo-presence-feature .solo-feature-glyph {
   font-size: 11px;
@@ -2179,6 +2184,21 @@ button:disabled {
 .solo-presence-feature.solo-feature-exit { color: #8fd6a8; opacity: 0.95; }
 .solo-presence-feature.solo-feature-hazard { color: #e0a35a; opacity: 0.95; }
 .solo-presence-feature.solo-feature-loot { color: #e9d27a; opacity: 0.95; }
+/* Presence-map feature legend — makes the glyph system legible (a bare ◆ told
+   the player nothing). Honest to state: only features actually placed appear. */
+.solo-presence-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--muted, #9b8c76);
+}
+.solo-presence-legend-item { display: inline-flex; align-items: center; gap: 5px; }
+.solo-presence-legend-item .solo-feature-glyph { color: var(--solo-accent, #6ea8fe); font-size: 12px; }
+.solo-presence-legend-item .solo-feature-exit { color: #8fd6a8; }
+.solo-presence-legend-item .solo-feature-hazard { color: #e0a35a; }
+.solo-presence-legend-item .solo-feature-loot { color: #e9d27a; }
 .solo-presence-empty {
   font-size: 12px;
   font-style: italic;
@@ -2270,6 +2290,7 @@ button:disabled {
 .solo-map-cell.legal { background: linear-gradient(180deg, #1d2a1c, #16231a); box-shadow: inset 0 0 0 1px rgba(127, 175, 96, 0.45); cursor: pointer; }
 .solo-map-cell.legal:hover { background: linear-gradient(180deg, #25361f, #1b2a1d); }
 .solo-map-sub { font-size: 13px; color: var(--text-faint, #6e6150); margin-top: 8px; }
+.solo-map-honesty { font-size: 11px; font-style: italic; opacity: 0.85; }
 
 /* ---- Map tab as a center-column lens ----
    The battle grid renders in the same center column the scene uses; the left

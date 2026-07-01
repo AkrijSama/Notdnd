@@ -6,6 +6,7 @@ import { createApiClient } from "./api/client.js";
 // never reached. Only homebrewManager survives — it IS used on the live solo path.
 import { renderHomebrewManager, bindHomebrewManager, homebrewDraftToItem, itemToDraft } from "./components/homebrewManager.js";
 import { renderOnboardingFlow, bindOnboardingFlow } from "./components/onboardingFlow.js";
+import { soloRunActionLabel } from "./state/runLabels.js";
 import { ABILITIES, pointBuyCost, rollAbilityScores } from "../server/solo/dndData.js";
 import {
   mountSoloSceneShell,
@@ -197,8 +198,9 @@ function renderSoloRunCard(run, { primary = false } = {}) {
   const status = run?.status || "unknown";
   // Status-driven, honest classification from the state contract. A DEAD run is
   // terminal and NON-resumable — it gets an outcome label, never "Continue".
-  // completed/abandoned runs are concluded too — re-openable to read the ending,
-  // badged so it's clear they're done.
+  // completed = genuinely resolved (has an ending). abandoned = voluntarily left
+  // (server marks it non-resumable — scene.js `resumable` is active-only — but it
+  // has NO ending: nothing concluded), so it must NOT claim "View ending".
   const isDead = run?.isDead === true || status === "dead" || run?.player?.status === "dead";
   const isCompleted = status === "completed";
   const isAbandoned = status === "abandoned";
@@ -231,16 +233,11 @@ function renderSoloRunCard(run, { primary = false } = {}) {
 
   const confirming = runId && uiState.soloRunPendingDelete === runId;
   const renaming = runId && uiState.soloRunPendingRename === runId;
-  // Honest, status-driven action label. Dead → "View death" (terminal, no
-  // resume); completed/abandoned → "View ending" (read the outcome); active →
-  // "Continue". The word "Review" is gone — it told the player nothing.
-  const continueLabel = isDead
-    ? "View death"
-    : isCompleted || isAbandoned
-      ? "View ending"
-      : primary
-        ? "Continue your adventure"
-        : "Continue";
+  // Honest, status-driven action label (single source of truth in runLabels.js):
+  // dead → "View death"; completed → "View ending"; abandoned → "View" (non-
+  // resumable AND no ending, so neither "View ending" nor "Resume" is truthful);
+  // active → "Continue". "Review" is gone — it told the player nothing.
+  const continueLabel = soloRunActionLabel(run, { primary });
 
   // Inline rename takes over the card body when active, so the player edits in place.
   if (renaming) {

@@ -1655,16 +1655,19 @@ export function renderSoloMapTab(scene = {}, mapState = {}) {
   const visibleCount = tokens.filter((token) => revealed.has(`${token.x},${token.y}`)).length;
 
   const canUndo = Array.isArray(mapState.history) && mapState.history.length > 0;
+  // Honest copy: reachability is a client-side movement-range highlight, not a
+  // server-enforced legality gate (there is no server terrain/blockers/LOS yet),
+  // so we say "within range highlight", not "legal tiles glow".
   const status = selected
     ? `${escapeHtml(selected.displayName)} — ${budget * SOLO_MAP_TILE_FEET} ft of movement left`
-    : "Select a token, then drag it or use arrow keys to move (legal tiles glow).";
+    : "Select a token, then drag it or use arrow keys to reposition it (tiles within range highlight).";
 
   return `
     <div class="solo-map-tab" tabindex="0" data-solo-map data-map-width="${width}" data-map-height="${height}">
       <div class="solo-map-toolbar">
         <span class="tag">${width}×${height} grid</span>
         <span class="small">1 tile = ${SOLO_MAP_TILE_FEET} ft</span>
-        <span class="tag">Fog of war</span>
+        <span class="tag">Fog of war (vision radius)</span>
         <span class="small solo-map-status">${status}</span>
         <button type="button" class="ghost solo-map-undo" data-map-undo ${canUndo ? "" : "disabled"}>Undo</button>
       </div>
@@ -1676,6 +1679,7 @@ export function renderSoloMapTab(scene = {}, mapState = {}) {
           ? `<div class="solo-map-legend">${legend}</div>`
           : `<div class="solo-map-sub">Nothing in sight — explore to reveal the map.</div>`
       }
+      <div class="solo-map-sub solo-map-honesty">Positioning sketch — token placement is visual and saved, but line-of-sight, cover and ranges aren't modelled yet.</div>
     </div>
   `;
 }
@@ -1853,6 +1857,28 @@ export function renderSoloPresenceMap(scene = {}) {
     })
     .join("");
 
+  // Legend so each glyph is legible (the bare ◆ diamond had no meaning on hover
+  // or otherwise). Honest to state: only features actually placed are listed,
+  // deduped by name — nothing invented. Renders only when features exist.
+  const seenFeatureNames = new Set();
+  const featureLegend = features
+    .filter((f) => f && typeof f === "object" && Number.isFinite(Number(f.x)) && Number.isFinite(Number(f.y)))
+    .map((feature) => {
+      const kind = typeof feature.kind === "string" && feature.kind ? feature.kind : "site";
+      return {
+        kind,
+        glyph: PRESENCE_FEATURE_GLYPH[kind] || PRESENCE_FEATURE_GLYPH.site,
+        name: typeof feature.name === "string" && feature.name ? feature.name : kind
+      };
+    })
+    .filter((f) => (seenFeatureNames.has(f.name) ? false : (seenFeatureNames.add(f.name), true)))
+    .map(
+      (f) =>
+        `<span class="solo-presence-legend-item"><span class="solo-feature-glyph solo-feature-${escapeHtml(f.kind)}">${f.glyph}</span>${escapeHtml(f.name)}</span>`
+    )
+    .join("");
+  const legendBlock = featureLegend ? `<div class="solo-presence-legend">${featureLegend}</div>` : "";
+
   const cells = tokens
     .map((token) => {
       const kind = token && (token.kind === "player" || token.kind === "npc" || token.kind === "item") ? token.kind : "npc";
@@ -1863,7 +1889,7 @@ export function renderSoloPresenceMap(scene = {}) {
       return `<span class="solo-presence-token solo-token-${escapeHtml(kind)}" style="grid-column:${x + 1};grid-row:${y + 1};" title="${escapeHtml(name)}" aria-label="${escapeHtml(name)}">${escapeHtml(initial)}</span>`;
     })
     .join("");
-  return `<div class="solo-presence">${head}<div class="solo-presence-grid ${terrainClass}" style="grid-template-columns:repeat(${width},1fr);grid-template-rows:repeat(${height},1fr);" role="img" aria-label="Presence map of ${escapeHtml(locationName)}">${ground.join("")}${featureCells}${cells}</div></div>`;
+  return `<div class="solo-presence">${head}<div class="solo-presence-grid ${terrainClass}" style="grid-template-columns:repeat(${width},1fr);grid-template-rows:repeat(${height},1fr);" role="img" aria-label="Presence map of ${escapeHtml(locationName)}">${ground.join("")}${featureCells}${cells}</div>${legendBlock}</div>`;
 }
 
 export function renderSoloRightRail(state = {}) {
