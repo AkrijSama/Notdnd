@@ -15,7 +15,10 @@ function currentLocation(run) {
 function styleSuffix(run) {
   const tone = isString(run?.world?.tone) ? run.world.tone : "dark fantasy";
   return (
-    `Narrate in 2-4 vivid sentences of second-person ${tone} prose. ` +
+    `Narrate in 2-4 vivid sentences of second-person ${tone} prose that MOVE THE MOMENT FORWARD — ` +
+    "surface something concrete (a consequence, a change, a specific new detail) and end on a clear opening to act. " +
+    "Do NOT merely re-describe the established scene as mood, and do NOT stall on atmosphere. " +
+    "Ground every detail in what is actually here — never invent new places, exits, items, or people the scene has not established. " +
     "Do not restate dice or mechanics, and do not use bracketed trigger tags."
   );
 }
@@ -202,7 +205,9 @@ export function buildActionGmMessage(run, resolved) {
     const rollText = cr && cr.total !== undefined && cr.total !== null ? ` (rolled ${cr.total} vs DC ${cr.dc})` : "";
     return (
       `In the current scene, the player attempts: "${String(ar.intent || "an action")}". ` +
-      `The attempt ${ar.success ? "succeeds" : "fails"}${rollText}. ${suffix}`
+      `The attempt ${ar.success ? "succeeds" : "fails"}${rollText}. ` +
+      `Narrate the CONCRETE outcome — what specifically changes, what they now learn, or what it costs — ` +
+      `not a restatement of the surroundings. Give them a specific new thing to act on next. ${suffix}`
     );
   }
 
@@ -269,8 +274,11 @@ export function buildActionGmMessage(run, resolved) {
     const sr = resolved.searchResult;
     return (
       `The player searches ${isString(loc.name) ? loc.name : "the area"}. ` +
-      `${sr && sr.found ? `They discover: ${sr.summary}.` : "They turn up nothing of obvious importance."} ` +
-      `Narrate what they notice as they look. ${suffix}`
+      `${
+        sr && sr.found
+          ? `They DISCOVER something real and specific: ${sr.summary}. Foreground THIS discovery — make it the substance of the turn, what it means and what it opens up — not the surrounding mood.`
+          : "They turn up nothing new this time — every notable feature here has already been found. Say so honestly and point them onward; do NOT invent a fresh discovery."
+      } ${suffix}`
     );
   }
 

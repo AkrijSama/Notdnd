@@ -10,6 +10,7 @@ import {
 } from "./entities.js";
 import {
   resolveSearchAction,
+  detectSearchIntent,
   validateSearchAction
 } from "./search.js";
 import {
@@ -770,6 +771,30 @@ export function resolveSoloAction(run, action, options = {}) {
       // the normal attempt path rather than dropping the turn.
     } else if (moveIntent?.knownUnreachable) {
       return finalizeQuestProgress(run, buildUnreachableMoveResult(run, normalized, moveIntent), options);
+    }
+    // SEARCH-INTENT COMMIT (hollow-core fix). Free-text "search the ruins for
+    // anything useful" would otherwise narrate "you find nothing of import" while
+    // the location's PLACED features were never revealed. Route it to the real
+    // search mechanic so a feature is actually revealed + committed to state (the
+    // GM then narrates the REAL discovery). Only fires on a genuine area-search
+    // intent; a non-search attempt falls through unchanged.
+    if (detectSearchIntent(run, normalized.intent)) {
+      const searchAction = { type: "search", actorId: normalized.actorId ?? "player", targetLocationId: run.currentLocationId };
+      const search = resolveSearchAction(run, searchAction, options);
+      if (search.ok) {
+        return finalizeQuestProgress(run, {
+          ok: true,
+          action: { ...searchAction, intent: normalized.intent, searchedViaIntent: true },
+          run: search.run,
+          event: search.event,
+          memoryFact: search.memoryFact,
+          searchResult: search.searchResult,
+          availableMoves: getAvailableMoves(search.run),
+          availableActions: getAvailableSoloActions(search.run),
+          errors: []
+        }, options);
+      }
+      // Search failed validation — fall through to the normal attempt path.
     }
     // Deterministic test-hook injection (gated like the other test hooks): an
     // attempt may carry `testHook: { fixedRoll, providerOutput }` so the self-play

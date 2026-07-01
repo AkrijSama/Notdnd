@@ -135,6 +135,48 @@ function detailFactExists(run, detailId) {
   return (run.memoryFacts || []).some((fact) => fact.type === "search_discovery" && fact.payload?.detailId === detailId);
 }
 
+// --- Search-INTENT detection (hollow-core fix, Part 2) -----------------------
+// Free-text "search the ruins for anything useful" arrives as a generic `attempt`,
+// so it was resolved as narrative flavor: a winning roll narrated "you find
+// nothing of import" while the location's PLACED searchDetails (the ruins hall,
+// the well, the cache) were never revealed — discoveredDetails stayed 0 across a
+// whole session. detectSearchIntent recognizes an AREA search and routes it to
+// resolveSearchAction so a placed feature is actually revealed and COMMITTED to
+// state (same server-owns-truth doctrine as the move fix: advancement is
+// committed by the mechanic, then narrated — never asserted in prose alone).
+const SEARCH_VERB_RE =
+  /\b(?:search|scour|comb|rummage|forage|sift|ransack|rifle|scavenge|dig (?:through|around|into)|poke around|look (?:for|around|about|through)|hunt (?:for|around|through)|explore\b[^.?!]*\bfor\b|check\b[^.?!]*\bfor\b)\b/i;
+// Marks an AREA search (vs "search the guard's pockets"): a place/generic target,
+// or a "for <loot/clues/…>" clause. Keeps a person-search out of the location path.
+const SEARCH_AREA_RE =
+  /\b(?:area|room|ruins?|surroundings?|walls?|floor|rubble|debris|place|here|around|nearby|ground|corner|chamber|hall|passage|everything|for (?:anything|something|clues?|loot|valuables?|supplies|useful|hidden|secrets?|traps?|treasure))\b/i;
+
+function presentNpcNamesLc(run) {
+  const npcs = isPlainObject(run?.npcs) ? Object.values(run.npcs) : [];
+  return npcs
+    .filter((npc) => npc && npc.currentLocationId === run?.currentLocationId && npc.status !== "gone")
+    .map((npc) => (isString(npc.displayName) ? npc.displayName.toLowerCase() : ""))
+    .filter(Boolean);
+}
+
+/**
+ * Classifies a free-text intent as an AREA search of the current location.
+ * Returns { search: true } to route to resolveSearchAction, or null. A search that
+ * names a present NPC (searching a person) is NOT an area search and returns null.
+ * @param {object} run
+ * @param {string} intent
+ */
+export function detectSearchIntent(run, intent) {
+  const text = String(intent || "").toLowerCase();
+  if (!isString(text) || !SEARCH_VERB_RE.test(text) || !SEARCH_AREA_RE.test(text)) {
+    return null;
+  }
+  if (presentNpcNamesLc(run).some((name) => text.includes(name))) {
+    return null;
+  }
+  return { search: true };
+}
+
 export function getSearchableDetails(run, options = {}) {
   if (!isPlainObject(run) || !isPlainObject(run.locations) || !isString(run.currentLocationId)) {
     return [];

@@ -86,14 +86,20 @@ function validateDestinationPolicy(run, destination, errors) {
 // COMMITS. Same server-owns-truth doctrine as the authority gate: a move narrated
 // as success must correspond to a real committed position change.
 const MOVE_VERB =
-  "(?:head(?:ing)?|go(?:ing)?|move|moving|travel(?:l?ing)?|walk(?:ing)?|journey(?:ing)?|proceed(?:ing)?|venture|set (?:out|off)|make (?:my|your|our) way|depart|press on|continue on|march|ride|make for|set (?:my|your|our) sights)";
+  "(?:head(?:ing)?|go(?:ing)?|move|moving|travel(?:l?ing)?|walk(?:ing)?|journey(?:ing)?|proceed(?:ing)?|venture|set (?:out|off)|make (?:my|your|our) way|depart|press|continue(?: on)?|march|ride|make for|set (?:my|your|our) sights|follow(?:ing)?|delve|descend|advance|wander|roam|pursue|slip|creep|sneak|push|carry on|forge)";
 // Requires a directional preposition, so "search here" / "look around" / "climb
-// the wall" never false-trigger — only a DIRECTED move. Kept broad (down/back/
+// the wall" never false-trigger — only a DIRECTED move. Kept broad (down/deeper/
 // onward/along/…) because free-text players phrase moves many ways; this is SAFE
 // because detectMoveIntent only reroutes to a commit when a real reachable exit
-// NAME actually matches — otherwise it falls through to a normal attempt.
+// matches (by name) OR a genuine directional cue targets the onward/back exit —
+// otherwise it falls through to a normal attempt.
 const MOVE_PREP =
-  "(?:to|toward|towards|for|into|onto|over to|on to|out (?:to|toward|towards)|down|up|back|onward|onwards|ahead|further|along|through|past|across|over|out)";
+  "(?:to|toward|towards|for|into|onto|over to|on to|out (?:to|toward|towards)|down|up|back|onward|onwards|ahead|further|along|through|past|across|over|out|deep(?:er)?|inward|inwards?|in|forward|forwards)";
+// Direction cues that resolve a move with NO named destination: "go deeper", "press
+// forward", "continue on" -> the ONWARD (undiscovered) exit; "head back" -> a
+// discovered exit. Lets natural exploration commit instead of narrate-and-wait.
+const MOVE_FORWARD_RE = /\b(?:deep(?:er)?|onward|onwards?|forward|forwards?|further|ahead|inward|inwards?|delve|descend|the (?:unexplored|unmarked|dark|narrow|hidden) (?:path|passage|corridor|way|hall)|into the (?:ruin|dark|depth|passage|hall|gloom|shadow|deep)|down the (?:path|passage|corridor|hall|stair|steps?)|press on|carry on)\b/i;
+const MOVE_BACKWARD_RE = /\b(?:back|backward|backwards?|return|retreat|the way (?:i|we|you) came|out of here|leave this (?:place|room|area))\b/i;
 const MOVE_INTENT_RE = new RegExp(`\\b${MOVE_VERB}\\b[^.?!]*?\\b${MOVE_PREP}\\b`, "i");
 const LOCATION_STOPWORDS = new Set(["the", "a", "an", "of", "and", "to", "at", "in", "on", "near", "old", "new"]);
 
@@ -129,10 +135,16 @@ function nameMatchScore(intentLc, name) {
  */
 export function detectMoveIntent(run, intent) {
   const text = String(intent || "").toLowerCase();
-  if (!text || !MOVE_INTENT_RE.test(text)) {
+  const forward = MOVE_FORWARD_RE.test(text);
+  const backward = MOVE_BACKWARD_RE.test(text);
+  // A move intent is verb+preposition ("head to …") OR a bare directional cue
+  // ("go deeper" / "press forward" / "head back").
+  if (!text || !(MOVE_INTENT_RE.test(text) || ((forward || backward) && new RegExp(`\\b${MOVE_VERB}\\b`, "i").test(text)))) {
     return null;
   }
   const moves = getAvailableMoves(run);
+
+  // (1) A specific NAMED destination that is a reachable exit (unambiguous).
   const scored = moves
     .map((move) => ({ move, score: nameMatchScore(text, move.name) }))
     .filter((entry) => entry.score >= 0.5)
@@ -141,10 +153,20 @@ export function detectMoveIntent(run, intent) {
     const best = scored[0];
     const ambiguous = scored.length > 1 && scored[1].score === best.score;
     if (!ambiguous) {
+      // Direction override: a FORWARD intent ("deeper into the ruins") that matched
+      // only a DISCOVERED (already-visited / back) exit is really "onward" — prefer
+      // an undiscovered exit so exploration progresses instead of doubling back.
+      if (forward && best.move.discovered === true) {
+        const onward = moves.find((m) => m.discovered === false);
+        if (onward) {
+          return { reachable: true, toLocationId: onward.locationId, name: onward.name, onward: true };
+        }
+      }
       return { reachable: true, toLocationId: best.move.locationId, name: best.move.name };
     }
   }
-  // Move intent naming a KNOWN location that is NOT reachable from here.
+
+  // (2) Move intent naming a KNOWN location that is NOT reachable from here.
   if (isPlainObject(run?.locations)) {
     for (const [id, location] of Object.entries(run.locations)) {
       if (id === run.currentLocationId || !isPlainObject(location)) {
@@ -153,6 +175,22 @@ export function detectMoveIntent(run, intent) {
       if (nameMatchScore(text, location.name) >= 0.75) {
         return { reachable: false, knownUnreachable: true, name: location.name };
       }
+    }
+  }
+
+  // (3) Directional move with NO named destination: "go deeper" -> the ONWARD
+  // (undiscovered) exit (M.2 fog: committing reveals it); "head back" -> a
+  // discovered exit. This is what lets natural exploration COMMIT.
+  if (forward) {
+    const onward = moves.find((m) => m.discovered === false) || moves[0];
+    if (onward) {
+      return { reachable: true, toLocationId: onward.locationId, name: onward.name, onward: true };
+    }
+  }
+  if (backward) {
+    const backExit = moves.find((m) => m.discovered === true) || moves[0];
+    if (backExit) {
+      return { reachable: true, toLocationId: backExit.locationId, name: backExit.name };
     }
   }
   return { reachable: false };

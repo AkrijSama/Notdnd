@@ -934,6 +934,59 @@ async function scenarioCoherence(ctx) {
 }
 
 // 5) PERSISTENCE — state survives a reload of the run by id.
+// SUBSTANCE — the hollow-core guard. The 13-turn-0-state-change bug survived 970
+// unit tests because the harness drove mechanisms in isolation and never played a
+// NATURAL FREE-TEXT session. This drives free-text ("search the ruins", "go
+// deeper") — not chip-perfect actions — and asserts world state ACTUALLY CHANGED:
+// features get revealed, position commits, the world is not static. A run that
+// narrates over an unchanging world (the owner's dog-shit session) FAILS here.
+async function substanceRun() {
+  const CHAR = { name: "Vael", race: "Human", characterClass: "Ranger", background: "Outlander", baseAbilityScores: { strength: 12, dexterity: 14, constitution: 13, intelligence: 11, wisdom: 15, charisma: 10 } };
+  const make = (token) => call("/api/onboarding/world-run", { method: "POST", token, body: { world: {}, character: CHAR } }); // no mode -> sandbox forest-ruins (placed features)
+  const { token } = await ensureAuth();
+  let wr = await make(token);
+  if (!wr.json.runId && (wr.json.code === "SESSION_LIMIT_REACHED" || /session limit/i.test(wr.json.error || ""))) {
+    resetAuth();
+    const fresh = await ensureAuth();
+    wr = await make(fresh.token);
+    return { token: fresh.token, runId: wr.json.runId };
+  }
+  if (!wr.json.runId) throw new Error(`substance world-run failed (HTTP ${wr.status}): ${JSON.stringify(wr.json).slice(0, 200)}`);
+  return { token, runId: wr.json.runId };
+}
+const discoveredCount = (s) => (Array.isArray(s.discoveredDetails) ? s.discoveredDetails.length : 0);
+
+async function scenarioSubstance(ctx) {
+  const r = await substanceRun(); ctx.runId = r.runId; ctx.token = r.token;
+  const s0 = (await scene(r)).json;
+  const loc0 = s0.location?.locationId;
+  const disc0 = discoveredCount(s0);
+  ctx.note(`start: at ${s0.location?.name}, ${disc0} features discovered, ${(s0.location?.searchDetails ? "" : "")}exits ${JSON.stringify((s0.availableMoves || []).map((m) => m.name))}`);
+
+  // NATURAL free-text search (not the chip): must REVEAL a placed feature.
+  const search1 = await act(r, { type: "attempt", intent: "search the ruins for anything useful" });
+  ctx.assert("free-text 'search the ruins' reveals a REAL placed feature (not narrate-nothing)",
+    search1.json.searchResult?.found === true, "found:true", `found:${search1.json.searchResult?.found} (action:${search1.json.action?.type ?? "?"})`);
+  await act(r, { type: "attempt", intent: "look around for anything hidden" });
+  const s1 = (await scene(r)).json;
+  const disc1 = discoveredCount(s1);
+  ctx.assert("discoveredDetails ACTUALLY INCREASED across free-text searches (state is not static)",
+    disc1 > disc0, `discovered > ${disc0}`, `discovered ${disc1}`);
+  if (disc1 >= 2) ctx.note(`revealed by free-text: ${JSON.stringify(s1.discoveredDetails.map((d) => d.label))}`);
+
+  // NATURAL free-text move: "go deeper" must COMMIT a location change (not narrate).
+  await act(r, { type: "attempt", intent: "go deeper into the ruins" });
+  const s2 = (await scene(r)).json;
+  const moved = s2.location?.locationId !== loc0;
+  ctx.assert("free-text 'go deeper' COMMITS a location change (not narrate-and-wait)",
+    moved, `location changed from ${loc0}`, `location ${s2.location?.locationId}`);
+
+  // The load-bearing guard: a natural session advanced world state.
+  ctx.assert("a natural free-text session ADVANCES world state (a 13-turn static run FAILS here)",
+    disc1 > disc0 && moved, "features revealed AND location committed", `revealed:+${disc1 - disc0} moved:${moved}`);
+  ctx.note(`substance delta: +${disc1 - disc0} features revealed, moved ${loc0} -> ${s2.location?.name}`);
+}
+
 // M.4 — MOVEMENT COMMIT. The class of bug that broke every playthrough: a move
 // sent as free-text ("Head toward X") narrated a successful arrival while
 // run.currentLocationId never changed. The old persistence check only ever used
@@ -1077,6 +1130,7 @@ const SCENARIOS = [
   { key: "lethality", title: "LETHALITY — 0 HP kills; death is permanent & terminal", fn: scenarioLethality },
   { key: "gating", title: "QUEST GATING — progress is earned, not handed out", fn: scenarioGating },
   { key: "coherence", title: "COHERENCE — the world resists invented nonsense", fn: scenarioCoherence },
+  { key: "substance", title: "SUBSTANCE — a natural free-text session ADVANCES world state (hollow-core guard)", fn: scenarioSubstance },
   { key: "movement", title: "MOVEMENT — a move-intent COMMITS the position (M.1) + geo-fog (M.2)", fn: scenarioMovement },
   { key: "persistence", title: "PERSISTENCE — state survives a reload", fn: scenarioPersistence },
   { key: "gm_health", title: "GM HEALTH — real prose, responsive, on-topic", fn: scenarioGmHealth }
