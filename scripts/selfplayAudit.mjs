@@ -129,6 +129,7 @@ const PROSE_STOPWORDS = new Set([
   "down", "out", "off", "let", "let's", "what", "whatever", "who", "how", "why",
   "gm", "hp", "xp", "dc", "npc", "ok", "yes", "no", "time", "something", "someone",
   "somewhere", "everything", "nowhere", "further", "beware", "careful", "welcome",
+  "everywhere", "hushed", "muffled", "distant", "scattered", "faint", "silence",
   "night", "day", "dawn", "dusk", "morning", "evening", "north", "south", "east",
   "west", "stay", "go", "run", "look", "watch", "listen", "wait", "take", "keep",
   "move", "stop", "come", "turn", "remember", "know", "god", "gods", "fate", "death"
@@ -199,7 +200,7 @@ export function knownNamesFromScene(scene = {}) {
 // name (word-level containment either way — "The Gilded Kingdoms Watch" vouches
 // "Gilded Kingdoms"). Comparison is case-insensitive.
 function vouched(candidate, knownNames) {
-  const c = candidate.toLowerCase();
+  const c = candidate.toLowerCase().replace(/'s\b/g, "");
   for (const known of knownNames) {
     if (known.includes(c) || c.includes(known)) return true;
   }
