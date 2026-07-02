@@ -119,10 +119,13 @@ export function buildTrialQuest(world = {}, options = {}) {
         locationId: secondLocationId,
         // Road words are EXCLUDED even when the tone's seal shares one (the
         // sword_sorcery "iron gate" vs the toll-"gate"): a road-directed miss
-        // must never be able to fail the trial. A too-narrow bind costs a
-        // retry with fuller words; a too-wide bind loses the quest forever.
+        // must never be able to fail the trial. PREFIX collisions count —
+        // checkRollBinds matches keywords as word-boundary PREFIXES, so the
+        // stem "ward" (from "warded seal"/"blood-ward") would bind
+        // "road-WARDens" (live-proven leak). A too-narrow bind costs a retry
+        // with fuller words; a too-wide bind loses the quest forever.
         subjectKeywords: subjectKeywordsFrom(f.seal, f.ruin).filter(
-          (k) => !ROAD_HAZARD_KEYWORDS.includes(k)
+          (k) => !ROAD_HAZARD_KEYWORDS.some((road) => road.startsWith(k) || k.startsWith(road))
         )
       },
       failOnMiss: true

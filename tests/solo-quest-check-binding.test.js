@@ -100,6 +100,15 @@ test("COLLISION FIXED: missing the road hazard does NOT fail the trial (both che
   // …and the TRIAL — a quest the player never attempted — is UNTOUCHED.
   assert.equal(miss.run.quests[TRIAL_QUEST_ID].status, "active", "the trial did NOT silently fail on a road roll");
   assert.equal(miss.run.quests[TRIAL_QUEST_ID].stage, 1, "the trial's decisive check is still ahead");
+
+  // PREFIX-COLLISION repro (live-proven leak): "road-WARDens" must not bind the
+  // trial via its "ward" stem (from "warded seal" / "blood-ward" — checkRollBinds
+  // matches keywords as word-boundary PREFIXES).
+  const wardenMiss = resolveSoloAction(miss.run, contestedAttempt("force my way past the road-wardens watching the crossing", 1));
+  assert.equal(wardenMiss.attemptResult.checkResult.success, false, "the warden roll genuinely missed");
+  const afterWarden = wardenMiss.run || miss.run;
+  assert.equal(afterWarden.quests[TRIAL_QUEST_ID].status, "active",
+    '"road-wardens" must not fail the trial through the "ward" keyword stem');
 });
 
 test("COLLISION FIXED: passing the road hazard advances ONLY the delivery, not the trial", async () => {

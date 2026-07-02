@@ -32,7 +32,7 @@ function checkAttempt(fixedRoll) {
   return {
     type: "attempt",
     actorId: "player",
-    intent: "break the ancient warded seal",
+    intent: "break the blood-ward on the reliquary door",
     testHook: {
       fixedRoll,
       providerOutput: {
