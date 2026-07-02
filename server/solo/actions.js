@@ -41,6 +41,7 @@ import {
   validateAttemptAction
 } from "./attempt.js";
 import { advanceQuests, capturePlayerObjective } from "./quests.js";
+import { advanceMomentum } from "./momentum.js";
 import { createDefaultVnState, validateSoloRun } from "./schema.js";
 import {
   applyDamage,
@@ -418,6 +419,19 @@ function finalizeQuestProgress(originalRun, result, options = {}) {
         result.leveledUp = xpResult.leveledUp;
         result.playerLevel = xpResult.level;
       }
+    }
+  }
+
+  // MOMENTUM — the world's own forward pressure (momentum.js). Every mutating
+  // turn ticks the tension clock (quiet turns build it, progress bleeds it);
+  // when it fires, the SERVER instantiates a real event — an arriving NPC, an
+  // objectState change, a hook quest — COMMITTED to the post-action run before
+  // a word is narrated. Skipped for read-only actions and terminal runs (a
+  // corpse's world does not need to move).
+  if (actionProducedRun && result.run && !result.runDied) {
+    const momentum = advanceMomentum(result.run, result, options);
+    if (momentum?.fired) {
+      result.momentumEvent = momentum.fired;
     }
   }
 

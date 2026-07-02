@@ -4,6 +4,7 @@ import { getVisibleEntities, validateVisibleEntity } from "./entities.js";
 import { generatePlaceholderGmNarration, validateGmSceneOutput } from "./gm.js";
 import { getAvailableMoves } from "./movement.js";
 import { getQuestPayload } from "./quests.js";
+import { getRecentDevelopment } from "./momentum.js";
 import { buildFallbackSuggestions, sceneSuggestionsKey } from "./suggestions.js";
 import { getUsableInventoryItems } from "./useItem.js";
 import {
@@ -1087,6 +1088,9 @@ export function buildSoloScenePayload(run, options = {}) {
     // discover is dead content). Server-authored truth: the GM may voice these —
     // accepting one is a real committed transition (resolveQuestAccept).
     openJobOffers: buildOpenJobOffers(run),
+    // The world's own most recent COMMITTED development (momentum engine), while
+    // fresh — the GM context narrates it grounded; it is already real in state.
+    recentDevelopment: getRecentDevelopment(run),
     availableMoves: getAvailableMoves(run).filter((move) => {
       const destination = run.locations[move.locationId];
       return destination ? policyAllows(destination, policyProfile) : false;

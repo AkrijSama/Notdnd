@@ -880,6 +880,18 @@ async function narrateActionWithGm(run, resolved, user) {
     const objective = typeof quest.objective === "string" && quest.objective ? ` — ${quest.objective}` : "";
     message += ` The player has just advanced "${title}"${objective}. Weave this progress naturally into the narration as a turning point, without declaring further quests.`;
   }
+  // MOMENTUM (same fold-in pattern as questJustAdvanced): when the world's own
+  // engine fired this turn, the event is ALREADY COMMITTED to state (an NPC in
+  // the cast / an objectState / a real quest). The GM narrates its arrival and
+  // poses the decision — and invents nothing beyond it.
+  if (resolved.momentumEvent) {
+    const ev = resolved.momentumEvent;
+    message +=
+      ` MEANWHILE the world moves on its own — a REAL development has just been committed to the game state: ` +
+      `${ev.title}. ${ev.brief} Narrate this development arriving in the scene alongside the action's outcome — ` +
+      `it is really happening — and end by putting its choice in front of the player: ${ev.decision} ` +
+      `Do NOT invent any other new arrivals, changes, or events beyond this one.`;
+  }
   // LETHALITY ENFORCEMENT (#12): a helpful-tuned model defaults to mercy. Counter
   // it explicitly — the GM is a real 5e DM who narrates EARNED consequences and
   // never rescues the player from them.
@@ -992,6 +1004,15 @@ function buildTurnTranscript(resolved, gmResult = {}, suggestionsResult) {
   }
   if (resolved?.questJustAdvanced) {
     lines.push(`quest: advanced "${resolved.questJustAdvanced.title || "main"}"`);
+  }
+  if (resolved?.momentumEvent) {
+    const ev = resolved.momentumEvent;
+    const committed = [
+      ev.committed?.npcId ? `npc:${ev.committed.npcId}` : null,
+      ev.committed?.questId ? `quest:${ev.committed.questId}` : null,
+      ev.committed?.objectStateKey ? `objectState:${ev.committed.objectStateKey}` : null
+    ].filter(Boolean).join(" + ");
+    lines.push(`momentum: EVENT "${ev.title}" (${ev.kind}) fired — committed ${committed || "nothing?!"}`);
   }
   if (resolved?.runWon) {
     lines.push("run: WON (main quest complete)");
@@ -1512,6 +1533,17 @@ async function handleApi(req, res) {
         details: resolved.details,
         availableMoves: resolved.availableMoves,
         availableActions: resolved.availableActions,
+        // Committed-mechanic surfaces (delivery loop + momentum). These existed on
+        // the resolver result but were dropped by this whitelist — so the client
+        // (and the anti-void harness) could not see a committed take/accept/reward/
+        // event on the wire even though state had moved. Every one of these is
+        // backed by committed state, never prose.
+        takeResult: resolved.takeResult || null,
+        questAccepted: resolved.questAccepted || null,
+        questReward: resolved.questReward || null,
+        questJustAdvanced: resolved.questJustAdvanced || null,
+        questFailed: resolved.questFailed || null,
+        momentumEvent: resolved.momentumEvent || null,
         runWon: Boolean(resolved.runWon),
         victoryNarration,
         // Lethality surfaces for the client's HP/death-save/death-screen flow.

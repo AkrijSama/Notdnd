@@ -181,6 +181,16 @@ export function buildGmSceneInput(scenePayload, options = {}) {
     .filter((offer) => isPlainObject(offer) && typeof offer.offerText === "string" && offer.offerText.trim())
     .map((offer) => ({ npcName: offer.npcName || "a figure", offerText: offer.offerText }));
 
+  // The momentum engine's most recent COMMITTED development (scene payload
+  // recentDevelopment): already real in state — the GM narrates it, never mints.
+  const recentDevelopment = isPlainObject(scenePayload.recentDevelopment)
+    ? {
+        title: scenePayload.recentDevelopment.title || "",
+        brief: scenePayload.recentDevelopment.brief || "",
+        decision: scenePayload.recentDevelopment.decision || ""
+      }
+    : null;
+
   return {
     ok: true,
     runId: scenePayload.runId,
@@ -197,6 +207,7 @@ export function buildGmSceneInput(scenePayload, options = {}) {
     activeQuests,
     questJustAdvanced,
     openJobOffers,
+    recentDevelopment,
     gmInstructions: {
       mode: "scene_framing",
       doNotMutateState: true,

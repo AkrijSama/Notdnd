@@ -983,7 +983,14 @@ function advancementSnapshot(s) {
     mainStage: s.quests?.mainQuest?.stage ?? null,
     xp: xpOf(s),
     hp: hpOf(s).current ?? null,
-    objects: JSON.stringify(s.location?.flags?.objectStates || {})
+    objects: JSON.stringify(s.location?.flags?.objectStates || {}),
+    // Cast domain: a momentum ARRIVAL commits a real NPC into the scene — that
+    // is a legitimate state advancement and must be visible to the anti-void diff.
+    cast: [...(Array.isArray(s.cast) ? s.cast : []), ...(Array.isArray(s.visibleEntities) ? s.visibleEntities : [])]
+      .map((c) => c?.entityId || c?.npcId || c?.displayName || "")
+      .filter(Boolean)
+      .sort()
+      .join(",")
   };
 }
 // Which state domains changed between two snapshots (empty array = STATIC turn).
@@ -996,6 +1003,7 @@ function advancementDelta(a, b) {
   if (a.xp !== b.xp) domains.push("xp");
   if (a.hp !== b.hp) domains.push("hp");
   if (a.objects !== b.objects) domains.push("objects");
+  if (a.cast !== b.cast) domains.push("cast");
   return domains;
 }
 // Did THIS action response make a MECHANICAL claim of success? Reads only the
@@ -1011,6 +1019,10 @@ function turnSignaledSuccess(j) {
   if (j.questAccepted) return true;
   if (j.searchResult) return j.searchResult.found === true;
   if (j.moved || j.action?.type === "move") return true;
+  // A fired momentum event is a mechanical claim that the WORLD changed — if it
+  // fired, state MUST have moved (cast/quests/objects). A fired event with no
+  // delta is the narrate-into-void class from the world's side: hard-fail.
+  if (j.momentumEvent) return true;
   return false;
 }
 
@@ -1158,6 +1170,91 @@ async function scenarioSubstance(ctx) {
 // explicit {type:"move"} actions, so it stayed green. This drives the ACTUAL
 // repro path (a move-INTENT attempt) and asserts the position truly committed —
 // plus the M.2 geo-fog (an undiscovered onward location is not a free named exit).
+// MOMENTUM — the world moves on its own. A player deliberately idling in a
+// sandbox (the 13-turn static-diorama anti-pattern) gets interrupted BY THE
+// WORLD within the cadence window (~turn 3-4): a committed event (a real NPC in
+// the cast / an objectState / a real hook quest), surfaced grounded, never
+// narrated-uncommitted (playFreeTextTurn enforces per-turn anti-void on it).
+// Pacing: cooldown holds after a fire, and a progressing session is not trampled.
+async function scenarioMomentum(ctx) {
+  const r = await substanceRun(); ctx.runId = r.runId; ctx.token = r.token; // sandbox: no authored spine, no pull
+  // Deliberate idling: phrasings that route NOWHERE (no search verbs, no move
+  // verbs, no takes) — the pure static-diorama player.
+  const IDLE = [
+    "wait and listen to the wind",
+    "stand still and watch the shadows for a while",
+    "hum a quiet tune to myself",
+    "warm my hands and think",
+    "stare at the horizon a moment longer"
+  ];
+  let fired = null;
+  let firedOnTurn = 0;
+  const turns = [];
+  for (let i = 0; i < IDLE.length && !fired; i += 1) {
+    const t = await playFreeTextTurn(ctx, r, IDLE[i]);
+    turns.push(t);
+    if (t.res.json.momentumEvent) {
+      fired = t.res.json.momentumEvent;
+      firedOnTurn = i + 1;
+      // The per-turn anti-void assert in playFreeTextTurn already required a
+      // domain delta on this turn (momentumEvent counts as a signaled surface).
+      ctx.assert("MOMENTUM: the fired event carries its committed record (npc/quest/objectState)",
+        Boolean(fired.committed && (fired.committed.npcId || fired.committed.questId || fired.committed.objectStateKey)),
+        "committed record present", JSON.stringify(fired.committed || null));
+      ctx.assert("MOMENTUM: the event committed a REAL domain delta this turn (anti-void)",
+        t.domains.length > 0, "\u22651 domain changed", `delta:[${t.domains.join("|")}]`);
+      ctx.note(`event: "${fired.title}" (${fired.kind}) on idle turn ${firedOnTurn} \u2014 delta:[${t.domains.join("|")}] decision: ${fired.decision}`);
+    }
+  }
+  ctx.assert("MOMENTUM: an idling player IS interrupted by the world within the cadence window (\u22644 idle turns)",
+    Boolean(fired) && firedOnTurn <= 4, "fired by idle turn 4", fired ? `fired on turn ${firedOnTurn}` : `no event across ${turns.length} idle turns`);
+
+  if (fired) {
+    // The committed record is findable in TRACKED scene state.
+    const s = (await scene(r)).json;
+    const inCast = fired.committed.npcId
+      ? [...(s.cast || []), ...(s.visibleEntities || [])].some((c) => (c.entityId || "").includes(fired.committed.npcId) || c.npcId === fired.committed.npcId)
+      : null;
+    const inQuests = fired.committed.questId
+      ? (s.quests?.activeQuests || []).some((q) => q.questId === fired.committed.questId)
+      : null;
+    const inObjects = fired.committed.objectStateKey
+      ? Boolean((s.location?.flags?.objectStates || {})[fired.committed.objectStateKey])
+      : null;
+    ctx.assert("MOMENTUM: the committed record is IN tracked scene state (cast/quests/objectStates)",
+      inCast === true || inQuests === true || inObjects === true,
+      "record present in scene", `cast:${inCast} quests:${inQuests} objects:${inObjects}`);
+    ctx.assert("MOMENTUM: the development rides the GM context surface (recentDevelopment)",
+      Boolean(s.recentDevelopment && s.recentDevelopment.title),
+      "recentDevelopment present", JSON.stringify(s.recentDevelopment || null)?.slice(0, 100));
+
+    // PACING: the cooldown holds \u2014 more idling can't double-fire inside the window.
+    let secondFire = false;
+    for (let i = 0; i < 3; i += 1) {
+      const t = await playFreeTextTurn(ctx, r, IDLE[(firedOnTurn + i) % IDLE.length]);
+      if (t.res.json.momentumEvent) secondFire = true;
+    }
+    ctx.assert("MOMENTUM: no second event inside the cooldown window (pressure, not spam)",
+      !secondFire, "0 fires in the 3-turn cooldown", `secondFire:${secondFire}`);
+  }
+
+  // PACING (guided): an actively progressing arc is never interrupted. Fresh
+  // campaign run, straight progress turns \u2014 zero momentum events.
+  const g = await newRun("momentum-guided");
+  const sg = (await scene(g)).json;
+  const toGiver = (sg.availableMoves || []).find((m) => m && m.discovered && m.locationId === "second_location");
+  if (!toGiver) { ctx.pending("no campaign route for the pacing half"); return; }
+  const progressTurns = [
+    await act(g, { type: "attempt", intent: `Head toward ${toGiver.name}` }),
+    await act(g, { type: "attempt", intent: "Yes, I'll take the job." }),
+    await act(g, { type: "attempt", intent: "Grab the crate and sling it over my shoulder." })
+  ];
+  const interrupted = progressTurns.some((t) => Boolean(t.json.momentumEvent));
+  ctx.assert("PACING: an actively progressing session (move -> accept -> take) is NEVER interrupted",
+    !interrupted, "0 events across 3 progress turns", `interrupted:${interrupted}`);
+  ctx.note(`guided pacing: 3 progress turns, momentum events: ${progressTurns.filter((t) => t.json.momentumEvent).length}`);
+}
+
 async function scenarioMovement(ctx) {
   const r = await newRun("movement"); ctx.runId = r.runId; ctx.token = r.token;
   const s0 = (await scene(r)).json;
@@ -1408,6 +1505,7 @@ const SCENARIOS = [
   { key: "advancement", title: "ADVANCEMENT — free-text play like a human; narrated success MUST commit state (anti-void)", fn: scenarioAdvancement },
   { key: "movement", title: "MOVEMENT — a move-intent COMMITS the position (M.1) + geo-fog (M.2)", fn: scenarioMovement },
   { key: "delivery", title: "DELIVERY LOOP — accept -> take -> deliver -> reward, all committed (fully-committed loop)", fn: scenarioDelivery },
+  { key: "momentum", title: "MOMENTUM \u2014 the world moves on its own (committed events, paced, never uncommitted)", fn: scenarioMomentum },
   { key: "persistence", title: "PERSISTENCE — state survives a reload", fn: scenarioPersistence },
   { key: "gm_health", title: "GM HEALTH — real prose, responsive, on-topic", fn: scenarioGmHealth }
 ];

@@ -184,7 +184,8 @@ export function buildProviderPromptMessages(gmInput, options = {}) {
     relevantMemoryFacts: gmInput.relevantMemoryFacts || [],
     activeQuests,
     questJustAdvanced,
-    openJobOffers: Array.isArray(gmInput.openJobOffers) ? gmInput.openJobOffers : []
+    openJobOffers: Array.isArray(gmInput.openJobOffers) ? gmInput.openJobOffers : [],
+    recentDevelopment: gmInput.recentDevelopment || null
   };
 
   // The current objective drives a "weave the goal in" prompt line; the quest
@@ -202,6 +203,12 @@ export function buildProviderPromptMessages(gmInput, options = {}) {
         .map((offer) => `${offer.npcName} offers: ${offer.offerText}`)
         .join(" | ")} If talk turns to work, jobs, pay, or purpose, surface this offer naturally; it is real and accepting it matters. Do NOT invent any other job or reward.`
     : null;
+  // Momentum development (already COMMITTED to state by the server): keep it
+  // present in the scene while fresh; the GM narrates it, never invents peers.
+  const development = gmInput.recentDevelopment && gmInput.recentDevelopment.brief ? gmInput.recentDevelopment : null;
+  const developmentNote = development
+    ? `A REAL development has just occurred in this scene (it is already committed to the game state): ${development.title} — ${development.brief} Keep it present and pressing in the narration, and keep the choice it poses in front of the player: ${development.decision} Do NOT invent any additional arrivals, changes, or events beyond this one.`
+    : null;
 
   const system = [
     INKBORNE_GM_VOICE,
@@ -214,6 +221,7 @@ export function buildProviderPromptMessages(gmInput, options = {}) {
     objective ? `The player is pursuing: ${objective}. Weave this goal naturally into scene framing and dialogue.` : null,
     advancedNote,
     offerNote,
+    developmentNote,
     "Do NOT invent new quests or declare quests complete. Quest progress is decided only by the system.",
     // Visual-novel mode signal. The classifier that consumes this (deriveVnState)
     // discards a speakerId that is not a present/visible NPC, so the model is held
