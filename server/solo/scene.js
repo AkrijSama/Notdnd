@@ -530,6 +530,28 @@ export function buildNpcIntroDirective(run) {
 // Pure. Builds the full NPC roster (every NPC in run.npcs, policy-filtered) with
 // resolved portrait/expression URIs, so the client cast list isn't limited to
 // the current location. A URI is included only when its asset is generated.
+// Open, un-accepted job offers held by NPCs PRESENT at the current location.
+// Compact surface only (who + the pitch) — the full offer (quest, takeable,
+// destination) stays server-side until resolveQuestAccept commits it.
+export function buildOpenJobOffers(run) {
+  const npcs = isPlainObject(run?.npcs) ? Object.values(run.npcs) : [];
+  return npcs
+    .filter(
+      (npc) =>
+        isPlainObject(npc) &&
+        npc.currentLocationId === run?.currentLocationId &&
+        npc.status !== "gone" &&
+        isPlainObject(npc.questOffer) &&
+        npc.questOffer.accepted !== true &&
+        isString(npc.questOffer.offerText)
+    )
+    .map((npc) => ({
+      npcId: npc.npcId,
+      npcName: isString(npc.displayName) ? npc.displayName : "a figure",
+      offerText: npc.questOffer.offerText
+    }));
+}
+
 export function buildCastRoster(run, policyProfile) {
   if (!isPlainObject(run) || !isPlainObject(run.npcs)) {
     return [];
@@ -1061,6 +1083,10 @@ export function buildSoloScenePayload(run, options = {}) {
     areaMap: buildAreaMapPayload(run),
     // MVP quest engine: active quests + the main quest (or null) for this run.
     quests: getQuestPayload(run),
+    // Open, un-accepted job offers held by PRESENT NPCs (F2: an offer no one can
+    // discover is dead content). Server-authored truth: the GM may voice these —
+    // accepting one is a real committed transition (resolveQuestAccept).
+    openJobOffers: buildOpenJobOffers(run),
     availableMoves: getAvailableMoves(run).filter((move) => {
       const destination = run.locations[move.locationId];
       return destination ? policyAllows(destination, policyProfile) : false;

@@ -93,6 +93,14 @@ function renderWorldStep(state) {
       </div>
 
       <div class="onb-field">
+        <label>How do you want to play?</label>
+        <div class="onb-chips">
+          ${renderChip("Open sandbox — a pure open world; your goals are your own", (def.startMode || "sandbox") === "sandbox", `data-world-mode="sandbox"`)}
+          ${renderChip("Guided adventure — a main quest, work to take on, and a destination", def.startMode === "guided", `data-world-mode="guided"`)}
+        </div>
+      </div>
+
+      <div class="onb-field">
         <label>Art style</label>
         <div class="onb-art-grid">${artCards}</div>
       </div>
@@ -706,6 +714,9 @@ export function bindOnboardingFlow(root, handlers = {}) {
   });
   root.querySelectorAll("[data-world-artstyle]").forEach((button) => {
     button.addEventListener("click", () => handlers.onWorldField?.("artStyle", button.getAttribute("data-world-artstyle")));
+  });
+  root.querySelectorAll("[data-world-mode]").forEach((button) => {
+    button.addEventListener("click", () => handlers.onWorldField?.("startMode", button.getAttribute("data-world-mode")));
   });
   root.querySelectorAll("[data-world-field]").forEach((field) => {
     if (typeof field.addEventListener === "function") {

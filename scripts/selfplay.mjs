@@ -1203,6 +1203,28 @@ async function scenarioDelivery(ctx) {
   const sGiver = (await scene(r)).json;
   ctx.note(`at ${sGiver.location?.name}; job-giver present: ${(sGiver.cast || sGiver.visibleEntities || []).map((c) => c.displayName).join(", ") || "(none)"}`);
 
+  // 0) DISCOVER the job the way a real player does (F2): the offer is exposed on
+  //    the scene (openJobOffers) and SPOKEN when you talk to the giver — no blind
+  //    knowledge that a job exists.
+  ctx.assert("DISCOVER: the open offer is exposed on the scene payload (openJobOffers)",
+    Array.isArray(sGiver.openJobOffers) && sGiver.openJobOffers.length > 0,
+    "openJobOffers non-empty", `openJobOffers:${JSON.stringify(sGiver.openJobOffers ?? null)?.slice(0, 80)}`);
+  const talk = await act(r, { type: "talk", actorId: "player", targetEntityId: "npc:npc_quest_giver" });
+  const tr = talk.json.talkResult || {};
+  // The deterministic guarantee: the FIRST conversation's beat CARRIES the pitch
+  // (templateLine is the committed beat text; line is the model's paraphrase of
+  // it — a weak model may drop details, which is prose quality, not mechanics).
+  const beatText = String(tr.templateLine || tr.line || "");
+  const spoken = String(tr.line || "");
+  ctx.assert("DISCOVER: the giver's first conversation beat CARRIES the job pitch (committed beat text)",
+    /paid on delivery/i.test(beatText),
+    "pitch in the beat", `beatId:${tr.beatId} beat: "${beatText.replace(/\s+/g, " ").slice(0, 100)}"`);
+  if (!/paid|deliver|job|work|carry/i.test(spoken)) {
+    ctx.warn("DISCOVER: the model's paraphrase DROPPED the job pitch",
+      `beat carried the offer but the spoken line lost it — prose fidelity issue on the answering model: "${spoken.replace(/\s+/g, " ").slice(0, 140)}"`);
+  }
+  ctx.note(`offer as spoken: "${spoken.replace(/\s+/g, " ").slice(0, 160)}"`);
+
   // 1) ACCEPT the job (free-text) -> a REAL tracked quest is created (not quests:{}).
   const accept = await act(r, { type: "attempt", intent: "Yes, I'll take the job." });
   const sAcc = (await scene(r)).json;
@@ -1219,7 +1241,32 @@ async function scenarioDelivery(ctx) {
     Boolean(crate) && take.json.action?.type === "take",
     "crate in inventory", `routed:${take.json.action?.type} crate:${Boolean(crate)}`);
 
-  // 3) DELIVER: carry it to the destination (free-text named move). Arriving WITH the
+  // 3) STAKES BEAT — the road hazard (check-gated stage), BOTH branches:
+  //    FAIL first (pinned low roll + a damage consequence): the miss COMMITS a cost
+  //    (real HP) and the road stays uncleared; then PASS (pinned high roll) clears it.
+  const hpBefore = hpOf(sTake).current;
+  const stageOf = (s) => (s.quests?.activeQuests || []).find((q) => q?.questId === "quest_delivery")?.stage;
+  const hazardHook = (fixedRoll, fc) => ({ fixedRoll, providerOutput: {
+    summary: "You attempt: force past what watches the road", recommendedAbility: "strength", dc: 12,
+    needsCheck: true, advantage: false, disadvantage: false,
+    successNarration: "You force your way through.", failureNarration: "You are thrown back, bleeding.",
+    proposedEffects: [], failureConsequence: fc
+  } });
+  const miss = await act(r, { type: "attempt", intent: "force my way past whatever watches the road",
+    testHook: hazardHook(3, { type: "damage", amount: 2, reason: "thrown back onto the stones" }) });
+  const sMiss = (await scene(r)).json;
+  ctx.assert("STAKES(fail): a missed check does NOT clear the road (stage unchanged)",
+    stageOf(sMiss) === 1, "stage still 1 (hazard)", `stage:${stageOf(sMiss)} success:${miss.json.attemptResult?.success}`);
+  ctx.assert("STAKES(fail): the miss COMMITTED a real cost (HP dropped, tracked)",
+    typeof hpOf(sMiss).current === "number" && hpOf(sMiss).current < hpBefore,
+    `hp < ${hpBefore}`, `hp ${hpBefore} -> ${hpOf(sMiss).current}`);
+  const pass = await act(r, { type: "attempt", intent: "force my way past the road hazard with everything I have",
+    testHook: hazardHook(20, null) });
+  const sPass = (await scene(r)).json;
+  ctx.assert("STAKES(pass): a successful check CLEARS the road (deliver stage active)",
+    stageOf(sPass) === 2, "stage 2 (deliver)", `stage:${stageOf(sPass)} success:${pass.json.attemptResult?.success}`);
+
+  // 4) DELIVER: carry it to the destination (free-text named move). Arriving WITH the
   //    crate completes the quest and grants the reward — all committed.
   const toDest = (sTake.availableMoves || []).find((m) => m && m.locationId === "third_location");
   const deliver = await act(r, { type: "attempt", intent: `Head on to ${toDest?.name || "the far edge"} and hand it over.` });

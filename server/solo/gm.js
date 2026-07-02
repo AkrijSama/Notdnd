@@ -174,6 +174,13 @@ export function buildGmSceneInput(scenePayload, options = {}) {
     .map((quest) => ({ title: quest.title || "", objective: quest.objective || "" }));
   const questJustAdvanced = isPlainObject(options.questJustAdvanced) ? options.questJustAdvanced : null;
 
+  // Open, un-accepted job offers held by PRESENT NPCs (scene.buildOpenJobOffers):
+  // real, server-authored work the GM may voice. Accepting one is a committed
+  // transition (resolveQuestAccept) — surfacing it is grounded, not invention.
+  const openJobOffers = asArray(scenePayload.openJobOffers)
+    .filter((offer) => isPlainObject(offer) && typeof offer.offerText === "string" && offer.offerText.trim())
+    .map((offer) => ({ npcName: offer.npcName || "a figure", offerText: offer.offerText }));
+
   return {
     ok: true,
     runId: scenePayload.runId,
@@ -189,6 +196,7 @@ export function buildGmSceneInput(scenePayload, options = {}) {
     relevantMemoryFacts,
     activeQuests,
     questJustAdvanced,
+    openJobOffers,
     gmInstructions: {
       mode: "scene_framing",
       doNotMutateState: true,

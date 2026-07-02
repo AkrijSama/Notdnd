@@ -805,11 +805,33 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
   // it to the far location, and hands it over for a committed reward. Campaign-only
   // (sandbox carries no authored quests), and only when both endpoints exist.
   if (!sandbox && secondLocation && thirdLocation && run.npcs?.npc_quest_giver) {
-    run.npcs.npc_quest_giver.questOffer = buildDeliveryOffer(resolvedWorld, {
+    const giver = run.npcs.npc_quest_giver;
+    giver.questOffer = buildDeliveryOffer(resolvedWorld, {
       giverLocationName: secondLocation.name,
       destinationId: "third_location",
       destinationName: thirdLocation.name
     });
+    // THE OFFER MUST BE SPOKEN (F2): a job no one mentions is undiscoverable.
+    // (1) Fold the pitch into the giver's FIRST beat, so the very first
+    // conversation both advances the main quest (its linkedQuestIds are kept)
+    // and presents the job. (2) Add a dedicated REPEATABLE "The job" beat so the
+    // pitch can be re-heard on later talks until accepted.
+    if (Array.isArray(giver.dialogueBeats)) {
+      const arrival = giver.dialogueBeats.find((beat) => beat && beat.beatId === "beat_quest_main_arrival");
+      if (arrival) {
+        arrival.text = `${arrival.text} And since you made it this far, hear me out: ${giver.questOffer.offerText}`;
+      }
+      const arrivalIndex = giver.dialogueBeats.findIndex((beat) => beat && beat.beatId === "beat_quest_main_arrival");
+      giver.dialogueBeats.splice(arrivalIndex >= 0 ? arrivalIndex + 1 : 0, 0, {
+        beatId: "beat_job_offer",
+        label: "The job",
+        text: giver.questOffer.offerText,
+        revealed: false,
+        repeatable: true,
+        linkedQuestIds: [],
+        contentTags: []
+      });
+    }
   }
 
   // Seed the two-stage MVP main quest: travel to the second location (stage 0),

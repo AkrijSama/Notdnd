@@ -118,18 +118,18 @@ export const DELIVERY_CRATE_ID = "quest_crate";
 export const DELIVERY_PAY_ID = "delivery_pay";
 export const DELIVERY_CRATE_DETAIL_ID = "delivery_crate";
 
-// Tone-flavored framing for the crate + payout so the job reads in-world.
+// Tone-flavored framing for the crate + payout + road hazard so the job reads in-world.
 const DELIVERY_FLAVOR = {
-  default: { cargo: "a sealed crate", pay: "a purse of coin", keywords: ["crate", "cargo", "box", "parcel"] },
-  dark_fantasy: { cargo: "a wax-sealed strongbox", pay: "a purse of tarnished silver", keywords: ["strongbox", "crate", "box"] },
-  grimdark: { cargo: "a wax-sealed strongbox", pay: "a purse of tarnished silver", keywords: ["strongbox", "crate", "box"] },
-  cosmic_horror: { cargo: "a lead-lined casket", pay: "an envelope of hush-money", keywords: ["casket", "crate", "box"] },
-  post_apocalyptic: { cargo: "a strapped supply crate", pay: "a handful of ration-chits", keywords: ["crate", "supplies", "cargo", "box"] },
-  steampunk: { cargo: "a brass-bound cargo case", pay: "a roll of banknotes", keywords: ["case", "crate", "cargo", "box"] },
-  sword_sorcery: { cargo: "an iron-banded chest", pay: "a pouch of gold", keywords: ["chest", "crate", "box"] },
-  high_fantasy: { cargo: "a rune-marked coffer", pay: "a pouch of gold marks", keywords: ["coffer", "crate", "chest", "box"] },
-  mythic: { cargo: "a consecrated reliquary case", pay: "a boon of gold", keywords: ["case", "crate", "reliquary", "box"] },
-  cyberpunk: { cargo: "a shielded data-case", pay: "a loaded cred-stick", keywords: ["case", "crate", "package", "box"] }
+  default: { cargo: "a sealed crate", pay: "a purse of coin", keywords: ["crate", "cargo", "box", "parcel"], hazard: "toll-takers watch the only road, and they do not ask nicely" },
+  dark_fantasy: { cargo: "a wax-sealed strongbox", pay: "a purse of tarnished silver", keywords: ["strongbox", "crate", "box"], hazard: "road-wardens in stolen colors stop every traveler worth robbing" },
+  grimdark: { cargo: "a wax-sealed strongbox", pay: "a purse of tarnished silver", keywords: ["strongbox", "crate", "box"], hazard: "road-wardens in stolen colors stop every traveler worth robbing" },
+  cosmic_horror: { cargo: "a lead-lined casket", pay: "an envelope of hush-money", keywords: ["casket", "crate", "box"], hazard: "something paces the road's edge after the last marker, and it has learned to wait" },
+  post_apocalyptic: { cargo: "a strapped supply crate", pay: "a handful of ration-chits", keywords: ["crate", "supplies", "cargo", "box"], hazard: "scav crews strip anyone crossing the open stretch" },
+  steampunk: { cargo: "a brass-bound cargo case", pay: "a roll of banknotes", keywords: ["case", "crate", "cargo", "box"], hazard: "the toll-gate men run the crossing and skim every load" },
+  sword_sorcery: { cargo: "an iron-banded chest", pay: "a pouch of gold", keywords: ["chest", "crate", "box"], hazard: "bandits hold the pass and take their cut in blood" },
+  high_fantasy: { cargo: "a rune-marked coffer", pay: "a pouch of gold marks", keywords: ["coffer", "crate", "chest", "box"], hazard: "an old ward on the road tests any who carry what is not theirs" },
+  mythic: { cargo: "a consecrated reliquary case", pay: "a boon of gold", keywords: ["case", "crate", "reliquary", "box"], hazard: "the road demands its due of those who carry sacred weight" },
+  cyberpunk: { cargo: "a shielded data-case", pay: "a loaded cred-stick", keywords: ["case", "crate", "package", "box"], hazard: "a checkpoint scans every courier crossing the sector line" }
 };
 
 /**
@@ -191,7 +191,20 @@ export function buildDeliveryOffer(world = {}, options = {}) {
         completion: { kind: "obtain_item", targetId: DELIVERY_CRATE_ID }
       },
       {
-        objective: `Carry ${f.cargo} to ${destinationName} and hand it over.`,
+        // STAKES BEAT — the road hazard. A CHECK-gated stage (the trial-quest
+        // primitive, quests.js kind:"check"): the player's next contested attempt
+        // is the decisive roll. Pass -> the way is clear (deliver stage). A miss
+        // does NOT advance and carries the attempt's own committed consequence
+        // (damage/foreclosure via the consequence spine) — the delivery has a
+        // real cost, but one bad roll doesn't void the arc (failOnMiss stays off;
+        // losable-quest teeth are the trial quest's job).
+        objective:
+          `The way to ${destinationName} is not clear: ${f.hazard}. ` +
+          `Force, sneak, or talk your way past — a real attempt, and failing it will cost you.`,
+        completion: { kind: "check" }
+      },
+      {
+        objective: `Carry ${f.cargo} the rest of the way to ${destinationName} and hand it over.`,
         completion: { kind: "deliver", itemId: DELIVERY_CRATE_ID, targetLocationId: destinationId }
       }
     ],
@@ -223,7 +236,7 @@ export function buildDeliveryOffer(world = {}, options = {}) {
     destinationId,
     offerText:
       `"I've ${f.cargo} that needs to reach ${destinationName}, and I'm not the one to carry it. ` +
-      `Do this for me and you'll be paid on delivery. Say the word."`,
+      `Fair warning — ${f.hazard}. That's why it pays. Do this for me and you'll be paid on delivery. Say the word."`,
     acceptedText: `You took the job: carry ${f.cargo} to ${destinationName} and hand it over for ${payName.toLowerCase()}.`,
     quest,
     takeableDetail

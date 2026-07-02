@@ -121,10 +121,22 @@ test("deliver predicate + REWARD: completing the delivery grants pay, consumes t
   const detailId = getTakeableDetails(accepted)[0].detailId;
   const withCrate = resolveTakeAction(accepted, { type: "take", detailId, targetLocationId: "second_location" }, { now: T(2) }).run;
 
-  // Stage 0 (obtain_item) advances now that the crate is held.
+  // Stage 0 (obtain_item) advances now that the crate is held -> the HAZARD stage.
   const afterTake = advanceQuests(withCrate, { attemptResult: { success: true } });
-  assert.equal(afterTake.advanced.length, 1, "obtain_item advanced the quest to the deliver stage");
+  assert.equal(afterTake.advanced.length, 1, "obtain_item advanced the quest to the hazard stage");
   assert.equal(withCrate.quests[DELIVERY_QUEST_ID].stage, 1);
+
+  // STAKES: a MISSED check does NOT advance (and, with failOnMiss off, does not
+  // fail the quest — the cost of the miss is the attempt's own consequence).
+  const missed = advanceQuests(withCrate, { attemptResult: { success: false, checkResult: { success: false } } });
+  assert.equal(missed.advanced.length, 0, "a failed check does not clear the road");
+  assert.equal(withCrate.quests[DELIVERY_QUEST_ID].stage, 1, "still at the hazard stage after a miss");
+  assert.equal(withCrate.quests[DELIVERY_QUEST_ID].status, "active", "a miss costs, it does not void the arc");
+
+  // STAKES: a SUCCESSFUL check clears the road -> the deliver stage.
+  const cleared = advanceQuests(withCrate, { attemptResult: { success: true, checkResult: { success: true } } });
+  assert.equal(cleared.advanced.length, 1, "a passed check advances past the hazard");
+  assert.equal(withCrate.quests[DELIVERY_QUEST_ID].stage, 2);
 
   // Not yet at the destination -> deliver does NOT complete.
   const notThereYet = advanceQuests(withCrate, {});
@@ -155,10 +167,23 @@ test("PIPELINE: accept -> take -> deliver all commit through natural free-text",
   const r2 = resolveSoloAction(r1.run, { type: "attempt", actorId: "player", intent: "Grab the strongbox and sling it over my shoulder." }, { now: T(2) });
   assert.equal(r2.action.type, "take", "free-text pickup rerouted to the take mechanic");
   assert.equal(invQty(r2.run, DELIVERY_CRATE_ID), 1, "crate in inventory");
-  assert.equal(r2.run.quests[DELIVERY_QUEST_ID].stage, 1, "obtain_item advanced to the deliver stage");
+  assert.equal(r2.run.quests[DELIVERY_QUEST_ID].stage, 1, "obtain_item advanced to the HAZARD stage");
 
-  // 3) MOVE to the destination (free-text, named) -> deliver completes + reward.
-  const r3 = resolveSoloAction(r2.run, { type: "attempt", actorId: "player", intent: "travel to The Ashen Edge" }, { now: T(3) });
+  // 3) STAKES BEAT (free-text attempt, pinned roll): a real d20 clears the road.
+  const rHaz = resolveSoloAction(r2.run, {
+    type: "attempt", actorId: "player", intent: "force my way past the road-wardens",
+    testHook: { fixedRoll: 20, providerOutput: {
+      summary: "You attempt: force past the wardens", recommendedAbility: "strength", dc: 10,
+      needsCheck: true, advantage: false, disadvantage: false,
+      successNarration: "You push through.", failureNarration: "They throw you back.",
+      proposedEffects: [], failureConsequence: null
+    } }
+  }, { now: T(3) });
+  assert.equal(rHaz.attemptResult?.success, true, "the hazard attempt rolled and succeeded");
+  assert.equal(rHaz.run.quests[DELIVERY_QUEST_ID].stage, 2, "passing the check advanced to the deliver stage");
+
+  // 4) MOVE to the destination (free-text, named) -> deliver completes + reward.
+  const r3 = resolveSoloAction(rHaz.run, { type: "attempt", actorId: "player", intent: "travel to The Ashen Edge" }, { now: T(4) });
   assert.equal(r3.action.type, "move", "free-text travel rerouted to the move mechanic");
   assert.equal(r3.run.currentLocationId, "third_location", "position committed");
   assert.equal(r3.run.quests[DELIVERY_QUEST_ID].status, "completed", "delivery completed on arrival with the crate");
@@ -225,7 +250,47 @@ test("SUGGESTIONS: the objective tracks the quest's ACTUAL stage index (not stuc
   const accepted = resolveQuestAccept(run, { type: "quest_accept", npcId: "npc_quest_giver" }, { now: T(1) }).run;
   const detailId = getTakeableDetails(accepted)[0].detailId;
   const withCrate = resolveTakeAction(accepted, { type: "take", detailId, targetLocationId: "second_location" }, { now: T(2) }).run;
-  advanceQuests(withCrate, { attemptResult: { success: true } }); // obtain_item -> stage 1
-  assert.match(activeObjective(withCrate), /Carry .*to The Ashen Edge/i,
-    "after taking the crate the chip objective is the DELIVER stage, not the already-done take stage");
+  advanceQuests(withCrate, { attemptResult: { success: true } }); // obtain_item -> hazard stage
+  assert.match(activeObjective(withCrate), /The way to The Ashen Edge is not clear/i,
+    "after taking the crate the chip objective is the HAZARD stage, not the already-done take stage");
+  advanceQuests(withCrate, { attemptResult: { success: true, checkResult: { success: true } } }); // hazard -> deliver
+  assert.match(activeObjective(withCrate), /Carry .*the rest of the way to The Ashen Edge/i,
+    "after clearing the road the chip objective is the DELIVER stage");
+});
+
+// ── CLI-2 fixes: the offer is spoken (F2) + the UI can start a campaign (F1) ──
+import { buildOpenJobOffers } from "../server/solo/scene.js";
+import { buildProviderPromptMessages } from "../server/solo/gmProvider.js";
+import { renderOnboardingFlow } from "../src/components/onboardingFlow.js";
+
+test("F2: open offers from PRESENT NPCs surface in the scene payload and vanish once accepted", () => {
+  const run = deliveryRun();
+  const open = buildOpenJobOffers(run);
+  assert.equal(open.length, 1, "the un-accepted offer is exposed");
+  assert.match(open[0].offerText, /paid on delivery/i, "carries the actual pitch");
+  assert.match(open[0].offerText, /road-wardens/i, "the pitch discloses the road hazard (stakes are honest)");
+  const accepted = resolveQuestAccept(run, { type: "quest_accept", npcId: "npc_quest_giver" }, { now: T(1) });
+  assert.equal(buildOpenJobOffers(accepted.run).length, 0, "an accepted offer is no longer pitched");
+});
+
+test("F2: the GM provider prompt voices a REAL open offer and forbids inventing others", () => {
+  const messages = buildProviderPromptMessages({
+    runId: "r1", edition: "mainline", location: {},
+    openJobOffers: [{ npcName: "A waiting figure", offerText: '"I need a crate carried. Say the word."' }]
+  });
+  const system = messages[0].content;
+  assert.match(system, /REAL work is on offer here/, "the offer note is in the system prompt");
+  assert.match(system, /A waiting figure offers: "I need a crate carried/, "grounded in the actual NPC + pitch");
+  assert.match(system, /Do NOT invent any other job or reward/, "invention stays forbidden");
+  const noOffer = buildProviderPromptMessages({ runId: "r1", edition: "mainline", location: {} });
+  assert.doesNotMatch(noOffer[0].content, /REAL work is on offer/, "no offer -> no note");
+});
+
+test("F1: the world step renders the start-mode choice, sandbox default, guided selectable", () => {
+  const sandboxHtml = renderOnboardingFlow({ step: "world", worldDef: {} });
+  assert.match(sandboxHtml, /How do you want to play\?/);
+  assert.match(sandboxHtml, /class="onb-chip active" data-world-mode="sandbox"/, "sandbox is the active default");
+  assert.match(sandboxHtml, /data-world-mode="guided"/, "guided adventure is offered");
+  const guidedHtml = renderOnboardingFlow({ step: "world", worldDef: { startMode: "guided" } });
+  assert.match(guidedHtml, /class="onb-chip active" data-world-mode="guided"/, "guided selection is reflected");
 });

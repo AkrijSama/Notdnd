@@ -288,11 +288,11 @@ export function createStore({ apiClient = null } = {}) {
     return apiClient.regenerateWorldField({ definition, field, salt });
   }
 
-  async function createWorldRun({ world = {}, character = {}, draftPortraitId = null } = {}) {
+  async function createWorldRun({ world = {}, character = {}, draftPortraitId = null, mode = "sandbox" } = {}) {
     if (!apiClient) {
       throw new Error("API client is required for world onboarding.");
     }
-    return apiClient.createWorldRun({ world, character, draftPortraitId });
+    return apiClient.createWorldRun({ world, character, draftPortraitId, mode });
   }
 
   return {

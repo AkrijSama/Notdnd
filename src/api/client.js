@@ -283,10 +283,13 @@ export function createApiClient(baseUrl = "") {
         body: JSON.stringify({ definition, field, salt })
       });
     },
-    async createWorldRun({ world, character, draftPortraitId = null }) {
+    async createWorldRun({ world, character, draftPortraitId = null, mode = "sandbox" }) {
+      // mode: "sandbox" (open world, no authored spine — the default) or
+      // "campaign" (guided adventure: main quest, job offers, a destination).
+      // The server honors payload.mode; absent still means sandbox (index.js).
       return request("/api/onboarding/world-run", {
         method: "POST",
-        body: JSON.stringify({ world, character, draftPortraitId })
+        body: JSON.stringify({ world, character, draftPortraitId, mode })
       });
     },
     // Mid-creation portrait: request generation (server returns a draftId) and

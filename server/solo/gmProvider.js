@@ -183,7 +183,8 @@ export function buildProviderPromptMessages(gmInput, options = {}) {
     recentTimeline: gmInput.recentTimeline || [],
     relevantMemoryFacts: gmInput.relevantMemoryFacts || [],
     activeQuests,
-    questJustAdvanced
+    questJustAdvanced,
+    openJobOffers: Array.isArray(gmInput.openJobOffers) ? gmInput.openJobOffers : []
   };
 
   // The current objective drives a "weave the goal in" prompt line; the quest
@@ -193,6 +194,14 @@ export function buildProviderPromptMessages(gmInput, options = {}) {
     questJustAdvanced && questJustAdvanced.objective
       ? `The player just made progress: "${questJustAdvanced.objective}". Acknowledge this in the fiction.`
       : null;
+  // Open, un-accepted job offers (server-authored; gm.js openJobOffers): the GM
+  // may voice these — they are REAL, and accepting one is a committed transition.
+  const openOffers = Array.isArray(gmInput.openJobOffers) ? gmInput.openJobOffers : [];
+  const offerNote = openOffers.length
+    ? `REAL work is on offer here — ${openOffers
+        .map((offer) => `${offer.npcName} offers: ${offer.offerText}`)
+        .join(" | ")} If talk turns to work, jobs, pay, or purpose, surface this offer naturally; it is real and accepting it matters. Do NOT invent any other job or reward.`
+    : null;
 
   const system = [
     INKBORNE_GM_VOICE,
@@ -204,6 +213,7 @@ export function buildProviderPromptMessages(gmInput, options = {}) {
     "Respect the edition and policy profile. Never leak forbidden or blocked content into mainline scenes.",
     objective ? `The player is pursuing: ${objective}. Weave this goal naturally into scene framing and dialogue.` : null,
     advancedNote,
+    offerNote,
     "Do NOT invent new quests or declare quests complete. Quest progress is decided only by the system.",
     // Visual-novel mode signal. The classifier that consumes this (deriveVnState)
     // discards a speakerId that is not a present/visible NPC, so the model is held
