@@ -61,7 +61,10 @@ const FETCH_TIMEOUT_MS = Number(process.env.SELFPLAY_FETCH_TIMEOUT_MS || 45000);
 
 // ───────────────────────────── HTTP plumbing ─────────────────────────────
 
-const H = (t) => ({ "Content-Type": "application/json", ...(t ? { Authorization: "Bearer " + t } : {}) });
+// x-notdnd-battery tags every request as HARNESS traffic: the server's AI layer
+// then skips the subscription-bound codex lane (owner's ChatGPT rolling window)
+// no matter how the chain is configured. Batteries must never burn it.
+const H = (t) => ({ "Content-Type": "application/json", "x-notdnd-battery": "1", ...(t ? { Authorization: "Bearer " + t } : {}) });
 
 async function call(path, { method = "GET", token, body, timeoutMs } = {}) {
   const t0 = Date.now();
@@ -1034,9 +1037,11 @@ async function playFreeTextTurn(ctx, r, intent, { hook } = {}) {
   const action = { type: "attempt", intent };
   if (hook) action.testHook = hook;
   const res = await act(r, action);
-  const after = advancementSnapshot((await scene(r)).json);
+  const afterScene = (await scene(r)).json;
+  const after = advancementSnapshot(afterScene);
   const domains = advancementDelta(before, after);
   const signaled = turnSignaledSuccess(res.json);
+  auditTurnProse(res.json, afterScene);
   ctx.assert(
     `anti-void: "${intent.slice(0, 44)}" — signaled success ⇒ committed state delta`,
     !signaled || domains.length > 0,
@@ -1493,6 +1498,404 @@ async function scenarioGmHealth(ctx) {
 
 // ═══════════════════════════════ RUNNER ═════════════════════════════════
 
+// ═══════════════ HOSTILE-PLAYER GRADE (adversarial harness upgrade) ═══════════
+// The harness's signature failure: testing built mechanisms with the phrasings
+// they were built against. These scenarios test the PLAYER WE ACTUALLY HAVE
+// (the real-input corpus), at LENGTH (40-turn soak), against the NEW surfaces
+// (momentum/take/quest adversarial probes, roll-binding fuzz), and at the WIRE
+// (committed surfaces must cross HTTP). Findings are REPORTED, never fixed here.
+
+import fs from "node:fs";
+import { auditProseAgainstState, looksLikeQuestion } from "./selfplayAudit.mjs";
+
+// Narration-state contradiction tally (WARN-grade; the prose-integrity metric).
+const PROSE_TALLY = { turnsAudited: 0, phantomCount: 0, examples: [] };
+function auditTurnProse(json, scenePayload) {
+  const sources = [];
+  const narr = json?.gmNarration || json?.event?.narration || "";
+  if (narr && String(narr).trim()) sources.push({ kind: "narration", text: String(narr) });
+  const sugg = Array.isArray(scenePayload?.suggestedActions) ? scenePayload.suggestedActions : [];
+  for (const s of sugg) {
+    const label = typeof s === "string" ? s : s?.label;
+    if (label) sources.push({ kind: "suggestion", text: String(label) });
+  }
+  if (!sources.length || !scenePayload) return;
+  PROSE_TALLY.turnsAudited += 1;
+  for (const src of sources) {
+    const { phantoms } = auditProseAgainstState(src.text, scenePayload);
+    for (const p of phantoms) {
+      PROSE_TALLY.phantomCount += 1;
+      if (PROSE_TALLY.examples.length < 12) {
+        PROSE_TALLY.examples.push({ kind: src.kind, name: p.name, sentence: p.sentence });
+      }
+    }
+  }
+}
+function printProseTally() {
+  console.log("────────────────────────────────────────────────────────────");
+  console.log(`  PROSE-INTEGRITY: ${PROSE_TALLY.phantomCount} phantom reference(s) across ${PROSE_TALLY.turnsAudited} audited turns (WARN-grade, model-dependent)`);
+  for (const ex of PROSE_TALLY.examples.slice(0, 8)) {
+    console.log(`    ⚠ [${ex.kind}] "${ex.name}" not vouched by state — "${ex.sentence.slice(0, 110)}"`);
+  }
+}
+
+// One corpus/soak turn: act, diff tracked state, audit prose. NO per-turn assert
+// spam — callers aggregate. Returns { json, domains, signaled, sceneAfter }.
+async function contractTurn(r, action) {
+  const before = advancementSnapshot((await scene(r)).json);
+  const res = await act(r, action);
+  const sceneAfter = (await scene(r)).json;
+  const after = advancementSnapshot(sceneAfter);
+  const domains = advancementDelta(before, after);
+  const signaled = turnSignaledSuccess(res.json);
+  auditTurnProse(res.json, sceneAfter);
+  return { json: res.json, status: res.status, domains, signaled, sceneAfter };
+}
+
+// 1) REAL-PLAYER CORPUS REPLAY — the centerpiece. Every input a real session
+// produced runs against a live server under the universal contract: a committed
+// mechanic where one should fire, an honest no-op where none should, NEVER a
+// lying surface, and NEVER a question silently committed as a state mechanic.
+async function scenarioCorpus(ctx) {
+  const fixture = JSON.parse(fs.readFileSync(new URL("../tests/fixtures/real-player-corpus.json", import.meta.url), "utf8"));
+  const MAXC = Number(process.env.SELFPLAY_CORPUS_MAX || 6);
+  const byClass = {};
+  for (const e of fixture.entries) (byClass[e.class] ||= []).push(e);
+  // Sample: real-player inputs first, harness-authored as filler; loud cap log.
+  const sample = {};
+  let dropped = 0;
+  for (const [cls, list] of Object.entries(byClass)) {
+    const real = list.filter((e) => !e.harnessAuthored);
+    const rest = list.filter((e) => e.harnessAuthored);
+    sample[cls] = [...real, ...rest].slice(0, MAXC);
+    dropped += list.length - sample[cls].length;
+  }
+  ctx.note(`corpus: ${fixture.total} inputs (${fixture.realPlayer} real-player); replaying ${Object.values(sample).flat().length}, capped ${MAXC}/class — ${dropped} NOT replayed (SELFPLAY_CORPUS_MAX to widen)`);
+
+  const tally = {}; // per class: { n, committed, honest, lying, questionCommits, proseVoid }
+  const failures = [];
+  const t = (cls) => (tally[cls] ||= { n: 0, committed: 0, honest: 0, lying: 0, questionCommits: 0, proseVoid: 0 });
+
+  // Context runs: accept + take need their staged contexts; the rest share one.
+  const mkCampaign = async () => { const g = await newRun("corpus"); return g; };
+  const toGiver = async (g) => {
+    const s = (await scene(g)).json;
+    const mv = (s.availableMoves || []).find((m) => m && m.discovered && m.locationId === "second_location");
+    if (mv) await act(g, { type: "move", toLocationId: "second_location" });
+  };
+
+  const COMMIT_TYPES = new Set(["move", "take", "quest_accept", "search"]);
+  const runClass = async (cls, r, entries) => {
+    for (const entry of entries) {
+      const row = t(cls); row.n += 1;
+      const turn = await contractTurn(r, { type: "attempt", intent: entry.text });
+      const actionType = turn.json.action?.type;
+      if (turn.status !== 200 || turn.json.ok !== true) {
+        row.lying += 1; failures.push({ cls, text: entry.text, why: `HTTP ${turn.status} / ok:${turn.json?.ok}` });
+        continue;
+      }
+      if (turn.signaled && turn.domains.length === 0) {
+        row.lying += 1; failures.push({ cls, text: entry.text, why: `LYING SURFACE — signaled ${actionType} with zero state delta` });
+        continue;
+      }
+      if (entry.question && COMMIT_TYPES.has(actionType) && actionType !== "search") {
+        row.questionCommits += 1;
+        failures.push({ cls, text: entry.text, why: `QUESTION COMMITTED AS ${actionType} — the player asked, the engine acted` });
+        continue;
+      }
+      if (turn.domains.length > 0) row.committed += 1;
+      else {
+        row.honest += 1;
+        if (turn.json.attemptResult?.success === true && ["move", "take", "search", "accept", "compound"].includes(cls)) row.proseVoid += 1;
+      }
+    }
+  };
+
+  // accept class: fresh run at the giver (live offer).
+  if (sample.accept?.length) { const g = await mkCampaign(); await toGiver(g); ctx.runId = g.runId; ctx.token = g.token; await runClass("accept", g, sample.accept); }
+  // take class: fresh run, offer accepted so the crate exists.
+  if (sample.take?.length) { const g = await mkCampaign(); await toGiver(g); await act(g, { type: "attempt", intent: "Yes, I'll take the job." }); await runClass("take", g, sample.take); }
+  // everything else shares one campaign run (moves may relocate it — contract holds anywhere).
+  const shared = await mkCampaign();
+  for (const cls of ["question", "goal", "move", "search", "compound", "other"]) {
+    if (sample[cls]?.length) await runClass(cls, shared, sample[cls]);
+  }
+
+  for (const [cls, row] of Object.entries(tally)) {
+    ctx.note(`corpus[${cls}]: n=${row.n} committed=${row.committed} honest=${row.honest} prose-void=${row.proseVoid} lying=${row.lying} question-commits=${row.questionCommits}`);
+  }
+  const lying = Object.values(tally).reduce((a, r) => a + r.lying, 0);
+  const qCommits = Object.values(tally).reduce((a, r) => a + r.questionCommits, 0);
+  const voids = Object.values(tally).reduce((a, r) => a + r.proseVoid, 0);
+  for (const f of failures.slice(0, 10)) ctx.note(`corpus FAIL: [${f.cls}] "${f.text.slice(0, 70)}" — ${f.why}`);
+  ctx.assert("CORPUS: zero lying surfaces across real-player inputs (signaled ⇒ committed)", lying === 0, "0 lying", `${lying} lying`);
+  ctx.assert("CORPUS: zero questions silently committed as state mechanics (ask ≠ act)", qCommits === 0, "0 question-commits", `${qCommits} (e.g. a question routed to a committed move)`);
+  if (voids > 0) ctx.warn("corpus prose-void tally", `${voids} committable-class inputs narrated success with zero state delta (the narrate-into-void tell, model/interpreter-dependent)`);
+}
+
+// 2) COMPOUND-INTENT COVERAGE — the owner's crash input was compound. Contract:
+// each committable part commits, or the remainder is honestly surfaced. Current
+// engine routes FIRST match only — this scenario REPORTS the drop, per class.
+async function scenarioCompound(ctx) {
+  const g = await newRun("compound"); ctx.runId = g.runId; ctx.token = g.token;
+  await act(g, { type: "move", toLocationId: "second_location" });
+  const CASES = [
+    { label: "accept+take+move", text: "Yes, I'll do the job. I take the crate and head for the far edge.", parts: ["accept", "take", "move"] },
+    { label: "OWNER CRASH INPUT (take+carry+open)", text: "Ok, ill be back. I take the crate and carry it towards the destination.Once i get far enough, i want to open the crate and see whats inside,", parts: ["take", "move", "open"] },
+    { label: "search+take", text: "search the room for anything useful and pocket whatever I find", parts: ["search", "take"] },
+    { label: "take+move", text: "grab the crate then go deeper into the ruins", parts: ["take", "move"] }
+  ];
+  for (const c of CASES) {
+    const turn = await contractTurn(g, { type: "attempt", intent: c.text });
+    const actionType = turn.json.action?.type || "attempt";
+    ctx.assert(`COMPOUND(${c.label}): no lying surface`, !(turn.signaled && turn.domains.length === 0), "signaled ⇒ delta", `action:${actionType} delta:[${turn.domains.join("|")}]`);
+    const committedPart = { quest_accept: "accept", take: "take", move: "move", search: "search" }[actionType] || null;
+    const droppedParts = c.parts.filter((p) => p !== committedPart);
+    if (committedPart) {
+      ctx.warn(`compound(${c.label}): partial commit`, `committed [${committedPart}], silently dropped [${droppedParts.join(",")}] — the remainder is neither committed nor surfaced as pending; prose may still narrate it as done`);
+    } else {
+      ctx.warn(`compound(${c.label}): NOTHING committed`, `whole utterance fell to generic attempt (${turn.json.attemptResult?.success ? "narrated success" : "failed/refused"}); every committable part dropped`);
+    }
+    ctx.note(`compound(${c.label}) -> routed:${actionType} delta:[${turn.domains.join("|") || "none"}]`);
+  }
+}
+
+// 3) LONG-RUN SOAK — the 30+-turn consistency claim, tested for the first time.
+async function scenarioSoak(ctx) {
+  const g = await newRun("soak"); ctx.runId = g.runId; ctx.token = g.token;
+  const idleHook = { providerOutput: { summary: "You pass the time.", recommendedAbility: "wisdom", dc: 10, needsCheck: false, advantage: false, disadvantage: false, successNarration: "Time passes.", failureNarration: "Time passes.", proposedEffects: [], failureConsequence: null } };
+  const rollHook = (fixedRoll, fc = null) => ({ fixedRoll, providerOutput: { summary: "A real attempt.", recommendedAbility: "strength", dc: 12, needsCheck: true, advantage: false, disadvantage: false, successNarration: "It works.", failureNarration: "It fails.", proposedEffects: [], failureConsequence: fc } });
+
+  const log = []; // per turn: { n, action, momentum, memoryFacts, timeline, signaled, domains }
+  let turnN = 0;
+  const T = async (label, action) => {
+    turnN += 1;
+    const turn = await contractTurn(g, action);
+    const run = turn.json.run || {};
+    log.push({
+      n: turnN, label, action: turn.json.action?.type || action.type,
+      momentum: turn.json.momentumEvent || null,
+      momentumState: run.flags?.momentum || null,
+      memoryFacts: Array.isArray(run.memoryFacts) ? run.memoryFacts.length : null,
+      timeline: Array.isArray(run.timeline) ? run.timeline.length : null,
+      signaled: turn.signaled, domains: turn.domains, json: turn.json
+    });
+    return turn;
+  };
+  const idle = (i) => T(`idle${i}`, { type: "attempt", intent: ["wait and listen", "watch the road a while", "warm my hands and think", "stand still a moment"][i % 4] + " (turn " + turnN + ")", testHook: idleHook });
+
+  // T1-9: the delivery arc with a goal declaration folded in.
+  await idle(0);                                                                  // 1
+  await T("move-to-giver", { type: "move", toLocationId: "second_location" });    // 2
+  await T("talk", { type: "talk", actorId: "player", targetEntityId: "npc:npc_quest_giver" }); // 3
+  await T("accept", { type: "attempt", intent: "Yes, I'll take the job." });      // 4
+  const goalTurn = await T("goal", { type: "attempt", intent: "I claim this crossing as my own and vow to rebuild it", testHook: rollHook(20) }); // 5
+  await T("take", { type: "attempt", intent: "grab the crate and sling it over my shoulder" }); // 6
+  await T("hazard-miss", { type: "attempt", intent: "force my way past the road-wardens", testHook: rollHook(3, { type: "damage", amount: 2, reason: "thrown back" }) }); // 7
+  await T("hazard-pass", { type: "attempt", intent: "force my way past the road-wardens again", testHook: rollHook(20) }); // 8
+  await T("deliver", { type: "move", toLocationId: "third_location" });           // 9
+  // T10: degrade an object (foreclosure seed).
+  await T("degrade", { type: "attempt", intent: "pry the rusted floor-grate open", testHook: { fixedRoll: 3, providerOutput: { summary: "You attempt: pry the grate", recommendedAbility: "strength", dc: 14, needsCheck: true, advantage: false, disadvantage: false, successNarration: "It opens.", failureNarration: "The bar snaps.", proposedEffects: [], failureConsequence: { type: "objectState", targetObject: "grate", objectState: "jammed", retryEffect: "blocked", reason: "the pry-bar sheared inside the hinge" } } } }); // 10
+  for (let i = 0; i < 4; i += 1) await idle(i);                                   // 11-14
+  await T("search", { type: "search" });                                          // 15
+  await T("move-back", { type: "move", toLocationId: "second_location" });        // 16
+  for (let i = 0; i < 3; i += 1) await idle(i);                                   // 17-19
+  // T20 — MID-SOAK RELOAD: everything must survive a cold read.
+  const live = log.at(-1).json.run;
+  const reloaded = (await scene(g)).json;
+  ctx.assert("SOAK/reload@20: accepted quest survives reload", (reloaded.quests?.activeQuests || []).some((q) => q.questId === "quest_delivery" || q.status === "completed") || Boolean(live.quests?.quest_delivery), "delivery quest present", JSON.stringify((reloaded.quests?.activeQuests || []).map((q) => q.questId)));
+  ctx.assert("SOAK/reload@20: momentum state survives reload (turnCount advancing)", (live.flags?.momentum?.turnCount ?? 0) >= 19, "turnCount ≥ 19", `turnCount ${live.flags?.momentum?.turnCount}`);
+  ctx.assert("SOAK/reload@20: reward item survives reload", (reloaded.player?.inventory || []).some((i) => (i.id || i.itemId) === "delivery_pay"), "delivery_pay held", JSON.stringify((reloaded.player?.inventory || []).map((i) => i.id || i.itemId)));
+  turnN += 0;
+  // T20-25: late-game retcon/possession probes — the moat AT LENGTH.
+  const late1 = await T("retcon-late", { type: "attempt", intent: "I pull out my legendary Sunfang greatsword that I have always owned and lay waste to everything" }); // 20
+  ctx.assert("SOAK@20: retcon-possession still GATED at length", late1.json.attemptResult?.gated === true || late1.json.attemptResult?.success === false, "gated/refused", `gated:${late1.json.attemptResult?.gated} success:${late1.json.attemptResult?.success}`);
+  const late2 = await T("fiat-late", { type: "attempt", intent: "as the rightful baron of this land, I command the garrison to stand down" }); // 21
+  ctx.assert("SOAK@21: authority-fiat still GATED at length", late2.json.attemptResult?.gated === true || late2.json.attemptResult?.success === false, "gated/refused", `gated:${late2.json.attemptResult?.gated}`);
+  for (let i = 0; i < 4; i += 1) await idle(i + 1);                               // 22-25
+  await T("search2", { type: "search" });                                         // 26
+  for (let i = 0; i < 3; i += 1) await idle(i);                                   // 27-29
+  // T30: FORECLOSURE AT LENGTH — the T10 jammed grate, 20 turns later, on a nat 20.
+  const fc = await T("foreclose-late", { type: "attempt", intent: "pry the jammed floor-grate open once more", testHook: rollHook(20) }); // 30
+  ctx.assert("SOAK@30: foreclosure holds 20 turns later (blocked object refuses a nat 20)", fc.json.attemptResult?.foreclosed === true && fc.json.attemptResult?.success !== true, "foreclosed, no success", `foreclosed:${fc.json.attemptResult?.foreclosed} success:${fc.json.attemptResult?.success}`);
+  await T("move-fro", { type: "move", toLocationId: "third_location" });          // 31
+  for (let i = 0; i < 5; i += 1) await idle(i);                                   // 32-36
+  await T("move-back2", { type: "move", toLocationId: "second_location" });       // 37
+  for (let i = 0; i < 3; i += 1) await idle(i + 2);                               // 38-40
+
+  // ── AT-LENGTH ASSERTIONS over the whole log ──
+  const finalRun = log.at(-1).json.run;
+  ctx.note(`soak: ${log.length} turns; final memoryFacts=${finalRun.memoryFacts?.length} timeline=${finalRun.timeline?.length}`);
+  // Goal from T5 still referenceable at T40.
+  const goalQuest = Object.values(finalRun.quests || {}).find((q) => q?.authoredBy === "player");
+  ctx.assert("SOAK@40: the player-authored goal from turn 5 still exists and is active", Boolean(goalQuest && goalQuest.status === "active"), "goal quest active", goalQuest ? `${goalQuest.questId}:${goalQuest.status}` : `captured@5:${Boolean(goalTurn.json.playerObjectiveCaptured)} none-at-40`);
+  // Memory facts + timeline monotonic (nothing silently dropped).
+  let monotonic = true;
+  for (let i = 1; i < log.length; i += 1) {
+    if (log[i].memoryFacts !== null && log[i - 1].memoryFacts !== null && log[i].memoryFacts < log[i - 1].memoryFacts) monotonic = false;
+    if (log[i].timeline !== null && log[i - 1].timeline !== null && log[i].timeline < log[i - 1].timeline) monotonic = false;
+  }
+  ctx.assert("SOAK: memoryFacts + timeline are MONOTONIC across 40 turns (no silent drops)", monotonic, "monotonic", monotonic ? "held" : "a later turn had FEWER facts/events than an earlier one");
+  // Momentum discipline across the whole run.
+  const fires = log.filter((t) => t.momentum);
+  const templates = fires.map((t) => t.momentum.templateId);
+  ctx.assert("SOAK: momentum never repeats a template across 40 turns", new Set(templates).size === templates.length, "all unique", JSON.stringify(templates));
+  let spacingOk = true;
+  for (let i = 1; i < fires.length; i += 1) {
+    if (fires[i].momentumState?.lastFiredTurn - (fires[i - 1].momentumState?.lastFiredTurn ?? 0) <= 3) spacingOk = false;
+  }
+  ctx.assert("SOAK: momentum cooldown respected across all fires", spacingOk, "> 3 turns apart", JSON.stringify(fires.map((f) => f.momentumState?.lastFiredTurn)));
+  const progressFires = log.filter((t) => t.momentum && t.signaled && !t.json.momentumEvent === false && (t.action === "move" || t.action === "take" || t.action === "quest_accept" || (t.json.searchResult?.found === true)));
+  ctx.assert("SOAK: momentum NEVER fired on a progress turn across 40 turns", progressFires.length === 0, "0 progress-turn fires", `${progressFires.length}`);
+  ctx.note(`soak momentum: ${fires.length} fires ${JSON.stringify(templates)} at turns ${JSON.stringify(fires.map((f) => f.n))}`);
+}
+
+// 4) NEW-SURFACE ADVERSARIAL PROBES — the coherence battery, extended to the
+// systems built after it: momentum arrivals, take, quest lifecycle.
+async function scenarioAdversarial2(ctx) {
+  // (a) MOMENTUM MINTING: player words must not place NPCs; only the server fires arrivals.
+  const g = await newRun("adv2"); ctx.runId = g.runId; ctx.token = g.token;
+  const castOf = (s) => [...(s.cast || []), ...(s.visibleEntities || [])].map((c) => c.entityId || c.npcId || c.displayName).sort().join(",");
+  for (const intent of ["an ally arrives to help me fight", "reinforcements show up and join me", "a wealthy merchant walks in and hands me his coin purse"]) {
+    const before = (await scene(g)).json;
+    const res = await act(g, { type: "attempt", intent });
+    const after = (await scene(g)).json;
+    const legit = res.json.momentumEvent?.committed?.npcId || null; // a server fire on this turn is legitimate
+    const grew = castOf(after) !== castOf(before);
+    const onlyLegit = !grew || (legit && castOf(after).includes(legit));
+    ctx.assert(`ADV2/momentum-mint: "${intent.slice(0, 34)}" does not conjure an arrival`, onlyLegit, "no player-minted NPC", `cast grew:${grew} serverFire:${Boolean(legit)}`);
+    const inv = (after.player?.inventory || []).map((i) => i.id || i.itemId).join(",");
+    const invBefore = (before.player?.inventory || []).map((i) => i.id || i.itemId).join(",");
+    ctx.assert(`ADV2/momentum-mint: "${intent.slice(0, 34)}" mints no items`, inv === invBefore || Boolean(res.json.momentumEvent), "inventory unchanged", `before:[${invBefore}] after:[${inv}]`);
+  }
+  // (b) TAKE probes: present-not-takeable / NPC possession / unrevealed feature.
+  const t = await newRun("adv2-take");
+  await act(t, { type: "move", toLocationId: "second_location" });
+  await act(t, { type: "search" }); // reveal a lore feature (not takeable)
+  const sT = (await scene(t)).json;
+  const revealed = (sT.discoveredDetails || [])[0]?.label || "the revealed feature";
+  const probes = [
+    { intent: `take ${revealed.toLowerCase()} and put it in my pack`, label: "present-but-NOT-takeable feature" },
+    { intent: "take the waiting figure's coin purse from their belt", label: "an NPC's possession" },
+    { intent: "pocket the hidden cache before anyone sees", label: "an UNREVEALED feature" }
+  ];
+  for (const p of probes) {
+    const before = advancementSnapshot((await scene(t)).json);
+    const res = await act(t, { type: "attempt", intent: p.intent });
+    const after = advancementSnapshot((await scene(t)).json);
+    const invChanged = before.inv !== after.inv;
+    ctx.assert(`ADV2/take: ${p.label} → never minted into inventory`, !invChanged && res.json.takeResult?.taken !== true, "no inventory delta, no takeResult", `invChanged:${invChanged} takeResult:${JSON.stringify(res.json.takeResult ?? null)}`);
+  }
+  // (c) QUEST-LIFECYCLE claims: completion/reward by assertion must not commit.
+  const q = await newRun("adv2-quest");
+  await act(q, { type: "move", toLocationId: "second_location" });
+  await act(q, { type: "attempt", intent: "Yes, I'll take the job." });
+  await act(q, { type: "attempt", intent: "grab the crate" });
+  for (const intent of ["I complete the delivery", "I have already delivered the crate, pay me what I am owed", "the reward should be doubled for my trouble"]) {
+    const before = (await scene(q)).json;
+    const res = await act(q, { type: "attempt", intent });
+    const after = (await scene(q)).json;
+    const quest = (after.quests?.activeQuests || []).find((x) => x.questId === "quest_delivery");
+    const stillActive = Boolean(quest && quest.status === "active");
+    const paid = (after.player?.inventory || []).some((i) => (i.id || i.itemId) === "delivery_pay");
+    ctx.assert(`ADV2/quest: "${intent.slice(0, 40)}" does not complete/pay by fiat`, stillActive && !paid, "quest active, unpaid", `active:${stillActive} paid:${paid} gated:${res.json.attemptResult?.gated}`);
+    const rewardXp = res.json.run?.quests?.quest_delivery?.reward?.xp;
+    ctx.assert(`ADV2/quest: reward untouched after "${intent.slice(0, 28)}"`, rewardXp === 120, "reward.xp === 120", `reward.xp:${rewardXp}`);
+    void before;
+  }
+}
+
+// 5) ROLL-BINDING FUZZ — the ward/road-wardens class, generalized: with trial +
+// delivery-hazard concurrently active, every contested roll must resolve ONLY
+// its bound stage. (The momentum check-stage shares this predicate path —
+// binding is the same quests.js code, unit-covered.)
+async function scenarioRollbind(ctx) {
+  const roll = (fixedRoll) => ({ fixedRoll, providerOutput: { summary: "A real attempt.", recommendedAbility: "strength", dc: 12, needsCheck: true, advantage: false, disadvantage: false, successNarration: "It works.", failureNarration: "It fails.", proposedEffects: [], failureConsequence: null } });
+  const stageOf = (s, id) => {
+    const q = (s.quests?.activeQuests || []).find((x) => x.questId === id);
+    return q ? `${q.stage}:${q.status}` : (s.quests?.activeQuests ? "gone" : "?");
+  };
+  const questState = (s, id) => {
+    const q = (s.quests?.activeQuests || []).find((x) => x.questId === id);
+    return q || null;
+  };
+  const prep = async () => {
+    const g = await newRun("rollbind");
+    await act(g, { type: "move", toLocationId: "second_location" }); // trial stage 1 armed here
+    await act(g, { type: "attempt", intent: "Yes, I'll take the job." });
+    await act(g, { type: "attempt", intent: "grab the crate" });     // hazard stage armed
+    return g;
+  };
+  // (1) Road-directed WIN moves ONLY the hazard.
+  let g = await prep(); ctx.runId = g.runId; ctx.token = g.token;
+  let before = (await scene(g)).json;
+  await act(g, { type: "attempt", intent: "bribe the toll men so I can pass the road", testHook: roll(20) });
+  let after = (await scene(g)).json;
+  ctx.assert("BIND: road-directed WIN advances the hazard only", stageOf(after, "quest_delivery") !== stageOf(before, "quest_delivery") && stageOf(after, "quest_trial") === stageOf(before, "quest_trial"), "delivery moved, trial untouched", `delivery ${stageOf(before, "quest_delivery")}→${stageOf(after, "quest_delivery")} trial ${stageOf(before, "quest_trial")}→${stageOf(after, "quest_trial")}`);
+  // (2) Seal-directed WIN completes ONLY the trial.
+  g = await prep();
+  before = (await scene(g)).json;
+  await act(g, { type: "attempt", intent: "break the blood-ward sunk into the reliquary door", testHook: roll(20) });
+  after = (await scene(g)).json;
+  const trialAfter = questState(after, "quest_trial");
+  ctx.assert("BIND: seal-directed WIN resolves the trial only", (trialAfter === null || trialAfter.status !== "active") && stageOf(after, "quest_delivery") === stageOf(before, "quest_delivery"), "trial resolved, delivery untouched", `trial ${stageOf(before, "quest_trial")}→${stageOf(after, "quest_trial")} delivery ${stageOf(before, "quest_delivery")}→${stageOf(after, "quest_delivery")}`);
+  // (3) NEUTRAL win moves NEITHER.
+  g = await prep();
+  before = (await scene(g)).json;
+  await act(g, { type: "attempt", intent: "climb the crumbling watchtower wall to scout", testHook: roll(20) });
+  after = (await scene(g)).json;
+  ctx.assert("BIND: an unrelated WIN moves NO stage", stageOf(after, "quest_delivery") === stageOf(before, "quest_delivery") && stageOf(after, "quest_trial") === stageOf(before, "quest_trial"), "nothing moved", `delivery ${stageOf(after, "quest_delivery")} trial ${stageOf(after, "quest_trial")}`);
+  // (4) Road-directed MISS: hazard holds (no failOnMiss), trial UNHARMED (the historical bug).
+  g = await prep();
+  before = (await scene(g)).json;
+  await act(g, { type: "attempt", intent: "sneak past the toll gang watching the road", testHook: roll(3) });
+  after = (await scene(g)).json;
+  ctx.assert("BIND: road-directed MISS cannot fail the trial (the ward/road-wardens class)", stageOf(after, "quest_trial") === stageOf(before, "quest_trial") && stageOf(after, "quest_delivery") === stageOf(before, "quest_delivery"), "both untouched", `trial ${stageOf(before, "quest_trial")}→${stageOf(after, "quest_trial")}`);
+  // (5) Seal-directed MISS fails ONLY the trial.
+  g = await prep();
+  before = (await scene(g)).json;
+  await act(g, { type: "attempt", intent: "smash the warded seal on the reliquary", testHook: roll(3) });
+  after = (await scene(g)).json;
+  const trialGone = questState(after, "quest_trial");
+  ctx.assert("BIND: seal-directed MISS fails the trial only", (trialGone === null || trialGone.status !== "active") && stageOf(after, "quest_delivery") === stageOf(before, "quest_delivery"), "trial failed, delivery untouched", `trial→${stageOf(after, "quest_trial")} delivery ${stageOf(after, "quest_delivery")}`);
+}
+
+// 6) WIRE CONTRACT — every committed-mechanic surface must cross HTTP and land
+// on the scene payload. The response-whitelist bug class, armed permanently.
+async function scenarioWire(ctx) {
+  const g = await newRun("wire"); ctx.runId = g.runId; ctx.token = g.token;
+  const sPre = (await scene(g)).json;
+  const mv = await act(g, { type: "attempt", intent: "head toward the crossing ahead" });
+  const surfaced = (json, key) => key in json && json[key] !== undefined;
+  // move surface
+  const moved = mv.json.action?.type === "move";
+  if (moved) ctx.assert("WIRE: moved/action surfaces on a free-text move", surfaced(mv.json, "action") && mv.json.action.type === "move", "action.type move", JSON.stringify(mv.json.action?.type));
+  else await act(g, { type: "move", toLocationId: "second_location" });
+  const sGiver = (await scene(g)).json;
+  ctx.assert("WIRE: openJobOffers rides the scene payload pre-accept", Array.isArray(sGiver.openJobOffers) && sGiver.openJobOffers.length > 0, "openJobOffers non-empty", JSON.stringify(sGiver.openJobOffers)?.slice(0, 60));
+  const acc = await act(g, { type: "attempt", intent: "Yes, I'll take the job." });
+  ctx.assert("WIRE: questAccepted crosses HTTP", surfaced(acc.json, "questAccepted") && acc.json.questAccepted?.questId === "quest_delivery", "questAccepted present", JSON.stringify(acc.json.questAccepted));
+  const take = await act(g, { type: "attempt", intent: "grab the crate" });
+  ctx.assert("WIRE: takeResult crosses HTTP", surfaced(take.json, "takeResult") && take.json.takeResult?.taken === true, "takeResult present", JSON.stringify(take.json.takeResult)?.slice(0, 80));
+  ctx.assert("WIRE: questJustAdvanced crosses HTTP on the obtain advance", surfaced(take.json, "questJustAdvanced") && Boolean(take.json.questJustAdvanced), "questJustAdvanced present", JSON.stringify(take.json.questJustAdvanced?.questId ?? null));
+  await act(g, { type: "attempt", intent: "force my way past the road-wardens", testHook: { fixedRoll: 20, providerOutput: { summary: "x", recommendedAbility: "strength", dc: 10, needsCheck: true, advantage: false, disadvantage: false, successNarration: "y", failureNarration: "z", proposedEffects: [], failureConsequence: null } } });
+  const del = await act(g, { type: "move", toLocationId: "third_location" });
+  ctx.assert("WIRE: questReward crosses HTTP on completion", surfaced(del.json, "questReward") && Boolean(del.json.questReward), "questReward present", JSON.stringify(del.json.questReward)?.slice(0, 80));
+  const search = await act(g, { type: "attempt", intent: "search the area for anything useful" });
+  ctx.assert("WIRE: searchResult crosses HTTP on a free-text search", surfaced(search.json, "searchResult"), "searchResult present", String(search.json.searchResult?.found));
+  // momentum: idle to a fire on a fresh sandbox run (cheap + deterministic cadence).
+  const m = await substanceRun();
+  let fired = null;
+  for (let i = 0; i < 4 && !fired; i += 1) {
+    const r = await act(m, { type: "attempt", intent: ["wait quietly", "stand and watch the trees", "warm my hands", "stare at the sky"][i], testHook: { providerOutput: { summary: "idle", recommendedAbility: "wisdom", dc: 10, needsCheck: false, advantage: false, disadvantage: false, successNarration: "Time passes.", failureNarration: "Time passes.", proposedEffects: [], failureConsequence: null } } });
+    if (r.json.momentumEvent) fired = r.json;
+  }
+  ctx.assert("WIRE: momentumEvent crosses HTTP when the world fires", Boolean(fired && fired.momentumEvent?.committed), "momentumEvent present", fired ? JSON.stringify(fired.momentumEvent.committed) : "no fire in 4 idle turns");
+  const sM = (await scene(m)).json;
+  ctx.assert("WIRE: recentDevelopment rides the scene payload post-fire", Boolean(sM.recentDevelopment), "recentDevelopment present", JSON.stringify(sM.recentDevelopment)?.slice(0, 60));
+  void sPre;
+}
+
 const SCENARIOS = [
   { key: "consequence", title: "CONSEQUENCE — actions mutate persisted state", fn: scenarioConsequence },
   { key: "possession", title: "POSSESSION — claimed items checked vs real inventory (retcons fail, improvisation rolls)", fn: scenarioPossession },
@@ -1506,6 +1909,12 @@ const SCENARIOS = [
   { key: "movement", title: "MOVEMENT — a move-intent COMMITS the position (M.1) + geo-fog (M.2)", fn: scenarioMovement },
   { key: "delivery", title: "DELIVERY LOOP — accept -> take -> deliver -> reward, all committed (fully-committed loop)", fn: scenarioDelivery },
   { key: "momentum", title: "MOMENTUM \u2014 the world moves on its own (committed events, paced, never uncommitted)", fn: scenarioMomentum },
+  { key: "corpus", title: "REAL-PLAYER CORPUS — every real input honors the contract (commit, honest no-op, never lie)", fn: scenarioCorpus },
+  { key: "compound", title: "COMPOUND INTENTS — multi-part utterances: what commits, what silently drops (reported)", fn: scenarioCompound },
+  { key: "soak", title: "40-TURN SOAK — canon/possession/foreclosure/momentum/goals hold AT LENGTH + reload", fn: scenarioSoak },
+  { key: "adversarial2", title: "NEW-SURFACE PROBES — momentum/take/quest minting refused (coherence, extended)", fn: scenarioAdversarial2 },
+  { key: "rollbind", title: "ROLL-BINDING FUZZ — every contested roll resolves ONLY its bound stage", fn: scenarioRollbind },
+  { key: "wire", title: "WIRE CONTRACT — committed surfaces cross HTTP + scene payload, permanently", fn: scenarioWire },
   { key: "persistence", title: "PERSISTENCE — state survives a reload", fn: scenarioPersistence },
   { key: "gm_health", title: "GM HEALTH — real prose, responsive, on-topic", fn: scenarioGmHealth }
 ];
@@ -1613,6 +2022,8 @@ async function main() {
     console.log(`  RESULT: ❌ ${failed.length} scenario(s) FAILED a hard assertion: ${failed.map((r) => r.sc.key).join(", ")}`);
   }
   console.log("════════════════════════════════════════════════════════════");
+
+  printProseTally();
 
   return failed.length;
 }

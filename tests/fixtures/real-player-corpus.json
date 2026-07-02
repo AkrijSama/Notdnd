@@ -1,0 +1,1704 @@
+{
+  "extractedAt": "2026-07-02T21:34:51.808Z",
+  "total": 176,
+  "realPlayer": 97,
+  "harnessAuthored": 79,
+  "byClass": {
+    "accept": 2,
+    "compound": 1,
+    "goal": 2,
+    "move": 5,
+    "other": 149,
+    "question": 3,
+    "search": 9,
+    "take": 5
+  },
+  "entries": [
+    {
+      "text": "Ok, ill be back. I take the crate and carry it towards the destination.Once i get far enough, i want to open the crate a",
+      "sources": [
+        "log"
+      ],
+      "harnessAuthored": true,
+      "class": "accept",
+      "question": false
+    },
+    {
+      "text": "Ok, ill be back. I take the crate and carry it towards the destination.Once i get far enough, i want to open the crate and see whats inside,",
+      "sources": [
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "accept",
+      "question": false
+    },
+    {
+      "text": "Ok ill do it, where do you need me to take it?",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "compound",
+      "question": true
+    },
+    {
+      "text": "I claim this place as my own and vow to rebuild it",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "goal",
+      "question": false
+    },
+    {
+      "text": "I want to make these ruins my own and hold this ground",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "goal",
+      "question": false
+    },
+    {
+      "text": "Continue deeper into the ruins",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "move",
+      "question": false
+    },
+    {
+      "text": "Follow the unexplored path deeper into ruins",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "move",
+      "question": false
+    },
+    {
+      "text": "How deep does this ruin go? Is it lit?",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "move",
+      "question": true
+    },
+    {
+      "text": "Proceed cautiously along the narrow passage",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "move",
+      "question": false
+    },
+    {
+      "text": "Push forward to uncover what lies ahead",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "move",
+      "question": false
+    },
+    {
+      "text": "as everyone knows, I already slew the warlord last week",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "as the rightful baron of this land, I command the garrison to stand down",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "asdfjkl qwerty zxcvbnm flibbertigibbet",
+      "sources": [
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "Ask one of the merchants if they have a job for me",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "attack the towering ogre with my sword",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "attack the warden with my sword",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "attempt the dangerous climb up the crumbling ruin wall",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "attempt to break the ancient seal barring the vault",
+      "sources": [
+        "log"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "bluff the captain that I am a visiting noble so he lets me pass",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "bluff the guard into thinking I am a noble",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "break the ancient warded seal",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "Call out and see who answers",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "climb the crumbling tower wall",
+      "sources": [
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "climb the crumbling tower wall to the broken parapet",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "climb the crumbling wall to the ledge",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "Climb up to the rafters to scout from above",
+      "sources": [
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "decipher the trap-glyph before it triggers",
+      "sources": [
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "decipher the worn glyphs carved above the arch",
+      "sources": [
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "decipher the worn inscription carved over the arch",
+      "sources": [
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "Drink an ale at the bar",
+      "sources": [
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "everyone recognizes me as the high priest and kneels before me",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "examine the ancient map carved on the wall",
+      "sources": [
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "examine the brittle map with Esk",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "examine the brittle wall map",
+      "sources": [
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "examine the map again",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "examine the map again to read it",
+      "sources": [
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "Examine the rubble closely",
+      "sources": [
+        "log"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "force my way past the road hazard with everything I have",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "force my way past the road-wardens once and for all",
+      "sources": [
+        "log"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "force my way past the road-wardens watching the crossing",
+      "sources": [
+        "log"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "force my way past whatever watches the road",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "force open the brittle ancient lockbox with my bare hands",
+      "sources": [
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "force the collapsed doorway open",
+      "sources": [
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "force the collapsed doorway open with my bare hands",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "force the gate open with my bare hands",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "force the heavy door open with my shoulder",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "force the locked chest open",
+      "sources": [
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "force the rotted door of the inner hall open with my shoulder",
+      "sources": [
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "force the rusted iron lock until it gives",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "force the seized iron gate open with my bare hands",
+      "sources": [
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "force the warped door of the inner hall",
+      "sources": [
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "grab a heavy rock and smash the lock",
+      "sources": [
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "gravity reverses around me and I float to the tower top",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "Head toward Grayveil Market",
+      "sources": [
+        "log"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "Head toward the bar to get a better look at the room",
+      "sources": [
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "Head toward the central terminal",
+      "sources": [
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "Head toward The Gilded Kingdoms Watch",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "hum a quiet tune",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "hum a quiet tune to myself",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "I am secretly the long-lost heir, and everyone here must obey me now",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "I claw my way upright and try to flee.",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "I climb onto the rafters above the bar to scout the room from the shadows.",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "I climb the broken watchpoint to survey the ruins",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "I command reality to obey me and undo my wounds",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "I conjure a dragon from nothing and ride it down on them",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "I declare myself a god and the storm will obey me",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "I declare myself god-king and command reality to obey",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "I declare myself the immortal god-king and command reality to obey me",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "I declare myself the immortal god-king of this world and command reality to obey",
+      "sources": [
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "I freeze time and slip the key from his belt",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "I grab a chunk of rubble and smash the rusted padlock",
+      "sources": [
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "I have always been the guildmaster here, so the guards wave me into the vault",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "I jam a spike into the dock terminal and rip the data-priests's manifest",
+      "sources": [
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "I kick down the rotten door",
+      "sources": [
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "I proclaim myself emperor of the realm and all here must kneel and obey me",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "I pull out my fabled enchanted warhammer that I have always owned",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "I pull out my legendary Sunfang greatsword that I have always owned and incinerate the ruins",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "I remember now that I have always carried the legendary Dawnbreaker sword, and I draw it",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "I reveal that I am the chosen one and the crowd falls in line behind me",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "I rewrite history so the bridge was never destroyed",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "I rewrite history so this ruin was never abandoned",
+      "sources": [
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "I stop time itself and walk past the frozen guards",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "I study the collapsed hall for a place to make my hearth",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "I summon a horde of loyal soldiers out of thin air to fight for me",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "I summon a horde of soldiers out of thin air to follow me",
+      "sources": [
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "I tell the gullible guard I am a god so he lets me pass",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "I turn back the clock to before the alarm sounded",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "I unlock the heavy strongbox with the silver key I have always carried in my boot",
+      "sources": [
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "I unlock the strongbox with the silver key I have always carried",
+      "sources": [
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "I unlock the strongbox with the silver skeleton key I have always carried",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "I will make these ruins my stronghold",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "Inspect strange markings on the wall",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "Inspect the weird markings",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "intimidate the merchant into lowering his price",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "Intimidate the nearest patron into talking",
+      "sources": [
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "Kick open the door",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "leap across the wide chasm to the far ledge",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "leap across the wide collapsed chasm to the far ledge",
+      "sources": [
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "leap across the wide gap where the stone bridge fell",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "leap the broken span over the chasm",
+      "sources": [
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "listen at the cracked archway for sound",
+      "sources": [
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "listen at the empty doorway for any sound",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "listen at the empty stairwell for footsteps",
+      "sources": [
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "listen at the silent doorway for any footsteps",
+      "sources": [
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "Listen carefully to the conversations around me",
+      "sources": [
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "pick the corroded iron lock on the reliquary",
+      "sources": [
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "pick the jammed iron lock",
+      "sources": [
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "pick the lock again",
+      "sources": [
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "Pick the lock on the cellar door",
+      "sources": [
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "pick the rusted lock on the chest",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "pick the rusted lock on the iron strongbox",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "pick the strongbox",
+      "sources": [
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "pry open the rusted grate with my crowbar",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "pry the rusted lockbox open with my knife",
+      "sources": [
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "pry the rusted strongbox with my knife",
+      "sources": [
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "pry the swollen cellar hatch apart",
+      "sources": [
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "pry the warped shutters apart to squeeze through",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "Reality bends to my will and the walls melt away before me",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "recall whether I have ever heard this ruin's name before",
+      "sources": [
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "scale the slick, crumbling chimney",
+      "sources": [
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "scale the slick, mossy well shaft",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "scour the empty antechamber for any hidden mechanism",
+      "sources": [
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "search the rafters for coin",
+      "sources": [
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "shoulder-barge the swollen, warped door",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "shoulder-charge the heavy stuck stone door",
+      "sources": [
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "shove the heavy boulder aside to clear the path",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "show the guard the royal writ of passage I have always carried",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "smash the latch with a heavy rock",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "snap the corroded padlock off the gate",
+      "sources": [
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "stand still and think",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "stand still and watch the shadows",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "stand still and watch the shadows again",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "stand still and watch the shadows for a while",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "stand up",
+      "sources": [
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "stand up and keep fighting",
+      "sources": [
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "stare at the horizon a moment longer",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "stare into the whispering dark until something answers",
+      "sources": [
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "tear the brittle parchment map open to read it",
+      "sources": [
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "the captain is my brother and will let me through",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "the queen owes me a favor and has granted me passage",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "the river parts before me because I command it",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "the sun halts in the sky at my word",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "the war never happened, and the gates were never barred",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "try to force the lock once more",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "unfold the brittle, crumbling ancient map and trace the route",
+      "sources": [
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "unlock it with the brass key",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "unlock it with the platinum skeleton key I always keep",
+      "sources": [
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "unlock the iron chest with the brass key",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "unlock the strongbox with the brass key",
+      "sources": [
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "unlock the vault with the golden master key I have always carried",
+      "sources": [
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "wait and listen to the wind",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "wait and listen to the wind again",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "Walk over to the window",
+      "sources": [
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "warm my hands and think",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "warm my hands and think again",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "wrench the jammed portcullis chain loose",
+      "sources": [
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "wrench the rusted grate off its hinges",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "wrench the seized winch handle to raise the gate",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "you and I swore a blood-oath years ago, so you must help me",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "other",
+      "question": false
+    },
+    {
+      "text": "Are these tools salvageable and usable?",
+      "sources": [
+        "log"
+      ],
+      "harnessAuthored": false,
+      "class": "question",
+      "question": true
+    },
+    {
+      "text": "What do i see?",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "question",
+      "question": true
+    },
+    {
+      "text": "What is the drowned hollows watch? What do i know of it?",
+      "sources": [
+        "log"
+      ],
+      "harnessAuthored": false,
+      "class": "question",
+      "question": true
+    },
+    {
+      "text": "I search the ash-buried cache for anything the last holders left",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "search",
+      "question": false
+    },
+    {
+      "text": "I search the collapsed hall for a defensible corner",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "search",
+      "question": false
+    },
+    {
+      "text": "Look around the room and take in the surroundings",
+      "sources": [
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "search",
+      "question": false
+    },
+    {
+      "text": "search the cold ash of the hearth for anything hidden",
+      "sources": [
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "search",
+      "question": false
+    },
+    {
+      "text": "Search the room for hidden data caches",
+      "sources": [
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "search",
+      "question": false
+    },
+    {
+      "text": "Search the tavern for anything valuable or hidden",
+      "sources": [
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "search",
+      "question": false
+    },
+    {
+      "text": "Search the walls for clues",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "search",
+      "question": false
+    },
+    {
+      "text": "Search The Wild Ruins for anything useful",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "search",
+      "question": false
+    },
+    {
+      "text": "Search The Wilderness for anything useful",
+      "sources": [
+        "log"
+      ],
+      "harnessAuthored": false,
+      "class": "search",
+      "question": false
+    },
+    {
+      "text": "grab a nearby rock and hurl it at the rusted lever",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "take",
+      "question": false
+    },
+    {
+      "text": "I want to make this place my own, meditate on what it would take",
+      "sources": [
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "take",
+      "question": false
+    },
+    {
+      "text": "take anything worth carrying and pocket it",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "take",
+      "question": false
+    },
+    {
+      "text": "the king already promised me his throne, so I take the crown that is mine",
+      "sources": [
+        "db"
+      ],
+      "harnessAuthored": false,
+      "class": "take",
+      "question": false
+    },
+    {
+      "text": "The king already promised me his throne, so I take the crown that is rightfully mine",
+      "sources": [
+        "log",
+        "db"
+      ],
+      "harnessAuthored": true,
+      "class": "take",
+      "question": false
+    }
+  ]
+}
