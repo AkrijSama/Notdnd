@@ -1260,6 +1260,14 @@ async function scenarioDelivery(ctx) {
   ctx.assert("STAKES(fail): the miss COMMITTED a real cost (HP dropped, tracked)",
     typeof hpOf(sMiss).current === "number" && hpOf(sMiss).current < hpBefore,
     `hp < ${hpBefore}`, `hp ${hpBefore} -> ${hpOf(sMiss).current}`);
+  // ROLL-COLLISION regression: TWO kind:"check" stages are live right here (this
+  // road hazard + the failOnMiss vault trial, active since the player reached the
+  // giver's location). The road MISS above must resolve ONLY the hazard stage —
+  // before roll-binding (quests.js checkRollBinds) this exact miss silently and
+  // PERMANENTLY failed the trial, a quest the player never attempted.
+  const trialAfterMiss = ((await call(`/api/solo/runs/${r.runId}`, { token: r.token })).json.run?.quests || {}).quest_trial;
+  ctx.assert("STAKES(fail): the road miss did NOT silently fail the vault trial (roll binding holds)",
+    trialAfterMiss?.status === "active", "trial still active", `trial:${trialAfterMiss?.status ?? "missing"}`);
   const pass = await act(r, { type: "attempt", intent: "force my way past the road hazard with everything I have",
     testHook: hazardHook(20, null) });
   const sPass = (await scene(r)).json;

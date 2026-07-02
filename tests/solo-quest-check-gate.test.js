@@ -84,7 +84,10 @@ test("buildTrialQuest shape is genuine (2 stages: reach -> check+failOnMiss)", (
 test("reaching the check stage and MISSING the check FAILS the quest in tracked state", async () => {
   const run = await freshCampaignRun("cg-fail@notdnd.local");
   // Reach the check stage (stage 1) — the reach setup already proven separately.
+  // The decisive roll is BOUND to the trial's place + subject (roll-collision
+  // fix), so the attempt happens AT the trial location with a seal-directed intent.
   run.quests[TRIAL_QUEST_ID].stage = 1;
+  run.currentLocationId = "second_location";
 
   const before = getSoloRun(run.runId); // eslint-disable-line no-unused-vars
   const resolved = resolveSoloAction(run, checkAttempt(1)); // forced botch
@@ -102,6 +105,7 @@ test("reaching the check stage and MISSING the check FAILS the quest in tracked 
 test("passing the check COMPLETES the trial (final stage) in tracked state", async () => {
   const run = await freshCampaignRun("cg-pass@notdnd.local");
   run.quests[TRIAL_QUEST_ID].stage = 1;
+  run.currentLocationId = "second_location";
 
   const resolved = resolveSoloAction(run, checkAttempt(20)); // forced success
   assert.equal(resolved.ok, true);

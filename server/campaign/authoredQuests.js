@@ -46,6 +46,45 @@ function flavorFor(tone) {
   return TRIAL_FLAVOR[key] || TRIAL_FLAVOR.default;
 }
 
+// ── Check-stage subject keywords (roll binding) ─────────────────────────────
+// quests.js checkRollBinds: a kind:"check" stage only consumes rolls whose
+// player-typed intent references the stage's SUBJECT (word-boundary prefix
+// match). Derived deterministically from the same flavor strings the objective
+// text shows the player, so the words the objective teaches are the words that
+// bind. Stopworded + crudely stemmed ("warded"→"ward" matches "ward the …"/
+// "warded …"); VERBS are deliberately excluded (trial verb "force" would
+// collide with "force my way past the toll gang").
+const SUBJECT_STOPWORDS = new Set([
+  "the", "a", "an", "of", "and", "that", "its", "it", "will", "not", "into",
+  "who", "what", "any", "every", "has", "have", "are", "is", "in", "on", "at",
+  "to", "do", "does", "after", "they", "them", "their", "his", "her", "you",
+  "your", "old", "new", "way", "hold", "shape", "sunk", "door"
+]);
+function stemToken(word) {
+  const s = String(word || "");
+  return s.length >= 5 ? s.replace(/(?:ings?|ers?|ed|es)$/, "") : s;
+}
+function subjectKeywordsFrom(...texts) {
+  const tokens = texts
+    .join(" ")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, " ")
+    .split(/[\s-]+/)
+    .filter((word) => word.length >= 3 && !SUBJECT_STOPWORDS.has(word))
+    .map(stemToken);
+  return [...new Set(tokens)];
+}
+
+// The road-hazard binding list: how players actually phrase getting past a road
+// obstacle ("sneak PAST", "bribe the TOLL men", "charge the CHECKPOINT", "fight
+// the BANDITs"). Fixed and tone-independent — every tone's hazard is an
+// obstruction ON THE ROAD, and the objective text ("… your way past") teaches
+// the binding word. Distinct by construction from the trial's seal/vault nouns.
+const ROAD_HAZARD_KEYWORDS = [
+  "road", "past", "toll", "gate", "guard", "bandit", "warden", "scav",
+  "checkpoint", "crossing", "ambush", "patrol", "watcher", "blockade"
+];
+
 /**
  * Builds the check-gated, losable trial side-quest for a CAMPAIGN run. Its final
  * stage gates on the player's d20 (completion.kind "check") and FAILS the quest on
@@ -71,8 +110,21 @@ export function buildTrialQuest(world = {}, options = {}) {
     },
     {
       // CHECK-GATED + FAILABLE: the decisive roll. One attempt; a miss ends it.
+      // BOUND (quests.js checkRollBinds): only a seal/vault-DIRECTED attempt AT
+      // this place is the decisive roll — an unrelated contested roll (the
+      // delivery road hazard, a random climb) can neither complete nor fail it.
       objective: `Attempt to ${f.verb} ${f.seal} — you get ONE try. Botch it and ${f.ruin} collapses, losing this trail for good.`,
-      completion: { kind: "check" },
+      completion: {
+        kind: "check",
+        locationId: secondLocationId,
+        // Road words are EXCLUDED even when the tone's seal shares one (the
+        // sword_sorcery "iron gate" vs the toll-"gate"): a road-directed miss
+        // must never be able to fail the trial. A too-narrow bind costs a
+        // retry with fuller words; a too-wide bind loses the quest forever.
+        subjectKeywords: subjectKeywordsFrom(f.seal, f.ruin).filter(
+          (k) => !ROAD_HAZARD_KEYWORDS.includes(k)
+        )
+      },
       failOnMiss: true
     }
   ];
@@ -198,10 +250,15 @@ export function buildDeliveryOffer(world = {}, options = {}) {
         // (damage/foreclosure via the consequence spine) — the delivery has a
         // real cost, but one bad roll doesn't void the arc (failOnMiss stays off;
         // losable-quest teeth are the trial quest's job).
+        // BOUND by SUBJECT only (no location): the confrontation is "the road",
+        // which is not a graph location — players roll it from the giver's spot
+        // or en route. Keywords are the road-obstacle words the objective
+        // teaches ("… your way past"), so a vault-directed attempt never
+        // consumes — and can never be consumed by — this stage.
         objective:
           `The way to ${destinationName} is not clear: ${f.hazard}. ` +
           `Force, sneak, or talk your way past — a real attempt, and failing it will cost you.`,
-        completion: { kind: "check" }
+        completion: { kind: "check", subjectKeywords: [...ROAD_HAZARD_KEYWORDS] }
       },
       {
         objective: `Carry ${f.cargo} the rest of the way to ${destinationName} and hand it over.`,

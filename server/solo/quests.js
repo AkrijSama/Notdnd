@@ -260,6 +260,51 @@ function actionCheckResult(actionResult) {
   return isPlainObject(cr) ? cr : null;
 }
 
+// ── Check-stage ROLL BINDING ────────────────────────────────────────────────
+// Without binding, two concurrent kind:"check" stages SHARE every contested
+// roll: any d20 this turn is "the" decisive roll for EVERY active check stage,
+// so missing the delivery road hazard silently and permanently FAILED the
+// (failOnMiss) vault trial — a quest the player never attempted. Binding is
+// DETERMINISTIC and decided purely from existing server state — the LLM is
+// never asked which stage a roll belongs to. Two optional completion fields:
+//   locationId       — only rolls made AT that location can resolve the stage
+//                      (run.currentLocationId; a contested attempt never moves
+//                      the player, so this is where the roll happened).
+//   subjectKeywords  — the action's player-typed intent must reference the
+//                      stage's subject (lowercase word-boundary prefix match,
+//                      the same player-derived-token doctrine as take.js /
+//                      movement.js detection). A roll about something else is
+//                      not this stage's roll.
+// Both absent → legacy semantics (any roll binds), so generic content and
+// raw-shaped quests keep today's behavior.
+function checkRollBinds(run, completion, actionResult) {
+  if (isString(completion.locationId) && run.currentLocationId !== completion.locationId) {
+    return false;
+  }
+  const keywords = Array.isArray(completion.subjectKeywords)
+    ? completion.subjectKeywords.filter((k) => isString(k))
+    : [];
+  if (keywords.length > 0) {
+    const intent = String(actionResult?.action?.intent || "").toLowerCase();
+    if (!intent) {
+      return false;
+    }
+    const matched = keywords.some((k) => {
+      const token = k.toLowerCase().trim();
+      if (!token) {
+        return false;
+      }
+      // Word-boundary PREFIX match: keyword "seal" matches "seal"/"sealed" but
+      // "way" never matches "away". Keywords are escaped — never patterns.
+      return new RegExp(`\\b${token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`).test(intent);
+    });
+    if (!matched) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function predicateMet(run, quest, actionResult) {
   // Read the ACTIVE stage's completion (multi-stage quests), falling back to the
   // mirrored top-level completion for legacy single-predicate quests.
@@ -288,11 +333,13 @@ function predicateMet(run, quest, actionResult) {
         run.currentLocationId === completion.targetLocationId
       );
     case "check": {
-      // CHECK-GATED stage — advances only when the player's roll this turn SUCCEEDS.
-      // A failed check does NOT advance (and, if failOnMiss, fails the quest below),
-      // so the player can genuinely lose a quest rather than grind it out.
+      // CHECK-GATED stage — advances only when the player's roll this turn SUCCEEDS
+      // AND the roll is BOUND to this stage (location/subject relevance — see
+      // checkRollBinds). A failed bound check does not advance (and, if failOnMiss,
+      // fails the quest below), so the player can genuinely lose a quest; an
+      // UNRELATED roll neither advances nor fails it.
       const cr = actionCheckResult(actionResult);
-      return Boolean(cr) && cr.success === true;
+      return Boolean(cr) && cr.success === true && checkRollBinds(run, completion, actionResult);
     }
     default:
       return false;
@@ -302,14 +349,16 @@ function predicateMet(run, quest, actionResult) {
 // A check-gated, failable stage fails the quest when the player rolls and MISSES.
 // This is the teeth on the quest spine: not every objective is achievable, and a
 // botched check can end the line.
-function questFailedThisTurn(quest, actionResult) {
+function questFailedThisTurn(run, quest, actionResult) {
   const stage = quest.stages?.[quest.stage] ?? quest;
   const completion = stage?.completion;
   if (!isPlainObject(completion) || completion.kind !== "check" || stage.failOnMiss !== true) {
     return false;
   }
   const cr = actionCheckResult(actionResult);
-  return Boolean(cr) && cr.success === false;
+  // The SAME binding as the pass path: an unrelated miss (a road hazard two
+  // contexts away) must never fail a stage it was not aimed at.
+  return Boolean(cr) && cr.success === false && checkRollBinds(run, completion, actionResult);
 }
 
 /**
@@ -349,7 +398,7 @@ export function advanceQuests(run, actionResult = {}) {
       continue;
     }
     // Failure first: a missed failable check ends the quest in defeat.
-    if (questFailedThisTurn(quest, actionResult)) {
+    if (questFailedThisTurn(run, quest, actionResult)) {
       quest.status = "failed";
       updated = true;
       failed.push(quest);

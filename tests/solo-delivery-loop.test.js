@@ -128,13 +128,16 @@ test("deliver predicate + REWARD: completing the delivery grants pay, consumes t
 
   // STAKES: a MISSED check does NOT advance (and, with failOnMiss off, does not
   // fail the quest — the cost of the miss is the attempt's own consequence).
-  const missed = advanceQuests(withCrate, { attemptResult: { success: false, checkResult: { success: false } } });
+  // The hazard stage is roll-BOUND (quests.js checkRollBinds): the action's
+  // intent must reference the road obstacle, so the drive carries one.
+  const roadIntent = { intent: "force my way past the road-wardens" };
+  const missed = advanceQuests(withCrate, { action: roadIntent, attemptResult: { success: false, checkResult: { success: false } } });
   assert.equal(missed.advanced.length, 0, "a failed check does not clear the road");
   assert.equal(withCrate.quests[DELIVERY_QUEST_ID].stage, 1, "still at the hazard stage after a miss");
   assert.equal(withCrate.quests[DELIVERY_QUEST_ID].status, "active", "a miss costs, it does not void the arc");
 
   // STAKES: a SUCCESSFUL check clears the road -> the deliver stage.
-  const cleared = advanceQuests(withCrate, { attemptResult: { success: true, checkResult: { success: true } } });
+  const cleared = advanceQuests(withCrate, { action: roadIntent, attemptResult: { success: true, checkResult: { success: true } } });
   assert.equal(cleared.advanced.length, 1, "a passed check advances past the hazard");
   assert.equal(withCrate.quests[DELIVERY_QUEST_ID].stage, 2);
 
@@ -253,7 +256,8 @@ test("SUGGESTIONS: the objective tracks the quest's ACTUAL stage index (not stuc
   advanceQuests(withCrate, { attemptResult: { success: true } }); // obtain_item -> hazard stage
   assert.match(activeObjective(withCrate), /The way to The Ashen Edge is not clear/i,
     "after taking the crate the chip objective is the HAZARD stage, not the already-done take stage");
-  advanceQuests(withCrate, { attemptResult: { success: true, checkResult: { success: true } } }); // hazard -> deliver
+  // hazard -> deliver: the bound hazard stage needs a road-directed intent.
+  advanceQuests(withCrate, { action: { intent: "force my way past the road-wardens" }, attemptResult: { success: true, checkResult: { success: true } } });
   assert.match(activeObjective(withCrate), /Carry .*the rest of the way to The Ashen Edge/i,
     "after clearing the road the chip objective is the DELIVER stage");
 });
