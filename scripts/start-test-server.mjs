@@ -10,6 +10,10 @@ process.env.NOTDND_DB_PATH = process.env.NOTDND_DB_PATH || dbPath;
 process.env.NOTDND_MEMORY_ROOT = process.env.NOTDND_MEMORY_ROOT || memoryRoot;
 process.env.NOTDND_HOST = process.env.NOTDND_HOST || "127.0.0.1";
 process.env.PORT = process.env.PORT || "4173";
+// Every server spawned by a test battery (smoke/smoke-ai/e2e) is BATTERY
+// traffic: the AI layer must skip the subscription-bound codex lane no matter
+// what chain the inherited env configures. See openrouter.js batteryModeActive.
+process.env.NOTDND_BATTERY = process.env.NOTDND_BATTERY || "1";
 
 function cleanup() {
   try {

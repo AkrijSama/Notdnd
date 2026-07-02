@@ -206,6 +206,30 @@ CI:
   - `npm run smoke`
   - `npm run e2e`
 
+## Personal-testing "codex" lane (owner only)
+
+A flag-gated GM lane that routes calls through the **owner's ChatGPT
+subscription** (Codex backend, gpt-5.5) via a local sidecar proxy
+(`server/ai/codex-proxy.mjs`). It exists for two testing instruments only:
+prose-ceiling A/B (`scripts/prose-ab.mjs`) and interpreter-reliability
+comparison (`scripts/interpreter-ab.mjs`).
+
+Hard limits — this is an instrument, not infrastructure:
+
+- **Subscription-bound**: rate-limited to the owner's rolling usage window,
+  no SLA, and the endpoint contract is unofficial and can change without
+  notice. It must **never serve external users**.
+- **Off by default**: active only when `codex` is explicitly named in
+  `NOTDND_CLOUD_PROVIDER_CHAIN` (e.g. `codex-groq`). Unset = zero behavior
+  change.
+- **Never in batteries**: selfplay/smoke/e2e harness traffic always skips the
+  lane (`NOTDND_BATTERY` env or the `x-notdnd-battery` request header).
+- **Auth hygiene**: the sidecar reads the Codex CLI's login
+  (`~/.codex/auth.json`); its contents are treated like a password — never
+  logged, committed, or copied.
+
+See the "PERSONAL-TESTING codex lane" block in `.env.example` for the knobs.
+
 ## Optional AI env vars
 
 - `NOTDND_AI_PROVIDER`

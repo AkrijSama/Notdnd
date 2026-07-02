@@ -29,7 +29,7 @@ function loadDotenv() {
 loadDotenv();
 
 import { createAiJobProcessor } from "./ai/processor.js";
-import { generateNarrative, generateRaw, getCampaignUsage, getModelTiers } from "./ai/openrouter.js";
+import { generateNarrative, generateRaw, getCampaignUsage, getModelTiers, runWithBatteryContext } from "./ai/openrouter.js";
 import { appendTurnLog, logTurnEvent } from "./logging/sessionLog.js";
 import { generateWithProvider, listAiProviders, pollinationsEditConfigured } from "./ai/providers.js";
 import { detectImageExt, parseMultipartFile, readJsonBody, readRawBody, serveStatic, writeJson, writeText } from "./api/http.js";
@@ -2932,10 +2932,18 @@ const server = http.createServer(async (req, res) => {
   // it here, log with request context, and return a 500 instead of crashing.
   try {
     if ((req.url || "").startsWith("/api/")) {
-      const handled = await handleApi(req, res);
-      if (!handled) {
-        writeText(res, 404, "Not found");
-      }
+      // BATTERY GUARD: a request tagged by a test harness (selfplay/e2e/smoke
+      // send x-notdnd-battery) runs in a battery-scoped context so the AI layer
+      // skips the subscription-bound codex lane even on a server whose own env
+      // has that lane enabled. Everything else about the request is unchanged.
+      const isBattery = Boolean(req.headers["x-notdnd-battery"]);
+      const dispatch = async () => {
+        const handled = await handleApi(req, res);
+        if (!handled) {
+          writeText(res, 404, "Not found");
+        }
+      };
+      await (isBattery ? runWithBatteryContext(dispatch) : dispatch());
       return;
     }
 

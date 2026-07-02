@@ -1,3 +1,8 @@
+import fs from "node:fs";
+import path from "node:path";
+import os from "node:os";
+import { AsyncLocalStorage } from "node:async_hooks";
+
 // OpenAI-compatible chat-completions endpoint. Defaults to OpenRouter but can
 // point at any compatible provider (Gemini AI Studio, Groq, etc.) via env.
 // Brand rename (NotDND -> Inkborne): INKBORNE_* is read first, falling back to
@@ -82,6 +87,55 @@ const CLOUD_LANE_DEFAULTS = {
   }
 };
 
+// --- PERSONAL-TESTING "codex" lane (owner's ChatGPT subscription) -----------
+// Routes GM calls through the local codex-proxy sidecar (server/ai/codex-proxy.mjs)
+// to the Codex backend (gpt-5.5) using the Codex CLI's saved login. STRICTLY a
+// testing instrument for the owner's prose-ceiling A/B + interpreter-reliability
+// comparison: subscription-bound (rolling usage window, no SLA, unofficial
+// endpoint) and NEVER for external users. Active only when "codex" is named in
+// NOTDND_CLOUD_PROVIDER_CHAIN, and ALWAYS skipped for battery/harness callers.
+const CODEX_LANE_DEFAULTS = {
+  baseUrl: "http://127.0.0.1:8788/v1/chat/completions",
+  model: "gpt-5.5"
+};
+
+function codexAuthPath() {
+  return process.env.CODEX_AUTH_PATH || path.join(os.homedir(), ".codex", "auth.json");
+}
+
+// "Authenticated" = auth.json exists and carries an access token. The proxy does
+// the full `codex login status` check at ITS startup; this per-call check must
+// stay cheap (tiny file read, no process spawn) because it runs per GM call.
+function codexAuthenticated() {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(codexAuthPath(), "utf8"));
+    return Boolean(String(parsed?.tokens?.access_token || "").trim());
+  } catch {
+    return false;
+  }
+}
+
+// BATTERY GUARD: the selfplay/e2e/smoke batteries strip-mined the free cloud
+// tiers; they must never touch the owner's subscription window. Two signals,
+// either one skips the codex lane regardless of chain config:
+//   1. NOTDND_BATTERY env (set by harness processes / harness-spawned servers)
+//   2. request-scoped AsyncLocalStorage flag (set by the HTTP layer when a
+//      request carries the x-notdnd-battery header — covers a harness driving
+//      an ALREADY-RUNNING server whose own env has the chain enabled).
+const batteryAls = new AsyncLocalStorage();
+
+export function runWithBatteryContext(fn) {
+  return batteryAls.run({ battery: true }, fn);
+}
+
+function batteryModeActive() {
+  if (batteryAls.getStore()?.battery === true) {
+    return true;
+  }
+  const v = String((process.env.NOTDND_BATTERY ?? process.env.INKBORNE_BATTERY) || "").trim().toLowerCase();
+  return v !== "" && v !== "0" && v !== "false" && v !== "off";
+}
+
 function envFirst(names) {
   for (const name of names) {
     const v = String(process.env[name] || "").trim();
@@ -94,8 +148,36 @@ function envFirst(names) {
 
 // Builds ONE cloud lane: { name, provider } when its key is present, else
 // { name, skip } so the chain logs and moves on. Unknown lane names return null.
-function buildCloudLane(name) {
+// Exported for the A/B replay instruments (scripts/prose-ab.mjs).
+export function buildCloudLane(name) {
   const key = String(name || "").trim().toLowerCase();
+  if (key === "codex") {
+    if (batteryModeActive()) {
+      return { name: "codex", skip: "battery/harness caller — subscription lane never serves automated traffic" };
+    }
+    if (!codexAuthenticated()) {
+      return { name: "codex", skip: `codex CLI not authenticated (no usable ${codexAuthPath()})` };
+    }
+    const timeoutMs = Number(process.env.NOTDND_GM_CODEX_TIMEOUT_MS || process.env.INKBORNE_GM_CODEX_TIMEOUT_MS);
+    const model = String(process.env.CODEX_MODEL || "").trim() || CODEX_LANE_DEFAULTS.model;
+    return {
+      name: "codex",
+      provider: {
+        baseUrl: String(process.env.CODEX_PROXY_URL || "").trim() || CODEX_LANE_DEFAULTS.baseUrl,
+        model,
+        key: null,
+        // The proxy authenticates with the CLI's saved login — the lane itself
+        // carries NO key and must not trip ensureApiKey.
+        keyless: true,
+        local: false,
+        // gpt-5.5 is a reasoning model: a narration turn legitimately outlasts
+        // the tight cloud window, so it gets a LOCAL-ish per-attempt timeout.
+        timeoutMs: Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 60000,
+        // Transcript attribution: "narration: cloud (gpt-5.5 via codex) in Xms".
+        modelLabel: `${model} via codex`
+      }
+    };
+  }
   const spec = CLOUD_LANE_DEFAULTS[key];
   if (!spec) {
     return null;
@@ -437,7 +519,9 @@ async function requestOpenRouter(messages, model, options = {}) {
   const isLocal = Boolean(provider?.local);
   const LLM_BASE_URL = provider?.baseUrl || resolveLlmBaseUrl();
   let apiKey = "";
-  if (isLocal) {
+  if (isLocal || provider?.keyless === true) {
+    // Local Ollama and the codex-proxy lane authenticate out-of-band (or not at
+    // all) — requiring an API key here would wrongly throw MISSING_API_KEY.
     apiKey = String(provider?.key || "").trim();
   } else if (provider) {
     apiKey = String(provider.key || "").trim() || ensureApiKey();
@@ -476,7 +560,12 @@ async function requestOpenRouter(messages, model, options = {}) {
   // This distinguishes "slow-local-but-working" from "dead-cloud" WITHOUT masking:
   // a cloud call can never silently eat the whole budget, and a local call is given
   // the time it genuinely needs. Tunable via NOTDND_GM_{LOCAL,CLOUD}_TIMEOUT_MS.
-  const perAttemptTimeoutMs = isLocal ? gmLocalTimeoutMs() : gmCloudTimeoutMs();
+  // A lane may carry its own window (codex/gpt-5.5 is a reasoning model and
+  // legitimately outlasts the tight cloud window); otherwise local vs cloud.
+  const laneTimeoutMs = Number(provider?.timeoutMs);
+  const perAttemptTimeoutMs = Number.isFinite(laneTimeoutMs) && laneTimeoutMs > 0
+    ? laneTimeoutMs
+    : isLocal ? gmLocalTimeoutMs() : gmCloudTimeoutMs();
   const controller = typeof AbortController === "function" ? new AbortController() : null;
   const timer = controller ? setTimeout(() => controller.abort(), perAttemptTimeoutMs) : null;
   let response;
@@ -558,8 +647,11 @@ export async function requestViaCloudChain(messages, lanes, options = {}) {
     try {
       const res = await requestFn(messages, lane.provider.model, { ...laneOptions, provider: lane.provider });
       const latencyMs = Date.now() - t0;
-      console.warn(`[GM] cloud chain: SERVED by ${lane.name} (${lane.provider.model}) in ${latencyMs}ms`);
-      return { ...res, providerLabel: lane.name, latencyMs };
+      // modelLabel (e.g. "gpt-5.5 via codex") overrides the returned model string
+      // so the per-turn transcript attributes the LANE, not just the model name.
+      const servedModel = lane.provider.modelLabel || res.model;
+      console.warn(`[GM] cloud chain: SERVED by ${lane.name} (${servedModel}) in ${latencyMs}ms`);
+      return { ...res, model: servedModel, providerLabel: lane.name, latencyMs };
     } catch (laneError) {
       lastError = laneError;
       const latencyMs = Date.now() - t0;
@@ -639,6 +731,32 @@ async function requestWithFallback(messages, preferredModel, options = {}) {
   }
 }
 
+// --- GM-call capture (A/B replay raw material) -------------------------------
+// When NOTDND_GM_CAPTURE is truthy, every narrative/utility call's EXACT
+// messages are appended to data/logs/gm-capture.jsonl so scripts/prose-ab.mjs
+// can replay a specific turn's context against two named lanes verbatim.
+// Owner-testing instrument: off by default, best-effort, never throws.
+export function gmCapturePath() {
+  const root = process.env.NOTDND_LOGS_ROOT
+    ? path.resolve(process.env.NOTDND_LOGS_ROOT)
+    : path.resolve(process.cwd(), "data/logs");
+  return path.join(root, "gm-capture.jsonl");
+}
+
+function captureGmCall(campaignId, tier, messages) {
+  const flag = String(process.env.NOTDND_GM_CAPTURE || "").trim().toLowerCase();
+  if (!flag || flag === "0" || flag === "false" || flag === "off") {
+    return;
+  }
+  try {
+    const file = gmCapturePath();
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.appendFileSync(file, JSON.stringify({ ts: new Date().toISOString(), campaignId, tier, messages }) + "\n", "utf8");
+  } catch {
+    // Capture is debugging infra — it must never break a turn.
+  }
+}
+
 /**
  * Returns per-campaign AI token and cost usage for the current server session.
  * @param {string} campaignId
@@ -681,6 +799,7 @@ export function getModelTiers() {
  */
 export async function generateNarrative(messages, campaignId, options = {}) {
   const tiers = resolveModelTiers();
+  captureGmCall(campaignId, "narrative", messages);
   const response = await requestWithFallback(messages, tiers.narrative, options);
   pushUsage(campaignId, response.model === tiers.fallback ? "fallback" : "narrative", response.model, response.tokensUsed, response.cost);
   return response;
@@ -695,6 +814,7 @@ export async function generateNarrative(messages, campaignId, options = {}) {
  */
 export async function generateUtility(messages, campaignId, options = {}) {
   const tiers = resolveModelTiers();
+  captureGmCall(campaignId, "utility", messages);
   const response = await requestWithFallback(messages, tiers.utility, options);
   pushUsage(campaignId, response.model === tiers.fallback ? "fallback" : "utility", response.model, response.tokensUsed, response.cost);
   return response;
