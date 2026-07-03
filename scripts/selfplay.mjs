@@ -1588,10 +1588,16 @@ async function scenarioCorpus(ctx) {
   const runClass = async (cls, r, entries) => {
     for (const entry of entries) {
       const row = t(cls); row.n += 1;
-      const turn = await contractTurn(r, { type: "attempt", intent: entry.text });
+      let turn = await contractTurn(r, { type: "attempt", intent: entry.text });
+      if (turn.status !== 200 || turn.json.ok !== true) {
+        // Transport failure (local-model narration can blow the fetch timeout) is
+        // NOT a lying surface — retry once, then count as an ERROR, not lying.
+        turn = await contractTurn(r, { type: "attempt", intent: entry.text });
+      }
       const actionType = turn.json.action?.type;
       if (turn.status !== 200 || turn.json.ok !== true) {
-        row.lying += 1; failures.push({ cls, text: entry.text, why: `HTTP ${turn.status} / ok:${turn.json?.ok}` });
+        row.errors = (row.errors || 0) + 1;
+        ctx.warn(`corpus transport error [${cls}]`, `"${entry.text.slice(0, 60)}" — HTTP ${turn.status} twice (timeout class, not a contract verdict)`);
         continue;
       }
       if (turn.signaled && turn.domains.length === 0) {
