@@ -178,6 +178,39 @@ export function buildCloudLane(name) {
       }
     };
   }
+  // --- PAID "openrouter" lane (the graded-session lane) ----------------------
+  // Free tiers mathematically cannot carry a graded session (Groq 100k TPD dies
+  // ~turn 10-15; Gemini free daily dies next — two sessions killed in one day).
+  // This lane spends REAL credit: paid model id (never :free), with OpenRouter
+  // provider routing preferring Groq for latency (allow_fallbacks keeps other
+  // PAID providers as backup — the model id itself is the paid SKU). Battery
+  // guard mirrors the codex lane: automated traffic never spends the owner's $10.
+  if (key === "openrouter") {
+    if (batteryModeActive()) {
+      return { name: "openrouter", skip: "battery/harness caller — the PAID lane never serves automated traffic" };
+    }
+    const paidKey = envFirst(["OPENROUTER_API_KEY", "INKBORNE_LLM_API_KEY", "NOTDND_LLM_API_KEY"]);
+    if (!paidKey) {
+      return { name: "openrouter", skip: "no OPENROUTER_API_KEY" };
+    }
+    const model = String(process.env.OPENROUTER_LANE_MODEL || "").trim() || "meta-llama/llama-3.3-70b-instruct";
+    const order = (String(process.env.OPENROUTER_PROVIDER_ORDER || "").trim() || "groq")
+      .split(/[\s,]+/)
+      .filter(Boolean);
+    return {
+      name: "openrouter",
+      provider: {
+        baseUrl: String(process.env.OPENROUTER_LANE_BASE_URL || "").trim() || "https://openrouter.ai/api/v1/chat/completions",
+        model,
+        key: paidKey,
+        local: false,
+        // OpenRouter provider routing (docs: provider.order, lowercase slugs):
+        // prefer Groq's serving of the PAID model for sub-3s latency; fall back
+        // to other paid providers of the same model if Groq is down.
+        extraBody: { provider: { order, allow_fallbacks: true } }
+      }
+    };
+  }
   const spec = CLOUD_LANE_DEFAULTS[key];
   if (!spec) {
     return null;
@@ -543,6 +576,15 @@ async function requestOpenRouter(messages, model, options = {}) {
   }
   if (Array.isArray(options.stopSequences) && options.stopSequences.length > 0) {
     body.stop = options.stopSequences.filter((entry) => String(entry || "").trim());
+  }
+  // Lane-scoped extra body fields (e.g. the paid OpenRouter lane's provider
+  // routing preference). Additive only — never overrides the core fields above.
+  if (provider?.extraBody && typeof provider.extraBody === "object") {
+    for (const [extraKey, extraValue] of Object.entries(provider.extraBody)) {
+      if (!(extraKey in body)) {
+        body[extraKey] = extraValue;
+      }
+    }
   }
 
   const headers = {

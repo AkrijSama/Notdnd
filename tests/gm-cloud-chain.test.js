@@ -11,7 +11,10 @@ const CHAIN_ENV = [
   "GEMINI_API_KEY", "INKBORNE_GEMINI_API_KEY", "GROQ_API_KEY", "INKBORNE_GROQ_API_KEY",
   "GEMINI_MODEL", "GROQ_MODEL", "GEMINI_BASE_URL", "GROQ_BASE_URL",
   "NOTDND_MOCK_OPENROUTER", "INKBORNE_MOCK_OPENROUTER", "INKBORNE_GM_LOCAL_FALLBACK", "NOTDND_GM_LOCAL_FALLBACK",
-  "INKBORNE_FORBIDDEN_LLM_MODEL", "NOTDND_FORBIDDEN_LLM_MODEL"
+  "INKBORNE_FORBIDDEN_LLM_MODEL", "NOTDND_FORBIDDEN_LLM_MODEL",
+  "OPENROUTER_API_KEY", "INKBORNE_LLM_API_KEY", "NOTDND_LLM_API_KEY",
+  "OPENROUTER_LANE_MODEL", "OPENROUTER_PROVIDER_ORDER", "OPENROUTER_LANE_BASE_URL",
+  "NOTDND_BATTERY", "INKBORNE_BATTERY"
 ];
 function snapshotEnv() { const s = {}; for (const k of CHAIN_ENV) s[k] = process.env[k]; return s; }
 function restoreEnv(s) { for (const k of CHAIN_ENV) { if (s[k] === undefined) delete process.env[k]; else process.env[k] = s[k]; } }
@@ -131,5 +134,48 @@ test("ALL cloud fail + local fallback disabled => throws (no silent blank)", asy
     const chain = resolveCloudChain();
     const { fn } = fakeRequestFn({ gemini: 429, groq: 500 });
     await assert.rejects(() => requestViaCloudChain(MSGS, chain, { __requestFn: fn }), /groq|500|cloud chain/i);
+  });
+});
+
+
+// ── PAID "openrouter" lane (the graded-session lane) ─────────────────────────
+import { buildCloudLane } from "../server/ai/openrouter.js";
+
+test("openrouter lane: paid model (never :free), Groq-preferred provider routing", () => {
+  withEnv({ OPENROUTER_API_KEY: "sk-or-test" }, () => {
+    const lane = buildCloudLane("openrouter");
+    assert.ok(lane.provider, "lane builds with a key");
+    assert.equal(lane.provider.model, "meta-llama/llama-3.3-70b-instruct");
+    assert.ok(!lane.provider.model.includes(":free"), "the paid SKU, never :free");
+    assert.deepEqual(lane.provider.extraBody, { provider: { order: ["groq"], allow_fallbacks: true } });
+    assert.match(lane.provider.baseUrl, /openrouter\.ai/);
+  });
+});
+
+test("openrouter lane: model + provider order are env-overridable", () => {
+  withEnv({ OPENROUTER_API_KEY: "sk-or-test", OPENROUTER_LANE_MODEL: "meta-llama/llama-3.1-70b-instruct", OPENROUTER_PROVIDER_ORDER: "groq, deepinfra" }, () => {
+    const lane = buildCloudLane("openrouter");
+    assert.equal(lane.provider.model, "meta-llama/llama-3.1-70b-instruct");
+    assert.deepEqual(lane.provider.extraBody.provider.order, ["groq", "deepinfra"]);
+  });
+});
+
+test("openrouter lane: BATTERY GUARD — automated traffic never spends credit", () => {
+  withEnv({ OPENROUTER_API_KEY: "sk-or-test", NOTDND_BATTERY: "1" }, () => {
+    const lane = buildCloudLane("openrouter");
+    assert.ok(lane.skip && /PAID lane/.test(lane.skip), `expected battery skip, got ${JSON.stringify(lane)}`);
+  });
+});
+
+test("openrouter lane: missing key skips gracefully; chain composes openrouter-gemini", () => {
+  withEnv({}, () => {
+    const lane = buildCloudLane("openrouter");
+    assert.ok(lane.skip && /OPENROUTER_API_KEY/.test(lane.skip));
+  });
+  withEnv({ OPENROUTER_API_KEY: "sk-or-test", GEMINI_API_KEY: "g-test", NOTDND_CLOUD_PROVIDER_CHAIN: "openrouter-gemini" }, () => {
+    const chain = resolveCloudChain();
+    assert.equal(chain.length, 2);
+    assert.equal(chain[0].name, "openrouter");
+    assert.equal(chain[1].name, "gemini");
   });
 });
