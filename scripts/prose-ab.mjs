@@ -94,12 +94,22 @@ function findCaptureForTurn(runId, turnNumber, captures) {
   return candidates[0];
 }
 
+// Lane spec: "local", "groq", "gemini", "codex", "openrouter", or
+// "<provider>:<model>" to pin a specific served model on that provider
+// (e.g. openrouter:openai/gpt-oss-120b) for prose-ceiling comparisons.
 function laneByName(name) {
-  const key = String(name).trim().toLowerCase();
+  const raw = String(name).trim();
+  const [providerKey, ...modelParts] = raw.split(":");
+  const key = providerKey.toLowerCase();
+  const pinnedModel = modelParts.join(":").trim();
   if (key === "local") {
     return { name: "local", provider: resolveGmProvider("mainline", { fallback: true }) };
   }
   const lane = buildCloudLane(key);
+  if (lane?.provider && pinnedModel) {
+    lane.provider = { ...lane.provider, model: pinnedModel };
+    lane.name = `${key}:${pinnedModel}`;
+  }
   if (!lane) {
     console.error(`Unknown lane "${name}" (expected local|codex|gemini|groq).`);
     process.exit(1);

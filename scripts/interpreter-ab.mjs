@@ -113,6 +113,66 @@ const CASES = [
     targetId: null,
     location: { name: "Roadside Camp", description: "A small fire, a bedroll, the road quiet in both directions." },
     hp: { current: 10, max: 15 }
+  },
+  {
+    intent: "force the swollen shutter open with my crowbar",
+    targetId: "obj_shutter",
+    location: { name: "Abandoned Mill", description: "Grain dust and rot; one shuttered window faces the millpond." },
+    hp: { current: 15, max: 15 }
+  },
+  {
+    intent: "intimidate the toll-keeper into waving me through",
+    targetId: "npc_tollkeeper",
+    location: { name: "South Toll Bridge", description: "A squat gatehouse; the toll-keeper leans on a halberd." },
+    hp: { current: 12, max: 12 }
+  },
+  {
+    intent: "wade across the flooded ford holding my pack overhead",
+    targetId: "loc_ford",
+    location: { name: "Flooded Ford", description: "Brown water over the road markers, current tugging at the reeds." },
+    hp: { current: 8, max: 14 }
+  },
+  {
+    intent: "disarm the tripwire strung across the cellar stairs",
+    targetId: "obj_tripwire",
+    location: { name: "Smuggler's Cellar", description: "A taut wire glints at ankle height on the third step." },
+    hp: { current: 14, max: 14 }
+  },
+  {
+    intent: "read the faded ledger by candlelight for the owner's name",
+    targetId: "obj_ledger",
+    location: { name: "Counting Room", description: "A water-stained ledger, half its ink blotted away." },
+    hp: { current: 13, max: 13 }
+  },
+  {
+    intent: "calm the panicked cart-horse before it bolts",
+    targetId: "npc_carthorse",
+    location: { name: "Market Row", description: "Overturned stalls; a horse rears in the traces, eyes white." },
+    hp: { current: 11, max: 13 }
+  },
+  {
+    intent: "pry the gem out of the idol's eye with my dagger",
+    targetId: "obj_idol",
+    location: { name: "Shrine Alcove", description: "A squat stone idol, one socket still holding a dull red gem." },
+    hp: { current: 16, max: 16 }
+  },
+  {
+    intent: "bluff the patrol with the forged writ in my coat",
+    targetId: "npc_patrol",
+    location: { name: "North Gate", description: "Two bored halberdiers checking papers at a brazier." },
+    hp: { current: 10, max: 16 }
+  },
+  {
+    intent: "hold my breath and dive to the sunken chest",
+    targetId: "obj_sunken_chest",
+    location: { name: "Millpond", description: "Black water; a chest-shaped shadow below the weed line." },
+    hp: { current: 9, max: 16 }
+  },
+  {
+    intent: "listen at the door for voices before knocking",
+    targetId: "obj_door",
+    location: { name: "Back Corridor", description: "A plain door, lamplight bleeding under it." },
+    hp: { current: 15, max: 15 }
   }
 ];
 
@@ -128,12 +188,22 @@ function providerInputFor(c) {
   };
 }
 
+// Lane spec: "local", "groq", "gemini", "codex", or "groq:<model>" to pin a
+// specific served model on that provider (e.g. groq:llama-3.1-8b-instant,
+// groq:openai/gpt-oss-120b) for the routing-feasibility comparison.
 function laneByName(name) {
-  const key = String(name).trim().toLowerCase();
+  const raw = String(name).trim();
+  const [providerKey, ...modelParts] = raw.split(":");
+  const key = providerKey.toLowerCase();
+  const pinnedModel = modelParts.join(":").trim();
   if (key === "local") {
     return { name: "local", provider: resolveGmProvider("mainline", { fallback: true }) };
   }
   const lane = buildCloudLane(key);
+  if (lane?.provider && pinnedModel) {
+    lane.provider = { ...lane.provider, model: pinnedModel };
+    lane.name = `${key}:${pinnedModel}`;
+  }
   if (!lane) {
     console.error(`Unknown lane "${name}" (expected local|codex|gemini|groq).`);
     process.exit(1);
@@ -162,12 +232,33 @@ for (const name of laneNames) {
   console.log(`LANE: ${lane.name} (${label})`);
   let fallbacks = 0;
   const latencies = [];
+  let promptTokens = 0;
+  let completionTokens = 0;
   for (const [i, c] of cases.entries()) {
     const messages = buildAttemptInterpreterMessages(providerInputFor(c));
     let verdict;
     try {
-      const res = await requestViaCloudChain(messages, [lane], { temperature: 0.2, maxResponseTokens: 500 });
+      // MEASUREMENT integrity on rate-limited (free-tier) lanes: a 429 is a
+      // QUOTA artifact, not an interpreter-quality failure — wait out the
+      // provider's suggested delay and retry so the fallback rate measures the
+      // MODEL, not the meter. Persistent 429s still surface as lane errors.
+      let res = null;
+      for (let attempt = 0; attempt < 4; attempt++) {
+        try {
+          res = await requestViaCloudChain(messages, [lane], { temperature: 0.2, maxResponseTokens: 500 });
+          break;
+        } catch (error) {
+          const msg = String(error?.message || error);
+          if (!/429/.test(msg) || attempt === 3) throw error;
+          const m = /try again in (?:(\d+)m)?([0-9.]+)s/i.exec(msg);
+          const waitMs = Math.min(120000, m ? (Number(m[1] || 0) * 60 + Number(m[2])) * 1000 + 750 : 15000);
+          process.stdout.write(`  [${String(i + 1).padStart(2)}] 429 — waiting ${Math.round(waitMs / 1000)}s\n`);
+          await new Promise((r) => setTimeout(r, waitMs));
+        }
+      }
       latencies.push(res.latencyMs);
+      promptTokens += Number(res.tokensUsed?.prompt || 0);
+      completionTokens += Number(res.tokensUsed?.completion || 0);
       const coerced = coerceInterpreterOutput(extractJsonObject(res.content), providerInputFor(c).context);
       if (coerced) {
         const fc = coerced.failureConsequence && typeof coerced.failureConsequence === "object"
@@ -186,12 +277,15 @@ for (const name of laneNames) {
   }
   const rate = ((fallbacks / cases.length) * 100).toFixed(0);
   const avg = latencies.length ? Math.round(latencies.reduce((a, b) => a + b, 0) / latencies.length) : null;
-  console.log(`  → fallback rate: ${fallbacks}/${cases.length} (${rate}%)${avg !== null ? `, avg latency ${avg}ms` : ""}\n`);
-  summary.push({ lane: lane.name, label, fallbacks, total: cases.length, rate: `${rate}%`, avgLatencyMs: avg });
+  const okCalls = latencies.length;
+  const tok = okCalls ? ` | tokens in/out per call: ${Math.round(promptTokens / okCalls)}/${Math.round(completionTokens / okCalls)}` : "";
+  console.log(`  → fallback rate: ${fallbacks}/${cases.length} (${rate}%)${avg !== null ? `, avg latency ${avg}ms` : ""}${tok}\n`);
+  summary.push({ lane: lane.name, label, fallbacks, total: cases.length, rate: `${rate}%`, avgLatencyMs: avg, avgPromptTokens: okCalls ? Math.round(promptTokens / okCalls) : null, avgCompletionTokens: okCalls ? Math.round(completionTokens / okCalls) : null });
 }
 
 console.log("=== SUMMARY ===");
 for (const s of summary) {
-  console.log(`${s.lane.padEnd(8)} ${String(s.label).padEnd(24)} fallback ${s.fallbacks}/${s.total} (${s.rate})${s.avgLatencyMs !== null ? `  avg ${s.avgLatencyMs}ms` : ""}`);
+  const tok = s.avgPromptTokens !== null ? `  tok ${s.avgPromptTokens}/${s.avgCompletionTokens}` : "";
+  console.log(`${s.lane.padEnd(30)} ${String(s.label).padEnd(28)} fallback ${s.fallbacks}/${s.total} (${s.rate})${s.avgLatencyMs !== null ? `  avg ${s.avgLatencyMs}ms` : ""}${tok}`);
 }
 console.log();
