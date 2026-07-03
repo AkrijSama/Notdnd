@@ -64,6 +64,17 @@ const FUTURE_ACTION_TYPES = new Set(["interact", "enter", "exit"]);
 const TEST_HOOK_ACTION_TYPES = new Set(["damage", "death_save", "revive", "grant_item"]);
 const RECOGNIZED_ACTION_TYPES = new Set([...IMPLEMENTED_ACTION_TYPES, ...FUTURE_ACTION_TYPES]);
 
+// A1 (ask != act): does this free-text intent READ as a question? Leading
+// interrogative/auxiliary word ("how deep does...", "is it lit", "can I...") or
+// a trailing question mark on any sentence. Declaratives with directional verbs
+// ("go deeper into the ruins") are untouched — only genuine questions are kept
+// away from the state-committing reroutes.
+const INTERROGATIVE_RE =
+  /(^\s*(?:are|is|am|was|were|does|do|did|can|could|how|what|where|when|who|whose|whom|why|will|would|should|which)\b)|\?/i;
+export function isInterrogativeIntent(intent) {
+  return INTERROGATIVE_RE.test(String(intent || ""));
+}
+
 export function testHooksEnabled(env = process.env) {
   if (String(env.NOTDND_TEST_HOOKS || "").trim().toLowerCase() === "true") {
     return true;
@@ -796,11 +807,20 @@ export function resolveSoloAction(run, action, options = {}) {
       }
       // Accept failed validation — fall through to the normal attempt path.
     }
+    // ASK ≠ ACT (A1, from the real-player corpus): an interrogative utterance
+    // ("How deep does this ruin go? Is it lit?" — a real owner input) must NEVER
+    // be committed as a state mechanic — the directional fallback would read
+    // "go"+"deep" and TELEPORT the player who only asked a question. Interrogatives
+    // skip the take/move/search reroutes and fall through to the honest attempt
+    // path, where the GM answers from state. Deliberately NOT applied to the
+    // acceptance reroute above: "Ok ill do it, where do you need me to take it?"
+    // is an explicit acceptance whose trailing question rides on the prose.
+    const interrogative = isInterrogativeIntent(normalized.intent);
     // TAKE-INTENT COMMIT (delivery loop). Free-text "take the crate" grabs a PRESENT,
     // DISCOVERED, TAKEABLE object into inventory (committed via grantItemToRun) rather
     // than narrating a pickup that never mutates state. Fires only when the target
     // resolves to a real in-state takeable object (take.js firewall: never mints one).
-    const takeIntent = detectTakeIntent(run, normalized.intent);
+    const takeIntent = interrogative ? null : detectTakeIntent(run, normalized.intent);
     if (takeIntent) {
       const takeAction = { type: "take", actorId: normalized.actorId ?? "player", detailId: takeIntent.detailId, targetLocationId: run.currentLocationId };
       const take = resolveTakeAction(run, takeAction, options);
@@ -826,7 +846,7 @@ export function resolveSoloAction(run, action, options = {}) {
     // = you moved). A move-intent naming a KNOWN but NOT-reachable place is refused
     // (no false-arrival prose). A non-move / unidentified-destination intent falls
     // through to the normal attempt path unchanged.
-    const moveIntent = detectMoveIntent(run, normalized.intent);
+    const moveIntent = interrogative ? null : detectMoveIntent(run, normalized.intent);
     if (moveIntent?.reachable) {
       const moveAction = { type: "move", actorId: normalized.actorId ?? "player", toLocationId: moveIntent.toLocationId };
       const movement = resolveMovementAction(run, moveAction, options);
@@ -856,7 +876,7 @@ export function resolveSoloAction(run, action, options = {}) {
     // search mechanic so a feature is actually revealed + committed to state (the
     // GM then narrates the REAL discovery). Only fires on a genuine area-search
     // intent; a non-search attempt falls through unchanged.
-    if (detectSearchIntent(run, normalized.intent)) {
+    if (!interrogative && detectSearchIntent(run, normalized.intent)) {
       const searchAction = { type: "search", actorId: normalized.actorId ?? "player", targetLocationId: run.currentLocationId };
       const search = resolveSearchAction(run, searchAction, options);
       if (search.ok) {
