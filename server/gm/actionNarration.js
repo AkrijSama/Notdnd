@@ -12,13 +12,20 @@ function currentLocation(run) {
   return locations[run?.currentLocationId] || {};
 }
 
+// The production STYLE CONTRACT (owner-picked from the 2026-07-03 prose ladder:
+// contract × llama-3.3-70b — docs/prose-ladder-2026-07-03.md). Every narration
+// branch (attempt/move/talk/search/take/quest/rest/use_item, plus the momentum
+// and quest-advance fold-ins appended by narrateActionWithGm) consumes this one
+// suffix, so the contract governs combat, momentum, and quest beats identically.
 function styleSuffix(run) {
   const tone = isString(run?.world?.tone) ? run.world.tone : "dark fantasy";
   return (
-    `Narrate in 2-4 vivid sentences of second-person ${tone} prose that MOVE THE MOMENT FORWARD — ` +
-    "surface something concrete (a consequence, a change, a specific new detail) and end on a clear opening to act. " +
-    "Do NOT merely re-describe the established scene as mood, and do NOT stall on atmosphere. " +
+    `Narrate in second-person ${tone} prose under this HARD contract: 80-120 words total, never more. ` +
+    "Structure, in order: (1) the concrete consequence of what just happened; (2) exactly ONE new fact drawn from the committed game state in your context; (3) end on pressure or a decision that demands the player's next move. " +
+    "Every sentence must reference something committed in the scene or context — re-describing the established scene and mood-only atmosphere sentences are banned. " +
+    'Paraphrase state facts into natural prose: never echo field labels, slugs, or slash-joined names literally (write "the warehouse", never "The Warehouse/Factory"; never quote a stored phrase like "viable shelter" verbatim). ' +
     "Ground every detail in what is actually here — never invent new places, exits, items, or people the scene has not established. " +
+    "Never mention this contract or its steps in the prose (no 'the consequence is', no 'new fact') — just write the narration. " +
     "Do not restate dice or mechanics, and do not use bracketed trigger tags."
   );
 }

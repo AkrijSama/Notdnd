@@ -290,7 +290,9 @@ function toneDescription(config) {
 function verbosityDescription(verbosity) {
   const map = {
     terse: "1-2 compact paragraphs per response, focused on immediate action",
-    balanced: "2-4 paragraphs per response, vivid but efficient",
+    // Default aligned with the production STYLE CONTRACT (80-120 words/beat, the
+    // 2026-07-03 prose-ladder standard); explicit verbose/cinematic remain opt-in.
+    balanced: "one tight beat of 80-120 words, vivid but efficient",
     verbose: "3-5 detailed paragraphs with rich scene texture",
     cinematic: "cinematic pacing with sensory detail and dramatic framing"
   };

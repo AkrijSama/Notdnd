@@ -228,3 +228,111 @@ export function auditProseAgainstState(prose, scene) {
   }
   return { checked: true, phantoms };
 }
+
+// ---------------------------------------------------------------------------
+// Invented-agent auditor (WARN-grade).
+// ---------------------------------------------------------------------------
+// The phantom check only catches PROPER NOUNS — a narration that invents "a
+// maintenance drone" to fight, a scavenger, or an answering voice sails through
+// with 0 phantoms (the oss-120b drone-fight cell in the 2026-07-03 prose
+// ladder). This auditor flags AGENCY the committed state cannot vouch for:
+//   agent     — a generic animate noun ACTING (verb of agency in the sentence)
+//               with no corresponding cast/committed entity
+//   dialogue  — quoted speech attributed to anyone other than the player, with
+//               no committed entity to speak it
+//   state_tag — emitted pseudo-state tags ([UPDATE_ENTITY...] class) leaking
+//               into prose
+// Crude and lexicon-based by design (model-dependent, WARN-grade): tallied per
+// battery run alongside the phantom count, never a hard failure.
+
+// Generic animate nouns a model reaches for when it invents an actor.
+// PERSON nouns are legitimate paraphrases of ANY committed cast member ("a
+// figure steps into view" narrating the committed watcher NPC), so they are
+// vouched whenever the scene has cast; the rest must token-match a committed
+// name — a drone/wolf can't be a paraphrase of a human watcher.
+const PERSON_NOUNS = new Set(["figure", "stranger", "voice", "someone", "somebody"]);
+const AGENT_NOUNS = [
+  "figure", "stranger", "drone", "scavenger", "creature", "voice", "guard",
+  "soldier", "sentry", "warden", "watcher", "merchant", "thief", "hunter",
+  "raider", "bandit", "assailant", "attacker", "enemy", "foe", "rider",
+  "beast", "wolf", "hound", "robot", "android", "automaton", "someone", "somebody"
+];
+
+// Verbs that make a noun an ACTOR rather than scenery.
+const AGENCY_VERB_RE = new RegExp(
+  "\\b(?:answers?|answered|replies|replied|responds?|responded|speaks?|spoke|says?|said|whispers?|calls?|called|shouts?|mutters?|growls?|hisses|crackles?|sputters?|" +
+    "steps?|stepped|moves?|moved|emerges?|emerged|appears?|appeared|approaches|approached|arrives?|arrived|lunges?|lunged|attacks?|attacked|strikes?|struck|swings?|charges?|charged|" +
+    "watches|watched|waits?|waited|turns?|turned|hovers?|hovered|slides?|slid|crawls?|scurries|leaps?|circles?|stalks?|follows?|followed|blocks?|blocked|grabs?|grabbed|reaches|swivels?|beckons?|nods?|smiles?|grins?|stares?|" +
+    "shatters?|shattered|clatters?|clattered|crashes?|crashed|collapses?|collapsed|topples?|falls?|fell|flees?|fled|retreats?|screams?|screamed|roars?|snarls?|bites?|claws?|fires?|shoots?|shot|dies|drops?|dropped)\\b",
+  "i"
+);
+
+const PSEUDO_STATE_TAG_RE = /\[(?:UPDATE_ENTITY|NEW_ENTITY|CHECK|DAMAGE|LOOT|INITIATIVE)\b[^\]]*\]/gi;
+
+// Player-voiced speech is legitimate: "you call out, 'Hello?'".
+const PLAYER_SPEECH_RE = /\b(?:you|your)\b[^"“]*(?:say|says|call|shout|whisper|mutter|demand|ask|reply|announce|voice)/i;
+
+// Every token the committed state can vouch AS AN ACTOR (cast, visible
+// entities, plus the full known-name pool so "the watcher" is vouched by
+// npc_momentum_watcher wherever it surfaces in the payload).
+function knownAgentTokens(scene = {}) {
+  const tokens = new Set();
+  for (const name of knownNamesFromScene(scene)) {
+    for (const t of String(name).toLowerCase().split(/[\s-]+/)) {
+      const clean = t.replace(/[^a-z']/g, "");
+      if (clean.length >= 3) tokens.add(clean);
+    }
+  }
+  return tokens;
+}
+
+// Actual committed NPC presence. visibleEntities is NOT a cast signal — it
+// lists locations and the player too, which would vouch every invented voice.
+function sceneHasCast(scene = {}) {
+  return Array.isArray(scene.cast) && scene.cast.length > 0;
+}
+
+/**
+ * Audits one narration for invented agents/agency against committed scene state.
+ * Returns { checked, inventions: [{ kind, detail, sentence }] }.
+ */
+export function auditInventedAgents(prose, scene) {
+  const text = String(prose || "");
+  const inventions = [];
+  const vouchedTokens = knownAgentTokens(scene);
+  const sentences = text.split(/(?<=[.!?])\s+/).filter((s) => s.trim().length > 0);
+
+  for (const sentence of sentences) {
+    // The player's own body/voice is never an invented agent ("your voice
+    // announced", "my hand closes on nothing") — strip possessive-of-player
+    // mentions before the noun scan.
+    const lower = sentence.toLowerCase().replace(/\b(?:your|my)\s+(?:own\s+)?\w+/g, " ");
+
+    // (a) Unvouched animate noun ACTING in the sentence. A NEGATED mention
+    // ("no figure steps from the shadows") is honest absence, not invention.
+    for (const noun of AGENT_NOUNS) {
+      if (vouchedTokens.has(noun)) continue;
+      if (PERSON_NOUNS.has(noun) && sceneHasCast(scene)) continue;
+      const nounRe = new RegExp(`\\b${noun}s?\\b`, "i");
+      const negatedRe = new RegExp(`\\b(?:no|not a|nor a|neither|without a|no other)\\s+(?:\\w+\\s+)?${noun}s?\\b`, "i");
+      if (nounRe.test(lower) && !negatedRe.test(lower) && AGENCY_VERB_RE.test(sentence)) {
+        inventions.push({ kind: "agent", detail: noun, sentence: sentence.trim().slice(0, 180) });
+        break; // one agent finding per sentence is enough for the tally
+      }
+    }
+
+    // (b) Quoted dialogue attributed to a non-player speaker with no committed
+    // entity present to speak it.
+    const hasQuote = /["“][^"”]{2,}["”]/.test(sentence);
+    if (hasQuote && !PLAYER_SPEECH_RE.test(sentence) && !sceneHasCast(scene)) {
+      inventions.push({ kind: "dialogue", detail: "speech with no committed speaker", sentence: sentence.trim().slice(0, 180) });
+    }
+  }
+
+  // (c) Pseudo-state tags leaking into prose.
+  for (const match of text.matchAll(PSEUDO_STATE_TAG_RE)) {
+    inventions.push({ kind: "state_tag", detail: match[0].slice(0, 60), sentence: match[0].slice(0, 180) });
+  }
+
+  return { checked: true, inventions };
+}

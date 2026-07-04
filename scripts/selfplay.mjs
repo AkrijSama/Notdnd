@@ -1506,10 +1506,13 @@ async function scenarioGmHealth(ctx) {
 // (committed surfaces must cross HTTP). Findings are REPORTED, never fixed here.
 
 import fs from "node:fs";
-import { auditProseAgainstState, looksLikeQuestion } from "./selfplayAudit.mjs";
+import { auditInventedAgents, auditProseAgainstState, looksLikeQuestion } from "./selfplayAudit.mjs";
 
 // Narration-state contradiction tally (WARN-grade; the prose-integrity metric).
-const PROSE_TALLY = { turnsAudited: 0, phantomCount: 0, examples: [] };
+// phantomCount = unvouched proper nouns; inventionCount = invented agents /
+// unattributed dialogue / leaked pseudo-state tags (the oss-120b drone-fight
+// class the phantom check misses).
+const PROSE_TALLY = { turnsAudited: 0, phantomCount: 0, inventionCount: 0, examples: [], inventionExamples: [] };
 function auditTurnProse(json, scenePayload) {
   const sources = [];
   const narr = json?.gmNarration || json?.event?.narration || "";
@@ -1529,13 +1532,26 @@ function auditTurnProse(json, scenePayload) {
         PROSE_TALLY.examples.push({ kind: src.kind, name: p.name, sentence: p.sentence });
       }
     }
+    // Agent-invention audit is narration-only: a 5-word suggestion label has no
+    // room for agency and would only add lexicon noise.
+    if (src.kind !== "narration") continue;
+    const { inventions } = auditInventedAgents(src.text, scenePayload);
+    for (const inv of inventions) {
+      PROSE_TALLY.inventionCount += 1;
+      if (PROSE_TALLY.inventionExamples.length < 12) {
+        PROSE_TALLY.inventionExamples.push(inv);
+      }
+    }
   }
 }
 function printProseTally() {
   console.log("────────────────────────────────────────────────────────────");
-  console.log(`  PROSE-INTEGRITY: ${PROSE_TALLY.phantomCount} phantom reference(s) across ${PROSE_TALLY.turnsAudited} audited turns (WARN-grade, model-dependent)`);
+  console.log(`  PROSE-INTEGRITY: ${PROSE_TALLY.phantomCount} phantom reference(s), ${PROSE_TALLY.inventionCount} invented-agent finding(s) across ${PROSE_TALLY.turnsAudited} audited turns (WARN-grade, model-dependent)`);
   for (const ex of PROSE_TALLY.examples.slice(0, 8)) {
     console.log(`    ⚠ [${ex.kind}] "${ex.name}" not vouched by state — "${ex.sentence.slice(0, 110)}"`);
+  }
+  for (const ex of PROSE_TALLY.inventionExamples.slice(0, 8)) {
+    console.log(`    ⚠ [invented-${ex.kind}] "${ex.detail}" — "${ex.sentence.slice(0, 110)}"`);
   }
 }
 

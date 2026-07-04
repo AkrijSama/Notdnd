@@ -8,7 +8,8 @@ import {
   looksLikeQuestion,
   extractProperNouns,
   knownNamesFromScene,
-  auditProseAgainstState
+  auditProseAgainstState,
+  auditInventedAgents
 } from "../scripts/selfplayAudit.mjs";
 
 // The harness-audit helpers are load-bearing for the adversarial battery: the
@@ -105,4 +106,52 @@ test("the shipped corpus fixture is well-formed and carries the known breaker in
   for (const e of fixture.entries) {
     assert.ok(typeof e.text === "string" && e.class && typeof e.question === "boolean");
   }
+});
+
+// ── Invented-agent auditor (the class the phantom check misses) ──────────────
+// The 2026-07-03 prose ladder's oss-120b cells invented a maintenance drone to
+// fight (enemy, combat, loot — zero proper nouns, zero phantoms). These pin the
+// auditor to that exact failure class and to its honest counterparts.
+
+test("invented agents: an acting drone with no committed entity is flagged; a cast-vouched figure passes", () => {
+  const emptyScene = { location: { name: "Night City" }, cast: [] };
+  const droneFight = auditInventedAgents(
+    "Your blade shatters a rusted maintenance drone's chassis. The dying drone clatters to the floor, sparks raining down.",
+    emptyScene
+  );
+  assert.ok(droneFight.inventions.some((i) => i.kind === "agent" && i.detail === "drone"),
+    `drone fight must flag: ${JSON.stringify(droneFight.inventions)}`);
+
+  const castScene = { location: { name: "Night City" }, cast: [{ displayName: "A mysterious figure" }] };
+  const vouched = auditInventedAgents("The figure steps closer, watching you without haste.", castScene);
+  assert.equal(vouched.inventions.length, 0, `cast-vouched figure is not an invention: ${JSON.stringify(vouched.inventions)}`);
+});
+
+test("invented agents: negated absence and the player's own voice are honest, an answering voice is not", () => {
+  const emptyScene = { location: { name: "Night City" }, cast: [] };
+  const honest = auditInventedAgents(
+    "Your strike connects with nothing — no figure stands before you. With your voice announced, you must decide your next move.",
+    emptyScene
+  );
+  assert.equal(honest.inventions.length, 0, `honest no-target narration passes: ${JSON.stringify(honest.inventions)}`);
+
+  const answering = auditInventedAgents(
+    'A thin, crackling voice sputters through a dusty speaker: "Intruder — override engaged."',
+    emptyScene
+  );
+  assert.ok(answering.inventions.some((i) => i.kind === "agent" && i.detail === "voice"), "an answering voice with no committed speaker is an invention");
+  assert.ok(answering.inventions.some((i) => i.kind === "dialogue"), "dialogue with no committed speaker is flagged");
+});
+
+test("invented agents: player-voiced speech passes, pseudo-state tags always flag", () => {
+  const emptyScene = { location: { name: "Night City" }, cast: [] };
+  const playerSpeech = auditInventedAgents('You call out, "Hello? Anyone there?" and the echo dies against the ruins.', emptyScene);
+  assert.equal(playerSpeech.inventions.filter((i) => i.kind === "dialogue").length, 0,
+    `player speech is legitimate: ${JSON.stringify(playerSpeech.inventions)}`);
+
+  const tagLeak = auditInventedAgents(
+    'You spot a hidden opening. [UPDATE_ENTITY: name="The Warehouse" facts="has a scavenger nest"]',
+    { location: { name: "Night City" }, cast: [{ displayName: "A scavenger" }] }
+  );
+  assert.ok(tagLeak.inventions.some((i) => i.kind === "state_tag"), "leaked [UPDATE_ENTITY...] tag flagged even with cast present");
 });
