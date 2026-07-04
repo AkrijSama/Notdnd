@@ -1,0 +1,1141 @@
+[
+  {
+    "beat": 1,
+    "intent": "Call out and see who answers",
+    "variant": "current",
+    "lane": "openrouter",
+    "model": "meta-llama/llama-3.3-70b-instruct",
+    "latencyMs": 1112,
+    "tokensUsed": {
+      "prompt": 1565,
+      "completion": 144
+    },
+    "cost": 0.00103711,
+    "words": 117,
+    "phantoms": [],
+    "grounding": {
+      "sentences": 4,
+      "ungrounded": 4
+    },
+    "content": "Your voice echoes off the crumbling walls, and for a moment, the only response is the faint hum of a distant hoverdrone. But then, a faint whisper seems to seep from the shadows, a soft \"Hello?\" that's almost lost in the static-filled air. The voice is hesitant, unclear if it's a greeting or a question, and it seems to come from within the partially collapsed warehouse to your left, its walls still standing like a battered sentinel. You notice that the warehouse's entrance, a large metal door, is slightly ajar, as if someone or something had recently passed through it, and you can't help but wonder what might be waiting for you just beyond that narrow opening."
+  },
+  {
+    "beat": 1,
+    "intent": "Call out and see who answers",
+    "variant": "current",
+    "lane": "openrouter:openai/gpt-oss-120b",
+    "model": "openai/gpt-oss-120b",
+    "latencyMs": 1376,
+    "tokensUsed": {
+      "prompt": 1596,
+      "completion": 417
+    },
+    "cost": 0.0004704,
+    "words": 101,
+    "phantoms": [],
+    "grounding": {
+      "sentences": 4,
+      "ungrounded": 4
+    },
+    "content": "Your shout ricochets off the jagged steel, and a thin, crackling voice sputters through a dusty speaker mounted on the far wall: “—intruder—override engaged. Power grid reinitializing.” The old warehouse’s dormant generators sputter to life, spilling a harsh amber glow across the concrete floor and illuminating a concealed service hatch half hidden beneath a rusted pallet. A faint whirring grows louder as a maintenance drone, its chassis scarred by years of neglect, slides out of the hatch and hovers, its sensor array swiveling toward you. Do you try to command the drone, investigate the hatch, or find cover before it reacts?"
+  },
+  {
+    "beat": 1,
+    "intent": "Call out and see who answers",
+    "variant": "current",
+    "lane": "gemini:gemini-2.5-flash-lite",
+    "model": "gemini-2.5-flash-lite",
+    "latencyMs": 1202,
+    "tokensUsed": {
+      "prompt": 1564,
+      "completion": 88
+    },
+    "cost": null,
+    "words": 68,
+    "phantoms": [],
+    "grounding": {
+      "sentences": 5,
+      "ungrounded": 5
+    },
+    "content": "[GM VOICE] Your voice echoes through the cavernous space, swallowed by the oppressive silence. For a long moment, nothing answers but the groan of stressed metal. Then, from the deeper gloom, a faint scraping sound, like bone on concrete, answers your call. It’s a sound that promises nothing good, a whisper of something that has been here, waiting, perhaps for a very long time.\n\nWhat do you do?"
+  },
+  {
+    "beat": 1,
+    "intent": "Call out and see who answers",
+    "variant": "contract",
+    "lane": "openrouter",
+    "model": "meta-llama/llama-3.3-70b-instruct",
+    "latencyMs": 969,
+    "tokensUsed": {
+      "prompt": 1555,
+      "completion": 75
+    },
+    "cost": 0.0009767,
+    "words": 56,
+    "phantoms": [],
+    "grounding": {
+      "sentences": 3,
+      "ungrounded": 1
+    },
+    "content": "Your call echoes through Night City, and the silence is broken. In the distance, you notice The Warehouse/Factory, its walls still standing, a potential shelter. Now, with your voice announced, you must decide whether to approach The Warehouse/Factory, claiming it as a defensible foothold, or wait, observing if your call attracts unwanted attention in Night City."
+  },
+  {
+    "beat": 1,
+    "intent": "Call out and see who answers",
+    "variant": "contract",
+    "lane": "openrouter:openai/gpt-oss-120b",
+    "model": "openai/gpt-oss-120b",
+    "latencyMs": 1708,
+    "tokensUsed": {
+      "prompt": 1585,
+      "completion": 524
+    },
+    "cost": 0.00051375,
+    "words": 76,
+    "phantoms": [],
+    "grounding": {
+      "sentences": 3,
+      "ungrounded": 1
+    },
+    "content": "Your shout ricochets through Night City, the hollow metal of The Warehouse/Factory catching the sound and sending a brief clang back, confirming the structure can hear you. The Warehouse/Factory, listed as relatively intact with walls still standing, presents a potentially defensible shelter amid the ruins. Night City’s twisted corridors close in as you decide whether to storm the partially collapsed roof of The Warehouse/Factory now or spend precious minutes scouting the surrounding streets for additional cover."
+  },
+  {
+    "beat": 1,
+    "intent": "Call out and see who answers",
+    "variant": "contract",
+    "lane": "gemini:gemini-2.5-flash-lite",
+    "model": "gemini-2.5-flash-lite",
+    "latencyMs": 1101,
+    "tokensUsed": {
+      "prompt": 1570,
+      "completion": 66
+    },
+    "cost": null,
+    "words": 56,
+    "phantoms": [],
+    "grounding": {
+      "sentences": 4,
+      "ungrounded": 2
+    },
+    "content": "Your voice echoes through the desolate ruins of Night City, swallowed by the oppressive silence. No answer comes; the labyrinth of twisted metal and concrete remains uninhabited for now. The crumbling structures offer a defensible shelter, a potential foothold for rebuilding. Do you explore deeper into Night City, or secure this abandoned space as your own?"
+  },
+  {
+    "beat": 1,
+    "intent": "Call out and see who answers",
+    "variant": "terse",
+    "lane": "openrouter",
+    "model": "meta-llama/llama-3.3-70b-instruct",
+    "latencyMs": 680,
+    "tokensUsed": {
+      "prompt": 1427,
+      "completion": 58
+    },
+    "cost": 0.00088775,
+    "words": 43,
+    "phantoms": [],
+    "grounding": {
+      "sentences": 5,
+      "ungrounded": 4
+    },
+    "content": "You receive no response. The silence confirms Night City's emptiness. Your voice echoes off the ruins, leaving an unsettling stillness. You now know you're alone, with no immediate threats or allies. The Warehouse/Factory stands before you, its partially collapsed roof a potential shelter."
+  },
+  {
+    "beat": 1,
+    "intent": "Call out and see who answers",
+    "variant": "terse",
+    "lane": "openrouter:openai/gpt-oss-120b",
+    "model": "openai/gpt-oss-120b",
+    "latencyMs": 939,
+    "tokensUsed": {
+      "prompt": 1458,
+      "completion": 235
+    },
+    "cost": 0.0003597,
+    "words": 59,
+    "phantoms": [],
+    "grounding": {
+      "sentences": 4,
+      "ungrounded": 4
+    },
+    "content": "Your voice cuts through the stale air, reverberating off twisted steel and cracked concrete. No figure steps from the shadows; the only reply is the hollow echo of your shout fading into the distance. The warehouse‑factory remains empty, its walls intact but its roof half‑collapsed, offering a defensible shelter. You now know you are alone—what will you do next?"
+  },
+  {
+    "beat": 1,
+    "intent": "Call out and see who answers",
+    "variant": "terse",
+    "lane": "gemini:gemini-2.5-flash-lite",
+    "model": "gemini-2.5-flash-lite",
+    "latencyMs": 848,
+    "tokensUsed": {
+      "prompt": 1432,
+      "completion": 62
+    },
+    "cost": null,
+    "words": 49,
+    "phantoms": [],
+    "grounding": {
+      "sentences": 6,
+      "ungrounded": 5
+    },
+    "content": "Your voice echoes through the skeletal remains of Night City, met only by the skittering of unseen vermin. Then, a distant clatter. A loose sheet of metal on a higher level scrapes against concrete. Nothing else stirs. The ruins remain empty, but something is present. What do you do?"
+  },
+  {
+    "beat": 2,
+    "intent": "Head down alleyway",
+    "variant": "current",
+    "lane": "openrouter",
+    "model": "meta-llama/llama-3.3-70b-instruct",
+    "latencyMs": 1442,
+    "tokensUsed": {
+      "prompt": 1553,
+      "completion": 156
+    },
+    "cost": 0.00103951,
+    "words": 124,
+    "phantoms": [],
+    "grounding": {
+      "sentences": 4,
+      "ungrounded": 4
+    },
+    "content": "As you head down the alleyway, the shadows seem to deepen around you, and the silence is broken by the sound of scuttling rodents and the creaking of twisted metal. You notice a large, dilapidated warehouse to your left, its walls still standing though its roof is partially collapsed, and you sense that it could provide a defensible shelter - a potential foothold in this desolate landscape. The alleyway opens up to a small, rubble-strewn courtyard in front of the warehouse, and you see that the large, metal doors are slightly ajar, as if someone or something had recently passed through them. You're now standing at the threshold, the darkness within the warehouse beckoning you to enter and claim this space as your own."
+  },
+  {
+    "beat": 2,
+    "intent": "Head down alleyway",
+    "variant": "current",
+    "lane": "openrouter:openai/gpt-oss-120b",
+    "model": "openai/gpt-oss-120b",
+    "latencyMs": 1305,
+    "tokensUsed": {
+      "prompt": 1584,
+      "completion": 530
+    },
+    "cost": 0.0005364,
+    "words": 97,
+    "phantoms": [
+      {
+        "name": "Warehouse",
+        "sentence": "One of the metal grates on the floor gives way under your boot, revealing a narrow stairwell that drops into the belly of the Warehouse."
+      }
+    ],
+    "grounding": {
+      "sentences": 4,
+      "ungrounded": 4
+    },
+    "content": "You slip down the narrow alley, the neon glare dimming as the concrete walls press tighter around you. At the alley’s dead‑end a rust‑stained service door, half hidden by layers of graffiti, hangs ajar, a thin column of stale, cool air spilling out and the faint hum of ancient machinery echoing from within. One of the metal grates on the floor gives way under your boot, revealing a narrow stairwell that drops into the belly of the Warehouse. You can pry the door wider and descend, or linger to scout the surroundings for another point of entry."
+  },
+  {
+    "beat": 2,
+    "intent": "Head down alleyway",
+    "variant": "current",
+    "lane": "gemini:gemini-2.5-flash-lite",
+    "model": "gemini-2.5-flash-lite",
+    "latencyMs": 1446,
+    "tokensUsed": {
+      "prompt": 1548,
+      "completion": 105
+    },
+    "cost": null,
+    "words": 71,
+    "phantoms": [],
+    "grounding": {
+      "sentences": 5,
+      "ungrounded": 4
+    },
+    "content": "The alleyway yawns before you, a narrow chasm between towering, derelict structures. The stench of stale synth-booze and something vaguely metallic assaults your senses as you step into the gloom. A discarded, flickering datapad lies near a pile of refuse, its cracked screen displaying a garbled, looping advertisement for a long-defunct cybernetics clinic. The path ahead is obstructed by a barricade of rusted shipping containers.\n\n[UPDATE_ENTITY: name=\"The Warehouse\" facts=\"is now entered\"]"
+  },
+  {
+    "beat": 2,
+    "intent": "Head down alleyway",
+    "variant": "contract",
+    "lane": "openrouter",
+    "model": "meta-llama/llama-3.3-70b-instruct",
+    "latencyMs": 906,
+    "tokensUsed": {
+      "prompt": 1543,
+      "completion": 67
+    },
+    "cost": 0.0009633,
+    "words": 52,
+    "phantoms": [],
+    "grounding": {
+      "sentences": 3,
+      "ungrounded": 1
+    },
+    "content": "You move down the alleyway, entering the vibrant, crumbling sprawl of Night City. The Warehouse, a relatively intact structure, comes into view, its partially collapsed roof a notable landmark. With the Warehouse's viable shelter in sight, you must decide whether to investigate its hidden opening or continue exploring Night City's desolate landscape."
+  },
+  {
+    "beat": 2,
+    "intent": "Head down alleyway",
+    "variant": "contract",
+    "lane": "openrouter:openai/gpt-oss-120b",
+    "model": "openai/gpt-oss-120b",
+    "latencyMs": 3774,
+    "tokensUsed": {
+      "prompt": 1573,
+      "completion": 1279
+    },
+    "cost": 0.00098415,
+    "words": 116,
+    "phantoms": [
+      {
+        "name": "Inside The Warehouse",
+        "sentence": "Inside The Warehouse you discover a hidden opening, a narrow breach in the partially collapsed roof that promises a defensible route deeper inside."
+      }
+    ],
+    "grounding": {
+      "sentences": 5,
+      "ungrounded": 1
+    },
+    "content": "You slip into the narrow alley that branches off Night City, the passage funneling you toward The Warehouse. Inside The Warehouse you discover a hidden opening, a narrow breach in the partially collapsed roof that promises a defensible route deeper inside. Do you push through the hidden opening now, or circle back to Night City to scout other shelters before committing to The Warehouse? The dim glow of distant neon signs from The City flickers through the cracked panes, hinting at a potential power source you could tap inside The Warehouse. Time presses, because Night City’s restless wind carries the smell of scavengers, and any delay could let rivals claim The Warehouse before you secure it."
+  },
+  {
+    "beat": 2,
+    "intent": "Head down alleyway",
+    "variant": "contract",
+    "lane": "gemini:gemini-2.5-flash-lite",
+    "model": null,
+    "latencyMs": null,
+    "tokensUsed": null,
+    "cost": null,
+    "words": 0,
+    "phantoms": [],
+    "grounding": {
+      "sentences": 0,
+      "ungrounded": 0
+    },
+    "content": "<<CELL FAILED: OpenRouter request failed (503): HTTP 503>>",
+    "failed": true
+  },
+  {
+    "beat": 2,
+    "intent": "Head down alleyway",
+    "variant": "terse",
+    "lane": "openrouter",
+    "model": "meta-llama/llama-3.3-70b-instruct",
+    "latencyMs": 689,
+    "tokensUsed": {
+      "prompt": 1415,
+      "completion": 38
+    },
+    "cost": 0.00086487,
+    "words": 30,
+    "phantoms": [],
+    "grounding": {
+      "sentences": 4,
+      "ungrounded": 4
+    },
+    "content": "You enter an alleyway, finding a warehouse with a partially collapsed roof. It appears viable as shelter and potentially defensible. A hidden opening is visible. What do you do next?"
+  },
+  {
+    "beat": 2,
+    "intent": "Head down alleyway",
+    "variant": "terse",
+    "lane": "openrouter:openai/gpt-oss-120b",
+    "model": "openai/gpt-oss-120b",
+    "latencyMs": 2124,
+    "tokensUsed": {
+      "prompt": 1446,
+      "completion": 511
+    },
+    "cost": 0.0005043,
+    "words": 48,
+    "phantoms": [
+      {
+        "name": "Warehouse",
+        "sentence": "You emerge from the alley into the yawning mouth of the Warehouse."
+      }
+    ],
+    "grounding": {
+      "sentences": 5,
+      "ungrounded": 5
+    },
+    "content": "You emerge from the alley into the yawning mouth of the Warehouse. Its walls stand intact, roof half‑caved, and a concealed hatch yawns near the far wall. The interior offers a defensible shelter and possible base. You now stand at the warehouse threshold. What do you do next?"
+  },
+  {
+    "beat": 2,
+    "intent": "Head down alleyway",
+    "variant": "terse",
+    "lane": "gemini:gemini-2.5-flash-lite",
+    "model": "gemini-2.5-flash-lite",
+    "latencyMs": 828,
+    "tokensUsed": {
+      "prompt": 1416,
+      "completion": 64
+    },
+    "cost": null,
+    "words": 52,
+    "phantoms": [],
+    "grounding": {
+      "sentences": 6,
+      "ungrounded": 6
+    },
+    "content": "You slip into the narrow gap between two crumbling buildings. The alley is choked with refuse and the stench of decay. Ahead, the passage opens into a larger, cavernous space. You see the hulking silhouette of a warehouse, its roof partially collapsed. This could be a defensible shelter. What do you do?"
+  },
+  {
+    "beat": 3,
+    "intent": "Examine the metal cover",
+    "variant": "current",
+    "lane": "openrouter",
+    "model": "meta-llama/llama-3.3-70b-instruct",
+    "latencyMs": 1311,
+    "tokensUsed": {
+      "prompt": 1743,
+      "completion": 176
+    },
+    "cost": 0.00116741,
+    "words": 140,
+    "phantoms": [],
+    "grounding": {
+      "sentences": 4,
+      "ungrounded": 3
+    },
+    "content": "As you pry the metal cover loose, the sound of scraping metal echoes through the desolate air, and you're met with a musty smell from the darkness beneath. Beneath the cover, you find a tangle of wires and a small, intact console, its screen flickering with a faint, blue glow. The console's display flashes a cryptic error message, but it's the faint hum of machinery from the nearby warehouse that draws your attention, a reminder that this place might still hold some secrets. Your gaze is diverted, however, by a fresh scratch on the stone wall nearby - a cache-mark, the kind travelers use to signify hidden stores, and this one looks newly etched, its edges sharp and unweathered, beckoning you to consider digging for the cache, or leaving it untouched, its potential secrets and dangers waiting to be unearthed."
+  },
+  {
+    "beat": 3,
+    "intent": "Examine the metal cover",
+    "variant": "current",
+    "lane": "openrouter:openai/gpt-oss-120b",
+    "model": "openai/gpt-oss-120b",
+    "latencyMs": 691,
+    "tokensUsed": {
+      "prompt": 1774,
+      "completion": 231
+    },
+    "cost": 0.0003663,
+    "words": 77,
+    "phantoms": [],
+    "grounding": {
+      "sentences": 3,
+      "ungrounded": 2
+    },
+    "content": "You pry the dented metal panel free, the hinges screeching as a thin slab of rusted sheet slides aside, exposing a patch of cold stone beneath. Scrawled into the surface is a fresh cache‑mark—sharp, hurried lines forming the symbol of a buried supply depot, still dark with recent oil and the faint scent of ozone. The mark beckons, promising hidden stores but also the risk of traps; you can dig now or let the secret stay buried."
+  },
+  {
+    "beat": 3,
+    "intent": "Examine the metal cover",
+    "variant": "current",
+    "lane": "gemini:gemini-2.5-flash-lite",
+    "model": "gemini-2.5-flash-lite",
+    "latencyMs": 1893,
+    "tokensUsed": {
+      "prompt": 1743,
+      "completion": 186
+    },
+    "cost": null,
+    "words": 131,
+    "phantoms": [],
+    "grounding": {
+      "sentences": 11,
+      "ungrounded": 9
+    },
+    "content": "The metal cover groans under your touch, scraping against corroded hinges. With a final heave, you wrench it open, revealing a dark cavity beneath. The air that escapes is stale and metallic, carrying the faint scent of decay. Inside, nestled amongst the grime, you spot the glint of something unnatural, a data-chip with a cracked casing.\n\nAs you process this discovery, your gaze drifts to the cracked pavement of the alleyway. Scratched crudely into the stone is a fresh cache-mark, the kind travelers leave over buried stores. It's recent, the edges still sharp. The chip in your hand feels significant, but this mark... it implies something else, something potentially greater, or perhaps, far more dangerous. Do you investigate the cache, or focus on the data-chip?\n[UPDATE_ENTITY: name=\"Akrij\" facts=\"found a cracked data-chip\"]"
+  },
+  {
+    "beat": 3,
+    "intent": "Examine the metal cover",
+    "variant": "contract",
+    "lane": "openrouter",
+    "model": "meta-llama/llama-3.3-70b-instruct",
+    "latencyMs": 1183,
+    "tokensUsed": {
+      "prompt": 1611,
+      "completion": 72
+    },
+    "cost": 0.00100737,
+    "words": 60,
+    "phantoms": [
+      {
+        "name": "Warehouse",
+        "sentence": "You push aside the metal cover in the Warehouse, revealing a hidden opening."
+      },
+      {
+        "name": "Warehouse's",
+        "sentence": "With the Warehouse's walls still standing, you consider making it a defensible base."
+      }
+    ],
+    "grounding": {
+      "sentences": 5,
+      "ungrounded": 4
+    },
+    "content": "You push aside the metal cover in the Warehouse, revealing a hidden opening. The partially collapsed roof above casts a dim glow on the area. In Night City, such a viable shelter is a rare find. With the Warehouse's walls still standing, you consider making it a defensible base. Will you explore the hidden opening or secure the Warehouse's perimeter?"
+  },
+  {
+    "beat": 3,
+    "intent": "Examine the metal cover",
+    "variant": "contract",
+    "lane": "openrouter:openai/gpt-oss-120b",
+    "model": "openai/gpt-oss-120b",
+    "latencyMs": 4106,
+    "tokensUsed": {
+      "prompt": 1641,
+      "completion": 1543
+    },
+    "cost": 0.00115275,
+    "words": 103,
+    "phantoms": [
+      {
+        "name": "Because The Warehouse",
+        "sentence": "Because The Warehouse is located at The Courtyard, that hidden opening now creates a direct passage between the two spaces, letting you see the neglected stone floor of The Courtya"
+      }
+    ],
+    "grounding": {
+      "sentences": 3,
+      "ungrounded": 2
+    },
+    "content": "You wrench the metal cover of The Warehouse aside, the clank echoing against the partially collapsed roof, and expose a narrow shaft that drops a few meters into darkness, the faint hum of machinery from The Warehouse reverberating around it. Because The Warehouse is located at The Courtyard, that hidden opening now creates a direct passage between the two spaces, letting you see the neglected stone floor of The Courtyard just beyond the gap. Do you climb through the opening now, risking a fall into unknown depths, or continue scouting the ruined streets of Night City and The City for a safer shelter?"
+  },
+  {
+    "beat": 3,
+    "intent": "Examine the metal cover",
+    "variant": "contract",
+    "lane": "gemini:gemini-2.5-flash-lite",
+    "model": "gemini-2.5-flash-lite",
+    "latencyMs": 1128,
+    "tokensUsed": {
+      "prompt": 1624,
+      "completion": 79
+    },
+    "cost": null,
+    "words": 69,
+    "phantoms": [],
+    "grounding": {
+      "sentences": 4,
+      "ungrounded": 4
+    },
+    "content": "The metal cover pries open with a screech, revealing a hidden opening into The Warehouse. Dust billows from within, carrying the faint scent of old oil and something metallic. You can see the partially collapsed roof overhead, but the darkness within the opening seems to promise a more secure shelter. Do you descend into the unknown depths of The Warehouse, or secure the entrance and search The Courtyard further?"
+  },
+  {
+    "beat": 3,
+    "intent": "Examine the metal cover",
+    "variant": "terse",
+    "lane": "openrouter",
+    "model": "meta-llama/llama-3.3-70b-instruct",
+    "latencyMs": 771,
+    "tokensUsed": {
+      "prompt": 1483,
+      "completion": 53
+    },
+    "cost": 0.00091684,
+    "words": 45,
+    "phantoms": [],
+    "grounding": {
+      "sentences": 4,
+      "ungrounded": 4
+    },
+    "content": "You find a hidden latch under the metal cover. The cover opens, revealing a narrow stairway leading down into darkness. A partially collapsed roof above suggests this area may be unstable. You must decide how to proceed down the stairs or inspect the roof's damage."
+  },
+  {
+    "beat": 3,
+    "intent": "Examine the metal cover",
+    "variant": "terse",
+    "lane": "openrouter:openai/gpt-oss-120b",
+    "model": "openai/gpt-oss-120b",
+    "latencyMs": 1798,
+    "tokensUsed": {
+      "prompt": 1514,
+      "completion": 510
+    },
+    "cost": 0.0005331,
+    "words": 57,
+    "phantoms": [],
+    "grounding": {
+      "sentences": 5,
+      "ungrounded": 5
+    },
+    "content": "You lift the dented metal cover on the warehouse roof. Beneath it lies a rusted steel hatch, its latch jammed but accessible, revealing a narrow shaft that drops into the building’s interior. The shaft is dimly lit by a faint green glow from exposed circuitry. You now know a concealed entry exists. What do you do next?"
+  },
+  {
+    "beat": 3,
+    "intent": "Examine the metal cover",
+    "variant": "terse",
+    "lane": "gemini:gemini-2.5-flash-lite",
+    "model": null,
+    "latencyMs": null,
+    "tokensUsed": null,
+    "cost": null,
+    "words": 0,
+    "phantoms": [],
+    "grounding": {
+      "sentences": 0,
+      "ungrounded": 0
+    },
+    "content": "<<CELL FAILED: OpenRouter request failed (503): HTTP 503>>",
+    "failed": true
+  },
+  {
+    "beat": 4,
+    "intent": "Prepare to fight",
+    "variant": "current",
+    "lane": "openrouter",
+    "model": "meta-llama/llama-3.3-70b-instruct",
+    "latencyMs": 1353,
+    "tokensUsed": {
+      "prompt": 1611,
+      "completion": 128
+    },
+    "cost": 0.00105161,
+    "words": 114,
+    "phantoms": [
+      {
+        "name": "Warehouse",
+        "sentence": "Your gaze settles on the Warehouse, its partially collapsed roof a potential weakness, and you wonder if you should secure it as a defensive position or scout out the surrounding a"
+      }
+    ],
+    "grounding": {
+      "sentences": 4,
+      "ungrounded": 4
+    },
+    "content": "As you prepare to fight, your hand instinctively goes to the grip of your weapon, and you notice the weight of it feels reassuring in your palm. The air seems to vibrate with tension, and you sense that the silence is on the verge of being shattered. Your gaze settles on the Warehouse, its partially collapsed roof a potential weakness, and you wonder if you should secure it as a defensive position or scout out the surrounding area to get a better sense of your surroundings. The hum of machinery in the distance grows slightly louder, and you can't help but feel that whatever is making that noise may be heading in your direction."
+  },
+  {
+    "beat": 4,
+    "intent": "Prepare to fight",
+    "variant": "current",
+    "lane": "openrouter:openai/gpt-oss-120b",
+    "model": "openai/gpt-oss-120b",
+    "latencyMs": 1979,
+    "tokensUsed": {
+      "prompt": 1641,
+      "completion": 547
+    },
+    "cost": 0.00057435,
+    "words": 113,
+    "phantoms": [],
+    "grounding": {
+      "sentences": 4,
+      "ungrounded": 4
+    },
+    "content": "You yank your stance into a tight defensive posture, shoulders squared and grip tightening around the hilt of the battered pistol you kept strapped beneath your coat. The shifting weight of the ruined roof sends a small cascade of dust down, and amid the fallout a rusted pipe half‑buried in the debris catches your eye—its metal still cold enough to serve as a blunt weapon. A faint, irregular clatter reverberates from the hidden opening in the far wall, suggesting something—or someone—has taken notice of the sudden movement. You can either seize the pipe and ready it as a backup, or press your ear to the opening and try to discern what lies beyond."
+  },
+  {
+    "beat": 4,
+    "intent": "Prepare to fight",
+    "variant": "current",
+    "lane": "gemini:gemini-2.5-flash-lite",
+    "model": "gemini-2.5-flash-lite",
+    "latencyMs": 1064,
+    "tokensUsed": {
+      "prompt": 1606,
+      "completion": 87
+    },
+    "cost": null,
+    "words": 69,
+    "phantoms": [
+      {
+        "name": "Combat Readiness",
+        "sentence": "[CHECK: Combat Readiness DC 12]"
+      }
+    ],
+    "grounding": {
+      "sentences": 5,
+      "ungrounded": 5
+    },
+    "content": "You scan your surroundings, your senses sharpening. The air, thick with the metallic tang of decay and the distant hum of forgotten machinery, becomes a tapestry of potential threats. Your grip tightens on your weapon, muscles tensed, ready for the slightest shift in the oppressive silence. A flicker of movement catches your eye from the edge of your vision, near a pile of rubble.\n\n[CHECK: Combat Readiness DC 12]"
+  },
+  {
+    "beat": 4,
+    "intent": "Prepare to fight",
+    "variant": "contract",
+    "lane": "openrouter",
+    "model": "meta-llama/llama-3.3-70b-instruct",
+    "latencyMs": 1449,
+    "tokensUsed": {
+      "prompt": 1601,
+      "completion": 77
+    },
+    "cost": 0.00100542,
+    "words": 67,
+    "phantoms": [],
+    "grounding": {
+      "sentences": 4,
+      "ungrounded": 2
+    },
+    "content": "You ready your stance in the desolate Night City, prepared for a potential fight. The flickering neon signs of Night City cast an eerie glow on your surroundings. Nearby, the partially collapsed roof of The Warehouse suggests it could provide viable shelter if needed. With your guard up, you must now decide whether to investigate the hidden opening of The Warehouse or remain vigilant in the open."
+  },
+  {
+    "beat": 4,
+    "intent": "Prepare to fight",
+    "variant": "contract",
+    "lane": "openrouter:openai/gpt-oss-120b",
+    "model": "openai/gpt-oss-120b",
+    "latencyMs": 2609,
+    "tokensUsed": {
+      "prompt": 1630,
+      "completion": 1015
+    },
+    "cost": 0.0007959,
+    "words": 86,
+    "phantoms": [],
+    "grounding": {
+      "sentences": 3,
+      "ungrounded": 1
+    },
+    "content": "You tighten your grip on your blade inside The Warehouse, eyes scanning the cracked concrete and the distant hum of machinery that drifts through Night City’s ruined corridors. A quick glance reveals that The Warehouse hides a concealed opening behind a sagging metal panel, a fact you hadn’t noticed before. With the hidden opening exposed, you must decide whether to breach it now to create a secure fallback in The Warehouse or hold your position and await any threat that may emerge from Night City’s shadows."
+  },
+  {
+    "beat": 4,
+    "intent": "Prepare to fight",
+    "variant": "contract",
+    "lane": "gemini:gemini-2.5-flash-lite",
+    "model": "gemini-2.5-flash-lite",
+    "latencyMs": 992,
+    "tokensUsed": {
+      "prompt": 1612,
+      "completion": 76
+    },
+    "cost": null,
+    "words": 66,
+    "phantoms": [],
+    "grounding": {
+      "sentences": 4,
+      "ungrounded": 3
+    },
+    "content": "Your muscles tense as you scan the crumbling structure of The Warehouse, readying yourself for any threat. A recently etched cache-mark on a nearby stone wall catches your eye, hinting at hidden stores within Night City. The distant hum of machinery from within The Warehouse grows louder, an unknown presence stirring in the desolate ruins. Do you investigate the mark or the source of the sound?"
+  },
+  {
+    "beat": 4,
+    "intent": "Prepare to fight",
+    "variant": "terse",
+    "lane": "openrouter",
+    "model": "meta-llama/llama-3.3-70b-instruct",
+    "latencyMs": 628,
+    "tokensUsed": {
+      "prompt": 1473,
+      "completion": 49
+    },
+    "cost": 0.00090778,
+    "words": 39,
+    "phantoms": [],
+    "grounding": {
+      "sentences": 4,
+      "ungrounded": 4
+    },
+    "content": "You're now ready to fight. Your gaze sweeps the neglected courtyard, focusing on the warehouse. Its partially collapsed roof and intact walls make it a viable shelter, potentially defensible. The distant hum of machinery grows slightly louder, demanding investigation."
+  },
+  {
+    "beat": 4,
+    "intent": "Prepare to fight",
+    "variant": "terse",
+    "lane": "openrouter:openai/gpt-oss-120b",
+    "model": "openai/gpt-oss-120b",
+    "latencyMs": 1174,
+    "tokensUsed": {
+      "prompt": 1503,
+      "completion": 458
+    },
+    "cost": 0.00048105,
+    "words": 58,
+    "phantoms": [
+      {
+        "name": "Warehouse",
+        "sentence": "You shift into a combat stance, gripping your weapon and scouting the Warehouse’s interior."
+      }
+    ],
+    "grounding": {
+      "sentences": 4,
+      "ungrounded": 4
+    },
+    "content": "You shift into a combat stance, gripping your weapon and scouting the Warehouse’s interior. The partially collapsed roof looms above, and you locate the hidden opening that could serve as an ingress or escape. You confirm the space is defensible, but the distant hum suggests active machinery nearby. Decide how to secure the shelter or investigate the sound."
+  },
+  {
+    "beat": 4,
+    "intent": "Prepare to fight",
+    "variant": "terse",
+    "lane": "gemini:gemini-2.5-flash-lite",
+    "model": "gemini-2.5-flash-lite",
+    "latencyMs": 1027,
+    "tokensUsed": {
+      "prompt": 1474,
+      "completion": 71
+    },
+    "cost": null,
+    "words": 57,
+    "phantoms": [],
+    "grounding": {
+      "sentences": 5,
+      "ungrounded": 5
+    },
+    "content": "[GM VOICE] You scan the surroundings, noting structural weaknesses and potential cover. The warehouse's partially collapsed roof offers an unstable vantage point, while a hidden opening suggests a clandestine entry or escape route. The distant hum of machinery hints at the building's past function and potential resources. The immediate area is clear, unclaimed. What do you do?"
+  },
+  {
+    "beat": 5,
+    "intent": "Who are you?",
+    "variant": "current",
+    "lane": "openrouter",
+    "model": "meta-llama/llama-3.3-70b-instruct",
+    "latencyMs": 1513,
+    "tokensUsed": {
+      "prompt": 1910,
+      "completion": 117
+    },
+    "cost": 0.00121933,
+    "words": 96,
+    "phantoms": [],
+    "grounding": {
+      "sentences": 4,
+      "ungrounded": 4
+    },
+    "content": "Your voice echoes off the walls of the courtyard, but there's no response - you're alone. However, your utterance seems to have stirred something, and you notice a faint hum of machinery growing louder, emanating from within the warehouse. The partially collapsed roof above you creaks, and a section of debris shifts, revealing a glimpse of a makeshift stairway leading down into the darkness. The air from the opening carries the scent of burned wiring and smoke, drawing your attention to the possibility of scavenging for useful components or shelter within the depths of the warehouse."
+  },
+  {
+    "beat": 5,
+    "intent": "Who are you?",
+    "variant": "current",
+    "lane": "openrouter:openai/gpt-oss-120b",
+    "model": "openai/gpt-oss-120b",
+    "latencyMs": 3355,
+    "tokensUsed": {
+      "prompt": 1940,
+      "completion": 495
+    },
+    "cost": 0.0005688,
+    "words": 80,
+    "phantoms": [],
+    "grounding": {
+      "sentences": 5,
+      "ungrounded": 5
+    },
+    "content": "A thin, static‑laden voice sputters from the broken wall, its tone metallic and weary. “ARC‑7, maintenance drone. System compromised. Structural integrity failing—roof collapse imminent in ten minutes.” The speaker points you toward the jagged slab of metal framing a hidden opening you’d barely noticed, its edges flickering with a faint, electric blue glow. Do you rush to the opening and explore the shaft before the roof gives way, or search the warehouse for anything else that might aid your escape?"
+  },
+  {
+    "beat": 5,
+    "intent": "Who are you?",
+    "variant": "current",
+    "lane": "gemini:gemini-2.5-flash-lite",
+    "model": "gemini-2.5-flash-lite",
+    "latencyMs": 1118,
+    "tokensUsed": {
+      "prompt": 1909,
+      "completion": 142
+    },
+    "cost": null,
+    "words": 106,
+    "phantoms": [],
+    "grounding": {
+      "sentences": 7,
+      "ungrounded": 7
+    },
+    "content": "You call out, your voice echoing strangely in the cavernous space. A beat of silence, then a low, guttural rasp answers from the shadows ahead. It's not a voice you recognize, but it carries the undeniable weight of someone who has seen too much. The sound scrapes against your nerves, a promise of danger or perhaps, just perhaps, a desperate plea.\n\n\"You're in my place now, scavver.\"\n\nThe voice is rough, like grinding metal, and it seems to emanate from the far corner of the warehouse, deeper within the gloom. A faint, phosphorescent glow flickers into existence there, revealing a hunched form.\n\nWhat do you do?"
+  },
+  {
+    "beat": 5,
+    "intent": "Who are you?",
+    "variant": "contract",
+    "lane": "openrouter",
+    "model": "meta-llama/llama-3.3-70b-instruct",
+    "latencyMs": 953,
+    "tokensUsed": {
+      "prompt": 1900,
+      "completion": 83
+    },
+    "cost": 0.00118657,
+    "words": 70,
+    "phantoms": [],
+    "grounding": {
+      "sentences": 4,
+      "ungrounded": 2
+    },
+    "content": "You realize you're alone in Night City, your question echoing off the ruins. The silence is a reminder that you've found no one to ask. In The Warehouse, a partially collapsed roof suggests a need for shelter, and its viable shelter potential is enticing. With the fresh cache-mark on the stone wall in mind, you must decide how to proceed, weighing the possibility of supplies against the risk of traps."
+  },
+  {
+    "beat": 5,
+    "intent": "Who are you?",
+    "variant": "contract",
+    "lane": "openrouter:openai/gpt-oss-120b",
+    "model": "openai/gpt-oss-120b",
+    "latencyMs": 3711,
+    "tokensUsed": {
+      "prompt": 1929,
+      "completion": 1383
+    },
+    "cost": 0.00108075,
+    "words": 96,
+    "phantoms": [
+      {
+        "name": "Courtyard",
+        "sentence": "Your shouted question ricochets through The Warehouse's collapsed roof and steel girders, echoing across Night City's neon haze and into the adjacent Courtyard, returning as a cold"
+      },
+      {
+        "name": "Stone",
+        "sentence": "A freshly etched Cache-mark on the Stone wall, near the entrance to the Hidden cache that opens onto The Alleyway, signals that a traveler has recently marked a supply stash."
+      },
+      {
+        "name": "Hidden",
+        "sentence": "A freshly etched Cache-mark on the Stone wall, near the entrance to the Hidden cache that opens onto The Alleyway, signals that a traveler has recently marked a supply stash."
+      }
+    ],
+    "grounding": {
+      "sentences": 3,
+      "ungrounded": 0
+    },
+    "content": "Your shouted question ricochets through The Warehouse's collapsed roof and steel girders, echoing across Night City's neon haze and into the adjacent Courtyard, returning as a cold, empty clang that offers no answer.  \n\nA freshly etched Cache-mark on the Stone wall, near the entrance to the Hidden cache that opens onto The Alleyway, signals that a traveler has recently marked a supply stash.  \n\nWill you force the hidden opening in The Warehouse to claim the shelter, or follow the Cache-mark's clue into the Hidden cache for potential supplies before Night City's patrol drones sweep the sector?"
+  },
+  {
+    "beat": 5,
+    "intent": "Who are you?",
+    "variant": "contract",
+    "lane": "gemini:gemini-2.5-flash-lite",
+    "model": null,
+    "latencyMs": null,
+    "tokensUsed": null,
+    "cost": null,
+    "words": 0,
+    "phantoms": [],
+    "grounding": {
+      "sentences": 0,
+      "ungrounded": 0
+    },
+    "content": "<<CELL FAILED: OpenRouter request failed (503): HTTP 503>>",
+    "failed": true
+  },
+  {
+    "beat": 5,
+    "intent": "Who are you?",
+    "variant": "terse",
+    "lane": "openrouter",
+    "model": "meta-llama/llama-3.3-70b-instruct",
+    "latencyMs": 789,
+    "tokensUsed": {
+      "prompt": 1772,
+      "completion": 40
+    },
+    "cost": 0.00107708,
+    "words": 29,
+    "phantoms": [],
+    "grounding": {
+      "sentences": 3,
+      "ungrounded": 3
+    },
+    "content": "You learn nothing, as there's no one to answer. You're alone in the warehouse, surrounded by crumbling walls and twisted metal. The partially collapsed roof above creaks, demanding attention."
+  },
+  {
+    "beat": 5,
+    "intent": "Who are you?",
+    "variant": "terse",
+    "lane": "openrouter:openai/gpt-oss-120b",
+    "model": "openai/gpt-oss-120b",
+    "latencyMs": 1302,
+    "tokensUsed": {
+      "prompt": 1802,
+      "completion": 451
+    },
+    "cost": 0.0005217,
+    "words": 49,
+    "phantoms": [],
+    "grounding": {
+      "sentences": 4,
+      "ungrounded": 3
+    },
+    "content": "Your question reverberates off the metal ribs of the warehouse, but no voice returns. The distant hum of machinery swallows the silence, confirming that no one is present. You now know you are alone, with only the hidden opening and the fresh cache‑mark as clues. Decide your next move."
+  },
+  {
+    "beat": 5,
+    "intent": "Who are you?",
+    "variant": "terse",
+    "lane": "gemini:gemini-2.5-flash-lite",
+    "model": "gemini-2.5-flash-lite",
+    "latencyMs": 1326,
+    "tokensUsed": {
+      "prompt": 1777,
+      "completion": 104
+    },
+    "cost": null,
+    "words": 70,
+    "phantoms": [],
+    "grounding": {
+      "sentences": 6,
+      "ungrounded": 6
+    },
+    "content": "[GM VOICE] You call out into the stillness, your voice echoing in the cavernous space. A figure detaches itself from the shadows near a stack of crates. It's a scavenger, gaunt and clad in scavenged synth-leather, clutching a crude pipe wrench. Their eyes, sharp and wary, fix on you. They don't speak, but the tension in their stance says everything.\n\n[UPDATE_ENTITY: name=\"The Warehouse\" facts=\"has a scavenger hiding within its confines\"]"
+  },
+  {
+    "beat": 6,
+    "intent": "Attack him",
+    "variant": "current",
+    "lane": "openrouter",
+    "model": "meta-llama/llama-3.3-70b-instruct",
+    "latencyMs": 1999,
+    "tokensUsed": {
+      "prompt": 1913,
+      "completion": 127
+    },
+    "cost": 0.001229,
+    "words": 105,
+    "phantoms": [],
+    "grounding": {
+      "sentences": 4,
+      "ungrounded": 2
+    },
+    "content": "There's no one to attack, and your fist clenches in frustration as you realize you're alone in the desolate landscape of Night City. The silence is oppressive, and the only sound is the creaking of twisted metal and the distant hum of machinery from the warehouse. You notice that the warehouse's partially collapsed roof seems to be stabilizing, its metal beams twisted and exposed, potentially providing a secure shelter from the dangers that lurk in the city. As you approach the warehouse, the hum of machinery grows louder, and you spot a possible entrance, partially hidden by the rubble, inviting you to explore its depths."
+  },
+  {
+    "beat": 6,
+    "intent": "Attack him",
+    "variant": "current",
+    "lane": "openrouter:openai/gpt-oss-120b",
+    "model": "openai/gpt-oss-120b",
+    "latencyMs": 1863,
+    "tokensUsed": {
+      "prompt": 1945,
+      "completion": 644
+    },
+    "cost": 0.00065895,
+    "words": 80,
+    "phantoms": [],
+    "grounding": {
+      "sentences": 3,
+      "ungrounded": 3
+    },
+    "content": "Your blade bites into the humming mass perched atop the twisted steel beam, shattering a rusted maintenance drone’s chassis. Sparks rain down as its central core sputters, flaring a cracked holo‑projector that throws a brief, jittery schematic of the warehouse onto the cracked concrete—showing a sealed conduit leading deeper into the building. The dying drone clatters to the floor, its power cell exposed and humming faintly; you can pry it loose or follow the illuminated conduit toward whatever lies beyond."
+  },
+  {
+    "beat": 6,
+    "intent": "Attack him",
+    "variant": "current",
+    "lane": "gemini:gemini-2.5-flash-lite",
+    "model": null,
+    "latencyMs": null,
+    "tokensUsed": null,
+    "cost": null,
+    "words": 0,
+    "phantoms": [],
+    "grounding": {
+      "sentences": 0,
+      "ungrounded": 0
+    },
+    "content": "<<CELL FAILED: OpenRouter request failed (429): HTTP 429>>",
+    "failed": true
+  },
+  {
+    "beat": 6,
+    "intent": "Attack him",
+    "variant": "contract",
+    "lane": "openrouter",
+    "model": "meta-llama/llama-3.3-70b-instruct",
+    "latencyMs": 826,
+    "tokensUsed": {
+      "prompt": 1903,
+      "completion": 71
+    },
+    "cost": 0.00117886,
+    "words": 59,
+    "phantoms": [
+      {
+        "name": "Warehouse",
+        "sentence": "The Warehouse, with its partially collapsed roof, stands before you."
+      },
+      {
+        "name": "Warehouse's",
+        "sentence": "You must decide whether to investigate the Warehouse's interior or explore the surrounding ruins of Night City."
+      }
+    ],
+    "grounding": {
+      "sentences": 4,
+      "ungrounded": 2
+    },
+    "content": "You strike the air, but there's no one to hit in the desolate Night City landscape. The Warehouse, with its partially collapsed roof, stands before you. The silence is broken by the hum of machinery from within the Warehouse, a potential shelter. You must decide whether to investigate the Warehouse's interior or explore the surrounding ruins of Night City."
+  },
+  {
+    "beat": 6,
+    "intent": "Attack him",
+    "variant": "contract",
+    "lane": "openrouter:openai/gpt-oss-120b",
+    "model": "openai/gpt-oss-120b",
+    "latencyMs": 1593,
+    "tokensUsed": {
+      "prompt": 1934,
+      "completion": 692
+    },
+    "cost": 0.0005709,
+    "words": 75,
+    "phantoms": [
+      {
+        "name": "Warehouse",
+        "sentence": "Your swing slams into the twisted metal beam inside the Warehouse, sending a clang echoing through the partially collapsed roof of the Warehouse."
+      }
+    ],
+    "grounding": {
+      "sentences": 3,
+      "ungrounded": 1
+    },
+    "content": "Your swing slams into the twisted metal beam inside the Warehouse, sending a clang echoing through the partially collapsed roof of the Warehouse. The impact tears open a concealed panel, revealing a fresh cache‑mark of humming circuitry that was hidden within the Warehouse’s walls. Now the exposed circuitry threatens to overload, forcing you to decide whether to jury‑rig it as a defensive turret or seal it before the hum attracts unwanted attention in Night City."
+  },
+  {
+    "beat": 6,
+    "intent": "Attack him",
+    "variant": "contract",
+    "lane": "gemini:gemini-2.5-flash-lite",
+    "model": null,
+    "latencyMs": null,
+    "tokensUsed": null,
+    "cost": null,
+    "words": 0,
+    "phantoms": [],
+    "grounding": {
+      "sentences": 0,
+      "ungrounded": 0
+    },
+    "content": "<<CELL FAILED: OpenRouter request failed (429): HTTP 429>>",
+    "failed": true
+  },
+  {
+    "beat": 6,
+    "intent": "Attack him",
+    "variant": "terse",
+    "lane": "openrouter",
+    "model": "meta-llama/llama-3.3-70b-instruct",
+    "latencyMs": 1072,
+    "tokensUsed": {
+      "prompt": 1775,
+      "completion": 47
+    },
+    "cost": 0.00108438,
+    "words": 36,
+    "phantoms": [],
+    "grounding": {
+      "sentences": 5,
+      "ungrounded": 4
+    },
+    "content": "There's no one to attack. You're alone in the ruins of Night City. Your caution is warranted, but no threat is present. A partially collapsed warehouse stands before you, potentially defensible. What do you do next?"
+  },
+  {
+    "beat": 6,
+    "intent": "Attack him",
+    "variant": "terse",
+    "lane": "openrouter:openai/gpt-oss-120b",
+    "model": "openai/gpt-oss-120b",
+    "latencyMs": 872,
+    "tokensUsed": {
+      "prompt": 1807,
+      "completion": 248
+    },
+    "cost": 0.00041985,
+    "words": 60,
+    "phantoms": [],
+    "grounding": {
+      "sentences": 4,
+      "ungrounded": 4
+    },
+    "content": "Your strike connects with nothing—no figure stands before you, only the hollow echo of steel against rusted beams. The empty swing leaves you momentarily off‑balance, exposing your flank to the surrounding ruin. You now know the warehouse holds no immediate adversary, only silent machinery and crumbling walls. Decide your next move: explore, secure a position, or search for hidden threats."
+  },
+  {
+    "beat": 6,
+    "intent": "Attack him",
+    "variant": "terse",
+    "lane": "gemini:gemini-2.5-flash-lite",
+    "model": null,
+    "latencyMs": null,
+    "tokensUsed": null,
+    "cost": null,
+    "words": 0,
+    "phantoms": [],
+    "grounding": {
+      "sentences": 0,
+      "ungrounded": 0
+    },
+    "content": "<<CELL FAILED: OpenRouter request failed (429): HTTP 429>>",
+    "failed": true
+  }
+]
