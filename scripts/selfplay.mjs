@@ -193,6 +193,37 @@ async function worldRun(token) {
   });
 }
 
+// ── BATTERY ENV IMMUNITY (preflight) ──────────────────────────────────────────
+// The battery must be immune to operator env on the SERVER: a grading flag in the
+// server's .env (INKBORNE_SCENARIO=the_shipment) silently converts every plain
+// campaign world-run into a scenario run — the shipment's 3-node line graph then
+// fails movement's geo-fog assert and every non-scenario scenario runs off-spec
+// (the 2026-07-05 push-receipt finding). Deterministic detector: worldGen's
+// synthesize() honours a player-supplied startingLocationName VERBATIM, so a
+// plain worldRun (which injects "The Ember Tavern") must commit exactly that
+// start name. A scenario run overrides it with the authored location. Scenario
+// tests are unaffected — they pass an explicit scenarioId, which beats the env
+// flag by construction.
+async function assertBatteryEnvImmunity() {
+  const probe = await newRun();
+  const s = (await scene(probe)).json;
+  const got = String(s.location?.name || "(none)");
+  if (got.toLowerCase() !== "the ember tavern") {
+    console.error("════════════════════════════════════════════════════════════");
+    console.error("  ✗ BATTERY PREFLIGHT FAILED — the server env is forcing a scenario.");
+    console.error(`    A plain campaign world-run committed start location "${got}"`);
+    console.error('    instead of the injected worldgen base "The Ember Tavern".');
+    console.error("    Almost certainly INKBORNE_SCENARIO is set in the battery server's");
+    console.error("    .env/environment (the owner's grading flag). Battery servers must");
+    console.error("    clear it — launch via scripts/battery-server.sh, or restart with:");
+    console.error("      INKBORNE_SCENARIO= PORT=<port> node server/index.js");
+    console.error("    Aborting: results on a scenario-forced server are not the battery.");
+    console.error("════════════════════════════════════════════════════════════");
+    process.exit(2);
+  }
+  console.log('  Preflight: plain campaign run committed "The Ember Tavern" — server env is scenario-clean.');
+}
+
 // Reactive user rotation: keep ONE shared user (one registration) to stay clear of
 // the IP register limit (10/15min), but if a world-run hits the per-user DAILY
 // session cap (10 runs/user/day, code SESSION_LIMIT_REACHED), rotate to a fresh
@@ -268,12 +299,15 @@ const WORLDGEN_FINGERPRINT = [
   "ruins", "rubble", "scuff", "crumbling", "cobblestone"
 ];
 
-// Every player-facing setting surface of a scene payload, as searchable strings —
-// including COMMITTED discoverable content (discoveredDetails), where default-world
-// searchDetails that survived the scenario override surface once a player looks.
+// Every COMMITTED/server-owned setting surface of a scene payload, as searchable
+// strings — including COMMITTED discoverable content (discoveredDetails), where
+// default-world searchDetails that survived the scenario override surface once a
+// player looks. Deliberately EXCLUDES model prose (openingNarration, per-turn
+// gmNarration): a hit in committed state/suggestions is unambiguous bleed and
+// hard-FAILs, while prose-only hits WARN (see assertScenarioSetting) — a weak
+// model legitimately writes e.g. "concrete ruins" as cyberpunk flavor.
 function settingSurfaces(s) {
   return [
-    String(s.openingNarration || ""),
     String(s.location?.name || ""),
     String(s.location?.description || ""),
     (s.location?.tags || []).join(" "),
@@ -288,7 +322,11 @@ function settingSurfaces(s) {
 // setting the player sees. Reusable: pass the authored scenario, a scene payload,
 // and any per-turn narration. Hard-asserts (1) committed location ∈ the authored
 // set, (2) the move graph names only authored destinations, (3) no worldgen/
-// default-world fingerprint in committed state, narration, or suggestions.
+// default-world fingerprint in committed state or suggestions. Fingerprint hits
+// that appear ONLY in model prose (opening/per-turn narration) WARN instead of
+// FAIL: with the committed state verified clean, a prose keyword is model word
+// choice ("concrete ruins" as cyberpunk decay), not state bleed — the push-receipt
+// calibration from the 8b false positive.
 function assertScenarioSetting(ctx, { label, authored, scene: s, narration = "" }) {
   const authoredLocNames = Object.values(authored.locations || {}).map((l) => String(l.name || "").toLowerCase()).filter(Boolean);
   const locName = String(s.location?.name || "").toLowerCase();
@@ -306,14 +344,22 @@ function assertScenarioSetting(ctx, { label, authored, scene: s, narration = "" 
     "authored destinations only",
     foreignMove ? `foreign destination "${foreignMove}"` : "clean"
   );
-  const hay = settingSurfaces(s).concat([String(narration || "")]).join("  ").toLowerCase();
-  const leaked = WORLDGEN_FINGERPRINT.filter((t) => hay.includes(t));
+  const committedHay = settingSurfaces(s).join("  ").toLowerCase();
+  const leaked = WORLDGEN_FINGERPRINT.filter((t) => committedHay.includes(t));
   ctx.assert(
-    `[${label}] NO worldgen/default-world content bleed (committed state, narration, suggestions)`,
+    `[${label}] NO worldgen/default-world content bleed in COMMITTED state/suggestions`,
     leaked.length === 0,
     "authored setting only",
     leaked.length ? `LEAKED default-world terms: ${leaked.join(", ")}` : "clean"
   );
+  const proseHay = `${String(s.openingNarration || "")}  ${String(narration || "")}`.toLowerCase();
+  const proseHits = WORLDGEN_FINGERPRINT.filter((t) => proseHay.includes(t) && !committedHay.includes(t));
+  if (proseHits.length) {
+    ctx.warn(
+      `[${label}] worldgen fingerprint term(s) in model PROSE only (committed state clean)`,
+      `${proseHits.join(", ")} — model word choice, not state bleed; escalate only if committed surfaces ever hit`
+    );
+  }
 }
 
 // playerInventory is the AUTHORITATIVE usable-items projection (from run.inventory,
@@ -2091,14 +2137,29 @@ async function scenarioLocationSource(ctx) {
     const res = await act(r, { type: "attempt", intent: "I search the area around me for anything worth noting." });
     const sN = (await scene(r)).json;
     assertScenarioSetting(ctx, { label, authored, scene: sN, narration: String(res.json?.gmNarration || "") });
+    // COMMITTED band (hard): discoveredDetails + a FOUND search's summary — both
+    // are server-owned searchDetail text, so a fingerprint hit is a surviving
+    // default-world detail. The rest of the searchResult payload (miss messages,
+    // GM-flavored wrappers) is prose-graded: WARN via a separate scan, because a
+    // weak model's word choice ("concrete ruins") is not state bleed.
     const revealed = (sN.discoveredDetails || []).map((d) => `${d.label || ""} :: ${d.description || ""}`).join("  ");
-    const leaked = WORLDGEN_FINGERPRINT.filter((t) => `${res.json?.searchResult ? JSON.stringify(res.json.searchResult) : ""} ${revealed}`.toLowerCase().includes(t));
+    const sr = res.json?.searchResult || null;
+    const committedSearch = `${revealed} ${sr?.found === true ? String(sr.summary || "") : ""}`.toLowerCase();
+    const leaked = WORLDGEN_FINGERPRINT.filter((t) => committedSearch.includes(t));
     ctx.assert(
       `[${label}] a SEARCH surfaces only scenario-authored detail (no default-world searchDetail survived the override)`,
       leaked.length === 0,
       "scenario detail only",
       leaked.length ? `LEAKED default-world content: ${leaked.join(", ")} — discovered: "${revealed.slice(0, 100)}"` : "clean"
     );
+    const srProse = sr ? JSON.stringify(sr).toLowerCase() : "";
+    const srProseHits = WORLDGEN_FINGERPRINT.filter((t) => srProse.includes(t) && !committedSearch.includes(t));
+    if (srProseHits.length) {
+      ctx.warn(
+        `[${label}] worldgen fingerprint in the searchResult's prose band only (committed detail clean)`,
+        srProseHits.join(", ")
+      );
+    }
     return sN;
   };
 
@@ -2160,7 +2221,9 @@ const SCENARIOS = [
   { key: "wire", title: "WIRE CONTRACT — committed surfaces cross HTTP + scene payload, permanently", fn: scenarioWire },
   { key: "persistence", title: "PERSISTENCE — state survives a reload", fn: scenarioPersistence },
   { key: "gm_health", title: "GM HEALTH — real prose, responsive, on-topic", fn: scenarioGmHealth },
-  { key: "location_source", title: "SCENARIO SOURCE-OF-TRUTH — the authored scenario location is the ONLY setting (no worldgen bleed into narration/suggestions)", fn: scenarioLocationSource }
+  // scenarioMode: this test DELIBERATELY runs an authored scenario (explicit
+  // scenarioId beats any env flag), so it is exempt from the env-immunity preflight.
+  { key: "location_source", title: "SCENARIO SOURCE-OF-TRUTH — the authored scenario location is the ONLY setting (no worldgen bleed into committed state/suggestions; prose hits WARN)", fn: scenarioLocationSource, scenarioMode: true }
 ];
 
 const VERDICT_GLYPH = { PASS: "✅ PASS", FAIL: "❌ FAIL", WARN: "⚠️  WARN", PENDING: "⏳ PEND", ERROR: "💥 ERR " };
@@ -2202,6 +2265,12 @@ async function main() {
     console.log(`  GM provider: <probe failed: ${err?.message || err}>`);
   }
   console.log(`  Running: ${selected.map((s) => s.key).join(", ")}`);
+  // Env-immunity preflight: only when a PLAIN (non-scenario-mode) test is selected
+  // — scenario tests pass an explicit scenarioId and are immune by construction.
+  // Aborts (exit 2) if the server env forces a scenario onto plain campaign runs.
+  if (selected.some((sc) => !sc.scenarioMode)) {
+    await assertBatteryEnvImmunity();
+  }
   console.log("════════════════════════════════════════════════════════════");
 
   const results = [];
