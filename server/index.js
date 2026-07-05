@@ -34,6 +34,7 @@ import { appendTurnLog, logTurnEvent } from "./logging/sessionLog.js";
 import { generateWithProvider, listAiProviders, pollinationsEditConfigured } from "./ai/providers.js";
 import { detectImageExt, parseMultipartFile, readJsonBody, readRawBody, serveStatic, writeJson, writeText } from "./api/http.js";
 import { handleQuickstartBuildPayload, handleQuickstartParsePayload } from "./api/quickstartRoutes.js";
+import { createLemonSqueezyWebhookHandler } from "./api/lemonsqueezy.js";
 import { tokenFromRequest } from "./auth/httpAuth.js";
 import { createOnboardingCampaign, createWorldOnboardingRun } from "./campaign/onboarding.js";
 import { generateWorld, regenerateWorldField } from "./solo/worldGen.js";
@@ -77,6 +78,7 @@ import {
   setLocationImageLocked,
   setSoloRunSuggestions,
   setUserTier,
+  findUserByEmail,
   updateImageAssetStatus,
   updateSoloRunBattleMap,
   updateSoloRunNarration
@@ -1205,6 +1207,22 @@ async function handleApi(req, res) {
     return true;
   }
 
+  // PAYMENT RAIL (groundwork, not go-live): LemonSqueezy webhook → receipt-backed
+  // tier flip, replacing the admin set-tier stopgap. DISABLED unless
+  // LEMONSQUEEZY_WEBHOOK_SECRET is set, so this never activates without an explicit
+  // launch decision. Signature-verified against the RAW body (never re-serialized).
+  if (req.method === "POST" && url.pathname === "/api/webhooks/lemonsqueezy") {
+    try {
+      const raw = await readRawBody(req, 512 * 1024);
+      const handler = createLemonSqueezyWebhookHandler({ setUserTier, findUserByEmail });
+      const result = await handler(raw, req.headers["x-signature"]);
+      writeJson(res, result.status, result.body);
+    } catch (error) {
+      routeError(res, error);
+    }
+    return true;
+  }
+
   if (req.method === "POST" && url.pathname === "/api/auth/register") {
     try {
       enforceAuthRateLimit(req);
@@ -1734,7 +1752,21 @@ async function handleApi(req, res) {
       // fully, just with placeholder art until the cap resets. Degrades softly; it
       // never blocks the scene. Identity/suggestions are text, so they stay open.
       const byok = requestHasByokKey(req);
-      const allowImages = canGenerateImage(user, { byok }).allowed;
+      const imageGate = canGenerateImage(user, { byok });
+      const allowImages = imageGate.allowed;
+      // DIAGNOSABILITY (images "dead in-session"): when the daily image quota is
+      // spent, EVERY image enqueuer below is dropped silently and the client
+      // shows an eternal "Generating…" placeholder — the exact symptom that went
+      // undiagnosed. Log it once per scene load so a quota-skip is never invisible
+      // again. (The pipeline itself is healthy: provider→worker→write→payload→
+      // client-poll all verified; a spent free cap or INKBORNE_MOCK_IMAGE=true are
+      // the only ways images "fail". See the payment-rail report.)
+      if (!allowImages) {
+        console.warn(
+          `[images] SKIPPED for run ${run.runId}: tier=${imageGate.tier} used=${imageGate.used}/${imageGate.limit} ` +
+            `byok=${byok} — daily image quota spent; scene renders with placeholder art until reset.`
+        );
+      }
       const scene = buildSoloScenePayload(run, {
         enqueueImages: allowImages ? makeSceneImageEnqueuer(run) : undefined,
         enqueueIdentities: makeSceneIdentityEnqueuer(run),

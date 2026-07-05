@@ -2280,7 +2280,10 @@ export function renderSoloSceneShell(state = {}) {
   const activeTab = normalizeTab(state.activeTab);
   const skin = normalizeSkin(state.skin);
   const fontSet = normalizeFontSet(state.fontSet);
-  const region = location.region || character.region || "Ashenmoor";
+  // C.25: the world's OWN name is the breadcrumb root (run.world.name via the
+  // scene payload), not a hardcoded region. location/character region remain as
+  // deep fallbacks for legacy payloads that predate the world field.
+  const region = scene.world?.name || location.region || character.region || "Uncharted";
   const title = location.name || "Current Scene";
 
   // Each tab panel is always present in the markup and toggled with `hidden`,

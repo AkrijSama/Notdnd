@@ -586,7 +586,7 @@ export function renderOnboardingFlow(onboardingState = {}) {
             <input
               name="message"
               maxlength="600"
-              placeholder="Reply, ask about Ashenmoor, or test the world's memory..."
+              placeholder="Reply, ask about your world, or test its memory..."
               autocomplete="off"
               ${thinking ? "disabled" : ""}
               required

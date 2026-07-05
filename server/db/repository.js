@@ -402,6 +402,15 @@ function getUserByEmail(email) {
   return db.users.find((entry) => entry.email === normalized) || null;
 }
 
+// Exported email→user lookup for the payment webhook (LemonSqueezy fallback
+// buyer match when checkout custom_data.user_id is absent). Returns a sanitized
+// user ({ id, tier, ... }) or null. Never throws.
+export function findUserByEmail(email) {
+  ensureDb();
+  const user = getUserByEmail(email);
+  return user ? sanitizeUser(user) : null;
+}
+
 function userRoleForCampaign(userId, campaignId) {
   const members = db.campaignMembersByCampaign[campaignId] || [];
   const membership = members.find((entry) => entry.userId === userId);
