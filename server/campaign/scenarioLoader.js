@@ -136,8 +136,8 @@ export function loadScenarioIntoRun(run, scenario, options = {}) {
   // worldgen flavor for a scenario run (createWorldOnboardingRun, scenarioActive
   // guards); here we overwrite world tone/name and the location name+description
   // with the scenario's, so there is exactly ONE source of setting truth.
+  run.world = { ...run.world };
   if (scenario.world && typeof scenario.world === "object") {
-    run.world = { ...run.world };
     for (const k of ["name", "tone", "flavor", "artStyle"]) {
       if (isString(scenario.world[k])) run.world[k] = scenario.world[k];
     }
@@ -145,6 +145,7 @@ export function loadScenarioIntoRun(run, scenario, options = {}) {
       run.flags = { ...(run.flags || {}), artStyle: scenario.world.artStyle };
     }
   }
+
   for (const [locRef, loc] of Object.entries(scenario.locations || {})) {
     const id = resolveLocationRef(locRef);
     const target = run.locations[id];
@@ -153,6 +154,54 @@ export function loadScenarioIntoRun(run, scenario, options = {}) {
     if (isString(loc.description)) target.description = loc.description;
     // Drop stale worldgen flavor tags (ruins/features) that contradict the scene.
     if (Array.isArray(loc.tags)) target.tags = [...loc.tags];
+  }
+
+  // RESIDUAL 2 — NO WORLDGEN LOCATION IDENTITY may persist. run.world still carries
+  // the worldgen start-location metadata (e.g. startingLocationName "The Ember
+  // Tavern", startingLocationType "ruins"), which the opening-narration templates
+  // and world-field trackers in worldGen.js read. Replace with the scenario's own
+  // start identity: an explicit scenario value, else the authored start location's
+  // name (read AFTER the override loop above, so it is the authored name, not the
+  // stale default); the type is cleared (a scenario's setting is its authored
+  // locations, not a worldgen location type) so no "ruins"/"tavern" survives.
+  const startRefRaw = scenario.opening?.startLocationRef || "";
+  const authoredStartName = scenario.locations?.[startRefRaw]?.name;
+  const startLoc = run.locations[resolveLocationRef(startRefRaw)] || null;
+  run.world.startingLocationName = isString(scenario.world?.startingLocationName)
+    ? scenario.world.startingLocationName
+    : (isString(authoredStartName) ? authoredStartName : (isString(startLoc?.name) ? startLoc.name : ""));
+  run.world.startingLocationType = isString(scenario.world?.startingLocationType)
+    ? scenario.world.startingLocationType
+    : "";
+
+  // RESIDUAL 1 — SCRUB default-world searchDetails across the WHOLE graph. A scenario
+  // run's every location is authored setting, so no default location-graph
+  // searchDetail (dark-fantasy debris like a "Scuffed Mark" on the sprawl fringe)
+  // may survive to be surfaced by a search. Keep ONLY scenario-authored details
+  // (empty for scenarios that author none). Scoped to scenario runs: this function
+  // only runs when scenarioActive, so sandbox/guided-worldgen searchDetails are
+  // untouched.
+  const authoredDetails = new Map();
+  for (const [locRef, loc] of Object.entries(scenario.locations || {})) {
+    authoredDetails.set(resolveLocationRef(locRef), Array.isArray(loc?.searchDetails) ? loc.searchDetails : []);
+  }
+  for (const [id, target] of Object.entries(run.locations)) {
+    if (target && typeof target === "object") {
+      target.searchDetails = [...(authoredDetails.get(id) || [])];
+    }
+  }
+
+  // RESIDUAL 3 — the default PLACEHOLDER starting inventory (createDefaultSoloRun's
+  // "Trail Loaf") carries a dark-fantasy flavor description that names a default-
+  // world LOCATION ("...the tavern keeper before you left the Shattered Flagon") —
+  // a phantom tavern in a cyberpunk market's pack. Same class as the location/world
+  // bleed. Neutralize placeholder items' location-referencing flavor for a scenario
+  // run (identity/use untouched); an authored scenario can supply its own starting
+  // kit later. Placeholder items are tagged "placeholder".
+  for (const item of Object.values(run.inventory || {})) {
+    if (item && typeof item === "object" && Array.isArray(item.tags) && item.tags.includes("placeholder")) {
+      item.description = "Basic rations, enough to keep you moving.";
+    }
   }
 
   // 1. CAST — create the scenario's NPCs at resolved locations (replacing the
