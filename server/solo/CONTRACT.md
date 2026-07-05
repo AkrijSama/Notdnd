@@ -39,10 +39,21 @@ if present, else projected from the persisted `run.inventory` object (keyed by
 ## 3. `player.xp` + `player.level`
 
 ```jsonc
-{ "xp": 0, "level": 1 }
+{ "xp": 0, "milestone": 1, "level": 1 }
 ```
 
-Both numbers. `level` defaults to 1 (pre-existing); `xp` defaults to 0.
+All numbers. `xp` defaults to 0. **`milestone` (1..20) is the server's one
+progression truth** (Ch7 milestone track, `docs/specs/milestone-engine-delta.md`);
+`level` is its computed **display mirror** — under the default identity mapping
+they always coincide, so every existing surface emits unchanged numbers. Legacy
+saves lack `milestone` until the lazy migration (`ensureMilestone`,
+`progression.js`) writes `min(20, level)` on first award/gate touch — keep-and-
+floor, never revoked.
+
+**Tier-gate law:** content-gating code MUST call `meetsTier(player, tierBand)`
+(`progression.js`), which reads `player.milestone` only. `player.level` is
+presentation-layer data — **server logic is forbidden to branch on it.** A world
+book cannot fake a Tier-IV door open by inflating its display numbers.
 
 ## 4. `player.conditions` — array
 

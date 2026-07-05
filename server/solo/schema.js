@@ -479,6 +479,11 @@ export function validatePlayerState(player) {
   validateRequiredString(player.playerId, "playerId", errors);
   validateRequiredString(player.displayName, "displayName", errors);
   validateNumber(player.level, "level", errors);
+  // Milestone is validated only when present: legacy saves lack it until the
+  // lazy migration (ensureMilestone) writes it on first award/gate touch.
+  if (player.milestone !== undefined) {
+    validateNumber(player.milestone, "milestone", errors);
+  }
   validateNumber(player.health, "health", errors);
   validateNumber(player.maxHealth, "maxHealth", errors);
   validateNumber(player.gold, "gold", errors);
@@ -1418,6 +1423,10 @@ export function createDefaultSoloRun(options = {}) {
       // picks otherwise in the Identity step; the GM is told these so it never
       // has to guess (see gmProvider/voice).
       pronouns: isString(options.pronouns) ? options.pronouns : "he/him",
+      // Milestone track (Ch7 delta Phase 1): milestone is server truth; level
+      // is its computed display mirror (identity mapping until a world book
+      // supplies a real one — they coincide by construction).
+      milestone: 1,
       level: 1,
       health: 10,
       maxHealth: 10,

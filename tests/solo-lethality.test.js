@@ -15,7 +15,7 @@ import {
 import { resolveSoloAction } from "../server/solo/actions.js";
 import { resolveUseItemAction } from "../server/solo/useItem.js";
 import { advanceQuests } from "../server/solo/quests.js";
-import { awardXp, levelForXp } from "../server/solo/progression.js";
+import { awardXp, milestoneForXp } from "../server/solo/progression.js";
 
 function freshRun() {
   return createDefaultSoloRun({ now: "2026-01-01T00:00:00.000Z" });
@@ -322,15 +322,17 @@ test("lethality applies in sandbox mode, not just campaign", () => {
 
 // --- Consequence spine: XP / level ------------------------------------------
 
-test("xp accrues and crosses a threshold to level up (with an HP bump)", () => {
+test("xp accrues and crosses a milestone to level up (with an HP bump)", () => {
   const run = freshRun();
-  assert.equal(levelForXp(0), 1);
-  assert.equal(levelForXp(300), 2);
+  // Ch7 curve: milestone 2 at 100 xp, milestone 3 at 300 (100 + 200).
+  assert.equal(milestoneForXp(0), 1);
+  assert.equal(milestoneForXp(300), 3);
   const before = run.player.resources.hitPoints.max;
   const rec = awardXp(run, 300);
   assert.equal(rec.leveledUp, true);
-  assert.equal(run.player.level, 2);
-  assert.equal(run.player.resources.hitPoints.max, before + 5, "leveling toughens the character");
+  assert.equal(run.player.milestone, 3);
+  assert.equal(run.player.level, 3, "identity display mapping: level mirrors the milestone");
+  assert.equal(run.player.resources.hitPoints.max, before + 10, "each milestone toughens the character");
 });
 
 test("the dead earn no xp", () => {

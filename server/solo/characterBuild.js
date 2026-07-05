@@ -137,6 +137,9 @@ export function toRunPlayer(character, basePlayer = {}) {
   player.background = character?.background || null;
   player.pronouns = character?.pronouns || null;
   player.level = character?.level || player.level || 1;
+  // Milestone truth (Ch7 delta Phase 1): creation levels ARE milestones under
+  // the identity mapping; clamp to the chassis cap (vault input max is 20).
+  player.milestone = Math.min(20, Math.max(1, Math.round(Number(player.level) || 1)));
   player.proficiencyBonus = character?.proficiencyBonus || 2;
   player.abilities = { ...(player.abilities || {}), ...(character?.abilityScores?.final || {}) };
 
