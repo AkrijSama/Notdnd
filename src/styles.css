@@ -2013,8 +2013,8 @@ button:disabled {
   border-radius: 999px;
   color: var(--text-bright, #f0e6d4);
   font-family: inherit;
-  font-size: 13px;
-  line-height: 1.2;
+  font-size: clamp(0.95rem, 0.5vw + 0.85rem, 1.15rem);
+  line-height: 1.25;
   cursor: pointer;
   transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
 }
@@ -2367,9 +2367,9 @@ button:disabled {
   margin-bottom: 9px;
 }
 .solo-roll:last-child { margin-bottom: 0; }
-.solo-roll-name { font-size: 12px; color: var(--text-2, #b3a48c); }
-.solo-roll-detail { font-size: 11px; color: var(--text-faint, #6e6150); }
-.solo-roll-total { font-family: var(--font-body, Georgia, serif); font-size: 17px; }
+.solo-roll-name { font-size: 1rem; color: var(--text-2, #b3a48c); }
+.solo-roll-detail { font-size: 0.9rem; color: var(--text-faint, #6e6150); }
+.solo-roll-total { font-family: var(--font-body, Georgia, serif); font-size: 1.5rem; }
 .solo-roll-total.good { color: #6b9a3e; }
 .solo-roll-total.accent { color: var(--accent, #c8922a); }
 .solo-relationship {
@@ -2528,12 +2528,18 @@ button:disabled {
 .solo-scene-center .solo-location-copy h3 {
   font-family: var(--font-display, Georgia, serif);
   color: var(--text-bright, #f0e6d4);
+  font-size: clamp(1.5rem, 1.4vw + 1.1rem, 2.1rem);
+  line-height: 1.2;
 }
 /* Narrative reads in full now that the scene panel scrolls — no line clamp, so
    "Data Den / You're inside…" shows at a readable size instead of a few lines. */
 .solo-scene-center .solo-location-copy > p,
 .solo-scene-center .solo-gm-narration p {
-  line-height: 1.6;
+  /* Readable scale (~2x): the narration + location prose are the primary reading
+     surface. clamp() keeps it big on wide panels and steps down on narrow ones so
+     the scrolling scene column never overflows horizontally. */
+  font-size: clamp(1.35rem, 1.1vw + 1rem, 1.85rem);
+  line-height: 1.55;
 }
 .solo-scene-center .solo-scene-input {
   flex: none;

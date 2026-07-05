@@ -5,10 +5,33 @@
   "genre": "cyberpunk",
   "tones": ["cyberpunk"],
   "stakes": "A sealed data-case, a sector someone is quietly closing, and a fixer whose cut prices in your funeral.",
+  "world": {
+    "name": "Terra",
+    "tone": "cyberpunk",
+    "flavor": "a neon-drowned sprawl where the corps own the sky and everything below it is for sale",
+    "artStyle": "cyberpunk"
+  },
+  "locations": {
+    "start_location": {
+      "name": "The Sprawl Fringe",
+      "description": "The edge of the night market, where the neon thins into the dark between towers and the crowd loosens. Rain sheets off the awnings; a noodle stall's steam catches the signage glow.",
+      "tags": ["cyberpunk", "market"]
+    },
+    "second_location": {
+      "name": "Terra Night Market",
+      "description": "A fixer's booth deep in Terra's night market — stalls of counterfeit chrome, leaked data, and street docs working under flickering neon. Vesa's table sits in the back, a sealed data-case still warm between you.",
+      "tags": ["cyberpunk", "market"]
+    },
+    "third_location": {
+      "name": "The Watched Sector",
+      "description": "The sector line the case has to cross — checkpoint drones, corp cordons, and a ripperdoc's back-alley clinic where couriers get patched or don't come back.",
+      "tags": ["cyberpunk", "destination"]
+    }
+  },
   "opening": {
     "questObjectiveFrom": "offer_courier",
     "startLocationRef": "second_location",
-    "situation": "A fixer's booth in the night market. A sealed data-case sits on the table between you, still warm. The job is simple until it isn't: carry it across a sector someone is quietly strangling shut."
+    "situation": "A fixer's booth in the Terra night market. A sealed data-case sits on the table between you, still warm. The job is simple until it isn't: carry it across a sector someone is quietly strangling shut."
   },
   "cast": [
     {

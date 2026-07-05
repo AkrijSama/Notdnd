@@ -19,6 +19,10 @@ import { validateSoloRun, createEmptyExpressionVariants } from "../solo/schema.j
 
 const SCENARIO_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "scenarios");
 
+function isString(value) {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
 // The generated world graph keys locations by the symbolic positional ids
 // (start_location / second_location / third_location), so a positional ref is
 // already a real id. The one alias: the authoring shorthand "start".
@@ -123,6 +127,33 @@ export function loadScenarioIntoRun(run, scenario, options = {}) {
   run.npcs = run.npcs || {};
   run.quests = run.quests || {};
   run.threads = run.threads || {};
+  run.locations = run.locations || {};
+
+  // 0. WORLD + LOCATIONS — the scenario is the AUTHORITATIVE setting. A pre-built
+  // scenario cannot share sandbox worldgen: the player's chosen world/location
+  // (e.g. dark-fantasy ruins) would collide with the authored fiction (the Terra
+  // night market) and bleed into narration/suggestions. Onboarding skips the
+  // worldgen flavor for a scenario run (createWorldOnboardingRun, scenarioActive
+  // guards); here we overwrite world tone/name and the location name+description
+  // with the scenario's, so there is exactly ONE source of setting truth.
+  if (scenario.world && typeof scenario.world === "object") {
+    run.world = { ...run.world };
+    for (const k of ["name", "tone", "flavor", "artStyle"]) {
+      if (isString(scenario.world[k])) run.world[k] = scenario.world[k];
+    }
+    if (isString(scenario.world.artStyle)) {
+      run.flags = { ...(run.flags || {}), artStyle: scenario.world.artStyle };
+    }
+  }
+  for (const [locRef, loc] of Object.entries(scenario.locations || {})) {
+    const id = resolveLocationRef(locRef);
+    const target = run.locations[id];
+    if (!target || !loc || typeof loc !== "object") continue;
+    if (isString(loc.name)) target.name = loc.name;
+    if (isString(loc.description)) target.description = loc.description;
+    // Drop stale worldgen flavor tags (ruins/features) that contradict the scene.
+    if (Array.isArray(loc.tags)) target.tags = [...loc.tags];
+  }
 
   // 1. CAST — create the scenario's NPCs at resolved locations (replacing the
   // hand-wired cast). questOffer descriptors ride the NPC for the accept flow.

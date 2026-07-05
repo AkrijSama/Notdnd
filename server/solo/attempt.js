@@ -177,6 +177,25 @@ const CONTESTED_INTENT_RE = /\b(sneak|stealth|hide|hiding|slip|pick|lockpick|pic
 // and the engine still rolls them); only frictionless travel and looking.
 const NO_ROLL_INTENT_RE = /\b(head|heading|headed|go|going|goes|went|walk|walking|walked|travel|traveling|travelling|travelled|journey|journeying|wander|wandering|stroll|strolling|march|marching|proceed|proceeding|continue|advance|advancing|approach|approaching|enter|entering|exit|exiting|leave|leaving|depart|departing|return|returning|navigate|cross|crossing|move|moves|moved|moving|venture|venturing|look|looking|looked|glance|glancing|observe|observing|survey|surveying|gaze|gazing|watch|watching|scan|scanning|peer|peering|gander)\b/;
 
+// PASSIVE OBSERVATION of the immediate scene — a QUERY about what/who is around
+// you right now. These describe committed state; they are never a failable roll
+// (a losable "what do I see?" is the bug this fixes). Matches "what do I see",
+// "is anyone around me", "who's here", "look around", "anybody nearby", etc.
+const OBSERVATION_QUERY_RE =
+  /(\blook(?:ing)?\s+(?:around|about)\b)|(\bglanc\w*\s+(?:around|about)\b)|(\bwhat(?:'s| is| do i| can i)\b[^?]*\b(?:see|here|around|nearby|notice|there|going on)\b)|(\bwho(?:'s| is| are)\b[^?]*\b(?:here|around|nearby|watching|there|with me)\b)|(\bis\s+(?:any|some)(?:one|body)\b)|(\bany(?:one|body)\b[^?]*\b(?:around|here|nearby|about|watching|else|with me)\b)|(\baround me\b)|(\bwhat do i (?:see|notice|spot|observe)\b)|(\bcan i see\b)|(\bnotice anything\b)/i;
+// A contested/manipulation verb turns "observation" back into a REAL, failable
+// check (searching a container, investigating a body, spotting something hidden).
+const OBSERVATION_EXCLUDE_RE =
+  /\b(search|investigat\w*|examin\w*|inspect\w*|study\w*|scrutin\w*|rummag\w*|pick|lockpick|hack|deciph\w*|force|pry|climb|sneak|hid(?:e|ing)|steal|unlock|dig|loot|track\w*|forage)\b/i;
+
+// True when the intent is a passive scene-observation query (no failable roll).
+export function isObservationQuery(intent) {
+  const t = String(intent || "");
+  if (!t.trim()) return false;
+  if (OBSERVATION_EXCLUDE_RE.test(t)) return false;
+  return OBSERVATION_QUERY_RE.test(t);
+}
+
 /**
  * Decides whether an attempt needs a d20 check. A provider-supplied `needsCheck`
  * boolean wins (the GM/provider classified it); otherwise a verb heuristic:
@@ -187,6 +206,16 @@ const NO_ROLL_INTENT_RE = /\b(head|heading|headed|go|going|goes|went|walk|walkin
  * @returns {boolean}
  */
 export function attemptNeedsCheck(intent, providerOutput = null) {
+  // PASSIVE OBSERVATION of your immediate surroundings — "what do I see?", "is
+  // anyone around me?", "who's here?", "look around" — is NEVER a failable roll:
+  // it just reports committed scene state. This OVERRIDES a provider that
+  // mis-classified it as a perception DC (a losable "look around" is the bug).
+  // Deliberately scoped to passive scene queries: it does NOT fire when a
+  // contested/manipulation verb is present (searching a container, investigating
+  // a body, spotting a hidden thing all stay real, failable checks).
+  if (isObservationQuery(intent)) {
+    return false;
+  }
   if (providerOutput && typeof providerOutput.needsCheck === "boolean") {
     return providerOutput.needsCheck;
   }

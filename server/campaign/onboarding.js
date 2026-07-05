@@ -515,11 +515,28 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
   const resolvedWorld = await generateWorld(world);
   const characterName = sanitizeName(character.name, "Wanderer");
 
+  // SCENARIO FORK (root-cause of the location contradiction): a PRE-BUILT scenario
+  // authoritatively provides world + location + cast + opening. It must NOT share
+  // the sandbox worldgen path, or the player's chosen world/location (dark-fantasy
+  // ruins) collides with the authored fiction (the Terra night market) and bleeds
+  // into narration/suggestions. Resolved here (before the campaign + world-overview
+  // doc) so the scenario's setting is the ONLY source of truth from the first byte.
+  const sandbox = String(mode || "").trim().toLowerCase() === "sandbox";
+  const scenario = resolveRequestedScenario({ scenarioId, sandbox });
+  const scenarioActive = Boolean(scenario);
+  // The effective setting: the scenario's authored world when active, else the
+  // player-choice worldgen output. Drives the campaign record, the world-overview
+  // memory doc, and run.world — every place worldgen flavor would otherwise leak.
+  const sw = scenarioActive && scenario.world && typeof scenario.world === "object" ? scenario.world : null;
+  const effectiveWorldName = (sw && isStr(sw.name)) ? sw.name : resolvedWorld.name;
+  const effectiveWorldTone = (sw && isStr(sw.tone)) ? sw.tone : resolvedWorld.tone;
+  const scenarioStartDesc = scenarioActive && isStr(scenario.opening?.situation) ? scenario.opening.situation.trim() : "";
+
   const created = applyOperation(
     "create_campaign",
     {
-      name: resolvedWorld.name,
-      setting: resolvedWorld.tone,
+      name: effectiveWorldName,
+      setting: effectiveWorldTone,
       status: "Ready",
       readiness: 90,
       players: [characterName]
@@ -534,13 +551,15 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
     throw error;
   }
 
-  // Seed a world-overview memory doc from the generated world (not hardcoded
-  // Ashenmoor lore) so the GM's context reflects the player's world.
-  await ensureCampaignMemoryDocsAsync(campaignId, {
-    "World Overview":
-      `# ${resolvedWorld.name}\n\nTone: ${resolvedWorld.tone}\n\n${resolvedWorld.description}\n\n` +
-      `Starting location: ${resolvedWorld.startingLocation.name} — ${resolvedWorld.startingLocation.description}`
-  });
+  // Seed a world-overview memory doc so the GM's context reflects the world. For a
+  // SCENARIO run this MUST be the scenario's setting (not the worldgen ruins), or
+  // the doc bleeds dark-fantasy lore into every GM turn.
+  const worldOverview = scenarioActive
+    ? `# ${effectiveWorldName}\n\nTone: ${effectiveWorldTone}\n\n${isStr(sw?.flavor) ? sw.flavor : scenario.stakes || ""}\n\n` +
+      `Opening: ${scenarioStartDesc}`
+    : `# ${resolvedWorld.name}\n\nTone: ${resolvedWorld.tone}\n\n${resolvedWorld.description}\n\n` +
+      `Starting location: ${resolvedWorld.startingLocation.name} — ${resolvedWorld.startingLocation.description}`;
+  await ensureCampaignMemoryDocsAsync(campaignId, { "World Overview": worldOverview });
 
   const createdRun = createSoloRun({ userId: actorUserId });
   const run = getSoloRun(createdRun.runId);
@@ -551,14 +570,12 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
   // directed main quest + its quest-linked contacts) for sandbox runs, rather than
   // creating-then-suppressing it. Track A's quest-layer suppression remains as a
   // belt-and-suspenders net. Campaign/module runs are unchanged.
-  const sandbox = String(mode || "").trim().toLowerCase() === "sandbox";
+  // (sandbox/scenario resolved above, before the campaign + world-overview doc.)
   run.mode = sandbox ? "sandbox" : "campaign";
-  // D.5 scenario system: when a scenario is requested (per-run id or the
-  // INKBORNE_SCENARIO flag, campaign-only), the DECLARATIVE scenario provides the
-  // cast/quests/threads and the hand-wired campaign block below is skipped. The
-  // scenario is instantiated into the run AFTER the world graph is built.
-  const scenario = resolveRequestedScenario({ scenarioId, sandbox });
-  const scenarioActive = Boolean(scenario);
+  // The scenario loader (loadScenarioIntoRun) overwrites run.world with the
+  // scenario's authored setting; seeding worldgen values here for a scenario run
+  // is harmless (they're replaced) but we skip the ruins-flavored fields that
+  // would otherwise persist if the scenario under-specifies.
   run.world = {
     ...run.world,
     name: resolvedWorld.name,
@@ -570,23 +587,31 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
   };
   run.flags = { ...(run.flags || {}), artStyle: resolvedWorld.artStyle };
 
-  // Replace the placeholder starting location with the generated one.
+  // Replace the placeholder starting location with the generated one — but NOT for
+  // a scenario run: the scenario authors start_location's name/description (the
+  // loader applies it), and the worldgen ruins name/description here is exactly
+  // the "GM says ruins, UI says market" contamination. The scenario is the source.
   const start = run.locations.start_location;
-  start.name = resolvedWorld.startingLocation.name;
-  start.description = resolvedWorld.startingLocation.description;
-  start.tags = Array.from(
-    new Set([
-      ...(start.tags || []).filter((tag) => tag !== "placeholder"),
-      slugTag(resolvedWorld.tone),
-      slugTag(resolvedWorld.startingLocationType)
-    ])
-  );
+  if (!scenarioActive) {
+    start.name = resolvedWorld.startingLocation.name;
+    start.description = resolvedWorld.startingLocation.description;
+    start.tags = Array.from(
+      new Set([
+        ...(start.tags || []).filter((tag) => tag !== "placeholder"),
+        slugTag(resolvedWorld.tone),
+        slugTag(resolvedWorld.startingLocationType)
+      ])
+    );
+  }
   // Populate the starting area with real, server-owned, discoverable FEATURES so
   // it isn't bare terrain. An adoptable forest-ruins base (the default sandbox
   // start) gets the ruins structure as a landmark + a few POIs (well, watchpoint,
   // cache); explicit non-baseable venues (a tavern) keep the bare default. This is
   // the WORLD having content — the area generator placing it, not faked markers.
-  if (resolvedWorld.startIsBaseable === true) {
+  // Skipped for a scenario run: these are dark-fantasy ruins POIs (ruins hall,
+  // old well, watchpoint, cache) that would populate the scene with rubble the
+  // authored fiction doesn't have.
+  if (resolvedWorld.startIsBaseable === true && !scenarioActive) {
     start.searchDetails = buildStartAreaFeatures(
       resolvedWorld,
       contentSeed(`${resolvedWorld.name}|${resolvedWorld.startingLocationName}|features`)
@@ -633,7 +658,10 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
   // introInstructions, which the scene/GM turns into a directive to introduce
   // them naturally AND explain why they're here (buildNpcIntroDirective).
   run.npcs = run.npcs || {};
-  const startingNpcSpec = resolveStartingNpcSpec(world, resolvedWorld);
+  // Skipped for a scenario run: the scenario authors its own cast (Vesa the fixer,
+  // the ripperdoc). A procedurally-placed dark-fantasy start contact here would be
+  // an unauthored stranger contradicting the scene.
+  const startingNpcSpec = scenarioActive ? null : resolveStartingNpcSpec(world, resolvedWorld);
   let npc = null;
   if (startingNpcSpec) {
     const npcRole = startingNpcSpec.role;
@@ -677,7 +705,9 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
   // description (was the fixed "Ashenmoor Market Square" from the default graph).
   const worldSeed = contentSeed(`${resolvedWorld.name}|${resolvedWorld.tone}`);
   const secondLocation = run.locations?.second_location || null;
-  if (secondLocation) {
+  // Skipped for a scenario run: the scenario authors second_location (the Terra
+  // night market); a worldgen tone-archetype name/description would overwrite it.
+  if (secondLocation && !scenarioActive) {
     const built = buildSecondLocation(resolvedWorld.tone, worldSeed, resolvedWorld.name);
     secondLocation.name = built.name;
     secondLocation.description = built.description;
@@ -717,7 +747,10 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
   // start) with a destination named from the world, seed searchDetails so it
   // rewards exploration, and place a lone witness there with end-state lore.
   const thirdLocation = run.locations?.third_location || null;
-  if (thirdLocation) {
+  // Skipped for a scenario run: buildFarLocation names/describes/tags the third
+  // location in the worldgen tone and seeds dark-fantasy relic/vista POIs ("before
+  // {world} fell to its {tone}") — the scenario authors this location instead.
+  if (thirdLocation && !scenarioActive) {
     const far = buildFarLocation(resolvedWorld.tone, worldSeed, resolvedWorld.name);
     thirdLocation.name = far.name;
     thirdLocation.description = far.description;
@@ -908,14 +941,37 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
   // objective), grounded in the world overview memory doc just indexed, bounded
   // by a 15s timeout with a deterministic tone-aware fallback (never blank, never
   // a bare location dump). Generated ONCE here and stored on the run.
-  const firstObjective =
-    (Array.isArray(run.quests?.quest_main?.stages) && run.quests.quest_main.stages[0]?.objective) || null;
-  // Offer base-building in the opening only when the start is an adoptable place
-  // (the forest-ruins default and other abandoned/wild starts) — never for a busy
-  // public venue. The NPC's stated presence reason (introInstructions) is passed
-  // through so the opening justifies anyone present instead of "a stranger".
-  const baseBuilding = resolvedWorld.startIsBaseable === true;
-  const npcReason = npc && isStr(startingNpcSpec?.reason) ? startingNpcSpec.reason : null;
+  // Opening inputs: for a SCENARIO run they come entirely from the scenario's
+  // authoritative setting — the current (authored) location, the scenario world,
+  // the present authored cast (Vesa), and the courier objective — so the very
+  // first prose describes the Terra night market, never the worldgen ruins. For a
+  // normal run, the worldgen values as before.
+  let openWorld = resolvedWorld;
+  let openLocation = start;
+  let openNpc = npc;
+  let openNpcReason = npc && isStr(startingNpcSpec?.reason) ? startingNpcSpec.reason : null;
+  let openBaseBuilding = resolvedWorld.startIsBaseable === true;
+  let openObjective = (Array.isArray(run.quests?.quest_main?.stages) && run.quests.quest_main.stages[0]?.objective) || null;
+  if (scenarioActive) {
+    const curLoc = run.locations[run.currentLocationId] || {};
+    openWorld = {
+      name: effectiveWorldName,
+      tone: effectiveWorldTone,
+      description: isStr(sw?.flavor) ? sw.flavor : (isStr(scenario.stakes) ? scenario.stakes : ""),
+      startingLocation: { name: curLoc.name, description: curLoc.description },
+      startingLocationName: curLoc.name
+    };
+    openLocation = curLoc;
+    openBaseBuilding = false; // a busy public venue is never an adoptable base
+    // The authored cast member present at the opening location (the fixer), so the
+    // GM introduces Vesa instead of declaring the player alone.
+    const opener = Object.values(run.npcs || {}).find((n) => n && n.currentLocationId === run.currentLocationId);
+    openNpc = opener ? { generatedName: opener.displayName, role: opener.role } : null;
+    openNpcReason = opener ? "they are the fixer who set up this run" : null;
+    openObjective =
+      (isStr(scenario.questOffers?.[scenario.opening?.questObjectiveFrom]?.summary) && scenario.questOffers[scenario.opening.questObjectiveFrom].summary) ||
+      (isStr(scenario.stakes) ? scenario.stakes : null);
+  }
   const opening = await generateOpeningNarration({
     campaignId,
     runId: run.runId,
@@ -923,11 +979,11 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
       characterName,
       race: built.race,
       characterClass: built.class,
-      world: resolvedWorld,
-      npc,
-      npcReason,
-      baseBuilding,
-      questObjective: firstObjective
+      world: openWorld,
+      npc: openNpc,
+      npcReason: openNpcReason,
+      baseBuilding: openBaseBuilding,
+      questObjective: openObjective
     }),
     playerName: characterName,
     actorUserId,
@@ -935,10 +991,10 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
       characterName,
       race: built.race,
       characterClass: built.class,
-      world: resolvedWorld,
-      location: start,
-      baseBuilding,
-      questObjective: firstObjective
+      world: openWorld,
+      location: openLocation,
+      baseBuilding: openBaseBuilding,
+      questObjective: openObjective
     })
   });
   // Distinct, persistent field (survives action narration, which overwrites
