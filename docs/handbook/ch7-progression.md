@@ -30,7 +30,7 @@ isn't in the record, it didn't pay.
 This is the same referee principle from Chapter 1 wearing its progression
 hat: the narrator has the voice, the engine has the books.
 
-## The curve **[PROPOSED]**
+## The curve
 
 Advancing from your current level to the next costs:
 
@@ -66,8 +66,8 @@ Leveling is a **recompute, not a shopping trip**. When you level:
    growth-profile: a level-indexed array (data in the world book, not code)
    declaring which stat rises at which level. Profiles are
    **budget-bounded and engine-validated** — every class spends the same
-   total stat budget across 20 levels **[PROPOSED: +10 stat points total,
-   no stat raised above 20]**; where and when it spends them is the class's
+   total stat budget across 20 levels — **+10 stat points total, no stat
+   raised above 20** — where and when it spends them is the class's
    identity. A bruiser front-loads STR and VIT; a wire-ghost drips DEX and
    INT. The validator rejects any profile that overspends, so no world book
    can print a broken class.
@@ -80,7 +80,7 @@ Leveling is a **recompute, not a shopping trip**. When you level:
    slot: *a class may grant features at levels of its choosing, within its
    tier* (below).
 4. **Every 5th level, a feat.** At levels **5, 10, 15, and 20** you pick a
-   feat **[PROPOSED — N=5]**. Feats are drawn from the world book's list
+   feat. Feats are drawn from the world book's list
    (plus the one your race gave you at creation, per the race contract).
    *Why 5: it lands the feat on each tier boundary — a feat is your tier's
    graduation, the thing you carry into the next band. Four picks plus the

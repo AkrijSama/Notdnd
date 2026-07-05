@@ -44,7 +44,7 @@ Only slotted items modify your stats. Everything else you own is
 **carried** — usable, tradeable, quest-relevant, but inert on your sheet
 until it's in a slot.
 
-### Rarity and the stat budget **[PROPOSED]**
+### Rarity and the stat budget
 
 Five tiers. Each tier's budget is the **total stat-mod points** an item may
 spend (a +1 to any stat or derived stat costs one point), plus whether it

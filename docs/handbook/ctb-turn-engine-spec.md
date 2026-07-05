@@ -4,9 +4,10 @@
 the D.4 combat rework.*
 
 **Status:** implements the [LOCKED] CTB turn-economy decision (ROADMAP-CANON
-§1). Positions on unlocked details are marked **[PROPOSED]**. Both former
-**[DIRECTOR]** flags were resolved by director ruling (see §10) and are now
-**[LOCKED]**. This is a design spec, not player prose.
+§1). **Everything in this spec is now [LOCKED]**: the former [PROPOSED]
+defaults were approved by director ruling on 2026-07-05, and both former
+[DIRECTOR] flags were resolved (see §10). This is a design spec, not player
+prose.
 
 ---
 
@@ -27,7 +28,7 @@ Conditional Turn-Based). There are no rounds and no initiative roll. Instead:
 
 ## 2. Speed and the tick formula
 
-### 2.1 Speed **[PROPOSED]**
+### 2.1 Speed **[LOCKED]**
 
 ```
 speed(i) = clamp(10 + dexMod(i), 8, 16)
@@ -46,7 +47,7 @@ queue, the player-facing turn preview (§6) would be probabilistic — either
 dishonest or unreadable. Every input to the queue is deterministic and
 visible; fortune lives in outcomes, not in tempo.
 
-### 2.2 Delay **[PROPOSED]**
+### 2.2 Delay **[LOCKED]**
 
 ```
 BASE = 1200
@@ -87,7 +88,7 @@ DEX-20 character against a slowed DEX-6 one. At realistic unbuffed spreads
 structural. This invariant MUST hold after every status effect; that is why
 the clamp applies after status multipliers.
 
-### 2.4 Combat start **[PROPOSED]**
+### 2.4 Combat start **[LOCKED]**
 
 `next_tick[i] = delay(i, standard)` for all combatants at tick 0. No
 initiative roll. The fastest combatant simply acts first; ties per §7.
@@ -95,7 +96,7 @@ Ambush/surprise is not an initiative concept: a surprised combatant enters
 the queue with `next_tick[i] = 2 × delay(i, standard)` (they've lost exactly
 one turn of tempo, scaled to their own speed).
 
-## 3. Action costs **[PROPOSED]**
+## 3. Action costs **[LOCKED]**
 
 Position taken: **yes, heavier actions delay your next turn more.** Weight
 multiplies the post-action delay (§2.2):
@@ -135,7 +136,7 @@ Rescaling only ever touches `i`'s own entry; all other combatants are
 unaffected. Recomputation is atomic per causing event and processes multiple
 same-tick events in event order (§7).
 
-## 5. Haste, slow, stun — as queue operations **[PROPOSED]**
+## 5. Haste, slow, stun — as queue operations **[LOCKED]**
 
 All three are defined *only* in terms of Speed and `next_tick`. No skip
 flags, no lost-turn markers — the queue itself is the status effect.
@@ -152,7 +153,7 @@ but only 0.75 of a slow one's). "One of your own turns" is equal in the
 currency that matters. Stacked stuns add — two stuns = two lost turns — and
 the engine caps consecutive stun-lock: a combatant whose `next_tick` is
 pushed twice without acting is immune to further stun until they act
-**[PROPOSED — anti-stunlock rule]**.
+**[LOCKED — anti-stunlock rule]**.
 
 Haste and slow on the same combatant multiply (1.5 × 0.5 ≈ net 0.75 — slow
 mostly wins) rather than cancel-by-fiat; the clamp bounds every stack.
@@ -224,7 +225,7 @@ The queue is not hidden information — **the forecast is the tactical UI**.
 - The queue is **server truth**. The client renders it; nothing about turn
   order is ever computed client-side.
 
-## 8. Durations **[PROPOSED]**
+## 8. Durations **[LOCKED]**
 
 Two duration currencies, chosen by what the effect is attached to:
 
@@ -275,7 +276,7 @@ What changes in the existing combat slice, exactly.
 ### New (small)
 - `queueSeed` in combat init; forecast simulation (§6); the anti-stunlock
   counter (§5).
-- **[PROPOSED]** Named bosses may hold **two queue entries** (offset half a
+- **[LOCKED]** Named bosses may hold **two queue entries** (offset half a
   delay apart) instead of inflated Speed — this produces "the boss acts
   twice" *without* violating the Speed clamp or the 2.0 invariant, and the
   forecast shows both entries honestly. Off by default; a world-book flag.
@@ -293,8 +294,9 @@ What changes in the existing combat slice, exactly.
    decision space. Hidden combatants are absent until revealed
    (ambush-integrity rule, §6).
 
-Everything still marked **[PROPOSED]** (band-anchor BASE=1200, Speed clamp
-[8,16], weights 0.75/1.0/1.5, haste/slow/stun operation constants,
-anti-stunlock, duration currencies, boss dual-entry) is ready to build
-against and cheap to retune — each is a constant or a local rule, none is
-architectural.
+The remaining defaults (band-anchor BASE=1200, Speed clamp [8,16], weights
+0.75/1.0/1.5, haste/slow/stun operation constants, anti-stunlock, duration
+currencies, boss dual-entry) were **approved as defaults by director ruling,
+2026-07-05** and are now **[LOCKED]**. Each remains a constant or a local
+rule — cheap to retune mechanically — but retuning now requires a director
+decision, not an implementer's judgment.

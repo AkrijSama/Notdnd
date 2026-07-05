@@ -78,7 +78,7 @@ are built to consume: every roll hands them a *change*, never a shrug.
 You get what you wanted, clean. The world updates: the lock is open, the
 guard believes you, the ledge is behind you.
 
-### ■ SUCCESS AT A COST — miss the DC by 1–4 **[PROPOSED]**
+### ■ SUCCESS AT A COST — miss the DC by 1–4
 
 You get it — *and* a real cost commits alongside it. The lock opens, but it
 took long enough that footsteps are on the stairs. The guard waves you
@@ -92,7 +92,7 @@ through, but he'll remember your face. The cost is always one of:
 The cost is not flavor text. It is committed state: the noticing NPC exists,
 the spent resource is gone, the clock has actually advanced.
 
-> **[PROPOSED — band boundary: within 4 of the DC.]** Rationale: on a d20,
+> **Why within 4:** on a d20,
 > a 4-point window converts a flat 20% of all possible rolls into the middle
 > band, independent of DC. Against a standard DC where a character needs an
 > 11+, outcomes split roughly 50% success / 20% at-cost / 30% failure — a
@@ -115,10 +115,9 @@ This is the band that kills retry-spam without any retry rule: you *can*
 try the lock again, but you're now trying a lock with a broken pick in it
 while footsteps close in. The fiction did the enforcement.
 
-**Critical rolls:** a natural 20 on a check is a clean success even against a
-miss-by-margin, and a natural 1 is always failure-with-consequence
-**[PROPOSED** — checks keep the d20's edge-drama, but *crit damage* remains
-a combat-only concept**]**.
+**The die's face has no special meaning on a check.** A natural 20 or a
+natural 1 is just its number — only the total against the DC decides the
+band. Criticals are a combat concept, and they stay there.
 
 ---
 
@@ -158,7 +157,7 @@ way your character would: the lock looks cheap, or it looks like it was
 built by someone who'd met thieves before. *(The ladder sits 2 below the
 numbers veterans of other d20 games may expect — deliberately, because in
 this system missing-by-a-little still pays out. The middle band does the
-work that inflated DCs used to.)* **[PROPOSED — ladder values]**
+work that inflated DCs used to.)*
 
 ### Edge and burden
 

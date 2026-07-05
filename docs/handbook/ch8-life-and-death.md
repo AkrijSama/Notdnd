@@ -64,8 +64,7 @@ never simply wastes the turn.
 
 **Short rest** — about an hour somewhere you can genuinely stop: you
 recover **half of your missing HP** and shake off **one** lingering minor
-status, at most **twice between long rests** **[PROPOSED — recovery values
-and the twice-per-cycle limit]**.
+status, at most **twice between long rests**.
 
 **Long rest** — a full sleep, and here the referee principle bites:
 

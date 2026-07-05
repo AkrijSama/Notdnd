@@ -53,13 +53,15 @@ The current active direction. It supersedes the prior "MVP" plan.
 - **[LOCKED] Race contract.** Race = a stat boost + a feat. Race **content** is
   per-world; the race **contract** is universal.
 
-- **[PENDING] Rulebook Chapters 7 / 8 / 9 — Progression, Life & Death, Items &
-  Crafting.** Full recommendations have been delivered: committed-event XP; FF
+- **[LOCKED] Rulebook Chapters 7 / 8 / 9 — Progression, Life & Death, Items &
+  Crafting.** Confirmed by director ruling 2026-07-05: committed-event XP; FF
   growth-profiles as data; level cap 20; universal death-save machinery with
-  return-from-death as world lore; a bounded FF-canon status-effect vocabulary;
+  return-from-death as world lore; the bounded ten-status FF-canon vocabulary;
   item = slot + stat-mods + one ability, with Weapon / Armor / Accessory×2 slots;
-  crafting as a contract-only schema. **Owed: the director's explicit
-  confirm-or-redline on these recommendations.** This is the top open decision.
+  crafting as a contract-only schema. All numeric defaults in the written
+  chapters approved as defaults (rarity budgets kept deliberately);
+  **nat-20/nat-1 special rules on checks explicitly rejected** — struck from
+  Ch3, which now codifies that the die's face has no special meaning on a check.
 
 - **[LOCKED] Build sequence (strict order):**
   1. **Rulebook / Player's Handbook**, chapter by chapter, with the **Isekai world
@@ -146,11 +148,7 @@ Recorded honestly:
 
 ## DECISIONS OWED BY THE DIRECTOR
 
-- [ ] **Confirm or redline the Chapter 7 / 8 / 9 recommendations** _(§1 — top
-      item)_: committed-event XP; FF growth-profiles as data; level cap 20;
-      universal death-save machinery with return-from-death as world lore; bounded
-      FF-canon status vocabulary; item = slot + stat-mods + one ability
-      (Weapon / Armor / Accessory×2); crafting as contract-only schema.
-
-No other pending decisions surfaced while compiling this canon — every remaining
-item in this document is either [LOCKED] or [PARKED] with its gate stated.
+**None.** The Chapter 7/8/9 confirm-or-redline was delivered 2026-07-05
+(approved as defaults; nat-20/nat-1 on checks struck; rarity budgets kept
+deliberately). Every item in this document is now either [LOCKED] or [PARKED]
+with its gate stated.
