@@ -37,6 +37,44 @@ export function levelForXp(xp) {
 }
 
 /**
+ * Applies one HP delta across EVERY HP mirror the player carries — maxHealth,
+ * resources.hitPoints.{max,current}, resources.hp.{max,current}, health. The
+ * mirrors have historically drifted when bumped ad hoc; this is the single
+ * write path so the UI's max HP and the death math's max HP can never disagree
+ * (the worst class of bug in a lethal game). Mirrors a player doesn't carry are
+ * skipped, never invented. Returns the delta actually applied.
+ * @param {object} player mutated in place
+ * @param {number} amount HP delta (positive on progression)
+ * @returns {number}
+ */
+export function applyHpDelta(player, amount) {
+  const delta = isNumber(amount) ? amount : 0;
+  if (!player || typeof player !== "object" || delta === 0) {
+    return 0;
+  }
+  if (isNumber(player.maxHealth)) {
+    player.maxHealth += delta;
+  }
+  const gauge = player.resources?.hitPoints;
+  if (gauge && isNumber(gauge.max)) {
+    gauge.max += delta;
+    if (isNumber(gauge.current)) {
+      gauge.current += delta;
+    }
+  }
+  if (player.resources?.hp && isNumber(player.resources.hp.max)) {
+    player.resources.hp.max += delta;
+    if (isNumber(player.resources.hp.current)) {
+      player.resources.hp.current += delta;
+    }
+  }
+  if (isNumber(player.health)) {
+    player.health += delta;
+  }
+  return delta;
+}
+
+/**
  * Awards xp to the player and applies any level-ups. Mutates run.player in place.
  * On level-up, maxHealth (and current HP, by the same delta) rises by
  * HP_PER_LEVEL per level gained — a real, durable consequence of progress. A dead
@@ -68,26 +106,7 @@ export function awardXp(run, amount) {
   const levelsGained = afterLevel - beforeLevel;
   if (levelsGained > 0) {
     player.level = afterLevel;
-    const hpBump = HP_PER_LEVEL * levelsGained;
-    if (isNumber(player.maxHealth)) {
-      player.maxHealth += hpBump;
-    }
-    const gauge = player.resources?.hitPoints;
-    if (gauge && isNumber(gauge.max)) {
-      gauge.max += hpBump;
-      if (isNumber(gauge.current)) {
-        gauge.current += hpBump;
-      }
-    }
-    if (player.resources?.hp && isNumber(player.resources.hp.max)) {
-      player.resources.hp.max += hpBump;
-      if (isNumber(player.resources.hp.current)) {
-        player.resources.hp.current += hpBump;
-      }
-    }
-    if (isNumber(player.health)) {
-      player.health += hpBump;
-    }
+    applyHpDelta(player, HP_PER_LEVEL * levelsGained);
   }
 
   return {
