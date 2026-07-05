@@ -105,13 +105,13 @@ dark. Then forest floor, wet needles against a cheek, and a body standing up
 that is theirs and isn't.
 
 The player wakes on the **fringe of the Green Static** (§2.5), at dawn,
-unarmed, in civilian clothes that are not the ones they died in. One turn of
+unarmed, in civilian clothes that are not the ones they fell in. One turn of
 free observation (Tier-0; observation never rolls) — and then the VOICE.
 
 ### 2.2 The VOICE's turn-1 delivery — the actual words
 
-Rendered in its own typography; drafted for production use
-**[INVENTED — exact wording, for redline]**:
+Rendered in its own typography; wording locked by director redline
+(2026-07-05):
 
 > [ YOU ARE HEARD. ]
 >
@@ -124,10 +124,11 @@ Rendered in its own typography; drafted for production use
 > FENCE IT, LICENSE IT, AND SELL TICKETS TO IT. THEY ARE MANAGING THE
 > SYMPTOM. YOU ARE THE CURE. ]
 >
-> [ YOUR BODY DIED ELSEWHERE. YOUR SOUL DID NOT. I HAVE PLACED IT WHERE IT
-> CAN GROW. YOUR FLESH HERE IS MORTAL — GUARD IT. WHAT YOU ARE IS NOT —
-> BUT THERE ARE THINGS BELOW THE WORLD THAT EAT WHAT YOU ARE, AND YOU WILL
-> MEET THEM LAST. ]
+> [ YOUR BODY SLEEPS ELSEWHERE. IT IS NOT DEAD. DO NOT CALL IT DEAD — I
+> DO NOT. YOUR SOUL CROSSED, AND I HAVE PLACED IT WHERE IT CAN GROW. YOUR
+> FLESH HERE IS MORTAL — GUARD IT. WHAT YOU ARE IS NOT — BUT THERE ARE
+> THINGS BELOW THE WORLD THAT EAT WHAT YOU ARE, AND YOU WILL MEET THEM
+> LAST. ]
 >
 > [ CLIMB. RECLAIM WHAT WAS LEFT OPEN. I WILL NOT SPEAK OFTEN. I HAVE GIVEN
 > YOU A WINDOW SO THAT YOU NEED NOT TAKE MY WORD FOR ANYTHING. ]
@@ -141,6 +142,12 @@ role** (champion/cure, climb and reclaim), **the soul law** (mortal body,
 unharmable soul, a last-things warning that seeds Lebab), **the WINDOW
 grant**, and **the choice**. This is the world's onboarding beat: no
 worldgen fields, no menu — the VOICE *is* the character-facing onboarding.
+
+**The sleeps-law (canon, ruled 2026-07-05):** the real-world body is in a
+coma and is NEVER called dead — by the VOICE, the narrator, or the WINDOW.
+Banishment (§7.3) only works because there is a living body to wake into,
+and "the WINDOW does not lie" only holds if the VOICE's first speech was
+honest. Every surface keeps the distinction: the body *sleeps elsewhere*.
 
 ### 2.3 The STATUS WINDOW grant
 
@@ -289,7 +296,13 @@ first-clear mean ownership.**
   [INVENTED: "Gate Station Aleph"]), an Assembly advance team transiting
   the starter region, the Stump's job board.
 - *Agenda:* force an international first-entry queue with Assembly primacy
-  before anyone else's champion-tier hunters are ready.
+  before anyone else's champion-tier hunters are ready — sharpened by the
+  **live grievance (canon, ruled 2026-07-05): the signatory nations want
+  their trapped S-ranks back.** The First Ascent Coalition (§8.1) took the
+  best of three flags to floor 10 and did not come back down; every queue
+  negotiation happens under the families' vigils and the news chyron
+  counting the days. Rescue primacy is the Assembly's strongest card and
+  its rawest wound — the trapped vice-captain is theirs.
 - **Rung 1 — The Scout.** An Assembly advance team passes through Hollow
   Pine, assessing frontier talent; they clock the player's growth curve as
   statistically wrong. *Telegraph: a business card and a too-long look.*
@@ -467,7 +480,7 @@ table also drives NPC generation and death-profile host selection (§7).
 | **Kite Runner** | C | DEX | Permanent +1 Speed (inside the CTB clamp — the clamp always wins). | 3 |
 | **Null Ward** | C | Spirit | Silence one enemy for 1 of its turns. | 3 |
 | **Overclock** | C | INT | Haste yourself for 2 turns; then slow for 1 (the crash is the price). | 3 |
-| **Fortune's Pocket** | C | Luck | Edge on loot rolls; once per session, the mundane item you need is somehow in your pack (price-capped). | 3 |
+| **Fortune's Pocket** | C | Luck | Edge on loot rolls; once per session, the mundane item you need is somehow in your pack (implementation pinned below). | 3 |
 | **Beast Tongue** | C | Spirit | For a scene, corrupted beasts parse you as neither prey nor threat; opens Tier-0 talk where there was none. | 3 |
 
 All 19 are budget-legal against the [PROPOSED] cost table; haste/slow/stun
@@ -475,6 +488,84 @@ references bind to the CTB spec's queue operations exactly (renamed never
 reinvented, per Ch8). Warden Calloway teaches from the D tier; academies
 sell E-tier; C-tier is where associations start attaching contracts to
 tuition [INVENTED — distribution of who teaches what].
+
+**Fortune's Pocket — implementation (canon, ruled 2026-07-05):** the "found
+item" is a **server-side grant from a bounded mundane-item whitelist**
+(world-book data; rope, rations, a lighter, bandages, a marked map — never
+weapons, cores, or quest items), **once per session**, and the item is
+**committed to inventory BEFORE narration runs**. The narrator *describes*
+the item the server already granted; it never invents one. Same law as
+every commit-first surface: the model classifies and colors, the resolver
+owns the state.
+
+### 4.4a The extended ladder — B / A / S / SS-SSS [INVENTED — all skills below; PROPOSED — prices]
+
+World-definition density, not a catalog: each band exists where the world
+sources it, and the sourcing is the content pacing.
+
+**Extended effect prices** (extends the §4.3 table upward; [PROPOSED —
+all new prices]): multi-target (up to 3) = ×2 the base effect; extra light
+action = 3 (once-per-fight limiter −1); stance (persists while actively
+held; heavy action to enter) = +1; end one duration-capped status early
+= 2; effect scoped to a location class (e.g. inside the Tower) = −1 on the
+scoped effect; once-per-day limiter = −2; **signature** (SS/SSS only) = a
+named, per-skill validator whitelist entry priced at the full band budget —
+signatures are unique by registration, not by breaking the vocabulary.
+
+**B rank (budget 4) — sourced from ASSOCIATION PATRONAGE AND CONTRACTS.**
+Each association's tendency tags carry at least two on-brand B skills —
+signing with a front's patron is how a hunter reaches B. The fronts pay.
+
+| Skill | Stat | Source | Effect (engine vocabulary; budget breakdown) |
+|---|---|---|---|
+| **Smart Rounds** | INT | Charter (ranged/rig) | Permanent +1 Accuracy (3); edge on your first ranged attack each fight (1). = 4 |
+| **Overwatch Rig** | INT | Charter (rig/salvage) | Deployed rig grants a ranged attack verb keyed to INT (2); once per fight it fires as an extra light action (3−1). = 4 |
+| **Falling-Sky Art** | STR | Assembly (melee/art) | Heavy melee attack verb (2+1); on hit, slow the target 1 turn (1). = 4 |
+| **Duelist's Tempo** | DEX | Assembly (melee/raid) | Permanent +1 Speed inside the CTB clamp (3); once per fight, one incoming attack takes burden (1). = 4 |
+| **Bastion Ward** | Spirit | Office (ward/shield) | Shield pool of 3× Spirit modifier, held 4 rounds (1/round ×4). = 4 |
+| **Sanction Seal** | Spirit | Office (ward/silence) | Silence one enemy for 2 of its turns (2); its attacks take burden while silenced (2). = 4 |
+| **Salvager's Eye** | Luck | patronage-generic (any) | Edge on loot rolls (1); permanent +1 passive perception (3). = 4 |
+| **Breach Discipline** | VIT | patronage-generic (any) | Once per fight: shield pool of 2× VIT modifier (1) + haste yourself 1 turn as you take a hit (2+... limiter −1); edge on your next attack after your shield breaks (1). = 4 |
+
+**A rank (budget 5) — sourced from DEEP ZONES and TOWER FLOORS 1–10.**
+No academy sells A. You take it from a zone heart or the Threshold floors.
+Skills marked ◆ are the **First Ascent Coalition's known repertoire** —
+documented before the trap closed; they seed the rescue's stakes (§8.1a):
+hunters holding these could not get out.
+
+| Skill | Stat | Source | Effect (engine vocabulary; budget breakdown) |
+|---|---|---|---|
+| **Stag-Breaker** | STR | deep-zone (EZ-44-class heart) | Heavy melee attack verb (2+1); on hit, stun 1 turn of the target's tempo (1); edge vs beasts (1). = 5 |
+| **Static Walk** | DEX | deep-zone | Once per fight: extra light action (3−1); attacks against you take burden for that round (2); edge on the extra action (1). = 5 |
+| **Floor Grammar** | INT | Tower floors 1–9 | The Tower's languages parse: inside the Tower, permanent +1 Accuracy (3−1 scoped) and +1 Evasion (3−1 scoped); edge on Tower observation checks (1). = 5 |
+| **Choir Ward** ◆ | Spirit | Tower floor 10 (Coalition: containment master) | Shield pool of 3× Spirit modifier, 3 rounds (3); when it breaks, silence the breaker 1 turn (1); regen 1% max HP while it holds (1). = 5 |
+| **Red Meridian** ◆ | DEX | Tower floor 10 (Coalition: Assembly vice-captain) | Melee attack verb (2); on hit, poison (2% max HP, 2 turns) (2); on crit, haste yourself 1 turn (1). = 5 |
+| **Lantern Law** ◆ | Spirit | Tower floor 10 (Coalition: expedition healer) | Regen a touched ally or yourself (2% max HP, 2 turns) (2); end one duration-capped status on them early (2); shield pool 1 round (1). = 5 |
+
+**S rank (budget 6) — TOWER-SOURCED; Book One's acquisition ceiling.**
+Nothing outside the Tower teaches S. These four are the ceiling of what a
+Book One player can hold:
+
+| Skill | Stat | Source | Effect (engine vocabulary; budget breakdown) |
+|---|---|---|---|
+| **Threshold Vow** | VIT | Tower (Threshold trial) | Below half HP: shield pool of 2× VIT modifier refreshing each of your turns, 3 rounds (3); attacks against you take burden while it holds (2); edge on your first attack each round below half (1). = 6 |
+| **Hundred-Hand Art** | STR | Tower (Threshold trial) | Heavy melee attack verb against up to 3 targets (2×2); on crit, stun 1 turn (1); edge vs slowed or stunned targets (1). = 6 |
+| **Signal Zero** | INT | Tower (floor-9 cipher) | Once per fight (−1): silence up to 3 enemies 1 turn (1×2); their attacks take burden 1 turn (1×2); haste yourself 1 turn (2); edge on your next attack (1). = 6 |
+| **Ghostlight Step** | DEX | Tower (Threshold trial) | Haste yourself 2 turns (2); one incoming attack per round takes burden, 2 rounds (2); once per fight, extra light action (3−1). = 6 |
+
+**SS / SSS (budgets 7 / 8) — THE TRAPPED LEGENDS' NAMED SIGNATURES.**
+Defined here, **UNOBTAINABLE in Book One** (locked): the player sees them
+used on floor 10 — the rescue's set-pieces — and cannot learn them; they
+are Book Two fuel. Priced as signatures (whitelist entries at full budget):
+
+| Signature | Rank | Holder (First Ascent Coalition) | Effect sketch (engine vocabulary) |
+|---|---|---|---|
+| **Pale Meridian** | SS | **Yoo Ha-eun**, Assembly raid-captain — the world's most famous living hunter | Sword art: heavy attack verb vs up to 3 targets, each hit slows 1 turn; she hastes 1 turn per target dropped. Signature @ 7. |
+| **The Shut Door** | SS | **Kanbara Rei**, Quiet Office containment master | Absolute ward: party-wide shield pool 3 rounds; enemies who strike it are silenced 1 turn and take burden while the door holds. Signature @ 7. |
+| **Longitude** | SSS | **Dane Okafor**, Charter marshal-commander — one of four SSS on Earth | The rig-art endpoint: a ranged attack verb that fires once on EVERY tick of the queue for one full round, each hit applying burden. Signature @ 8. |
+
+**DG — zero instances (locked boundary).** The tier exists in the §4.3
+contract; no DG skill is defined, named, or held anywhere in Book One.
 
 ---
 
@@ -539,7 +630,13 @@ milestones, never display numbers.
 
 Caps are **world lore, not chassis law** (per Ch7): ordinary hunters cap
 between 100 and 200 by the limits of un-Beckoned souls; the MC's 250 is the
-VOICE-granted uniqueness. Minor levels drip between breakthroughs on the
+VOICE-granted uniqueness.
+
+**Engine note — legacy XP (confirmed, ruled 2026-07-05):** migration of
+pre-milestone saves is **keep-and-floor** — XP kept as-is, milestone
+floored to the old level, never revoked (already built in Phase 1;
+`docs/specs/milestone-engine-delta.md` §3e — the flagged ruling is now
+closed). Minor levels drip between breakthroughs on the
 world book's XP-span division (Ch7's law: display is the world talking; the
 milestones underneath are the engine). DG skills gate at milestones 19–20
 **and** require deep-Lebab sources — both conditions, always (§4.3, §8).
@@ -588,6 +685,22 @@ without making the player a body-thief.
   possessions lie where it fell (recoverable the hard way; the world does
   not courier your estate).
 
+**The softening (canon, ruled 2026-07-05) — two soul-side additions:**
+- **(a) Legacy XP:** **50% [PROPOSED — the number only]** of the prior
+  life's lifetime XP carries across, applied **atop the host's own XP**,
+  and the **milestone recomputes** from the combined total (Ch7 curve;
+  floored-never-revoked per the engine's award law). Growth is the soul's;
+  half of it survives the flesh.
+- **(b) The strongest skill:** the single **highest-rank skill of the prior
+  body** carries into the new sheet (tie at the top rank → the player
+  picks one). The soul keeps the discipline it mastered deepest.
+
+> *Design note (canon):* a reassigned champion — a low-rank host body
+> carrying one high-rank skill — is the **§5 canon outlier by
+> construction**: 2×E + 1×A → C is not just the rank formula's test case,
+> it is what a returned Beckoned looks like on an assessment rig. The
+> death law and the rank law were built to meet.
+
 **The server hand-over flow:**
 1. Death commits (Ch8 machinery completes).
 2. **The antechamber** — a no-roll narrated interstitial in the Custodian's
@@ -615,6 +728,10 @@ without making the player a body-thief.
   "hostSelection": { "prefer": "seeded_soul_faded", "fallback": "generate",
     "rankWeights": "worldDistribution", "origins": ["gate_touched","academy_forged","deep_blood","dream_called","static_born"] },
   "carryOver": ["journal","canon","voiceBond","statusWindow","capGift","threads"],
+  "carryOverMechanical": {
+    "xpLegacy": { "fraction": 0.5, "appliedAtop": "hostXp", "milestone": "recompute_floored" },
+    "strongestSkill": { "select": "highest_rank", "tieBreak": "player_choice" }
+  },
   "reset": ["stats","skills","milestone","hp","inventorySlots"],
   "interstitial": "antechamber_scene"
 }
@@ -678,17 +795,63 @@ nothing below deep Lebab can even attempt it — which is the §2.2 warning:
 The Tower is authored content (the fixed spine that survives timeskips),
 banded to the milestone track. Entry gate: **displayed Level 50 —
 milestone 11** (canon), enforced by the Tower itself, not by any
-association: below the threshold, the door is a wall [INVENTED — the door
-reads souls; paperwork is the associations' fiction about it].
+association — and enforcement is **lethal** (canon, ruled 2026-07-05):
+below the threshold, the door does not refuse you, it **kills you**. The
+door reads souls; paperwork is the associations' fiction about it. This is
+a standing **world dread-fact**: everyone alive knows the gate's price,
+because that is how the world learned it — **the news-spread beat**: in the
+first weeks after the VOICE spoke, hunters and zealots and one broadcast
+crew walked at the black door, and the phrase the world kept was
+*"bodies at the threshold."* No fence was ever built; none is needed. The
+associations' Level-50 certification exists so that no member ever tests
+the door's arithmetic in person.
 
-| Floors | Content tier | Milestone band | Character |
-|---|---|---|---|
-| **1–10** | The Threshold | 11–12 | The Tower teaching its grammar; trial floors, first climbers' graveyards |
-| **11–30** | The Middle Passage | 12–13 | Ecology floors — the seep's source-biomes, inverted seasons |
-| **31–60** | The Archive | 13–15 | The Tower remembers every language; floors that are *about* something [INVENTED — band identities] |
-| **61–90** | The High Silence | 16–18 | Post-scale; the register at its oldest; hunters stop sending reports back |
-| **91–99** | The Approach | 18–19 | The last mortal floors; DG-tier phenomena first brush the climb |
-| **100** | The Hinge | 19 | The sub-boss, and the reveal |
+**The knowledge split (canon, ruled 2026-07-05).** The band table below is
+**spec-truth in two registers**, and the narrator is bound by the split:
+
+- **KNOWN TO THE WORLD — floors 1–9 only.** Partially mapped by expeditions;
+  the world's *entire* stock of Tower knowledge. Charts are incomplete,
+  contested, and sold.
+- **FLOOR 10 — the world's edge.** The **First Ascent Coalition** — the
+  world's top hunters, a multi-flag expedition of S-ranks and two SS-rank
+  legends — is **currently trapped on floor 10** at story start. Comm
+  fragments still arrive; nobody can reach them; **nobody has ever passed
+  floor 10**. Where the legends stopped is where the world's map ends.
+- **TRUE — floors 11–100.** Authored spec-truth the world DOES NOT HAVE.
+  Band identities from 11 up are for the engine and this document only.
+  **The narrator must never leak content above floor 10** — no NPC, rumor,
+  record, or VOICE line describes it; the WINDOW does not chart it. The
+  player learns the upper Tower by climbing it, first.
+
+| Floors | Content tier | Milestone band | Character | Knowledge register |
+|---|---|---|---|---|
+| **1–9** | The Threshold | 11–12 | The Tower teaching its grammar; trial floors, first climbers' graveyards | **Known** — partially mapped |
+| **10** | The Held Floor | 12 | Where the First Ascent stopped; the trap, and Book One's marquee rescue | **Known** — the world's edge |
+| **11–30** | The Middle Passage | 12–13 | Ecology floors — the seep's source-biomes, inverted seasons | **TRUE — never world knowledge** |
+| **31–60** | The Archive | 13–15 | The Tower remembers every language; floors that are *about* something | **TRUE — never world knowledge** |
+| **61–90** | The High Silence | 16–18 | Post-scale; the register at its oldest; no report has ever come back because no one has been | **TRUE — never world knowledge** |
+| **91–99** | The Approach | 18–19 | The last mortal floors; DG-tier phenomena first brush the climb | **TRUE — never world knowledge** |
+| **100** | The Hinge | 19 | The sub-boss, and the reveal | **TRUE — never world knowledge** |
+
+### 8.1a THE FLOOR-10 RESCUE — Book One's marquee Tower quest (canon anchor)
+
+The Book One Tower arc is built so the milestone-11 player **walks past
+where the legends stopped**. Quest anchor:
+
+- *Grounded in:* floor 10, the First Ascent Coalition, the Gate Queue
+  front (§3.2 — the signatory nations' live grievance), Gate Station Aleph.
+- *Shape:* reach floor 10 through the partially-mapped Threshold → find
+  what holds the Coalition (authored floor content; the world's theories
+  are all wrong) → break, bargain, or outlast it → bring out the living
+  and the names of the dead.
+- *Stakes seeding:* the Coalition's **known repertoire** (§4.4 — the
+  expedition-tagged A-rank skills) is how the world understands what
+  "trapped" means: hunters who hold three of the strongest documented
+  skills on Earth could not get themselves out.
+- *Payoff:* the first human beings to pass floor 10 do it in the player's
+  wake — and everything from floor 11 up is virgin narration, per the
+  knowledge split. **Lebab remains secret throughout** (§8.3); nothing on
+  floor 10 references the hinge.
 
 ### 8.2 Floor 100 — the reveal
 
@@ -741,11 +904,24 @@ design — the sequel hook is authored; the sequel is not.
    zones; local de-escalation on committed clears; L-gates on other fronts.
 8. **Regional tendency weights** (§3.4): the NPC-generation table.
 9. **Starter-skill budget pricing** (§4.4): all 19 costs as listed.
+10. **Legacy-XP carry fraction** (§7.1): **50%** of lifetime XP on
+    reassignment — the mechanism is canon; only the number is proposed.
+11. **Extended effect prices** (§4.4a): multi-target ×2, extra light
+    action 3 (once-per-fight −1), stance +1, end-status-early 2,
+    location-scoped −1, once-per-day −2, signature = full band budget.
+12. **Extended-ladder budget pricing** (§4.4a): all 21 new skill costs as
+    broken down in their tables.
 
 ### All [INVENTED] creative items
+*(Struck by the 2026-07-05 redline — now locked canon, no longer tagged:
+the VOICE script (§2.2, as amended: the body sleeps); the lethal
+soul-reading door + "bodies at the threshold" (§8.1); the Tower band
+identities and the knowledge split (§8.1); the carryOver softening
+mechanism (§7.1); Fortune's Pocket implementation (§4.4).)*
+
 1. Tone-bible register laws (§1.2) — including the in-Tower register shift.
 2. The poisoning stays unopened in Book One; resolves in Book Two (§2.1, §8.3).
-3. The VOICE's turn-1 script, verbatim (§2.2).
+3. *(struck — VOICE script locked as amended)*
 4. STATUS WINDOW layout + "the window does not lie" + WINDOW-vs-assessment-rig
    split (§2.3, §5).
 5. Forest/town path designs (§2.4).
@@ -767,7 +943,17 @@ design — the sequel hook is authored; the sequel is not.
 16. **The Oubliette floors**; what earns Soul Prison; both rescue-quest
     shapes; the geas terms (§7.2).
 17. Banishment epilogue shape; vanquishment grave-record (§7.3–7.4).
-18. Tower band identities (Threshold / Middle Passage / Archive / High
-    Silence / Approach); the soul-reading door (§8.1).
+18. *(struck — band identities + the lethal soul-reading door locked as
+    spec-truth under the §8.1 knowledge split)*
 19. **The Mirrored Warden** — the floor-100 sub-boss's name and doorman
     nature (§8.2).
+20. **The First Ascent Coalition** — the trapped expedition, its named
+    legends (**Yoo Ha-eun**, **Kanbara Rei**, **Dane Okafor**), and the
+    Floor-10 Rescue quest shape (§8.1, §8.1a).
+21. **The 21 extended-ladder skills** (§4.4a) — all names, flavor,
+    sources, and holders: 8 B (Smart Rounds, Overwatch Rig, Falling-Sky
+    Art, Duelist's Tempo, Bastion Ward, Sanction Seal, Salvager's Eye,
+    Breach Discipline), 6 A (Stag-Breaker, Static Walk, Floor Grammar,
+    Choir Ward ◆, Red Meridian ◆, Lantern Law ◆), 4 S (Threshold Vow,
+    Hundred-Hand Art, Signal Zero, Ghostlight Step), 3 SS/SSS signatures
+    (Pale Meridian, The Shut Door, Longitude).
