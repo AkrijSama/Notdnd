@@ -19,8 +19,9 @@ rest. One rule stands over all of it, so we'll state it first:
 
 ## Hit points and damage
 
-Your **HP** derives from VIT and level (Chapter 2) and recomputes when
-either changes. Damage subtracts from it; nothing else about you degrades —
+Your **HP** derives from VIT and milestone (Chapter 2; minor display levels
+add only their small tick, per Chapter 7) and recomputes when either
+changes. Damage subtracts from it; nothing else about you degrades —
 you fight as well at 1 HP as at full. HP is the distance between you and the
 floor, not a spiral.
 

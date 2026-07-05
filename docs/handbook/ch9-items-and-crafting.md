@@ -61,8 +61,8 @@ may carry its one ability:
 *Why ability gates at Rare: the first two tiers stay arithmetic so early
 play stays legible — a new player compares two Commons on one number. The
 jump from 3→5→7 keeps each tier above Rare a felt upgrade without letting a
-Relic double a leveled character's stats (a 20-level career grants +10 stat
-points; a Relic is most of a tier's growth, not a career's).* The validator
+Relic double a grown character's stats (a full ~20-milestone career grants
++10 stat points; a Relic is most of a tier's growth, not a career's).* The validator
 enforces all of it: budget, single ability, vocabulary membership.
 
 ## Money

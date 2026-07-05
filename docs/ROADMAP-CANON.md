@@ -55,13 +55,29 @@ The current active direction. It supersedes the prior "MVP" plan.
 
 - **[LOCKED] Rulebook Chapters 7 / 8 / 9 — Progression, Life & Death, Items &
   Crafting.** Confirmed by director ruling 2026-07-05: committed-event XP; FF
-  growth-profiles as data; level cap 20; universal death-save machinery with
-  return-from-death as world lore; the bounded ten-status FF-canon vocabulary;
-  item = slot + stat-mods + one ability, with Weapon / Armor / Accessory×2 slots;
-  crafting as a contract-only schema. All numeric defaults in the written
-  chapters approved as defaults (rarity budgets kept deliberately);
-  **nat-20/nat-1 special rules on checks explicitly rejected** — struck from
-  Ch3, which now codifies that the die's face has no special meaning on a check.
+  growth-profiles as data; the milestone track (below); universal death-save
+  machinery with return-from-death as world lore; the bounded ten-status
+  FF-canon vocabulary; item = slot + stat-mods + one ability, with Weapon /
+  Armor / Accessory×2 slots; crafting as a contract-only schema. All numeric
+  defaults in the written chapters approved as defaults (rarity budgets kept
+  deliberately); **nat-20/nat-1 special rules on checks explicitly rejected** —
+  struck from Ch3, which now codifies that the die's face has no special
+  meaning on a check.
+  - **[LOCKED] Ch7 amendment — the MILESTONE TRACK (director decision
+    2026-07-05, supersedes "level cap 20").** Rationale: *the cap was math,
+    not the number — bounded budget stays, the number becomes world display.*
+    The chassis defines a **bounded growth budget across ~20 mechanical
+    milestones** (the former "levels"): +10 total stat points, feat picks at
+    tier-graduation milestones (5/10/15/20), HP/derived recompute per
+    milestone; growth-profile arrays, d20 math, and validator budgets
+    untouched. **World books define the DISPLAYED level scale — uncapped**
+    (Babel uses 1–250) — mapping milestones onto breakthrough level-numbers
+    of their choosing; between breakthroughs, displayed level-ups grant a
+    minor HP tick / flavor progression only (the dopamine drip); real
+    mechanical growth lands at milestones. Per-character level caps are
+    **world lore, not chassis**. XP law unchanged: committed events only.
+    Tier bands survive as milestone-tier bands (names/gates unchanged; gates
+    read milestones, never display levels).
 
 - **[LOCKED] Build sequence (strict order):**
   1. **Rulebook / Player's Handbook**, chapter by chapter, with the **Isekai world
