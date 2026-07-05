@@ -42,6 +42,8 @@ import {
 } from "./attempt.js";
 import { advanceQuests, capturePlayerObjective } from "./quests.js";
 import { advanceMomentum } from "./momentum.js";
+import { combatActive, detectAttackIntent, enterCombatFromAttackIntent, resolveCombatInput, getCombatActionMenu } from "./combat.js";
+import { advanceThreads, fireDueThreadBeatOnClock, resolveThreadLifecycle } from "./threads.js";
 import { createDefaultVnState, validateSoloRun } from "./schema.js";
 import {
   applyDamage,
@@ -267,6 +269,12 @@ export function validateSoloAction(run, action) {
 }
 
 export function getAvailableSoloActions(run, options = {}) {
+  // D.4 — while a fight is live the exploration menu is illegal (phase0 §1.1). A
+  // combat-aware client renders the combat menu; a free-text client still types
+  // prose (the game's identity), which the combat interception classifies.
+  if (combatActive(run)) {
+    return getCombatActionMenu(run);
+  }
   const includePlaceholders = options.includePlaceholders !== false;
   const movementActions = getAvailableMoves(run).map((move) => ({
     type: "move",
@@ -433,15 +441,42 @@ function finalizeQuestProgress(originalRun, result, options = {}) {
     }
   }
 
-  // MOMENTUM — the world's own forward pressure (momentum.js). Every mutating
-  // turn ticks the tension clock (quiet turns build it, progress bleeds it);
-  // when it fires, the SERVER instantiates a real event — an arriving NPC, an
-  // objectState change, a hook quest — COMMITTED to the post-action run before
-  // a word is narrated. Skipped for read-only actions and terminal runs (a
-  // corpse's world does not need to move).
+  // D.5 NARRATIVE SUBSTRATE + MOMENTUM — one clock, ≤1 narrative driver per turn.
+  // Priority: quest-advance (the arc the player is moving) > a due THREAD beat
+  // (server-owned pressure) > a legacy momentum one-off. Threads plug into
+  // momentum's proven cadence — no second pacing system (D.5 §4.2).
   if (actionProducedRun && result.run && !result.runDied) {
-    const momentum = advanceMomentum(result.run, result, options);
-    if (momentum?.fired) {
+    // Lifecycle first: close any thread whose resolution now holds (e.g. combat
+    // this turn killed a grounding NPC, or the linked quest completed).
+    const threadsResolved = resolveThreadLifecycle(result.run, result, options);
+    if (threadsResolved.length) result.threadsResolved = threadsResolved;
+
+    const questAdvanced = Boolean(result.questJustAdvanced);
+    let driverFired = questAdvanced;
+
+    // DESCRIPTIVE advancement — fires on the player's OWN action, regardless of
+    // tension (never starves a busy player). Yields to a quest advance.
+    if (!driverFired) {
+      const threadTurn = advanceThreads(result.run, result, options);
+      if (threadTurn.fired) {
+        result.threadBeatFired = { threadId: threadTurn.thread.threadId, beatId: threadTurn.beat.beatId };
+        result.narrativeDriver = threadTurn.driver;
+        driverFired = true;
+      }
+    }
+
+    // The momentum clock always TICKS; it only FIRES when no driver already did.
+    // When it fires, its slot is offered first to a due PRESCRIPTIVE thread beat
+    // (threadFireFn), then to the legacy one-off pool.
+    const momentum = advanceMomentum(result.run, result, {
+      ...options,
+      suppressFire: driverFired,
+      threadFireFn: fireDueThreadBeatOnClock
+    });
+    if (momentum?.threadBeat) {
+      result.threadBeatFired = { threadId: momentum.threadBeat.thread.threadId, beatId: momentum.threadBeat.beat.beatId };
+      result.narrativeDriver = momentum.threadBeat.driver;
+    } else if (momentum?.fired) {
       result.momentumEvent = momentum.fired;
     }
   }
@@ -630,6 +665,58 @@ export function resolveSoloAction(run, action, options = {}) {
   // dying player can be acted on deterministically.
   if (TEST_HOOK_ACTION_TYPES.has(normalized.type)) {
     return resolveTestHookAction(run, normalized, options);
+  }
+
+  // D.4 COMBAT INTERCEPTION (phase0 §1.5 Change B). While a fight is live the game
+  // is a turn machine: a free-text attempt (or a use_item) routes to the combat
+  // resolver — which classifies via the FROZEN combatContract, dispatches, and runs
+  // the enemy response inside one round. Every OTHER exploration verb is illegal in
+  // combat and spends NO turn (a mis-route in a turn machine corrupts initiative).
+  if (combatActive(run)) {
+    if (normalized.type === "attempt" || normalized.type === "use_item") {
+      // Deterministic combat rolls over HTTP (gated like the other test hooks): an
+      // attempt may carry testHook.fixedRolls (a d20 queue consumed across the
+      // round) so the harness — and the live-grade proof — can pin a fight without
+      // touching narration. Never honored in production.
+      const combatOpts =
+        testHooksEnabled(process.env) && normalized.testHook
+          ? { ...options, fixedRoll: normalized.testHook.fixedRoll ?? options.fixedRoll, fixedRolls: Array.isArray(normalized.testHook.fixedRolls) ? [...normalized.testHook.fixedRolls] : options.fixedRolls }
+          : options;
+      const combatOutcome = resolveCombatInput(run, normalized, combatOpts);
+      if (!combatOutcome.ok) {
+        return { ok: false, code: combatOutcome.code || "COMBAT_ERROR", actionType: normalized.type, errors: [{ path: "action", message: "The fight could not resolve that." }] };
+      }
+      if (combatOutcome.clarify) {
+        // Ask ≠ act / ungrounded — answered from state, no turn spent, no enemy acts.
+        return {
+          ok: true,
+          code: "COMBAT_CLARIFY",
+          actionType: normalized.type,
+          action: normalized,
+          run: null, // no state change — the round did not advance
+          combatClarify: combatOutcome.clarify,
+          availableMoves: getAvailableMoves(run),
+          availableActions: getAvailableSoloActions(run),
+          errors: []
+        };
+      }
+      return finalizeQuestProgress(run, {
+        ok: true,
+        action: normalized,
+        run: combatOutcome.run,
+        combatRound: combatOutcome.combatRound,
+        availableMoves: getAvailableMoves(combatOutcome.run),
+        availableActions: getAvailableSoloActions(combatOutcome.run),
+        errors: []
+      }, options);
+    }
+    // move / search / talk / inspect / rest — no mid-combat exploration.
+    return {
+      ok: false,
+      code: "ACTION_ILLEGAL_IN_COMBAT",
+      actionType: normalized.type,
+      errors: [{ path: "action.type", message: "You are in a fight — that will have to wait." }]
+    };
   }
 
   // The dying-turn loop (rolled in finalizeQuestProgress): while the player is at
@@ -893,6 +980,34 @@ export function resolveSoloAction(run, action, options = {}) {
         }, options);
       }
       // Search failed validation — fall through to the normal attempt path.
+    }
+    // D.4 COMBAT ENTRY (phase0 §1.5 Change A). A clear attack verb aimed at a
+    // PRESENT, resolvable NPC (never minted — the take/move discipline) starts a
+    // fight: instantiate the enemy from the bestiary (statBlockId off the committed
+    // NPC — the D.5 thread `hostileNpc` beat is the canonical placer), roll
+    // initiative, and resolve round 1. Gated by !interrogative (a question about
+    // attacking never starts a fight). An aggressive verb with NO present target
+    // falls through to the honest attempt path (a swing at air), preserving legacy
+    // behavior exactly where no enemy exists.
+    const attackIntent = interrogative ? null : detectAttackIntent(run, normalized.intent);
+    if (attackIntent) {
+      const entryOpts =
+        testHooksEnabled(process.env) && normalized.testHook
+          ? { ...options, fixedRoll: normalized.testHook.fixedRoll ?? options.fixedRoll, fixedRolls: Array.isArray(normalized.testHook.fixedRolls) ? [...normalized.testHook.fixedRolls] : options.fixedRolls }
+          : options;
+      const entered = enterCombatFromAttackIntent(run, { targetNpcId: attackIntent.targetNpcId, intent: normalized.intent }, entryOpts);
+      if (entered.ok) {
+        return finalizeQuestProgress(run, {
+          ok: true,
+          action: { ...normalized, enteredCombatViaIntent: true },
+          run: entered.run,
+          combatRound: entered.combatRound,
+          availableMoves: getAvailableMoves(entered.run),
+          availableActions: getAvailableSoloActions(entered.run),
+          errors: []
+        }, options);
+      }
+      // Entry failed (unknown stat block / target vanished) — fall through.
     }
     // Deterministic test-hook injection (gated like the other test hooks): an
     // attempt may carry `testHook: { fixedRoll, providerOutput }` so the self-play

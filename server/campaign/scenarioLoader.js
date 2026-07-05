@@ -1,0 +1,200 @@
+// D.5 PHASE 1 — THE SCENARIO LOADER (the front→thread bridge).
+//
+// A scenario is declarative JSON (the UGC boundary). This loader is the ONLY code
+// that turns a `front` (authoring) into a `thread` (runtime run.threads) — exactly
+// as resolveQuestAccept turns a questOffer into a quest state. It gates on
+// validateScenario (fail-loud on a dangling ref BEFORE a player ever sees it),
+// resolves symbolic refs against the post-worldgen graph, and instantiates cast →
+// quests → threads in that order, then re-validates the whole run.
+//
+// Threads are born ONLY here (a server event) — never from model output. The
+// loader carries no behavior: trigger evaluation, beat commit, and pacing all live
+// in threads.js. This module is instantiation only.
+
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { validateScenario } from "./scenarioSchema.js";
+import { validateSoloRun, createEmptyExpressionVariants } from "../solo/schema.js";
+
+const SCENARIO_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "scenarios");
+
+// The generated world graph keys locations by the symbolic positional ids
+// (start_location / second_location / third_location), so a positional ref is
+// already a real id. The one alias: the authoring shorthand "start".
+const LOCATION_ALIAS = { start: "start_location" };
+function resolveLocationRef(ref) {
+  if (typeof ref !== "string") return ref;
+  if (ref === "{player_location}") return ref; // dynamic — resolved at commit in threads.js
+  return LOCATION_ALIAS[ref] || ref;
+}
+
+export function loadScenarioFile(scenarioId) {
+  const file = path.join(SCENARIO_DIR, `${String(scenarioId).replace(/[^a-z0-9_]/gi, "")}.json`);
+  if (!fs.existsSync(file)) return null;
+  return JSON.parse(fs.readFileSync(file, "utf8"));
+}
+
+// Resolve which scenario (if any) a run should load. Gated: never in sandbox.
+// Source: an explicit per-run scenarioId, else the INKBORNE_SCENARIO env default
+// (the flag, default-on for the grade target).
+export function resolveRequestedScenario({ scenarioId, sandbox }) {
+  if (sandbox) return null;
+  const id = scenarioId || process.env.INKBORNE_SCENARIO;
+  if (!id) return null;
+  return loadScenarioFile(id);
+}
+
+// ── ref rewriting (symbolic → real ids at load) ───────────────────────────────
+function resolveTrigger(trigger) {
+  if (!trigger || typeof trigger !== "object") return {};
+  const out = {};
+  for (const mode of ["descriptive", "prescriptive"]) {
+    if (!trigger[mode] || typeof trigger[mode] !== "object") continue;
+    const t = { ...trigger[mode] };
+    if (t.onPlayerAt) t.onPlayerAt = resolveLocationRef(t.onPlayerAt);
+    if (t.playerAt) t.playerAt = resolveLocationRef(t.playerAt);
+    for (const k of ["onQuestStage", "onQuestState", "questState"]) {
+      if (t[k]?.questRef) t[k] = { ...t[k], questId: t[k].questRef };
+    }
+    out[mode] = t;
+  }
+  return out;
+}
+function resolvePayload(payload) {
+  if (!payload || typeof payload !== "object") return {};
+  const out = { ...payload };
+  if (out.objectState?.locationId) out.objectState = { ...out.objectState, locationId: resolveLocationRef(out.objectState.locationId) };
+  if (out.hostileNpc?.placeAt) out.hostileNpc = { ...out.hostileNpc, placeAt: resolveLocationRef(out.hostileNpc.placeAt) };
+  if (out.quest?.questRef) out.quest = { ...out.quest, questId: out.quest.questRef };
+  return out;
+}
+
+function instantiateThread(front, run) {
+  const g = front.groundedIn || {};
+  const groundedIn = {
+    entityIds: (g.entityRefs || []).filter((id) => run.npcs[id] || id === run.player?.playerId),
+    locationIds: (g.locationRefs || []).map(resolveLocationRef),
+    questIds: (g.questRefs || []).filter((id) => run.quests[id]),
+    factIds: []
+  };
+  const beats = (front.beats || []).map((b) => ({
+    beatId: b.beatId,
+    label: b.label || "",
+    telegraph: b.telegraph || "",
+    brief: b.brief || "",
+    decision: b.decision || "",
+    trigger: resolveTrigger(b.trigger),
+    payload: resolvePayload(b.payload),
+    status: "pending"
+  }));
+  return {
+    threadId: front.frontId,
+    kind: front.kind,
+    status: "active",
+    origin: "scenario",
+    title: front.title || front.frontId,
+    agenda: front.agenda || "",
+    groundedIn,
+    beatIndex: 0,
+    beats,
+    // Per-thread cadence — the reconciled spine paces the ladder at ≤1 beat / N
+    // turns; the ≤1-driver rule already spaces distinct threads. Slice default: 1.
+    clock: { minTurnsBetweenBeats: front.clock?.minTurnsBetweenBeats ?? 1, lastFiredTurn: null, dormantUntilTurn: null },
+    revealState: front.revealState || "hidden",
+    resolution: (front.resolution || []).map((r) => ({ ...r, questId: r.questRef || r.questId })),
+    callbackQuery: { entityIds: front.callbackQuery?.entityRefs || [], keywords: front.callbackQuery?.keywords || [] },
+    flags: {}
+  };
+}
+
+/**
+ * Instantiate a validated scenario into a run: cast → quests → threads → opening.
+ * Fail-loud on validation (author-time content bug, never a runtime surprise).
+ * Mutates and returns run.
+ */
+export function loadScenarioIntoRun(run, scenario, options = {}) {
+  const v = validateScenario(scenario);
+  if (!v.ok) {
+    const err = new Error(`Scenario "${scenario?.scenarioId}" failed validation: ${JSON.stringify(v.errors.slice(0, 6))}`);
+    err.code = "SCENARIO_INVALID";
+    throw err;
+  }
+  run.npcs = run.npcs || {};
+  run.quests = run.quests || {};
+  run.threads = run.threads || {};
+
+  // 1. CAST — create the scenario's NPCs at resolved locations (replacing the
+  // hand-wired cast). questOffer descriptors ride the NPC for the accept flow.
+  for (const c of scenario.cast || []) {
+    run.npcs[c.npcId] = {
+      npcId: c.npcId,
+      displayName: c.displayName || c.npcId,
+      role: c.role || "stranger",
+      currentLocationId: resolveLocationRef(c.at),
+      known: true,
+      status: "present",
+      memoryFactIds: [],
+      expressionVariants: createEmptyExpressionVariants(),
+      tags: [c.role || "stranger"],
+      flags: {},
+      edition: "mainline",
+      policyProfileId: "mainline_default",
+      contentTags: [],
+      origin: "procedural",
+      dialogueBeats: (c.dialogueBeats || []).map((d, i) => ({
+        beatId: `${c.npcId}_beat_${i}`,
+        label: d.label || "",
+        text: d.text || "",
+        revealed: false,
+        repeatable: true,
+        linkedQuestIds: [],
+        contentTags: []
+      }))
+    };
+    if (c.questOffer && scenario.questOffers?.[c.questOffer]) {
+      run.npcs[c.npcId].questOffer = scenario.questOffers[c.questOffer];
+    }
+  }
+
+  // 2. QUESTS — declared scenario quests become real active records (the objects
+  // fronts ground in and triggers read). Kept thin; the quest engine tolerates it.
+  for (const [qid, q] of Object.entries(scenario.quests || {})) {
+    if (run.quests[qid]) continue;
+    run.quests[qid] = {
+      questId: qid,
+      status: "active",
+      stage: 0,
+      title: q.title || qid,
+      description: q.summary || q.description || "",
+      objective: q.summary || q.title || "",
+      relatedEntityIds: [],
+      memoryFactIds: [],
+      authoredBy: "scenario",
+      isMain: q.kind === "delivery",
+      flags: {}
+    };
+  }
+
+  // 3. THREADS — fronts → run.threads (refs resolved to real ids).
+  for (const front of scenario.fronts || []) {
+    run.threads[front.frontId] = instantiateThread(front, run);
+  }
+
+  // 4. OPENING — bind the start location + the objective the opening names.
+  const startRef = scenario.opening?.questObjectiveFrom;
+  if (scenario.opening?.startLocationRef) {
+    const startId = resolveLocationRef(scenario.opening.startLocationRef);
+    if (run.locations[startId]) run.currentLocationId = startId;
+  }
+  void startRef;
+
+  // 5. FAIL-LOUD — the whole run must validate after loading.
+  const runV = validateSoloRun(run);
+  if (!runV.ok) {
+    const err = new Error(`Run invalid after loading scenario "${scenario.scenarioId}": ${JSON.stringify(runV.errors.slice(0, 6))}`);
+    err.code = "SCENARIO_LOAD_INVALID";
+    throw err;
+  }
+  return run;
+}

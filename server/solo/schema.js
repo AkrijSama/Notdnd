@@ -54,6 +54,20 @@ const NPC_EXPRESSION_SET = new Set(NPC_EXPRESSIONS);
 export const NPC_ORIGINS = ["procedural", "user", "hybrid"];
 const NPC_ORIGIN_SET = new Set(NPC_ORIGINS);
 
+// D.5 narrative-substrate: run.threads is a first-class validated record, like
+// run.quests (front:thread :: questTemplate:questState). These enum sets mirror
+// scenarioSchema.js's frozen authoring enums, kept local so the core contract
+// module stays self-contained (house style — cf. RUN_STATUSES above).
+const THREAD_KINDS = new Set(["danger", "secret", "rival", "consequence", "opportunity"]);
+const THREAD_STATUSES = new Set(["dormant", "active", "resolved", "expired", "abandoned"]);
+const THREAD_ORIGINS = new Set(["scenario", "worldgen", "momentum", "player_goal"]);
+const THREAD_REVEAL_STATES = new Set(["hidden", "rumored", "revealed"]);
+const BEAT_STATUSES = new Set(["pending", "committed", "skipped"]);
+// D.4 combat: run.combat is an additive optional first-class record. Player
+// HP/AC/conditions are NEVER duplicated here — they stay canonical on run.player.
+const COMBAT_STATUSES = new Set(["active", "won", "lost", "fled"]);
+const COMBATANT_KINDS = new Set(["player", "enemy"]);
+
 /**
  * Builds an all-null expression-variant lookup table.
  * @returns {Record<string, string | null>}
@@ -883,6 +897,106 @@ export function validateQuestState(quest) {
   return result(errors);
 }
 
+// D.5 narrative substrate — a thread is a committed narrative agenda (a row
+// before it is a sentence). Validation is deliberately THIN/tolerant, exactly
+// like validateQuestState: identity + enums + array shapes are gated; the rich
+// authored content (beats' trigger/payload/brief/decision, agenda text) rides
+// freely so authored scenarios and the loader carry data without schema churn.
+// Referential closure of groundedIn is checked in validateSoloRun (it needs the
+// whole run's id sets), the same split validateQuestState uses.
+function validateThreadBeat(beat) {
+  const errors = [];
+  if (!isPlainObject(beat)) {
+    push(errors, "beat", "Expected object");
+    return result(errors);
+  }
+  validateRequiredString(beat.beatId, "beatId", errors);
+  if (beat.status !== undefined) {
+    validateEnum(beat.status, BEAT_STATUSES, "status", errors);
+  }
+  // trigger/payload/brief/decision/telegraph/label are tolerated-rich (authored).
+  return result(errors);
+}
+
+export function validateThreadState(thread) {
+  const errors = [];
+  if (!isPlainObject(thread)) {
+    push(errors, "thread", "Expected object");
+    return result(errors);
+  }
+  validateRequiredString(thread.threadId, "threadId", errors);
+  validateEnum(thread.kind, THREAD_KINDS, "kind", errors);
+  validateEnum(thread.status, THREAD_STATUSES, "status", errors);
+  if (thread.origin !== undefined) {
+    validateEnum(thread.origin, THREAD_ORIGINS, "origin", errors);
+  }
+  validateEnum(thread.revealState, THREAD_REVEAL_STATES, "revealState", errors);
+  validateNumber(thread.beatIndex, "beatIndex", errors);
+  if (!isPlainObject(thread.groundedIn)) {
+    push(errors, "groundedIn", "Expected object");
+  } else {
+    validateStringArray(thread.groundedIn.entityIds, "groundedIn.entityIds", errors);
+    validateStringArray(thread.groundedIn.locationIds, "groundedIn.locationIds", errors);
+    validateStringArray(thread.groundedIn.questIds, "groundedIn.questIds", errors);
+    validateStringArray(thread.groundedIn.factIds, "groundedIn.factIds", errors);
+  }
+  if (!Array.isArray(thread.beats)) {
+    push(errors, "beats", "Expected array");
+  } else {
+    thread.beats.forEach((beat, index) => appendNestedErrors(errors, `beats.${index}`, validateThreadBeat(beat)));
+  }
+  if (thread.clock !== undefined) {
+    validateObject(thread.clock, "clock", errors);
+  }
+  if (thread.resolution !== undefined && !Array.isArray(thread.resolution)) {
+    push(errors, "resolution", "Expected array");
+  }
+  validateObject(thread.flags, "flags", errors);
+  return result(errors);
+}
+
+// D.4 combat — an additive, optional first-class record. Player HP/AC/conditions
+// are NEVER duplicated here; only enemy combatants carry hp/ac. Referential
+// integrity (enemy npcId ∈ run.npcs) is checked in validateSoloRun.
+export function validateCombatState(combat) {
+  const errors = [];
+  if (!isPlainObject(combat)) {
+    push(errors, "combat", "Expected object");
+    return result(errors);
+  }
+  validateRequiredString(combat.combatId, "combatId", errors);
+  validateEnum(combat.status, COMBAT_STATUSES, "status", errors);
+  validateNumber(combat.round, "round", errors);
+  validateNumber(combat.turnIndex, "turnIndex", errors);
+  validateStringArray(combat.turnOrder, "turnOrder", errors);
+  if (!isPlainObject(combat.combatants)) {
+    push(errors, "combatants", "Expected object");
+  } else {
+    for (const [id, c] of Object.entries(combat.combatants)) {
+      if (!isPlainObject(c)) {
+        push(errors, `combatants.${id}`, "Expected object");
+        continue;
+      }
+      validateEnum(c.kind, COMBATANT_KINDS, `combatants.${id}.kind`, errors);
+      if (c.kind === "enemy") {
+        validateRequiredString(c.npcId, `combatants.${id}.npcId`, errors);
+        validateRequiredString(c.statBlockId, `combatants.${id}.statBlockId`, errors);
+        if (!isPlainObject(c.hp)) {
+          push(errors, `combatants.${id}.hp`, "Expected object");
+        } else {
+          validateNumber(c.hp.current, `combatants.${id}.hp.current`, errors);
+          validateNumber(c.hp.max, `combatants.${id}.hp.max`, errors);
+        }
+        validateNumber(c.ac, `combatants.${id}.ac`, errors);
+      }
+    }
+  }
+  if (combat.enemyIntents !== undefined) {
+    validateObject(combat.enemyIntents, "enemyIntents", errors);
+  }
+  return result(errors);
+}
+
 export function validateInventoryItem(item) {
   const errors = [];
   if (!isPlainObject(item)) {
@@ -1060,6 +1174,14 @@ export function validateSoloRun(run) {
   validateRecord(run.quests, "quests", errors, validateQuestState);
   validateRecord(run.playerAssets, "playerAssets", errors, validatePlayerAsset);
   validateRecord(run.imageAssets, "imageAssets", errors, validateImageAsset);
+  // D.5 threads / D.4 combat — additive optional first-class records; legacy
+  // runs (undefined) stay valid, exactly like run.vn / run.battleMap.
+  if (run.threads !== undefined && run.threads !== null) {
+    validateRecord(run.threads, "threads", errors, validateThreadState);
+  }
+  if (run.combat !== undefined && run.combat !== null) {
+    appendNestedErrors(errors, "combat", validateCombatState(run.combat));
+  }
 
   if (!Array.isArray(run.memoryFacts)) {
     push(errors, "memoryFacts", "Expected array");
@@ -1083,6 +1205,31 @@ export function validateSoloRun(run) {
   ].filter(Boolean));
   const knownFactIds = new Set(Array.isArray(run.memoryFacts) ? run.memoryFacts.map((fact) => fact.factId).filter(Boolean) : []);
   const knownQuestIds = new Set(Object.keys(run.quests || {}));
+
+  // D.5 thread grounding must be referentially closed at commit time (the same
+  // dangling-ref discipline linkedQuestIds uses). A thread grounded in an entity
+  // the run doesn't have is invalid content — the loader fails loud, never a
+  // half-committed beat at runtime.
+  for (const [threadId, thread] of Object.entries(run.threads || {})) {
+    const g = thread?.groundedIn;
+    if (!isPlainObject(g)) continue;
+    (g.entityIds || []).forEach((id, i) => {
+      if (!knownEntityIds.has(id)) push(errors, `threads.${threadId}.groundedIn.entityIds.${i}`, "Grounded entity does not exist");
+    });
+    (g.questIds || []).forEach((id, i) => {
+      if (!knownQuestIds.has(id)) push(errors, `threads.${threadId}.groundedIn.questIds.${i}`, "Grounded quest does not exist");
+    });
+    (g.factIds || []).forEach((id, i) => {
+      if (!knownFactIds.has(id)) push(errors, `threads.${threadId}.groundedIn.factIds.${i}`, "Grounded fact does not exist");
+    });
+  }
+  // D.4 combat — every enemy combatant's npcId must be a real committed NPC
+  // (an enemy is never narrated that the roster doesn't hold — coherence).
+  for (const [id, c] of Object.entries(run.combat?.combatants || {})) {
+    if (c?.kind === "enemy" && c.npcId && !run.npcs?.[c.npcId]) {
+      push(errors, `combat.combatants.${id}.npcId`, "Combatant NPC does not exist");
+    }
+  }
   for (const [locationId, location] of Object.entries(run.locations || {})) {
     if (!Array.isArray(location?.searchDetails)) {
       continue;
@@ -1353,6 +1500,10 @@ export function createDefaultSoloRun(options = {}) {
       }
     },
     quests: {},
+    // D.5 narrative substrate (threads) + D.4 combat — first-class additive
+    // records; empty/null until a scenario seeds a thread or a fight begins.
+    threads: {},
+    combat: null,
     playerAssets: {},
     imageAssets: {},
     memoryFacts: [

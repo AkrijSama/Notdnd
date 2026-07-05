@@ -995,6 +995,58 @@ export function locationNeedsImage(run, location) {
   return !resolveLocationImageUri(run, location);
 }
 
+// D.5 — the player-facing thread summary. Only non-terminal threads surface, and
+// only what reveal state permits: id/kind/status/revealState always; title once
+// not hidden; agenda once revealed. A hidden thread's agenda never leaves here.
+function buildThreadsSummary(run) {
+  const threads = isPlainObject(run?.threads) ? run.threads : {};
+  const out = [];
+  for (const thread of Object.values(threads)) {
+    if (!isPlainObject(thread)) continue;
+    if (thread.status === "resolved" || thread.status === "expired" || thread.status === "abandoned") continue;
+    const revealState = thread.revealState || "hidden";
+    const entry = { threadId: thread.threadId, kind: thread.kind, status: thread.status, revealState };
+    if (revealState !== "hidden" && typeof thread.title === "string") entry.title = thread.title;
+    if (revealState === "revealed" && typeof thread.agenda === "string") entry.agenda = thread.agenda;
+    out.push(entry);
+  }
+  return out;
+}
+
+// D.4 — the live combat surface (or null). Emits the committed roster with enemy
+// wound-bands alongside true HP (the client may show numbers; the narrator speaks
+// bands). Player HP/AC are read from the player payload, never duplicated here.
+function buildCombatSummary(run) {
+  const combat = run?.combat;
+  if (!isPlainObject(combat)) return null;
+  const enemies = [];
+  for (const [id, c] of Object.entries(combat.combatants || {})) {
+    if (c?.kind !== "enemy") continue;
+    const cur = c.hp?.current ?? 0;
+    const max = c.hp?.max ?? 1;
+    const band = cur <= 0 ? "down" : cur <= max / 2 ? "bloodied" : "steady";
+    enemies.push({
+      id,
+      npcId: c.npcId,
+      name: c.name || run?.npcs?.[c.npcId]?.displayName || "Enemy",
+      hp: c.hp,
+      hpBand: band,
+      ac: c.ac,
+      conditions: c.conditions || [],
+      intent: combat.enemyIntents?.[id] || null
+    });
+  }
+  return {
+    combatId: combat.combatId,
+    status: combat.status,
+    round: combat.round,
+    turnOrder: combat.turnOrder || [],
+    turnIndex: combat.turnIndex ?? 0,
+    enemies,
+    outcome: combat.outcome ?? null
+  };
+}
+
 export function buildSoloScenePayload(run, options = {}) {
   const runValidation = validateSoloRun(run);
   if (!runValidation.ok) {
@@ -1092,6 +1144,12 @@ export function buildSoloScenePayload(run, options = {}) {
     areaMap: buildAreaMapPayload(run),
     // MVP quest engine: active quests + the main quest (or null) for this run.
     quests: getQuestPayload(run),
+    // D.5 narrative substrate: a thin thread summary (id/kind/status/revealState).
+    // Reveal discipline (§5.3): a title rides only when the thread is not hidden;
+    // the agenda rides only when it is revealed. A hidden thread's agenda never
+    // leaves the server. (The load-bearing invariant — hidden threads absent from
+    // the GM PROMPT — is enforced in the narrativeDriver fold-in, not here.)
+    threads: buildThreadsSummary(run),
     // Open, un-accepted job offers held by PRESENT NPCs (F2: an offer no one can
     // discover is dead content). Server-authored truth: the GM may voice these —
     // accepting one is a real committed transition (resolveQuestAccept).
@@ -1099,6 +1157,10 @@ export function buildSoloScenePayload(run, options = {}) {
     // The world's own most recent COMMITTED development (momentum engine), while
     // fresh — the GM context narrates it grounded; it is already real in state.
     recentDevelopment: getRecentDevelopment(run),
+    // D.4 combat: the live fight (or null). The client renders true enemy numbers
+    // from here; the narrator speaks in wound-bands. availableActions below already
+    // swaps to the combat menu while active (getAvailableSoloActions is combat-aware).
+    combat: buildCombatSummary(run),
     availableMoves: getAvailableMoves(run).filter((move) => {
       const destination = run.locations[move.locationId];
       return destination ? policyAllows(destination, policyProfile) : false;

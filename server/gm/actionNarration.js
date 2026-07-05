@@ -175,6 +175,56 @@ export function buildNpcCanonGuard(run, npc, speaker) {
  * @param {object} resolved the resolveSoloAction result
  * @returns {string|null}
  */
+// D.4 §4 — the per-round combat directive. Built from the committed round record
+// (rolls/damage/transitions are facts; the narrator speaks the wounds, never the
+// numbers). No prompt content invents an enemy or an outcome — everything named
+// here is already committed in run state this turn.
+export function buildCombatGmMessage(run, round, suffix) {
+  if (!round || typeof round !== "object") return null;
+  const enemyName = (round.enemies && round.enemies[0]?.name) || "the enemy";
+  const status = round.status;
+
+  if (status === "won") {
+    return (
+      `In combat, the player has just DEFEATED ${enemyName} — the fight is over and the enemy is down for good. ` +
+      `Narrate the finishing blow landing and the sudden after-quiet: the body, the stilled threat, and one concrete thing the moment leaves the player (a wound of their own, a dropped item, what the kill costs or reveals). ` +
+      `Do not restate rolls or hit points. End on what the player turns to next. ${suffix}`
+    );
+  }
+  if (status === "lost") {
+    return (
+      `In combat, ${enemyName} has just struck the player DOWN — they are at 0 and falling. ` +
+      `Narrate the blow that drops them and the world going grey, grounded and unflinching. Do not soften it into recovery, and do not kill them outright in the prose — the death saves decide that. ${suffix}`
+    );
+  }
+  if (status === "fled") {
+    const where = round.location?.name ? ` into ${round.location.name}` : "";
+    return (
+      `In combat, the player has BROKEN AWAY from ${enemyName} and escaped${where} — the enemy is left behind, still alive. ` +
+      `Narrate the disengage: the turn, the run, the sound of it falling away behind them, and where they now stand. ${suffix}`
+    );
+  }
+
+  // Active round — narrate the exchange + the telegraph for what's coming.
+  const pa = (round.actions || []).find((a) => a.actor === "player");
+  const ea = (round.actions || []).find((a) => a.actor !== "player");
+  const enemyBand = round.enemies && round.enemies[0]?.hpBand;
+  let playerBeat = "";
+  if (pa?.kind === "attack") playerBeat = pa.roll?.hit ? `The player's blow LANDS on ${enemyName} (now ${enemyBand}${pa.roll?.crit ? ", a savage hit" : ""}).` : `The player's blow MISSES ${enemyName}.`;
+  else if (pa?.kind === "defend") playerBeat = `The player takes a defensive guard.`;
+  else if (pa?.kind === "stunt") playerBeat = pa.roll?.hit ? `The player pulls off a maneuver against ${enemyName}.` : `The player's maneuver fails.`;
+  else if (pa?.kind === "flee") playerBeat = `The player tries to break away but cannot.`;
+  let enemyBeat = "";
+  if (ea?.kind === "attack") enemyBeat = ea.roll?.hit ? `${enemyName} hits back and WOUNDS the player.` : `${enemyName} strikes but the player avoids it.`;
+  else if (ea) enemyBeat = `${enemyName} shifts, giving no opening.`;
+  const tell = (round.nextIntents && round.nextIntents[0]?.telegraph) ? ` It ${round.nextIntents[0].telegraph}.` : "";
+  return (
+    `In an ongoing fight: ${playerBeat} ${enemyBeat}${tell} ` +
+    `Narrate THIS exchange concretely — the blow, the wound, the tell of what's coming — in wounds, not numbers. ` +
+    `End on the pressure of the player's next move. ${suffix}`
+  );
+}
+
 export function buildActionGmMessage(run, resolved) {
   if (!resolved || typeof resolved !== "object") {
     return null;
@@ -182,6 +232,15 @@ export function buildActionGmMessage(run, resolved) {
   const type = resolved.action?.type;
   const loc = currentLocation(run);
   const suffix = styleSuffix(run);
+
+  // D.4 COMBAT — a round resolved this turn (entry or in-combat). Narrate the
+  // committed exchange from the round record, in WOUNDS not raw numbers (the
+  // client shows true HP; the narrator speaks qualitatively — coherence leak #4).
+  // Consumes the shipped style contract like every other branch.
+  if (resolved.combatRound) {
+    const msg = buildCombatGmMessage(run, resolved.combatRound, suffix);
+    if (msg) return msg;
+  }
 
   if (type === "attempt") {
     const ar = resolved.attemptResult;

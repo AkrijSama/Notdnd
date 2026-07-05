@@ -396,11 +396,24 @@ export function advanceMomentum(run, result, options = {}) {
     momentum.lastFiredTurn === null || momentum.turnCount - momentum.lastFiredTurn > tuning.cooldownTurns;
   if (
     cls !== "progress" &&
+    !options.suppressFire && // D.5 ≤1-driver: a quest/thread already drove this turn
     momentum.tension >= tuning.fireAt &&
     cooledDown &&
     run.status === "active" &&
     !playerIsDying(run)
   ) {
+    // D.5 ONE CLOCK: the fire slot is offered FIRST to the thread engine (a due
+    // PRESCRIPTIVE beat), then falls back to the legacy momentum one-off pool.
+    // threadFireFn is injected by finalizeQuestProgress; absent (legacy callers),
+    // behavior is unchanged.
+    if (typeof options.threadFireFn === "function") {
+      const threadBeat = options.threadFireFn(run, options);
+      if (threadBeat) {
+        momentum.tension = 0;
+        momentum.lastFiredTurn = momentum.turnCount;
+        return { fired: null, threadBeat, classification: cls };
+      }
+    }
     const fired = fireMomentumEvent(run, options);
     return { fired: fired || null, classification: cls };
   }

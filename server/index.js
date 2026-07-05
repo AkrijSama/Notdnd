@@ -894,6 +894,25 @@ async function narrateActionWithGm(run, resolved, user) {
       `it is really happening — and end by putting its choice in front of the player: ${ev.decision} ` +
       `Do NOT invent any other new arrivals, changes, or events beyond this one.`;
   }
+  // D.5 NARRATIVE SUBSTRATE — a thread beat fired this turn. Its payload is ALREADY
+  // COMMITTED to state (a fact / an objectState / a placed NPC). The fold-in hands
+  // the GM the committed beat and its server-selected VERBATIM callbacks — and, for
+  // a HIDDEN thread, NEVER the agenda (the driver carries none): the narrator
+  // voices the EVENT, never the unnamed plot behind it. This is the coherence
+  // invariant that keeps a hidden escalation out of the prompt.
+  if (resolved.narrativeDriver && resolved.narrativeDriver.source === "thread") {
+    const d = resolved.narrativeDriver;
+    const callbacks = Array.isArray(d.callbacks) && d.callbacks.length
+      ? ` Ground it in what the player already did — reference this committed history without restating it as a list: ${d.callbacks.map((c) => `"${c}"`).join("; ")}.`
+      : "";
+    const pattern = d.threadKnown && d.agenda
+      ? ` The player understands the pattern behind this — you may name it: ${d.agenda}`
+      : ` Narrate ONLY this committed development as it appears in the scene — do NOT name, hint at, or foreshadow any larger scheme, pattern, or hidden agenda behind it; the player sees the event, not the plot.`;
+    message +=
+      ` MEANWHILE a REAL development has just been committed to the game state: ${d.beat.brief}` +
+      `${callbacks} Narrate it arriving alongside the action's outcome — it is really happening — and end by putting its choice in front of the player: ${d.beat.decision}` +
+      `${pattern} Do NOT invent any other new arrivals, changes, or events beyond this one.`;
+  }
   // LETHALITY ENFORCEMENT (#12): a helpful-tuned model defaults to mercy. Counter
   // it explicitly — the GM is a real 5e DM who narrates EARNED consequences and
   // never rescues the player from them.
@@ -2077,6 +2096,9 @@ async function handleApi(req, res) {
         world: payload?.world || {},
         character: payload?.character || {},
         draftPortraitId: payload?.draftPortraitId || null,
+        // D.5: an optional authored scenario (e.g. "the_shipment"). Campaign-mode
+        // only; the loader gates it. Falls back to the INKBORNE_SCENARIO env flag.
+        scenarioId: payload?.scenarioId || null,
         // C.13: the solo "new adventure" IS the sandbox flow (see onboardingFlow.js
         // — the loctype picker was removed because sandbox defaults to forest-ruins;
         // modules/campaigns carry their own start). Default to sandbox so a pure

@@ -14,6 +14,7 @@ import { writeNpcMemoryDoc } from "../solo/npcMemory.js";
 import { buildFarLocation, buildSecondLocation, generateWorld } from "../solo/worldGen.js";
 import { createMainQuest } from "../solo/quests.js";
 import { buildTrialQuest, TRIAL_QUEST_ID, buildDeliveryOffer } from "./authoredQuests.js";
+import { resolveRequestedScenario, loadScenarioIntoRun } from "./scenarioLoader.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -502,7 +503,7 @@ async function generateOpeningNarration({ campaignId, runId, message, playerName
   }
 }
 
-export async function createWorldOnboardingRun(userId, { world = {}, character = {}, draftPortraitId = null, mode = "campaign" } = {}) {
+export async function createWorldOnboardingRun(userId, { world = {}, character = {}, draftPortraitId = null, mode = "campaign", scenarioId = null } = {}) {
   const actorUserId = String(userId || "").trim();
   if (!actorUserId) {
     const error = new Error("userId is required to create a world onboarding run.");
@@ -552,6 +553,12 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
   // belt-and-suspenders net. Campaign/module runs are unchanged.
   const sandbox = String(mode || "").trim().toLowerCase() === "sandbox";
   run.mode = sandbox ? "sandbox" : "campaign";
+  // D.5 scenario system: when a scenario is requested (per-run id or the
+  // INKBORNE_SCENARIO flag, campaign-only), the DECLARATIVE scenario provides the
+  // cast/quests/threads and the hand-wired campaign block below is skipped. The
+  // scenario is instantiated into the run AFTER the world graph is built.
+  const scenario = resolveRequestedScenario({ scenarioId, sandbox });
+  const scenarioActive = Boolean(scenario);
   run.world = {
     ...run.world,
     name: resolvedWorld.name,
@@ -686,7 +693,7 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
   // Seed stage-1 content at the second location: a quest-giver NPC whose arrival
   // beat is linked to the main quest (talking there completes stage 1), plus
   // tone-flavoured lore/hint/ambient beats for ongoing conversation.
-  if (secondLocation && !sandbox) {
+  if (secondLocation && !sandbox && !scenarioActive) {
     run.npcs.npc_quest_giver = {
       npcId: "npc_quest_giver",
       displayName: "A waiting figure",
@@ -755,7 +762,7 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
     // player reaching the edge, and repeatable lore on how the world got here.
     // SANDBOX: skipped — these beats link the procedural quest_main, which a
     // sandbox does not create (a dangling linkedQuestId would fail validation).
-    if (!sandbox) {
+    if (!sandbox && !scenarioActive) {
       run.npcs.npc_far_witness = {
       npcId: "npc_far_witness",
       displayName: "A figure at the edge",
@@ -804,7 +811,7 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
   // tracked quest and drops a takeable crate here; the player takes the crate, carries
   // it to the far location, and hands it over for a committed reward. Campaign-only
   // (sandbox carries no authored quests), and only when both endpoints exist.
-  if (!sandbox && secondLocation && thirdLocation && run.npcs?.npc_quest_giver) {
+  if (!sandbox && !scenarioActive && secondLocation && thirdLocation && run.npcs?.npc_quest_giver) {
     const giver = run.npcs.npc_quest_giver;
     giver.questOffer = buildDeliveryOffer(resolvedWorld, {
       giverLocationName: secondLocation.name,
@@ -839,7 +846,7 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
   // (quests.js) supplies the title/objectives; targets resolve to this run.
   // SANDBOX (C.5 / owner decision a): the directed spine is NOT injected — a pure
   // open world has no assigned quarry; it reacts to player-authored goals instead.
-  if (!sandbox) {
+  if (!sandbox && !scenarioActive) {
     run.quests = run.quests || {};
     run.quests.quest_main = createMainQuest(resolvedWorld, {
       secondLocationId: secondLocation ? "second_location" : null,
@@ -885,6 +892,13 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
         secondLocationName: secondLocation.name
       });
     }
+  }
+
+  // D.5 SCENARIO LOAD — the declarative door. Instantiate cast → quests → threads
+  // from the validated scenario into the (post-worldgen) run, in place of the
+  // hand-wired campaign block skipped above. Fail-loud on a dangling ref.
+  if (scenarioActive) {
+    loadScenarioIntoRun(run, scenario, { worldSeed });
   }
 
   await rebuildCampaignIndex(campaignId);

@@ -1,0 +1,222 @@
+{
+  "substrate": 1,
+  "scenarioId": "the_shipment",
+  "title": "The Shipment",
+  "genre": "cyberpunk",
+  "tones": ["cyberpunk"],
+  "stakes": "A sealed data-case, a sector someone is quietly closing, and a fixer whose cut prices in your funeral.",
+  "opening": {
+    "questObjectiveFrom": "offer_courier",
+    "startLocationRef": "second_location",
+    "situation": "A fixer's booth in the night market. A sealed data-case sits on the table between you, still warm. The job is simple until it isn't: carry it across a sector someone is quietly strangling shut."
+  },
+  "cast": [
+    {
+      "npcId": "npc_quest_giver",
+      "at": "second_location",
+      "role": "fixer",
+      "displayName": "Vesa",
+      "dialogueBeats": [
+        { "label": "The job", "text": "\"Simple run. The case crosses the sector, you don't open it, you don't stop. My cut's steep — but so's the funeral if you botch it.\"" }
+      ],
+      "questOffer": "offer_courier"
+    },
+    {
+      "npcId": "npc_far_witness",
+      "at": "third_location",
+      "role": "ripperdoc",
+      "displayName": "The ripperdoc",
+      "dialogueBeats": [
+        { "label": "The last courier", "text": "\"I patched the last one who carried a case like that. What was left of them. They said the collector doesn't stop.\"" }
+      ]
+    }
+  ],
+  "questOffers": {
+    "offer_courier": {
+      "title": "Run the case",
+      "summary": "Carry the sealed data-case across the sector to the drop, unopened.",
+      "kind": "delivery"
+    }
+  },
+  "quests": {
+    "quest_courier": {
+      "title": "Deliver the case",
+      "summary": "Get the sealed data-case across the watched sector to the drop.",
+      "kind": "delivery"
+    },
+    "quest_netrun": {
+      "title": "The one-try vault",
+      "summary": "A corp black-ICE site under the dead substation. One jack-in, no second try.",
+      "kind": "trial"
+    }
+  },
+  "fronts": [
+    {
+      "frontId": "front_courier",
+      "kind": "opportunity",
+      "foreground": false,
+      "topology": "parallel",
+      "title": "The Run",
+      "agenda": "The job is live; the client wants the case moved tonight, and the finish line is not where it was.",
+      "revealState": "revealed",
+      "groundedIn": {
+        "entityRefs": ["npc_quest_giver"],
+        "locationRefs": ["second_location", "third_location"],
+        "questRefs": ["offer_courier", "quest_courier"]
+      },
+      "beats": [
+        {
+          "beatId": "beat_contract",
+          "label": "The run is live",
+          "telegraph": "Vesa slides the case an inch closer and takes her hand off it.",
+          "brief": "The courier contract is live — the case is yours to move, unopened, across the sector.",
+          "decision": "Take the case and move, or press Vesa for what's really inside.",
+          "trigger": { "prescriptive": { "minTurn": 15 } },
+          "payload": { "fact": { "text": "The courier contract is live: the sealed case moves tonight, and the client is watching the clock." } }
+        },
+        {
+          "beatId": "beat_drop_moves",
+          "label": "The drop shifts",
+          "telegraph": "Your contact's ping reroutes mid-message.",
+          "brief": "The drop point shifted — the client is spooked and the finish line just moved.",
+          "decision": "Chase the new drop, or hold and demand to know why it moved.",
+          "trigger": { "prescriptive": { "requiresBeat": "beat_contract", "minTurn": 18 } },
+          "payload": { "fact": { "text": "The drop point shifted without warning — the client is spooked, and the case is hotter than the job priced." } }
+        }
+      ],
+      "resolution": [
+        { "kind": "quest", "questRef": "quest_courier", "on": "completed", "outcome": "resolved" },
+        { "kind": "beat_final", "outcome": "resolved" }
+      ],
+      "callbackQuery": { "entityRefs": ["npc_quest_giver"], "keywords": ["case", "courier", "drop"] }
+    },
+    {
+      "frontId": "front_vault",
+      "kind": "secret",
+      "foreground": false,
+      "topology": "linear",
+      "title": "The One-Try Vault",
+      "agenda": "A corp black-ICE site under the dead substation; probing it is what makes the owning corp notice you.",
+      "revealState": "rumored",
+      "groundedIn": {
+        "entityRefs": ["npc_far_witness"],
+        "locationRefs": ["third_location"],
+        "questRefs": ["quest_netrun"]
+      },
+      "beats": [
+        {
+          "beatId": "beat_vault_rumor",
+          "label": "Runners talk",
+          "telegraph": "Two fixers go quiet when you pass, then start again lower.",
+          "brief": "Runners talk of a vault under the dead substation — one jack-in, no second try.",
+          "decision": "File the rumor and move on, or start asking who's been down there.",
+          "trigger": { "prescriptive": { "minTurn": 16 } },
+          "payload": { "fact": { "text": "Runners talk of a vault under the dead substation — one jack-in, no second try, and no one who tried it twice." } }
+        },
+        {
+          "beatId": "beat_vault_open",
+          "label": "The one-try test",
+          "telegraph": "A maintenance hatch you passed twice is now ajar.",
+          "brief": "The way into the substation vault is open — and the corp logs every jack-in.",
+          "decision": "Jack in for the one attempt, or walk away clean.",
+          "trigger": { "prescriptive": { "requiresBeat": "beat_vault_rumor", "minTurn": 20 } },
+          "payload": { "quest": { "questRef": "quest_netrun" } }
+        }
+      ],
+      "resolution": [
+        { "kind": "quest", "questRef": "quest_netrun", "on": "completed", "outcome": "resolved" },
+        { "kind": "beat_final", "outcome": "resolved" }
+      ],
+      "callbackQuery": { "entityRefs": ["npc_far_witness"], "keywords": ["vault", "substation", "jack-in"] }
+    },
+    {
+      "frontId": "front_collector",
+      "kind": "danger",
+      "foreground": true,
+      "topology": "linear",
+      "title": "The Collector's Cut",
+      "agenda": "The one closing the sector wants the case — and to make an example of the courier.",
+      "revealState": "hidden",
+      "groundedIn": {
+        "entityRefs": ["npc_quest_giver"],
+        "locationRefs": ["second_location", "third_location"],
+        "questRefs": ["quest_courier"]
+      },
+      "beats": [
+        {
+          "beatId": "beat_flagged",
+          "label": "Your gig got flagged",
+          "telegraph": "A cheap drone tags your route and peels off toward the grid towers.",
+          "brief": "Someone with pull on the sector grid knows a courier took the case — the moment it changed hands.",
+          "decision": "Push on fast before word travels, or go dark and reroute.",
+          "trigger": { "descriptive": { "onPlayerAt": "second_location" } },
+          "payload": { "fact": { "text": "The sector grid flagged the courier the moment the case changed hands — someone is already watching the routes." } }
+        },
+        {
+          "beatId": "beat_cordon",
+          "label": "The cordon hardens",
+          "telegraph": "Checkpoint lights double along the only clean route out.",
+          "brief": "The sector cordon tightens; the clean route is now watched and slow.",
+          "decision": "Bribe through, find a gap, or risk the run and lose time you don't have.",
+          "trigger": { "descriptive": { "requiresBeat": "beat_flagged", "onPlayerAt": "third_location" } },
+          "payload": { "objectState": { "key": "the-cordon", "locationId": "third_location", "state": "hardened", "retryEffect": "harder", "reason": "The sector cordon is manned and scanning; passage costs more now." } }
+        },
+        {
+          "beatId": "beat_collector",
+          "label": "The collector arrives",
+          "telegraph": "A gonk in corp leathers is asking your face by name.",
+          "brief": "A collector sent by the one closing the sector has found the courier — he wants the case, and he has not come to bargain long.",
+          "decision": "Hand it over, talk him down, or refuse and face him.",
+          "trigger": { "descriptive": { "requiresBeat": "beat_cordon", "onPlayerAt": "third_location" } },
+          "payload": {
+            "hostileNpc": {
+              "npcId": "npc_collector",
+              "displayName": "The reeve's collector",
+              "role": "enforcer",
+              "statBlockId": "waylayer",
+              "placeAt": "{player_location}",
+              "dialogueBeats": [
+                { "label": "Hand it over", "text": "\"The reeve says the sector's his now — and so's what moves on it. The case. Or we take it off what's left of you.\"" }
+              ]
+            }
+          }
+        },
+        {
+          "beatId": "beat_boss_named",
+          "label": "The reeve has a name",
+          "telegraph": "The collector's dead comm still pings one handle, over and over.",
+          "brief": "The collector answered to someone with a name — and that someone now knows the courier's face.",
+          "decision": "Hunt the reeve before they send another, or run the case and stay ahead of them.",
+          "trigger": { "descriptive": { "requiresBeat": "beat_collector", "onCanon": { "keywords": ["collector"] } } },
+          "payload": { "fact": { "text": "The collector answered to Kesh, who runs the sector tolls — and now Kesh knows the courier's face and that the courier fights." } }
+        }
+      ],
+      "resolution": [
+        { "kind": "ground_lost", "outcome": "resolved" },
+        { "kind": "beat_final", "outcome": "resolved" },
+        { "kind": "quest", "questRef": "quest_courier", "on": "completed", "outcome": "resolved" }
+      ],
+      "callbackQuery": { "entityRefs": ["npc_quest_giver"], "keywords": ["case", "cordon", "collector", "toll"] }
+    }
+  ],
+  "secrets": [
+    {
+      "secretId": "secret_engram",
+      "text": "The case isn't cargo. It's someone's engram backup — that's why the tax, and why the collector won't stop.",
+      "frontRef": "front_collector",
+      "reveal": { "onEntityKnown": "npc_far_witness" }
+    },
+    {
+      "secretId": "secret_vesa_cut",
+      "text": "Vesa's cut is triple the going rate. She's not being generous — she's pricing in the funeral.",
+      "frontRef": "front_courier",
+      "reveal": { "onCanon": { "keywords": ["haggled", "asked the pay"] } }
+    },
+    {
+      "secretId": "secret_neural_fuse",
+      "text": "The substation 'lock' is a neural fuse, not ICE. 'One try' means one brain.",
+      "frontRef": "front_vault",
+      "reveal": { "onLocation": "third_location" }
+    }
+  ]
+}
