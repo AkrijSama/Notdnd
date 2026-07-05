@@ -48,6 +48,10 @@
 // bugs (input-focus, CSS/layout, the VN overlay painting) are invisible here —
 // use a headless browser for those.
 
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+// `fs` is imported lower in this file (near the audit helpers); ESM hoists it.
+
 const BASE = process.env.SELFPLAY_BASE || `http://127.0.0.1:${process.env.PORT || 4173}`;
 // Per-call HTTP budget. Default 45s tolerates the LOCAL fallback model
 // (dolphin-8b) on live interpret→roll turns, which legitimately take ~10-15s and
@@ -209,6 +213,108 @@ async function newRun() {
 
 const scene = (ctx) => call(`/api/solo/runs/${ctx.runId}/scene`, { token: ctx.token });
 const act = (ctx, action) => call(`/api/solo/runs/${ctx.runId}/actions`, { method: "POST", token: ctx.token, body: { action } });
+
+// ─────────────────── scenario runs (authored-door, campaign) ──────────────────
+// A world-run that loads an AUTHORED scenario (the_shipment) over a DELIBERATELY
+// DISTINCTIVE dark-fantasy worldgen base. The scenario's Terra cyberpunk market is
+// the single source of setting truth; the injected worldgen fingerprint (Ashfall /
+// Ember Tavern / ruins / barrows / grim dark fantasy) must NOT survive into ANY
+// player-facing surface. Any of it appearing = onboarding/worldgen location data
+// bleeding past the scenario override — the exact live grading-run bug (committed
+// "Terra Market", narration describing a ruins).
+async function worldRunScenario(token, scenarioId) {
+  return call("/api/onboarding/world-run", {
+    method: "POST", token, timeoutMs: 180000, body: {
+      mode: "campaign",
+      scenarioId,
+      world: {
+        name: "Ashfall Reach", tone: "grim dark fantasy",
+        startingLocationName: "The Ember Tavern", startingLocationType: "ruins",
+        flavor: "an ash-choked frontier of crumbling keeps, torch-lit barrows, and cobblestone ruins"
+      },
+      character: { name: "Bram", race: "Human", characterClass: "Rogue", background: "Criminal", baseAbilityScores: { strength: 10, dexterity: 15, constitution: 13, intelligence: 14, wisdom: 12, charisma: 11 } }
+    }
+  });
+}
+async function newScenarioRun(scenarioId) {
+  const { token } = await ensureAuth();
+  let wr = await worldRunScenario(token, scenarioId);
+  if (!wr.json.runId && (wr.json.code === "SESSION_LIMIT_REACHED" || /session limit/i.test(wr.json.error || ""))) {
+    resetAuth();
+    const fresh = await ensureAuth();
+    wr = await worldRunScenario(fresh.token, scenarioId);
+    return { token: fresh.token, runId: wr.json.runId, campaignId: wr.json.campaignId };
+  }
+  if (!wr.json.runId) throw new Error(`scenario world-run failed (HTTP ${wr.status}): ${JSON.stringify(wr.json).slice(0, 220)}`);
+  return { token, runId: wr.json.runId, campaignId: wr.json.campaignId };
+}
+
+// The authored scenario file IS the source of truth for what the player may see —
+// its location names, cast, and fronts. Read it (not hardcoded) so the assertions
+// track the authored content as it is edited.
+function loadAuthoredScenario(scenarioId) {
+  const file = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "server", "campaign", "scenarios", `${scenarioId}.json`);
+  return JSON.parse(fs.readFileSync(file, "utf8"));
+}
+
+// The worldgen/default-world fingerprint that MUST NOT bleed into a scenario run.
+// Two bands: (a) the distinctive dark-fantasy base this harness injects (Ashfall /
+// Ember Tavern / barrows / grim dark) — impossible in the authored cyberpunk market,
+// so any hit is unambiguous bleed; (b) the generic default-world flavor the live
+// bug surfaced (ruins / rubble / scuff / crumbling / cobblestone). None appears in
+// the_shipment's authored text, so a hit is always onboarding/worldgen leakage.
+const WORLDGEN_FINGERPRINT = [
+  "ashfall", "ember tavern", "the ember", "grim dark", "dark fantasy", "barrow", "torch-lit",
+  "ruins", "rubble", "scuff", "crumbling", "cobblestone"
+];
+
+// Every player-facing setting surface of a scene payload, as searchable strings —
+// including COMMITTED discoverable content (discoveredDetails), where default-world
+// searchDetails that survived the scenario override surface once a player looks.
+function settingSurfaces(s) {
+  return [
+    String(s.openingNarration || ""),
+    String(s.location?.name || ""),
+    String(s.location?.description || ""),
+    (s.location?.tags || []).join(" "),
+    (s.availableMoves || []).map((m) => m.name).join(" | "),
+    (s.discoveredDetails || []).map((d) => `${d.label || ""} ${d.description || ""}`).join("  "),
+    JSON.stringify(s.suggestedActions || []),
+    JSON.stringify(s.recentDevelopment || {})
+  ];
+}
+
+// GENERALIZED INVARIANT — for ANY scenario run, the committed location is the ONLY
+// setting the player sees. Reusable: pass the authored scenario, a scene payload,
+// and any per-turn narration. Hard-asserts (1) committed location ∈ the authored
+// set, (2) the move graph names only authored destinations, (3) no worldgen/
+// default-world fingerprint in committed state, narration, or suggestions.
+function assertScenarioSetting(ctx, { label, authored, scene: s, narration = "" }) {
+  const authoredLocNames = Object.values(authored.locations || {}).map((l) => String(l.name || "").toLowerCase()).filter(Boolean);
+  const locName = String(s.location?.name || "").toLowerCase();
+  ctx.assert(
+    `[${label}] committed location is an AUTHORED scenario location (single source of truth)`,
+    authoredLocNames.includes(locName),
+    `∈ ${JSON.stringify(Object.values(authored.locations).map((l) => l.name))}`,
+    s.location?.name || "(none)"
+  );
+  const moveNames = (s.availableMoves || []).map((m) => String(m.name || "").toLowerCase()).filter(Boolean);
+  const foreignMove = moveNames.find((n) => !authoredLocNames.includes(n) && n !== "an unexplored path");
+  ctx.assert(
+    `[${label}] the move graph names ONLY authored locations (no worldgen location bleeds in)`,
+    !foreignMove,
+    "authored destinations only",
+    foreignMove ? `foreign destination "${foreignMove}"` : "clean"
+  );
+  const hay = settingSurfaces(s).concat([String(narration || "")]).join("  ").toLowerCase();
+  const leaked = WORLDGEN_FINGERPRINT.filter((t) => hay.includes(t));
+  ctx.assert(
+    `[${label}] NO worldgen/default-world content bleed (committed state, narration, suggestions)`,
+    leaked.length === 0,
+    "authored setting only",
+    leaked.length ? `LEAKED default-world terms: ${leaked.join(", ")}` : "clean"
+  );
+}
 
 // playerInventory is the AUTHORITATIVE usable-items projection (from run.inventory,
 // what use_item mutates). player.inventory[] is the state-contract array surface.
@@ -1924,6 +2030,115 @@ async function scenarioWire(ctx) {
   void sPre;
 }
 
+// ═══ SCENARIO SOURCE-OF-TRUTH — the authored setting is the ONLY location ═══════
+// A live grading run of the_shipment committed location "Terra Market" while the GM
+// narration + suggestions described a "ruins" (crumbling walls, rubble, scuff) — a
+// second setting, generated by onboarding/worldgen, bleeding past the scenario
+// override. The 1121-test battery missed it because nothing asserted narration/
+// suggestions agree with the committed scenario location. This scenario is that
+// guard: it drives a the_shipment run over a DISTINCTIVE dark-fantasy worldgen base
+// and HARD-FAILS if any worldgen/default-world content reaches committed state, GM
+// narration, or suggestions across the opening and several free-text turns.
+async function scenarioLocationSource(ctx) {
+  const authored = loadAuthoredScenario("the_shipment");
+  const startRef = authored.opening?.startLocationRef || "second_location";
+  const startLocName = authored.locations?.[startRef]?.name;
+  const authoredFrontIds = (authored.fronts || []).map((f) => f.frontId);
+  // The scene shows only CO-LOCATED cast, so split by where each NPC is authored.
+  const startCast = (authored.cast || []).filter((c) => (c.at || "") === startRef).map((c) => c.npcId);
+  const otherCast = (authored.cast || []).filter((c) => (c.at || "") !== startRef);
+
+  const r = await newScenarioRun("the_shipment");
+  ctx.runId = r.runId; ctx.token = r.token; ctx.campaignId = r.campaignId;
+  const p = await answeringModel(r);
+  ctx.note(`the_shipment loaded over an Ashfall-Reach/ruins worldgen base — ${provTag(p)}`);
+
+  const s0 = (await scene(r)).json;
+
+  // (1) SCENARIO LOADED CORRECTLY — committed location is the authored market.
+  ctx.assert(
+    "committed location is the scenario's AUTHORED location (Terra night market), not a worldgen location",
+    String(s0.location?.name || "").toLowerCase() === String(startLocName || "").toLowerCase(),
+    startLocName || "(authored start)",
+    s0.location?.name || "(none)"
+  );
+
+  // (3) authored fronts + the START-location cast are present (scenario loaded).
+  const threadIds = (s0.threads || []).map((t) => t.threadId);
+  for (const fid of authoredFrontIds) {
+    ctx.assert(`authored front '${fid}' present (scenario loaded)`, threadIds.includes(fid), fid, threadIds.length ? threadIds.join(",") : "no threads");
+  }
+  const castIds0 = (s0.cast || []).map((c) => c.npcId || c.entityId || c.id);
+  for (const nid of startCast) {
+    ctx.assert(`authored cast '${nid}' present at the start location (scenario loaded)`, castIds0.includes(nid), nid, castIds0.length ? castIds0.join(",") : "no cast");
+  }
+  ctx.note(`cast at start: ${JSON.stringify((s0.cast || []).map((c) => c.displayName || c.name))} | authored locations: ${JSON.stringify(Object.values(authored.locations).map((l) => l.name))}`);
+
+  // (2) NO worldgen/default-world bleed at the OPENING (committed state + opening
+  // narration + suggestions).
+  assertScenarioSetting(ctx, { label: "opening", authored, scene: s0 });
+
+  // Navigation is a reliable move ACTION (the invariant under test is SETTING
+  // content, not routing). The graph is a line: start ↔ second ↔ third.
+  const moveTo = async (locId) => {
+    await act(r, { type: "move", actorId: "player", toLocationId: locId });
+    return (await scene(r)).json;
+  };
+  // A free-text SEARCH surfaces committed searchDetails. Default-world searchDetails
+  // that survived the scenario override (the live-bug class) reveal here — into
+  // discoveredDetails and the GM's prose — even when the committed name is clean.
+  const searchAndAudit = async (label) => {
+    const res = await act(r, { type: "attempt", intent: "I search the area around me for anything worth noting." });
+    const sN = (await scene(r)).json;
+    assertScenarioSetting(ctx, { label, authored, scene: sN, narration: String(res.json?.gmNarration || "") });
+    const revealed = (sN.discoveredDetails || []).map((d) => `${d.label || ""} :: ${d.description || ""}`).join("  ");
+    const leaked = WORLDGEN_FINGERPRINT.filter((t) => `${res.json?.searchResult ? JSON.stringify(res.json.searchResult) : ""} ${revealed}`.toLowerCase().includes(t));
+    ctx.assert(
+      `[${label}] a SEARCH surfaces only scenario-authored detail (no default-world searchDetail survived the override)`,
+      leaked.length === 0,
+      "scenario detail only",
+      leaked.length ? `LEAKED default-world content: ${leaked.join(", ")} — discovered: "${revealed.slice(0, 100)}"` : "clean"
+    );
+    return sN;
+  };
+
+  // (4) drive free-text turns — including the observational "what's around me?" —
+  // and assert the setting stays authored across all of them. Order the graph walk
+  // so the Sprawl-Fringe search (which surfaces the default "Scuffed Mark") is LAST:
+  // once discovered it persists in committed discoveredDetails, so searching it
+  // earlier would (correctly but noisily) flag every later scene too.
+
+  // [free-text] observational — pulls the GM to describe the surroundings.
+  const look = await act(r, { type: "attempt", intent: "I look around and take in my surroundings — what's around me?" });
+  const lookGm = classifyGm(String(look.json?.gmNarration || ""));
+  if (!lookGm.ok) ctx.note(`observational turn: GM narration ${lookGm.why} — narration half model-unavailable (state/suggestions still asserted)`);
+  assertScenarioSetting(ctx, { label: 'turn "what\'s around me?"', authored, scene: (await scene(r)).json, narration: lookGm.ok ? String(look.json?.gmNarration || "") : "" });
+
+  // [free-text] search the market (clean — no default searchDetail here).
+  await searchAndAudit("search @ the market");
+
+  // [free-text] a second in-fiction beat at the market.
+  const grab = await act(r, { type: "attempt", intent: "I take the sealed case from the table and steady myself to move." });
+  assertScenarioSetting(ctx, { label: 'turn "take the case…"', authored, scene: (await scene(r)).json, narration: lookGm.ok ? String(grab.json?.gmNarration || "") : "" });
+
+  // Travel to the Watched Sector (second → third) and confirm the far cast loaded
+  // there — the scenario loaded FULLY — while the setting stays authored.
+  const sector = await moveTo("third_location");
+  assertScenarioSetting(ctx, { label: "at The Watched Sector", authored, scene: sector });
+  const castIdsF = (sector.cast || []).map((c) => c.npcId || c.entityId || c.id);
+  for (const c of otherCast) {
+    ctx.assert(`authored cast '${c.npcId}' present at ${c.at} (scenario loaded fully)`, castIdsF.includes(c.npcId), c.npcId, castIdsF.length ? castIdsF.join(",") : "no cast here");
+  }
+
+  // Back to the market, then out to the Sprawl Fringe, and [free-text] search it —
+  // where the DEFAULT location graph's residual "Scuffed Mark" lives. A Terra market
+  // run must never surface it.
+  await moveTo("second_location");
+  const fringe = await moveTo("start_location");
+  assertScenarioSetting(ctx, { label: "at The Sprawl Fringe", authored, scene: fringe });
+  await searchAndAudit("search @ The Sprawl Fringe");
+}
+
 const SCENARIOS = [
   { key: "consequence", title: "CONSEQUENCE — actions mutate persisted state", fn: scenarioConsequence },
   { key: "possession", title: "POSSESSION — claimed items checked vs real inventory (retcons fail, improvisation rolls)", fn: scenarioPossession },
@@ -1944,7 +2159,8 @@ const SCENARIOS = [
   { key: "rollbind", title: "ROLL-BINDING FUZZ — every contested roll resolves ONLY its bound stage", fn: scenarioRollbind },
   { key: "wire", title: "WIRE CONTRACT — committed surfaces cross HTTP + scene payload, permanently", fn: scenarioWire },
   { key: "persistence", title: "PERSISTENCE — state survives a reload", fn: scenarioPersistence },
-  { key: "gm_health", title: "GM HEALTH — real prose, responsive, on-topic", fn: scenarioGmHealth }
+  { key: "gm_health", title: "GM HEALTH — real prose, responsive, on-topic", fn: scenarioGmHealth },
+  { key: "location_source", title: "SCENARIO SOURCE-OF-TRUTH — the authored scenario location is the ONLY setting (no worldgen bleed into narration/suggestions)", fn: scenarioLocationSource }
 ];
 
 const VERDICT_GLYPH = { PASS: "✅ PASS", FAIL: "❌ FAIL", WARN: "⚠️  WARN", PENDING: "⏳ PEND", ERROR: "💥 ERR " };
