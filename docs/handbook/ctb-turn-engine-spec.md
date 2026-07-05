@@ -4,9 +4,9 @@
 the D.4 combat rework.*
 
 **Status:** implements the [LOCKED] CTB turn-economy decision (ROADMAP-CANON
-§1). Positions on unlocked details are marked **[PROPOSED]**; items that
-genuinely need the director are marked **[DIRECTOR]**. This is a design spec,
-not player prose.
+§1). Positions on unlocked details are marked **[PROPOSED]**. Both former
+**[DIRECTOR]** flags were resolved by director ruling (see §10) and are now
+**[LOCKED]**. This is a design spec, not player prose.
 
 ---
 
@@ -37,6 +37,14 @@ dexMod   = floor((DEX − 10) / 2)        // existing d20 modifier math, retaine
 Speed is a **derived stat** (per the locked stat spine: turn-speed derives
 from DEX). Status effects multiply it (§5) before the clamp; the clamp always
 applies last.
+
+**[LOCKED] Luck is permanently excluded from queue math.** Speed is DEX-only,
+forever. Luck's combat surface is: **crit chance, lucky-evade, and fortune's
+verbs (steal / loot / flee)** — nothing that moves `next_tick`. Rationale
+(director ruling): the forecast must never lie. If Luck could perturb the
+queue, the player-facing turn preview (§6) would be probabilistic — either
+dishonest or unreadable. Every input to the queue is deterministic and
+visible; fortune lives in outcomes, not in tempo.
 
 ### 2.2 Delay **[PROPOSED]**
 
@@ -134,8 +142,8 @@ flags, no lost-turn markers — the queue itself is the status effect.
 
 | Effect | Operation | Net feel |
 |---|---|---|
-| **Haste** | `speed ×= 1.5` (then clamp §2.1), rescale pending wait per §4. Lasts its stated duration. | ~50% more turns while it lasts; hitting the 16 clamp preserves the 2.0 bound. |
-| **Slow** | `speed ×= 0.5` (then clamp), rescale per §4. | Pending wait roughly doubles; tempo halves until it expires (clamp floor 8 keeps the victim in the fight). |
+| **Haste** | `speed ×= 1.5`, **then** clamp per §2.1, rescale pending wait per §4. Lasts its stated duration. | ~50% more turns while it lasts; hitting the 16 clamp preserves the 2.0 bound. |
+| **Slow** | `speed ×= 0.5`, **then** clamp, rescale per §4. | Pending wait roughly doubles; tempo halves until it expires (clamp floor 8 keeps the victim in the fight). |
 | **Stun** | `next_tick[i] += delay(i, standard)` — one full standard delay added, once, at application. Speed untouched. | The victim loses **exactly one turn of their own tempo**. |
 
 Stun scaling to the *victim's own* delay is deliberate: a flat tick penalty
@@ -149,6 +157,16 @@ pushed twice without acting is immune to further stun until they act
 Haste and slow on the same combatant multiply (1.5 × 0.5 ≈ net 0.75 — slow
 mostly wins) rather than cancel-by-fiat; the clamp bounds every stack.
 
+**Clamp ordering is load-bearing — this is normative, not stylistic:** the
+[8, 16] clamp of §2.1 applies **after** all status multipliers, on the final
+effective Speed, on every recomputation. The 2.0 degeneracy bound ("no
+combatant ever takes three turns between another's two") holds *only* under
+this ordering — clamping base Speed before multiplying would let haste push
+effective Speed to 24 against a slowed floor of 4, a 6.0 ratio. An
+implementation that clamps before multiplying is nonconforming even if it
+passes at unbuffed spreads. Test-of-record: hasted DEX 20 vs slowed DEX 6
+must never produce a triple-turn.
+
 ## 6. The visible forecast (player-facing queue preview)
 
 The queue is not hidden information — **the forecast is the tactical UI**.
@@ -156,10 +174,29 @@ The queue is not hidden information — **the forecast is the tactical UI**.
 - The server computes the next **8 turn slots** by simulating the queue
   forward, assuming every combatant takes **standard-weight** actions and no
   status changes. This forecast ships in the combat state payload every turn.
-- Each slot carries: `actorId`, `displayName`, `isPlayer`, and `slotIndex`.
-  Raw tick numbers are **not** shown to the player — order is the interface
-  **[DIRECTOR — confirm hiding raw ticks; showing them is trivially possible
-  but changes the feel from "rhythm" to "spreadsheet"]**.
+- **[LOCKED] Order-only, player-facing.** Each slot carries `actorId`,
+  `displayName`, `isPlayer`, and `slotIndex`. Raw tick numbers are **never**
+  shown to the player — order is the interface (director ruling: rhythm, not
+  spreadsheet). Ticks remain available in a **debug view** (dev/diagnostic
+  surface only, never the player UI).
+- **[LOCKED] The forecast shows ALL revealed combatants — including
+  enemies.** Seeing *when* enemies act is half the decision space, alongside
+  their telegraphed intents: "the collector moves twice before my ally" is
+  exactly the information the action-weight economy trades in. Hiding enemy
+  slots would reduce CTB to initiative-with-extra-steps.
+- **Ambush-integrity rule:** combatants that are **hidden or unrevealed are
+  absent from the forecast** — the forecast never leaks an ambush, a
+  reinforcement wave, or a stalker the fiction hasn't surfaced. Unrevealed
+  combatants are not queue members at all; they are staged outside it. On
+  **reveal** (mid-fight or otherwise), the queue is **recomputed at that
+  moment**: the revealed combatant is inserted with
+  `next_tick = now + delay(i, standard)` — an ambusher who opens the fight
+  by striking is inserted *and acts* as one event; a combatant revealed
+  while surprised is inserted at `now + 2 × delay(i, standard)` (the §2.4
+  surprise rule). From that update onward they occupy honest forecast
+  slots. Net law: the forecast never shows a slot for someone the player
+  can't see, and never shows a wrong slot for someone they can. Filtered
+  truth, never altered truth.
 - **Live preview delta:** while the player is choosing an action, the client
   may request the forecast recomputed under each action weight ("if I use
   the heavy swing, my next turn falls from slot 3 to slot 6"). This is a
@@ -243,21 +280,21 @@ What changes in the existing combat slice, exactly.
   twice" *without* violating the Speed clamp or the 2.0 invariant, and the
   forecast shows both entries honestly. Off by default; a world-book flag.
 
-## 10. Decisions flagged for the director
+## 10. Director rulings (both former flags resolved — now [LOCKED])
 
-Positions are taken on everything mechanical above; these two cross out of
-pure mechanics and are genuinely the director's:
+1. **[LOCKED] Luck and the queue.** Luck is **permanently excluded from
+   queue math**. Its combat surface is exactly: **crit chance, lucky-evade,
+   and steal / loot / flee**. Nothing Luck touches may move `next_tick`.
+   Governing principle: **the forecast must never lie** — every queue input
+   stays deterministic and visible (§2.1).
+2. **[LOCKED] Forecast presentation.** **Order-only** to players; raw ticks
+   live in a debug view only. The forecast shows **all revealed combatants
+   including enemies** — enemy timing plus telegraphed intents is the
+   decision space. Hidden combatants are absent until revealed
+   (ambush-integrity rule, §6).
 
-1. **[DIRECTOR] Luck's role in combat RNG.** Luck is in the locked stat
-   spine, and Crit is a locked derived stat — but *which* combat randomness
-   Luck touches (crit chance only? tie-breaks? at-cost band width?) is a
-   power-system feel decision that shapes Ch. 2. This spec deliberately
-   keeps Luck out of the queue math (Speed is DEX-only) so the turn engine
-   ships regardless of the answer.
-2. **[DIRECTOR] Forecast presentation** — order-only (recommended, §6) vs
-   raw tick numbers exposed to players.
-
-Everything else marked **[PROPOSED]** (band-anchor BASE=1200, Speed clamp
-[8,16], weights 0.75/1.0/1.5, haste/slow/stun operations, anti-stunlock,
-duration currencies, boss dual-entry) is ready to build against and cheap to
-retune — each is a constant or a local rule, none is architectural.
+Everything still marked **[PROPOSED]** (band-anchor BASE=1200, Speed clamp
+[8,16], weights 0.75/1.0/1.5, haste/slow/stun operation constants,
+anti-stunlock, duration currencies, boss dual-entry) is ready to build
+against and cheap to retune — each is a constant or a local rule, none is
+architectural.
