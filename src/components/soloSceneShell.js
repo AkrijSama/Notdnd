@@ -335,11 +335,10 @@ export function renderGmNarrationPanel(gmNarration = null, gmStatus = null, sele
 
 export function renderLocationPanel(location = {}, gmNarration = null, gmStatus = null, selectedMode = "placeholder", debug = false, options = {}) {
   const imageLabel = location.imageAssetId ? `Image asset: ${location.imageAssetId}` : "No image assigned yet.";
-  // Display-only: never surface the internal "placeholder" tag to the player.
-  // The underlying location.tags data is left untouched.
-  const visibleTags = Array.isArray(location.tags)
-    ? location.tags.filter((tag) => String(tag).trim().toLowerCase() !== "placeholder")
-    : location.tags;
+  // location.tags is AUTHORING/classification metadata ("modern arcane", "zone",
+  // "wilderness") — internal only. It is deliberately NOT rendered to the player;
+  // the data is left untouched on the payload for internal use (home-base
+  // classification, etc.). (Defect 9: metadata must not surface in the scene.)
   return `
     <section class="solo-location-card">
       <div class="solo-location-image" data-image-asset-id="${escapeHtml(location.imageAssetId || "")}">
@@ -352,7 +351,6 @@ export function renderLocationPanel(location = {}, gmNarration = null, gmStatus 
         <div class="solo-section-kicker">Current Location</div>
         <h3>${escapeHtml(location.name || "Current Location")}</h3>
         <p>${escapeHtml(location.description || "No location description is available.")}</p>
-        ${renderTags(visibleTags)}
         ${options.suppressGm ? "" : renderGmNarrationPanel(gmNarration, gmStatus, selectedMode, debug)}
       </div>
     </section>
@@ -1325,7 +1323,10 @@ export function renderBabelStatusWindow(character = SOLO_SAMPLE_CHARACTER) {
         })
         .join("")
     : `<div class="solo-condition-empty">No active conditions.</div>`;
-  const skillCount = Array.isArray(character.skills) ? character.skills.length : 0;
+  // Skills shown in the WINDOW are the RANKED skills that define rank (the same
+  // source rankForPlayer reads), NOT the 5e 18-row table — so count and RANK
+  // never contradict (defect 4). A Beckoned start has none → "none" + UNASSESSED.
+  const skillCount = typeof b.rankedSkillCount === "number" ? b.rankedSkillCount : 0;
   return `
     <aside class="solo-game-sidebar solo-babel-window" data-window="babel">
       <div class="solo-portrait" data-portrait-for="player" data-portrait-img-class="solo-portrait-img">${character.portraitUri ? `<img class="solo-portrait-img" src="${escapeHtml(character.portraitUri)}" alt="${escapeHtml(character.name || "Character")} portrait" />` : `<div class="solo-portrait-pending"><span class="solo-portrait-spinner" aria-hidden="true"></span><small>Crafting your portrait… (~20s)</small></div>`}</div>

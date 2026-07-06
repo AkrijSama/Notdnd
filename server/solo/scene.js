@@ -694,6 +694,13 @@ export function buildPlayerPayload(run) {
     // Babel hunter rank (spec §5 RMS); "UNASSESSED" until a ranked skill is held.
     // A display readout only — gates read the milestone, never this.
     rank: rankForPlayer(player),
+    // Ranked-skill count — the SAME source rank is computed from (player.babelSkills),
+    // so the STATUS WINDOW's skill count and RANK can never contradict each other.
+    // The 5e 18-row skill table (player.skills) is NOT the Babel skill surface;
+    // a Beckoned start has no ranked skills → count 0 + rank UNASSESSED. (Defect 4.)
+    rankedSkillCount: Array.isArray(player.babelSkills)
+      ? player.babelSkills.filter((s) => Number.isFinite(typeof s === "number" ? s : s?.rankIndex)).length
+      : 0,
     // The player's Awakening Origin (Babel's race slot) + its feat, when set.
     origin: isString(player.origin) ? player.origin : null,
     originFeat: isString(player.originFeat) ? player.originFeat : null,

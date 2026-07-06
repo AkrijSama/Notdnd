@@ -541,6 +541,15 @@ function onWorldFieldInput(field, value) {
 }
 
 async function generateWorld() {
+  // Authored worlds (a world book / scenarioId) ship their own setting, opening,
+  // cast, and visual register; the server loads the book and overrides worldgen.
+  // Bypass the generic worldgen preview entirely — straight to character creation
+  // (mirrors confirmWorld()). This is the single routing fork that was sending an
+  // authored world down the generic 5e/worldgen funnel.
+  if (uiState.onboarding.worldDef?.scenarioId) {
+    confirmWorld();
+    return;
+  }
   patchOnboarding({ loading: true, error: "" });
   try {
     const response = await store.previewWorld(uiState.onboarding.worldDef || {});
@@ -605,14 +614,40 @@ function defaultCharacterState() {
   };
 }
 
+// The authored origin the creator assigns for a given world book (the world's
+// race/class-equivalent). Babel reserves "The Beckoned" for the player, applied
+// server-side by scenarioLoader; we pre-assign it so the generic 5e race/class
+// steps are skipped and the enter-gate is satisfied without a fantasy race pick.
+const AUTHORED_ORIGIN = { babel: "The Beckoned" };
+
 function confirmWorld() {
-  patchOnboarding({ step: "character", error: "", character: defaultCharacterState() });
+  const scenarioId = uiState.onboarding.worldDef?.scenarioId || "";
+  const character = defaultCharacterState();
+  const origin = AUTHORED_ORIGIN[scenarioId];
+  if (origin) {
+    // Authored world: origin (not a 5e race/class) fills the race+class slots so
+    // the wizard skips the generic 5e Race/Class/Background/Abilities steps.
+    character.race = origin;
+    character.characterClass = origin;
+    character.origin = origin;
+  }
+  patchOnboarding({ step: "character", error: "", character });
 }
 
 // ---- Character creation wizard handlers (Ticket 38) ----
 function charStep(delta) {
   const c = uiState.onboarding.character || defaultCharacterState();
-  const step = Math.max(1, Math.min(6, (c.step || 1) + delta));
+  // Authored worlds run a trimmed wizard — Identity(1) → Origin(2) → Review(6) —
+  // skipping the generic 5e Race-picker/Class/Background/Abilities steps (3-5).
+  const authored = Boolean(uiState.onboarding.worldDef?.scenarioId);
+  let step;
+  if (authored) {
+    const seq = [1, 2, 6];
+    const cur = Math.max(0, seq.indexOf(c.step || 1));
+    step = seq[Math.max(0, Math.min(seq.length - 1, cur + delta))];
+  } else {
+    step = Math.max(1, Math.min(6, (c.step || 1) + delta));
+  }
   uiState.onboarding.character = { ...c, step };
   // Safety net: ensure the draft portrait is requested by the time the player
   // reaches the Review step, even if the field-change trigger was missed or a

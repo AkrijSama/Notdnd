@@ -2510,7 +2510,9 @@ button:disabled {
 .solo-scene-opening p {
   margin: 0 0 8px;
   font-family: var(--font-body, Georgia, serif);
-  font-size: 15px;
+  /* One narration type-scale across every beat: the set-piece opening shares the
+     same clamp as location + GM narration (was a fixed 15px, ~half the size). */
+  font-size: clamp(1.35rem, 1.1vw + 1rem, 1.85rem);
   line-height: 1.55;
   color: var(--text-bright, #f0e6d4);
 }
