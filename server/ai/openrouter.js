@@ -28,8 +28,24 @@ function resolveLlmBaseUrl() {
 // free leak chain-of-thought into `content`). These rate-limit intermittently, so
 // requestWithFallback degrades cleanly to the local inkborne-gm:8b workhorse. .env
 // (gitignored) overrides these; a deploy MUST mirror them in its own env.
+// THE GM NARRATION MODEL — ONE swappable value, read in ONE place (resolveGmModel).
+// Director decision 2026-07-06: DeepSeek V4 is the GM; llama-3.3-70b is retired.
+// Both routing regimes resolve the GM model HERE — the mainline narrative tier
+// (resolveModelTiers) AND the paid graded-session "openrouter" cloud lane
+// (buildCloudLane) — so there is no second hardcoded GM string anywhere. Override
+// the model deploy-wide with NOTDND_GM_MODEL (INKBORNE_GM_MODEL alias); the paid
+// lane additionally accepts OPENROUTER_LANE_MODEL as a lane-only escape hatch, but
+// its DEFAULT now follows this single GM value rather than a private hardcode.
+// v4-pro (not v4-flash): the flash variant is a reasoning model that spends hidden
+// reasoning_tokens per call; pro follows the structured 80-120w style contract
+// directly (verified live 2026-07-06). Its INPUT rate ($0.435/M) undercuts llama
+// ($0.59/M) — GM turns are input-heavy — so per-turn cost lands at/below llama.
+const GM_MODEL_DEFAULT = "deepseek/deepseek-v4-pro";
+export function resolveGmModel() {
+  return (process.env.INKBORNE_GM_MODEL ?? process.env.NOTDND_GM_MODEL) || GM_MODEL_DEFAULT;
+}
+
 const DEFAULT_MODELS = {
-  narrative: "google/gemma-4-26b-a4b-it:free",
   utility: "google/gemma-4-31b-it:free",
   fallback: "google/gemma-4-31b-it:free"
 };
@@ -52,7 +68,7 @@ function gmCloudTimeoutMs() {
 
 function resolveModelTiers() {
   return {
-    narrative: (process.env.INKBORNE_GM_MODEL ?? process.env.NOTDND_GM_MODEL) || DEFAULT_MODELS.narrative,
+    narrative: resolveGmModel(),
     utility: (process.env.INKBORNE_UTILITY_MODEL ?? process.env.NOTDND_UTILITY_MODEL) || DEFAULT_MODELS.utility,
     fallback: (process.env.INKBORNE_FALLBACK_MODEL ?? process.env.NOTDND_FALLBACK_MODEL) || DEFAULT_MODELS.fallback
   };
@@ -193,8 +209,16 @@ export function buildCloudLane(name) {
     if (!paidKey) {
       return { name: "openrouter", skip: "no OPENROUTER_API_KEY" };
     }
-    const model = String(process.env.OPENROUTER_LANE_MODEL || "").trim() || "meta-llama/llama-3.3-70b-instruct";
-    const order = (String(process.env.OPENROUTER_PROVIDER_ORDER || "").trim() || "groq")
+    // GM model: the SINGLE swappable value (resolveGmModel — DeepSeek V4 by default),
+    // with OPENROUTER_LANE_MODEL as a lane-only override for pinning the paid lane
+    // to a different SKU than mainline. No private hardcode here.
+    const model = String(process.env.OPENROUTER_LANE_MODEL || "").trim() || resolveGmModel();
+    // Provider-routing preference. The old "groq" default was a llama-3.3-70b latency
+    // optimization; DeepSeek V4 is not served by Groq, so forcing that order only adds
+    // a dead hop before allow_fallbacks recovers. Default to NO forced order (let
+    // OpenRouter pick the best provider of the model); OPENROUTER_PROVIDER_ORDER still
+    // overrides when a deploy wants to pin a provider for a groq-served model.
+    const order = String(process.env.OPENROUTER_PROVIDER_ORDER || "").trim()
       .split(/[\s,]+/)
       .filter(Boolean);
     return {
@@ -204,10 +228,11 @@ export function buildCloudLane(name) {
         model,
         key: paidKey,
         local: false,
-        // OpenRouter provider routing (docs: provider.order, lowercase slugs):
-        // prefer Groq's serving of the PAID model for sub-3s latency; fall back
-        // to other paid providers of the same model if Groq is down.
-        extraBody: { provider: { order, allow_fallbacks: true } }
+        // OpenRouter provider routing (docs: provider.order, lowercase slugs): an
+        // explicit order pins preference; when unset, omit `order` entirely and let
+        // OpenRouter route to the best provider of the paid model (allow_fallbacks
+        // keeps other paid providers as backup).
+        extraBody: { provider: order.length ? { order, allow_fallbacks: true } : { allow_fallbacks: true } }
       }
     };
   }

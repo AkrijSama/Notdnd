@@ -139,15 +139,19 @@ test("ALL cloud fail + local fallback disabled => throws (no silent blank)", asy
 
 
 // ── PAID "openrouter" lane (the graded-session lane) ─────────────────────────
-import { buildCloudLane } from "../server/ai/openrouter.js";
+import { buildCloudLane, resolveGmModel } from "../server/ai/openrouter.js";
 
-test("openrouter lane: paid model (never :free), Groq-preferred provider routing", () => {
+test("openrouter lane: follows the single GM model (resolveGmModel), no forced provider order by default", () => {
   withEnv({ OPENROUTER_API_KEY: "sk-or-test" }, () => {
     const lane = buildCloudLane("openrouter");
     assert.ok(lane.provider, "lane builds with a key");
-    assert.equal(lane.provider.model, "meta-llama/llama-3.3-70b-instruct");
+    // The lane's default model IS the one swappable GM value — not a private hardcode.
+    // (Director 2026-07-06: DeepSeek V4 is the GM; llama-3.3-70b retired.)
+    assert.equal(lane.provider.model, resolveGmModel());
     assert.ok(!lane.provider.model.includes(":free"), "the paid SKU, never :free");
-    assert.deepEqual(lane.provider.extraBody, { provider: { order: ["groq"], allow_fallbacks: true } });
+    // No OPENROUTER_PROVIDER_ORDER set → no forced order; the old "groq" default was a
+    // llama latency hack and is wrong for a model Groq does not serve.
+    assert.deepEqual(lane.provider.extraBody, { provider: { allow_fallbacks: true } });
     assert.match(lane.provider.baseUrl, /openrouter\.ai/);
   });
 });
