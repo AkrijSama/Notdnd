@@ -926,7 +926,9 @@ async function narrateActionWithGm(run, resolved, user) {
       mode: "companion",
       playerName: run.player?.displayName || "the wanderer",
       actorUserId: user?.id,
-      edition: run.edition
+      edition: run.edition,
+      // Fire-after-response: the knowledge-graph write must not block the turn.
+      deferMemory: true
     }),
     ceiling
   );

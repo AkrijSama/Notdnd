@@ -599,6 +599,14 @@ async function requestOpenRouter(messages, model, options = {}) {
   if (Number.isFinite(Number(options.maxResponseTokens))) {
     body.max_tokens = Math.max(1, Number(options.maxResponseTokens));
   }
+  // Reasoning control (OpenRouter `reasoning` field). Mechanical utility calls
+  // (fact extraction, etc.) do NOT need a reasoning model's hidden deliberation —
+  // and on a reasoning model an uncapped or tightly-capped call spends the whole
+  // token budget on reasoning, leaving ZERO content (empty JSON → dropped write).
+  // Passing `{ enabled: false }` turns reasoning off so the budget goes to output.
+  if (options.reasoning && typeof options.reasoning === "object") {
+    body.reasoning = options.reasoning;
+  }
   if (Array.isArray(options.stopSequences) && options.stopSequences.length > 0) {
     body.stop = options.stopSequences.filter((entry) => String(entry || "").trim());
   }
@@ -635,17 +643,52 @@ async function requestOpenRouter(messages, model, options = {}) {
     : isLocal ? gmLocalTimeoutMs() : gmCloudTimeoutMs();
   const controller = typeof AbortController === "function" ? new AbortController() : null;
   const timer = controller ? setTimeout(() => controller.abort(), perAttemptTimeoutMs) : null;
-  let response;
+  // The timeout must cover the WHOLE call — headers AND body read. A reasoning
+  // model behind a slow provider can send response headers fast, then stream the
+  // body (or its hidden reasoning) for tens of seconds; if the abort timer were
+  // cleared right after fetch() resolved (headers), that runaway body would blow
+  // straight past the ceiling unbounded. Keeping the timer live until the parse
+  // completes means an over-budget generation trips the abort mid-body and falls
+  // back, exactly as a hung header would. (This closed the 40s+ single-call tail.)
   try {
-    response = await fetch(LLM_BASE_URL, {
+    const response = await fetch(LLM_BASE_URL, {
       method: "POST",
       headers,
       body: JSON.stringify(body),
       ...(controller ? { signal: controller.signal } : {})
     });
+
+    if (!response.ok) {
+      const rawBody = await response.text();
+      // Visible, not silent: this exact line (wrong base / bad key / 429) is what a
+      // swallowed GM error otherwise hides — surface the status, base, model + body.
+      console.warn(`[GM] LLM ${response.status} from ${LLM_BASE_URL} (model ${model}): ${rawBody.slice(0, 200)}`);
+      let payload = {};
+      try {
+        payload = rawBody ? JSON.parse(rawBody) : {};
+      } catch {
+        payload = { raw: rawBody };
+      }
+      const errorMessage = payload?.error?.message || payload?.message || payload?.raw || `HTTP ${response.status}`;
+      const error = new Error(`OpenRouter request failed (${response.status}): ${errorMessage}`);
+      error.statusCode = response.status;
+      error.code = "OPENROUTER_ERROR";
+      throw error;
+    }
+
+    const parsed = options.stream ? await parseStreamingResponse(response, options) : await parseJsonResponse(response);
+    const tokensUsed = normalizeTokens(parsed.usage);
+    const cost = normalizeCost(parsed.usage);
+
+    return {
+      content: parsed.content || "",
+      model,
+      tokensUsed,
+      cost
+    };
   } catch (fetchError) {
     if (fetchError?.name === "AbortError") {
-      console.warn(`[GM] ${isLocal ? "LOCAL" : "cloud"} call ABORTED after ${perAttemptTimeoutMs}ms (model ${model}) — ${isLocal ? "local 8b exceeded its window" : "treating as hung; will fall back"}`);
+      console.warn(`[GM] ${isLocal ? "LOCAL" : "cloud"} call ABORTED after ${perAttemptTimeoutMs}ms (model ${model}) — ${isLocal ? "local 8b exceeded its window" : "treating as hung/runaway; will fall back"}`);
       const timeoutError = new Error(`GM request timed out after ${perAttemptTimeoutMs}ms (${isLocal ? "local" : "cloud"} model ${model})`);
       timeoutError.code = "GM_TIMEOUT";
       timeoutError.statusCode = 504;
@@ -658,35 +701,6 @@ async function requestOpenRouter(messages, model, options = {}) {
       clearTimeout(timer);
     }
   }
-
-  if (!response.ok) {
-    const rawBody = await response.text();
-    // Visible, not silent: this exact line (wrong base / bad key / 429) is what a
-    // swallowed GM error otherwise hides — surface the status, base, model + body.
-    console.warn(`[GM] LLM ${response.status} from ${LLM_BASE_URL} (model ${model}): ${rawBody.slice(0, 200)}`);
-    let payload = {};
-    try {
-      payload = rawBody ? JSON.parse(rawBody) : {};
-    } catch {
-      payload = { raw: rawBody };
-    }
-    const errorMessage = payload?.error?.message || payload?.message || payload?.raw || `HTTP ${response.status}`;
-    const error = new Error(`OpenRouter request failed (${response.status}): ${errorMessage}`);
-    error.statusCode = response.status;
-    error.code = "OPENROUTER_ERROR";
-    throw error;
-  }
-
-  const parsed = options.stream ? await parseStreamingResponse(response, options) : await parseJsonResponse(response);
-  const tokensUsed = normalizeTokens(parsed.usage);
-  const cost = normalizeCost(parsed.usage);
-
-  return {
-    content: parsed.content || "",
-    model,
-    tokensUsed,
-    cost
-  };
 }
 
 // Executes the TESTING cloud chain: each cloud lane in order (Gemini -> Groq),

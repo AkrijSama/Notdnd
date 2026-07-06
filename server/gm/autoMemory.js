@@ -98,7 +98,15 @@ export async function runAutoMemoryPipeline({ campaignId, narrative, playerMessa
             + narrativeText
         }
       ],
-      campaignKey
+      campaignKey,
+      // Mechanical extraction — no deliberation needed. On a reasoning GM model an
+      // uncapped call runs away (30-47s, thousands of hidden reasoning tokens) and
+      // a tight cap WITH reasoning-on returns empty (reasoning eats the budget →
+      // dropped write). Turning reasoning OFF makes the whole budget go to the JSON
+      // and lands the call at ~0.4-0.6s. Cap 512: reasoning-off extracts measured
+      // 119-304 completion tokens across real turns, so 512 clears the max with
+      // headroom (256 clipped the 304-token case) — a backstop, not a target.
+      { maxResponseTokens: 512, reasoning: { enabled: false } }
     );
 
     const parsed = JSON.parse(stripJsonFence(extraction.content));

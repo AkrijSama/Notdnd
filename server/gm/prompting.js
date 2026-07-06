@@ -290,7 +290,13 @@ export async function runGmPipeline({
   // Edition routing (Track A → Track C): "forbidden" routes the GM call to the
   // local uncensored model; "mainline" (default) stays on cloud. The AI layer
   // (openrouter.requestWithFallback) honors options.edition — we just thread it.
-  edition = "mainline"
+  edition = "mainline",
+  // When true, the post-narration WRITE-SIDE memory work (knowledge-graph
+  // extraction + player-profile update) is fired AFTER this function returns
+  // instead of being awaited — it never blocks the turn's HTTP response. The
+  // narration is unaffected; the graph simply updates a beat late (like image
+  // gen). The solo per-turn path sets this; it still RUNS, it is not skipped.
+  deferMemory = false
 }) {
   const campaignKey = String(campaignId || "").trim();
   const input = String(message || "").trim();
@@ -444,33 +450,60 @@ export async function runGmPipeline({
   );
   const sanitizedNarrative = String(parsed.narrative || rawNarrative).trim() || rawNarrative;
 
-  const autoMemory = await runAutoMemoryPipeline({
-    campaignId: campaignKey,
-    narrative: sanitizedNarrative,
-    playerMessage: input,
-    mode,
-    playerName
-  });
-
-  const memoryUpdates = [...new Set([...(triggerExecution.memoryUpdates || []), ...(autoMemory.updatedEntities || [])])];
-  if (mode === "companion" && companionIntent === "backstory" && playerName) {
-    const playerRecord = await upsertEntity(campaignKey, {
-      name: playerName,
-      type: "player_character",
-      tags: ["backstory", "companion"],
-      body: `Backstory update request: ${input}\\n\\nCompanion response:\\n${sanitizedNarrative}`
-    });
-    memoryUpdates.push(playerRecord.name);
-  }
-
-  if (playerName) {
+  // Post-narration WRITE-SIDE memory work: knowledge-graph fact extraction +
+  // player-profile update. The player never sees any of this — it only enriches
+  // the store for FUTURE turns' context. Wrapped so the solo hot path can fire it
+  // AFTER the response (deferMemory) instead of blocking on it; every step is
+  // best-effort so a memory failure never breaks a turn.
+  const runMemoryWork = async () => {
+    const updates = [];
     try {
-      const profileUpdate = await updatePlayerProfile(campaignKey, playerName, sanitizedNarrative, input);
-      if (profileUpdate?.entityName) {
-        memoryUpdates.push(profileUpdate.entityName);
-      }
+      const autoMemory = await runAutoMemoryPipeline({
+        campaignId: campaignKey,
+        narrative: sanitizedNarrative,
+        playerMessage: input,
+        mode,
+        playerName
+      });
+      updates.push(...(autoMemory.updatedEntities || []));
     } catch {
-      // Keep the runtime response resilient if player profiling fails.
+      // extraction is best-effort; a failure just means no new facts this turn
+    }
+    if (mode === "companion" && companionIntent === "backstory" && playerName) {
+      try {
+        const playerRecord = await upsertEntity(campaignKey, {
+          name: playerName,
+          type: "player_character",
+          tags: ["backstory", "companion"],
+          body: `Backstory update request: ${input}\\n\\nCompanion response:\\n${sanitizedNarrative}`
+        });
+        updates.push(playerRecord.name);
+      } catch {
+        // best-effort
+      }
+    }
+    if (playerName) {
+      try {
+        const profileUpdate = await updatePlayerProfile(campaignKey, playerName, sanitizedNarrative, input);
+        if (profileUpdate?.entityName) {
+          updates.push(profileUpdate.entityName);
+        }
+      } catch {
+        // Keep the runtime response resilient if player profiling fails.
+      }
+    }
+    return updates;
+  };
+
+  const memoryUpdates = [...new Set(triggerExecution.memoryUpdates || [])];
+  if (deferMemory) {
+    // Fire-after-response: do NOT await. The turn returns now; the memory graph
+    // updates a beat late in the background (the process is a long-lived server,
+    // so the promise settles). It STILL RUNS — it is not skipped.
+    runMemoryWork().catch(() => {});
+  } else {
+    for (const name of await runMemoryWork()) {
+      memoryUpdates.push(name);
     }
   }
 
