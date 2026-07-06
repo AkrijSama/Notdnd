@@ -1,5 +1,6 @@
 import { providerSupportsReference, resolveImageProvider } from "../ai/providers.js";
 import { getAvailableSoloActions } from "./actions.js";
+import { MILESTONE_MAX, tierForMilestone } from "./progression.js";
 import { getVisibleEntities, validateVisibleEntity } from "./entities.js";
 import { generatePlaceholderGmNarration, validateGmSceneOutput } from "./gm.js";
 import { getAvailableMoves } from "./movement.js";
@@ -668,6 +669,15 @@ export function buildPlayerPayload(run) {
     race: isString(player.race) ? player.race : (character?.race ?? null),
     background: isString(player.background) ? player.background : (character?.background ?? null),
     level: typeof player.level === "number" ? player.level : 1,
+    // Milestone tier band (delta §3f): chassis vocabulary, safe to show — the
+    // raw counter is never the player-facing number, the band name is. Legacy
+    // runs without a milestone derive it read-only by the migration rule
+    // (min(cap, level)); legacy saves are all identity-mapped, so level ≤ 20.
+    milestoneTier: tierForMilestone(
+      typeof player.milestone === "number"
+        ? player.milestone
+        : Math.min(MILESTONE_MAX, typeof player.level === "number" ? player.level : 1)
+    ).label,
     // State contract fields:
     xp: typeof player.xp === "number" ? player.xp : 0,
     resources: { hp: hpGauge, mp: mpGauge },

@@ -55,6 +55,14 @@ floor, never revoked.
 presentation-layer data — **server logic is forbidden to branch on it.** A world
 book cannot fake a Tier-IV door open by inflating its display numbers.
 
+**Display mapping (Phase 2):** a world book may carry
+`run.worldBook.progressionMap` (`{ displayScale, breakthroughs[20], minorHpTick,
+caps }` — validated by `validateProgressionMap`, invalid ⇒ identity). With a map,
+`player.level` carries the world's display number (`displayLevelFor`); minor
+display level-ups pay only the world's HP tick (0..2) + a `progression` timeline
+event — never stats/feats/features. The scene payload additionally emits
+`player.milestoneTier` (band label, e.g. "Tier II — Regional").
+
 ## 4. `player.conditions` — array
 
 Scene payload (`payload.player.conditions`):

@@ -4,12 +4,18 @@ import {
   MILESTONE_MAX,
   applyHpDelta,
   awardXp,
+  displayLevelFor,
   ensureMilestone,
   meetsTier,
+  milestoneCapFor,
   milestoneForXp,
+  resolveProgressionMap,
+  tierForMilestone,
+  validateProgressionMap,
   xpForMilestone
 } from "../server/solo/progression.js";
 import { createDefaultSoloRun, validatePlayerState } from "../server/solo/schema.js";
+import { buildPlayerPayload } from "../server/solo/scene.js";
 
 // Tests-of-record for the milestone-track engine delta
 // (docs/specs/milestone-engine-delta.md).
@@ -209,6 +215,228 @@ test("meetsTier migrates legacy players by the migration rule (level IS the old 
   assert.equal(legacy.milestone, 12, "the gate touch migrated the save");
   assert.equal(meetsTier(null, 2), false);
   assert.equal(meetsTier({ milestone: 8 }, 9), false, "unknown tier bands never pass");
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// PHASE 2 — the world-book display-mapping contract (delta §3c, §3f)
+// ═════════════════════════════════════════════════════════════════════════════
+
+// TEST-ONLY FIXTURE — the Babel spec §6 table. Not shipped content; the first
+// real consumer of the mapping contract, used here to prove the math against a
+// live table (displayed 50 = milestone 11, walls at 10/25/100/200/250).
+const BABEL_MAP = Object.freeze({
+  displayScale: { min: 1, max: 250 },
+  breakthroughs: [1, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 60, 75, 90, 100, 125, 150, 175, 200, 250],
+  minorHpTick: 1,
+  caps: {
+    perCharacter: { type: "display-cap", value: 200, note: "hunter ceiling (lore)" },
+    overrides: [{ flag: "beckoned", value: 250, note: "MC-250 — the VOICE's gift" }]
+  }
+});
+
+function babelRun(playerOverrides = {}) {
+  const run = createDefaultSoloRun({ displayName: "Hunter" });
+  run.worldBook = { progressionMap: JSON.parse(JSON.stringify(BABEL_MAP)) };
+  run.timeline = Array.isArray(run.timeline) ? run.timeline : [];
+  Object.assign(run.player, playerOverrides);
+  return run;
+}
+
+// ── Spec test #4 — the mapping validator ─────────────────────────────────────
+
+test("validator accepts the Babel 1–250 map", () => {
+  const r = validateProgressionMap(BABEL_MAP);
+  assert.deepEqual(r.errors, []);
+  assert.equal(r.ok, true);
+});
+
+test("validator rejects non-monotonic, wrong-length, span-uncovering, over-tick maps", () => {
+  const base = () => JSON.parse(JSON.stringify(BABEL_MAP));
+
+  const short = base();
+  short.breakthroughs = short.breakthroughs.slice(0, 19);
+  assert.equal(validateProgressionMap(short).ok, false, "wrong length must fail");
+
+  const dupe = base();
+  dupe.breakthroughs[5] = dupe.breakthroughs[4];
+  assert.equal(validateProgressionMap(dupe).ok, false, "non-monotonic must fail");
+
+  const orphan = base();
+  orphan.breakthroughs[19] = 240; // last != displayScale.max → orphan display levels
+  assert.equal(validateProgressionMap(orphan).ok, false, "span-uncovering must fail");
+
+  const wrongStart = base();
+  wrongStart.breakthroughs[0] = 2;
+  assert.equal(validateProgressionMap(wrongStart).ok, false, "first entry must equal displayScale.min");
+
+  const overTick = base();
+  overTick.minorHpTick = 3;
+  assert.equal(validateProgressionMap(overTick).ok, false, "minorHpTick above 2 must fail");
+
+  const badOverride = base();
+  badOverride.caps.overrides = [{ flag: "", value: 250 }];
+  assert.equal(validateProgressionMap(badOverride).ok, false, "empty override flag must fail");
+
+  const outOfScale = base();
+  outOfScale.caps.perCharacter.value = 999;
+  assert.equal(validateProgressionMap(outOfScale).ok, false, "cap outside displayScale must fail");
+});
+
+test("an invalid map resolves to identity — the award path never crashes on bad data", () => {
+  const run = babelRun();
+  run.worldBook.progressionMap.breakthroughs[3] = 2; // break monotonicity
+  assert.equal(resolveProgressionMap(run), null);
+  const rec = awardXp(run, 300);
+  assert.equal(rec.milestone, 3);
+  assert.equal(rec.displayLevel, 3, "invalid map falls back to identity display");
+});
+
+// ── displayLevelFor — the Babel fixture proves the math ──────────────────────
+
+test("Babel: breakthrough walls land exactly (10/25/50/100/200/250)", () => {
+  assert.equal(displayLevelFor(3, xpForMilestone(3), BABEL_MAP), 10);
+  assert.equal(displayLevelFor(6, xpForMilestone(6), BABEL_MAP), 25);
+  assert.equal(displayLevelFor(11, xpForMilestone(11), BABEL_MAP), 50, "THE TOWER GATE: displayed 50 = milestone 11");
+  assert.equal(displayLevelFor(15, xpForMilestone(15), BABEL_MAP), 100);
+  assert.equal(displayLevelFor(19, xpForMilestone(19), BABEL_MAP), 200);
+  assert.equal(displayLevelFor(20, xpForMilestone(20), BABEL_MAP), 250);
+});
+
+test("minor-level subdivision follows Ch7's law: even division, remainder on the breakthrough", () => {
+  // Milestone 11 spans display 50→60: 10 steps, span 1,100 xp, 110 per step.
+  const base = xpForMilestone(11);
+  assert.equal(displayLevelFor(11, base, BABEL_MAP), 50);
+  assert.equal(displayLevelFor(11, base + 109, BABEL_MAP), 50);
+  assert.equal(displayLevelFor(11, base + 110, BABEL_MAP), 51);
+  assert.equal(displayLevelFor(11, base + 989, BABEL_MAP), 58);
+  // XP drip can reach the last minor level (59) but NEVER the breakthrough (60):
+  assert.equal(displayLevelFor(11, base + 1099, BABEL_MAP), 59, "the door only opens on the milestone advance");
+  // Milestone 1 spans 1→5: 4 steps, span 100, 25 per step.
+  assert.equal(displayLevelFor(1, 24, BABEL_MAP), 1);
+  assert.equal(displayLevelFor(1, 25, BABEL_MAP), 2);
+  assert.equal(displayLevelFor(1, 99, BABEL_MAP), 4, "caps at the last minor level");
+  assert.equal(displayLevelFor(2, 100, BABEL_MAP), 5, "the breakthrough arrives WITH the milestone");
+});
+
+test("identity default: displayLevelFor without a map returns the milestone", () => {
+  assert.equal(displayLevelFor(7, 999999, null), 7);
+  assert.equal(displayLevelFor(20, 0, null), 20);
+});
+
+// ── Spec test #5 — a minor level-up changes exactly HP-by-tick, nothing else ─
+
+test("a minor display level-up pays the HP tick + a flavor event and NOTHING else", () => {
+  const run = babelRun();
+  awardXp(run, xpForMilestone(11)); // reach milestone 11 (display 50) in one award
+  assert.equal(run.player.milestone, 11);
+  assert.equal(run.player.level, 50);
+
+  const statsBefore = JSON.stringify(run.player.stats);
+  const milestoneBefore = run.player.milestone;
+  const profBefore = run.player.proficiencyBonus;
+  const hpBefore = run.player.maxHealth;
+  const timelineBefore = run.timeline.length;
+
+  const rec = awardXp(run, 110); // exactly one minor step inside milestone 11
+  assert.equal(rec.milestoneUp, false);
+  assert.equal(rec.minorLevelUps, 1);
+  assert.equal(rec.leveledUp, true, "the visible number rose");
+  assert.equal(run.player.level, 51);
+  assert.equal(run.player.milestone, milestoneBefore, "the milestone NEVER moves on a minor level");
+  assert.equal(run.player.maxHealth, hpBefore + 1, "exactly the world's minorHpTick");
+  assert.equal(JSON.stringify(run.player.stats), statsBefore, "stats untouched (Ch7 law)");
+  assert.equal(run.player.proficiencyBonus, profBefore, "proficiency untouched");
+  assert.equal(run.timeline.length, timelineBefore + 1, "one flavor event");
+  const event = run.timeline[run.timeline.length - 1];
+  assert.equal(event.type, "progression");
+  assert.ok(event.tags.includes("minor_level"));
+});
+
+test("crossing a breakthrough pays the milestone recompute, and minors en route pay ticks", () => {
+  const run = babelRun();
+  const hp0 = run.player.maxHealth;
+  // One award to milestone 2 (display 5): 1 milestone (+5 HP) + 3 minor levels
+  // passed en route (2,3,4 — +1 tick each).
+  const rec = awardXp(run, 100);
+  assert.equal(rec.milestone, 2);
+  assert.equal(rec.displayLevel, 5);
+  assert.equal(rec.levelsGained, 1);
+  assert.equal(rec.minorLevelUps, 3);
+  assert.equal(run.player.maxHealth, hp0 + 5 + 3, "milestone bump + 3 minor ticks");
+});
+
+// ── World-law caps — engine-enforced lore, incl. the Babel MC-250 shape ──────
+
+test("the world cap stops XP conversion at the capped milestone; the ledger never closes", () => {
+  const run = babelRun({ milestone: 19, level: 200, xp: xpForMilestone(19) });
+  assert.equal(milestoneCapFor(run.player, BABEL_MAP), 19, "display cap 200 = 19 breakthroughs");
+  const rec = awardXp(run, 50000);
+  assert.equal(rec.awarded, 50000, "xp still accrues");
+  assert.equal(run.player.milestone, 19, "an uncapped-flag hunter never converts past the world cap");
+  assert.equal(run.player.level, 200, "display holds at the cap");
+});
+
+test("the unique-cap flag (Babel MC-250) lifts the cap for exactly that character", () => {
+  const beckoned = babelRun({ capFlag: "beckoned", milestone: 19, level: 200, xp: xpForMilestone(19) });
+  assert.equal(milestoneCapFor(beckoned.player, BABEL_MAP), 20);
+  const rec = awardXp(beckoned, xpForMilestone(20) - xpForMilestone(19));
+  assert.equal(beckoned.player.milestone, 20);
+  assert.equal(beckoned.player.level, 250, "the VOICE's gift: displayed 250");
+  assert.equal(rec.displayLevel, 250);
+});
+
+test("caps never revoke a grandfathered milestone", () => {
+  const run = babelRun({ milestone: 20, level: 250, xp: xpForMilestone(20) });
+  // No capFlag: world cap is 19 — but the grandfathered 20 stands.
+  const rec = awardXp(run, 100);
+  assert.equal(run.player.milestone, 20, "floored, never revoked — even by a cap");
+  assert.equal(run.player.level, 250, "the grandfathered display number stands too");
+  assert.equal(rec.leveledUp, false);
+});
+
+// ── Gates against the mapped world (spec test #6 restated on the fixture) ────
+
+test("Babel: displayed 50 (milestone 11) passes Tier III; displayed 45 (milestone 10) does not", () => {
+  assert.equal(meetsTier({ milestone: 11, level: 50 }, 3), true);
+  assert.equal(meetsTier({ milestone: 10, level: 45 }, 3), false);
+});
+
+test("anti-inflation stands under a real mapping: displayed 60 at milestone 3 still fails Tier II", () => {
+  // A Babel-mapped character legitimately shows 60 at milestone 12 — but a
+  // forged/inflated display 60 on a milestone-3 character opens nothing.
+  const forged = { milestone: 3, level: 60 };
+  assert.equal(meetsTier(forged, 2), false, "gates read milestones, never the world's display number");
+});
+
+// ── Scene payload — milestoneTier band emit (delta §3f) ──────────────────────
+
+test("scene payload emits the tier band label; level key still carries the display number", () => {
+  const run = babelRun();
+  awardXp(run, xpForMilestone(11));
+  const payload = buildPlayerPayload(run);
+  assert.equal(payload.level, 50, "the player-facing number is the world's number");
+  assert.equal(payload.milestoneTier, "Tier III — Pivotal");
+
+  const identity = createDefaultSoloRun({ displayName: "Plain" });
+  const p2 = buildPlayerPayload(identity);
+  assert.equal(p2.level, 1);
+  assert.equal(p2.milestoneTier, "Tier I — Local");
+
+  // Legacy run (no milestone): derives read-only by the migration rule.
+  delete identity.player.milestone;
+  identity.player.level = 12;
+  const p3 = buildPlayerPayload(identity);
+  assert.equal(p3.milestoneTier, "Tier III — Pivotal");
+  assert.equal(identity.player.milestone, undefined, "payload emit never mutates the save");
+});
+
+test("tierForMilestone bands match Ch7", () => {
+  assert.deepEqual(tierForMilestone(1), { band: 1, label: "Tier I — Local" });
+  assert.deepEqual(tierForMilestone(5), { band: 1, label: "Tier I — Local" });
+  assert.deepEqual(tierForMilestone(6), { band: 2, label: "Tier II — Regional" });
+  assert.deepEqual(tierForMilestone(11), { band: 3, label: "Tier III — Pivotal" });
+  assert.deepEqual(tierForMilestone(16), { band: 4, label: "Tier IV — Defining" });
+  assert.deepEqual(tierForMilestone(20), { band: 4, label: "Tier IV — Defining" });
 });
 
 // ── Schema: field defaulting + tolerant validation ───────────────────────────
