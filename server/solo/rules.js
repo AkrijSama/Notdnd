@@ -84,6 +84,9 @@ export function validateAbilityCheck(check) {
     push(errors, "dc", "Expected number");
   }
 
+  // Edge/Burden are the Ch3 canonical terms (roll 2d20 keep high/low). The legacy
+  // advantage/disadvantage fields are accepted as wire aliases with identical
+  // mechanics — the resolver folds either name into the same behavior.
   if (check.advantage !== undefined && typeof check.advantage !== "boolean") {
     push(errors, "advantage", "Expected boolean");
   }
@@ -92,7 +95,31 @@ export function validateAbilityCheck(check) {
     push(errors, "disadvantage", "Expected boolean");
   }
 
+  if (check.edge !== undefined && typeof check.edge !== "boolean") {
+    push(errors, "edge", "Expected boolean");
+  }
+
+  if (check.burden !== undefined && typeof check.burden !== "boolean") {
+    push(errors, "burden", "Expected boolean");
+  }
+
   return result(errors);
+}
+
+// Ch3 Law 2 — three bands. The resolver owns the band; nothing downstream
+// authors it. The middle band is a locked flat 20% of the d20 (miss by 1–4).
+export const RESOLUTION_BANDS = Object.freeze({
+  SUCCESS: "success",
+  SUCCESS_AT_COST: "success_at_cost",
+  FAILURE: "failure"
+});
+
+// Map a signed margin (total − DC) to its band. Meet/beat = success; miss by
+// 1–4 = success at a cost; miss by 5+ = failure with consequence.
+export function bandFromMargin(margin) {
+  if (margin >= 0) return RESOLUTION_BANDS.SUCCESS;
+  if (margin >= -4) return RESOLUTION_BANDS.SUCCESS_AT_COST;
+  return RESOLUTION_BANDS.FAILURE;
 }
 
 export function resolveAbilityCheck(run, check, options = {}) {
@@ -105,16 +132,22 @@ export function resolveAbilityCheck(run, check, options = {}) {
   }
 
   const rulesetId = normalizeRulesetId(check.rulesetId || run?.rulesetId || run?.player?.rulesetId);
-  const hasAdvantage = check.advantage === true && check.disadvantage !== true;
-  const hasDisadvantage = check.disadvantage === true && check.advantage !== true;
-  const rolls = hasAdvantage || hasDisadvantage
+  // Edge/Burden (Ch3) fold in the legacy advantage/disadvantage aliases; they
+  // don't stack, and holding both cancels to a straight roll.
+  const wantsEdge = check.edge === true || check.advantage === true;
+  const wantsBurden = check.burden === true || check.disadvantage === true;
+  const hasEdge = wantsEdge && !wantsBurden;
+  const hasBurden = wantsBurden && !wantsEdge;
+  const rolls = hasEdge || hasBurden
     ? [rollD20(options), rollD20(options)]
     : [rollD20(options)];
-  const keptRoll = hasAdvantage ? Math.max(...rolls) : hasDisadvantage ? Math.min(...rolls) : rolls[0];
+  const keptRoll = hasEdge ? Math.max(...rolls) : hasBurden ? Math.min(...rolls) : rolls[0];
   const abilityScore = safeNumber(run?.player?.abilities?.[check.ability], 10);
   const abilityModifier = resolveAbilityModifier(abilityScore);
   const skillModifier = check.skill ? safeNumber(run?.player?.skills?.[check.skill], 0) : 0;
   const total = keptRoll + abilityModifier + skillModifier;
+  const margin = total - check.dc;
+  const band = bandFromMargin(margin);
 
   return {
     ok: true,
@@ -125,7 +158,14 @@ export function resolveAbilityCheck(run, check, options = {}) {
     skillModifier,
     total,
     dc: check.dc,
+    // `success` = met/beat the DC (the SUCCESS band only). Downstream that must
+    // treat "success at a cost" as intent-achieved reads `band`, not `success`.
     success: total >= check.dc,
+    margin,
+    band,
+    // Canonical Ch3 circumstance terms echoed on the outcome payload.
+    edge: hasEdge,
+    burden: hasBurden,
     rulesetId,
     ability: check.ability,
     skill: check.skill ?? null

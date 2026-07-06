@@ -412,11 +412,18 @@ export function validateSearchDetail(detail) {
       validateRequiredString(detail.check.ability, "check.ability", errors);
       validateOptionalString(detail.check.skill, "check.skill", errors);
       validateNumber(detail.check.dc, "check.dc", errors);
+      // Edge/Burden (Ch3 canonical) + advantage/disadvantage (legacy alias).
       if (detail.check.advantage !== undefined) {
         validateBoolean(detail.check.advantage, "check.advantage", errors);
       }
       if (detail.check.disadvantage !== undefined) {
         validateBoolean(detail.check.disadvantage, "check.disadvantage", errors);
+      }
+      if (detail.check.edge !== undefined) {
+        validateBoolean(detail.check.edge, "check.edge", errors);
+      }
+      if (detail.check.burden !== undefined) {
+        validateBoolean(detail.check.burden, "check.burden", errors);
       }
     }
   }
@@ -453,11 +460,18 @@ export function validateDialogueBeat(beat) {
       validateRequiredString(beat.check.ability, "check.ability", errors);
       validateOptionalString(beat.check.skill, "check.skill", errors);
       validateNumber(beat.check.dc, "check.dc", errors);
+      // Edge/Burden (Ch3 canonical) + advantage/disadvantage (legacy alias).
       if (beat.check.advantage !== undefined) {
         validateBoolean(beat.check.advantage, "check.advantage", errors);
       }
       if (beat.check.disadvantage !== undefined) {
         validateBoolean(beat.check.disadvantage, "check.disadvantage", errors);
+      }
+      if (beat.check.edge !== undefined) {
+        validateBoolean(beat.check.edge, "check.edge", errors);
+      }
+      if (beat.check.burden !== undefined) {
+        validateBoolean(beat.check.burden, "check.burden", errors);
       }
     }
   }

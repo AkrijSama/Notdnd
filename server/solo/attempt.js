@@ -19,8 +19,11 @@ const PROVIDER_OUTPUT_FIELDS = new Set([
   // Whether the action is contested enough to roll. Optional: when the provider
   // supplies it, it overrides the server-side verb heuristic (attemptNeedsCheck).
   "needsCheck",
+  // Circumstance: Edge/Burden (Ch3 canonical) + advantage/disadvantage (legacy alias).
   "advantage",
   "disadvantage",
+  "edge",
+  "burden",
   "successNarration",
   "failureNarration",
   "proposedEffects",
@@ -196,6 +199,30 @@ export function isObservationQuery(intent) {
   return OBSERVATION_QUERY_RE.test(t);
 }
 
+// SAFE CONVERSATION (Ch3 Law 1, Tier 0) — plain speaking with someone who isn't
+// set against you: greeting, asking, answering, banter, small talk, thanking.
+// This is automatic-tier and NEVER a failable roll ("speaking to a non-hostile
+// character is never a roll"). Directly kills the Talk-to-Vesa bug.
+const SAFE_TALK_RE =
+  /\b(talk|talking|speak|speaking|say|saying|tell|telling|ask|asking|answer|answering|reply|replying|respond|responding|greet|greeting|chat|chatting|converse|conversing|discuss|discussing|question|questioning|inquire|inquiring|introduce|introducing|thank|thanking|address|addressing|hail|hailing|call out|call to|banter|small talk|explain|mention|offer\s+to\s+help)\b/i;
+// ADVERSARIAL SOCIAL — talk with STAKES: bending someone against their interest,
+// or coercion. These have a real cost on failure and stay CHECKS/CONTESTED, so
+// they must NOT be swept into the automatic tier by the safe-talk verb match.
+const ADVERSARIAL_SOCIAL_RE =
+  /\b(persuade|persuading|convince|convincing|deceive|deceiving|lie|lying|bluff|bluffing|charm|charming|seduce|seducing|intimidate|intimidating|threaten|threatening|menace|menacing|coerce|coercing|manipulate|manipulating|negotiate|negotiating|barter|bartering|haggle|haggling|bribe|bribing|interrogate|interrogating|con|conning|trick|tricking|swindle|swindling|extort|extorting|blackmail|blackmailing|goad|provoke|provoking|demand|demanding|command|order\b|browbeat|pressure|pressuring|flatter\s+into|talk\s+(?:him|her|them|it)\s+into|argue\s+(?:down|into))\b/i;
+
+// True when the intent is safe conversation (automatic tier) — a conversational
+// verb with NO adversarial-social or contested/manipulation verb present. This
+// OVERRIDES a provider that mis-classified safe talk as a check.
+export function isSafeConversation(intent) {
+  const t = String(intent || "");
+  if (!t.trim()) return false;
+  if (!SAFE_TALK_RE.test(t)) return false;
+  if (ADVERSARIAL_SOCIAL_RE.test(t)) return false;
+  if (CONTESTED_INTENT_RE.test(t.toLowerCase())) return false;
+  return true;
+}
+
 /**
  * Decides whether an attempt needs a d20 check. A provider-supplied `needsCheck`
  * boolean wins (the GM/provider classified it); otherwise a verb heuristic:
@@ -214,6 +241,13 @@ export function attemptNeedsCheck(intent, providerOutput = null) {
   // contested/manipulation verb is present (searching a container, investigating
   // a body, spotting a hidden thing all stay real, failable checks).
   if (isObservationQuery(intent)) {
+    return false;
+  }
+  // SAFE CONVERSATION is automatic-tier (Ch3 Law 1): talking to a non-hostile
+  // character is never a failable roll. This OVERRIDES a provider that proposed
+  // a check on stakes-free talk — a stakes-free action cannot be forced into a
+  // check by the provider (kills the Talk-to-Vesa "rolled 4 vs DC 8" bug).
+  if (isSafeConversation(intent)) {
     return false;
   }
   if (providerOutput && typeof providerOutput.needsCheck === "boolean") {
@@ -399,18 +433,26 @@ function intentPhrase(intent) {
 //      actually happened to state, the same source the live GM directive uses),
 //   4. else a neutral intent-aware safety line.
 // Pure; never throws.
-export function composeAttemptNarration({ blockNarration, baseNarration, success, phrase, consequence } = {}) {
+export function composeAttemptNarration({ blockNarration, baseNarration, success, band, phrase, consequence } = {}) {
   if (isString(blockNarration)) {
     return blockNarration;
+  }
+  const safePhrase = isString(phrase) ? phrase : "act";
+  const reason = consequence && isString(consequence.reason) ? consequence.reason.trim().replace(/[.!?]+$/, "") : "";
+  // Success at a cost (Ch3 middle band): you get what you wanted AND a real cost
+  // commits alongside it. Even when the provider supplied a clean success line,
+  // the fallback must name the committed cost so the middle band never reads as
+  // a plain win. (The live GM narration replaces this on the normal path.)
+  if (band === "success_at_cost") {
+    const base = isString(baseNarration) ? baseNarration.trim().replace(/[.!?]+$/, "") : `You ${safePhrase}`;
+    return reason ? `${base} — but ${reason}.` : `${base} — but it costs you.`;
   }
   if (isString(baseNarration)) {
     return baseNarration;
   }
-  const safePhrase = isString(phrase) ? phrase : "act";
   if (success) {
     return `You ${safePhrase}.`;
   }
-  const reason = consequence && isString(consequence.reason) ? consequence.reason.trim().replace(/[.!?]+$/, "") : "";
   return reason
     ? `You try to ${safePhrase}, but ${reason}.`
     : `You try to ${safePhrase}, but it doesn't come together this time.`;
@@ -644,7 +686,9 @@ export function validateAttemptProviderOutput(output, options = {}) {
   if (output.needsCheck !== undefined && output.needsCheck !== null && typeof output.needsCheck !== "boolean") {
     push(errors, "needsCheck", "Expected boolean");
   }
-  for (const key of ["advantage", "disadvantage"]) {
+  // Edge/Burden are the Ch3 canonical circumstance fields; advantage/disadvantage
+  // are accepted as legacy wire aliases (identical mechanics).
+  for (const key of ["advantage", "disadvantage", "edge", "burden"]) {
     if (output[key] !== undefined && typeof output[key] !== "boolean") {
       push(errors, key, "Expected boolean");
     }
@@ -765,8 +809,12 @@ export function sanitizeAttemptProviderOutput(output, options = {}) {
     recommendedAbility: output?.recommendedAbility ? String(output.recommendedAbility).trim().toLowerCase() : null,
     dc: isNumber(output?.dc) ? output.dc : null,
     needsCheck: typeof output?.needsCheck === "boolean" ? output.needsCheck : null,
+    // Edge/Burden (Ch3) fold in the legacy advantage/disadvantage aliases so a
+    // provider using either vocabulary lands the same circumstance.
     advantage: output?.advantage === true,
     disadvantage: output?.disadvantage === true,
+    edge: output?.edge === true || output?.advantage === true,
+    burden: output?.burden === true || output?.disadvantage === true,
     successNarration: sanitizeText(output?.successNarration),
     failureNarration: sanitizeText(output?.failureNarration),
     proposedEffects: Array.isArray(output?.proposedEffects)
@@ -1659,6 +1707,11 @@ export function resolveAttemptAction(run, action, options = {}) {
   const now = isoFromOption(options.now ?? safeAction.createdAt);
   let checkResult = null;
   let success;
+  // Ch3 Law 2 band for this attempt: "success" | "success_at_cost" | "failure"
+  // for a rolled check, "automatic" for a no-stakes action, "failure" for a
+  // foreclosed retry. Surfaced on the result so the narrator states the
+  // committed truth rather than a binary succeed/fail.
+  let band = null;
   let damage = null;
   let consequence = null;
   let foreclosed = false;
@@ -1675,6 +1728,7 @@ export function resolveAttemptAction(run, action, options = {}) {
     if (foreclosure.effect === "blocked") {
       foreclosed = true;
       success = false;
+      band = "failure";
       checkResult = null;
       const obj = foreclosure.object || {};
       blockNarration = isString(obj.reason)
@@ -1711,31 +1765,63 @@ export function resolveAttemptAction(run, action, options = {}) {
         ability: recommendation.ability,
         skill: recommendation.skill,
         dc: checkDc,
-        advantage: providerOutput.advantage === true && !harder,
-        disadvantage: providerOutput.disadvantage === true || harder
+        // Edge/Burden (Ch3); the legacy advantage/disadvantage fields are
+        // still accepted from the provider as wire aliases. A "harder" retry
+        // rolls at Burden and cancels any provider-granted Edge.
+        edge: (providerOutput.edge === true || providerOutput.advantage === true) && !harder,
+        burden: providerOutput.burden === true || providerOutput.disadvantage === true || harder
       }, options);
-      success = checkResult.ok === true && checkResult.success === true;
+      // THREE BANDS (Ch3 Law 2). The resolver owns the band; the intent is
+      // ACHIEVED on success and success-at-a-cost, DENIED on failure. Every band
+      // but a clean success commits real state — never "nothing happens".
+      band = checkResult.ok === true ? checkResult.band : "failure";
+      const intentAchieved = band === "success" || band === "success_at_cost";
+      success = intentAchieved;
       if (harder) {
         foreclosed = true;
       }
-      // Failure has teeth, but the GM decides HOW MUCH: the server enforces the
-      // proposed structured consequence (damage/condition/objectState/resource, or
-      // an explicit consequence-free "none"). When the provider proposes nothing,
-      // the legacy fixed HP cost applies so degraded mode still bites. When the
-      // player is ALREADY incapacitated (0 HP / dying), the dying-turn death save
-      // is the sole consequence — we don't stack a fresh one here.
-      if (!success && !isIncapacitated(updatedRun)) {
+      // A cost/consequence commits on BOTH the middle band (success at a cost)
+      // and the failure band — the GM decides HOW MUCH via the proposed
+      // structured consequence (damage/condition/objectState/resource, or an
+      // explicit "none"). On success-at-a-cost the intent ALSO commits (the
+      // player gets what they wanted, plus the priced cost); on failure only
+      // the situation-changing consequence commits. When the provider proposes
+      // nothing, the legacy fixed HP cost applies so no band is toothless. When
+      // the player is ALREADY incapacitated, the dying-turn death save is the
+      // sole consequence — we don't stack a fresh one here.
+      const commitsCost = band === "success_at_cost" || band === "failure";
+      if (commitsCost && !isIncapacitated(updatedRun)) {
         consequence = enforceFailureConsequence(updatedRun, providerOutput.failureConsequence, context, now);
+        // LAW-2 BACKSTOP: a rolled check that lands in a cost band MUST move
+        // state — never "you failed, nothing happens". If the provider proposed
+        // a consequence that committed nothing (type "none", or one that no-op'd),
+        // apply the deterministic fixed cost so the turn is never dead. This is
+        // the engine's own guarantee; it does not trust the provider to honor it.
+        if (!consequence || consequence.applied !== true) {
+          const backstop = applyFailureDamage(updatedRun, FAILED_ATTEMPT_DAMAGE);
+          if (backstop) {
+            consequence = {
+              type: "damage",
+              applied: true,
+              amount: backstop.amount,
+              reason: consequence && isString(consequence.reason) ? consequence.reason : "",
+              damage: backstop
+            };
+          }
+        }
         damage = consequence && consequence.damage ? consequence.damage : null;
-      } else if (!success) {
+      } else if (commitsCost) {
+        // Already incapacitated: the dying-turn death save is the sole
+        // consequence — we don't stack a fresh cost on top of it.
         consequence = { type: "none", applied: false, reason: "" };
       }
     }
   } else {
-    // No-stakes action: it simply happens. No roll, no failure cost — the GM
-    // still narrates the outcome (the request layer replaces the line below with
-    // real GM prose), it just isn't gated on a dice result.
+    // No-stakes action (Ch3 Tier 0 — AUTOMATIC): it simply happens. No roll, no
+    // failure cost — the GM describes committed state (the request layer replaces
+    // the line below with real GM prose), it just isn't gated on a dice result.
     success = true;
+    band = "automatic";
   }
 
   // A foreclosed (blocked) retry narrates the closed door, not a fresh attempt —
@@ -1749,6 +1835,7 @@ export function resolveAttemptAction(run, action, options = {}) {
     blockNarration,
     baseNarration: success ? providerOutput.successNarration : providerOutput.failureNarration,
     success,
+    band,
     phrase: intentPhrase(context.intent),
     consequence
   });
@@ -1756,6 +1843,12 @@ export function resolveAttemptAction(run, action, options = {}) {
     intent: safeAction.intent,
     targetId: safeAction.targetId || null,
     success,
+    // Ch3 Law 2 band this attempt landed in: "success" | "success_at_cost" |
+    // "failure" for a rolled check, "automatic" for a no-stakes action. The
+    // narrator and UI read this — `success` alone can't tell a clean win from a
+    // win at a cost. The full roll breakdown (d20, mods, DC, margin) lives on
+    // checkResult so the outcome banner can show it.
+    band,
     summary: providerOutput.summary,
     checkResult,
     // Whether a d20 was rolled this turn. The client uses this to show the

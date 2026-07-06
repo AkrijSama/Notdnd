@@ -51,10 +51,17 @@ test("buildAttemptInterpreterMessages returns system+user messages grounded in t
   assert.equal(messages.length, 2);
   assert.equal(messages[0].role, "system");
   assert.equal(messages[1].role, "user");
-  // System pins the JSON-only contract and the per-case "none" discipline.
+  // System pins the JSON-only contract and the Ch3 three-band discipline.
   assert.match(messages[0].content, /JSON object/i);
   assert.match(messages[0].content, /failureConsequence/);
-  assert.match(messages[0].content, /"none" is valid and COMMON/);
+  // Ch3: the three bands are named and every one commits state (no "nothing happens").
+  assert.match(messages[0].content, /SUCCESS AT A COST/);
+  assert.match(messages[0].content, /do NOT propose \{"type":"none"\} for a check/);
+  // Ch3 Law 1: safe conversation is never a roll (kills the Talk-to-NPC bug).
+  assert.match(messages[0].content, /TALKING TO A NON-HOSTILE CHARACTER/);
+  // Edge/Burden are the canonical circumstance terms.
+  assert.match(messages[0].content, /"edge": boolean/);
+  assert.match(messages[0].content, /"burden": boolean/);
   assert.match(messages[0].content, /objectState/);
   assert.match(messages[0].content, /retryEffect/);
   // The enum values are surfaced so the model stays in-contract.

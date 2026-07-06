@@ -51,19 +51,22 @@ test("failure consequence 'damage' reduces real HP by the proposed amount", () =
   assert.equal(hp(result.run), before - 4, "HP visibly dropped by 4");
 });
 
-// ── type "none": a consequence-free failure mutates NOTHING ──────────────────
-test("failure consequence 'none' costs no HP and adds no state (a beat, not a punishment)", () => {
+// ── DEAD-TURN GUARD (Ch3 Law 2): a rolled check that FAILS must commit state ──
+// even if the provider proposes "none". A stakes-free action should have been
+// Tier 0 (no roll); once it IS a check (needsCheck:true) and misses, "nothing
+// happens" is outlawed — the engine's Law-2 backstop commits a real cost.
+test("a failed check with provider 'none' still commits a cost (no dead turn)", () => {
   const run = createDefaultSoloRun({ now: "2026-01-01T00:00:00.000Z" });
   const before = hp(run);
   const result = scriptedAttempt(run, {
-    intent: "search the empty alcove for anything hidden",
-    failureConsequence: { type: "none", reason: "there is simply nothing here" }
+    intent: "search the alcove for anything hidden",
+    failureConsequence: { type: "none", reason: "the search turns up nothing but it costs you the moment" }
   });
   assert.equal(result.attemptResult.success, false);
-  assert.equal(result.attemptResult.consequence.type, "none");
-  assert.equal(hp(result.run), before, "no HP lost on a consequence-free failure");
-  assert.equal(result.attemptResult.damage, null);
-  assert.deepEqual(objectStatesOf(result.run), {}, "no object degraded");
+  assert.equal(result.attemptResult.band, "failure", "miss by 5+ lands in the failure band");
+  assert.equal(result.attemptResult.consequence.applied, true, "the backstop committed a real cost — never a no-op");
+  assert.notEqual(hp(result.run), before, "state actually moved on the failed check");
+  assert.ok(result.attemptResult.damage, "a committed cost is surfaced");
 });
 
 // ── legacy default: omitting failureConsequence keeps the small fixed cost ────
@@ -134,16 +137,31 @@ test("failure consequence 'harder' raises the retry DC so spamming is penalized,
   });
   assert.equal(objectStatesOf(first.run).lock.retryEffect, "harder");
 
-  // A retry that clears the base DC (13 vs 12) but NOT the bumped DC (12+5=17)
-  // now fails — the foreclosure made it harder.
+  // A retry roll that clears the BASE DC (12 vs 12) misses the bumped DC (12+5=17)
+  // by 5+ — the foreclosure pushed a would-be success into the FAILURE band.
   const retry = scriptedAttempt(first.run, {
+    intent: "pick the lock again",
+    dc: 12,
+    fixedRoll: 12,
+    failureConsequence: { type: "objectState", targetObject: "lock", objectState: "jammed", retryEffect: "harder" }
+  });
+  assert.equal(retry.attemptResult.foreclosed, true, "retry flagged as penalized");
+  assert.equal(retry.attemptResult.checkResult.dc, 17, "the retry rolls against the bumped DC");
+  assert.equal(retry.attemptResult.band, "failure", "a base-DC-clearing roll now fails the harder DC");
+  assert.equal(retry.attemptResult.success, false, "no clean success by re-rolling a jammed lock");
+
+  // Ch3 three-band still applies to the penalized retry: a CLOSE miss of the
+  // bumped DC (13 vs 17, miss by 4) is success-at-a-cost — the player gets it,
+  // but the jam worsens as the committed cost. "Harder" is not a binary wall.
+  const closeRetry = scriptedAttempt(first.run, {
     intent: "pick the lock again",
     dc: 12,
     fixedRoll: 13,
     failureConsequence: { type: "objectState", targetObject: "lock", objectState: "jammed", retryEffect: "harder" }
   });
-  assert.equal(retry.attemptResult.foreclosed, true, "retry flagged as penalized");
-  assert.equal(retry.attemptResult.success, false, "a roll that beat the base DC fails the harder DC");
+  assert.equal(closeRetry.attemptResult.band, "success_at_cost", "miss the bumped DC by 1-4 → success at a cost");
+  assert.equal(closeRetry.attemptResult.success, true, "the intent still commits on the middle band");
+  assert.equal(closeRetry.attemptResult.consequence.applied, true, "and a real cost commits alongside it");
 });
 
 // ── an ordinary failed check with no object stays freely retryable ────────────

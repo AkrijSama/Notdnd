@@ -10,14 +10,36 @@ const run = {
   player: { displayName: "Kael" }
 };
 
-test("attempt prompt includes intent, outcome, roll, and tone", () => {
+test("attempt prompt includes intent, band outcome, roll, and tone", () => {
+  // Miss by 5+ (7 vs DC 15) is the FAILURE band — the situation changes; the
+  // narrator is steered to a failure-with-consequence, never a clean fail. The
+  // band is derived from the roll margin when the caller doesn't stamp one.
   const msg = buildActionGmMessage(run, {
     action: { type: "attempt" },
     attemptResult: { intent: "pick the lock", success: false, checkResult: { total: 7, dc: 15 } }
   });
   assert.match(msg, /pick the lock/);
-  assert.match(msg, /fails \(rolled 7 vs DC 15\)/);
+  assert.match(msg, /FAILS and the situation CHANGES/);
+  assert.match(msg, /rolled 7 vs DC 15/);
   assert.match(msg, /grimdark/);
+});
+
+test("attempt prompt steers success-at-a-cost on a miss by 1-4", () => {
+  // 13 vs DC 15 is a miss by 2 — the middle band. The player STILL gets it, but
+  // a committed cost lands alongside; the narrator must name both.
+  const msg = buildActionGmMessage(run, {
+    action: { type: "attempt" },
+    attemptResult: {
+      intent: "pick the lock",
+      success: true,
+      band: "success_at_cost",
+      checkResult: { total: 13, dc: 15 },
+      consequence: { type: "damage", applied: true, amount: 2, reason: "the pick bites your palm" }
+    }
+  });
+  assert.match(msg, /SUCCEEDS AT A COST/);
+  assert.match(msg, /the pick bites your palm/);
+  assert.match(msg, /rolled 13 vs DC 15/);
 });
 
 test("move prompt names the destination + description", () => {

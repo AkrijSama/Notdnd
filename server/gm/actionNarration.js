@@ -12,6 +12,41 @@ function currentLocation(run) {
   return locations[run?.currentLocationId] || {};
 }
 
+// The Ch3 band this attempt landed in, preferring the resolver-stamped value.
+// Falls back to deriving it from the roll margin (total − DC), then from the
+// binary success flag, so the narrator stays correct for any caller shape.
+function resolveNarrationBand(ar) {
+  if (ar && typeof ar.band === "string") return ar.band;
+  const cr = ar && ar.checkResult;
+  if (cr && typeof cr.total === "number" && typeof cr.dc === "number") {
+    const margin = cr.total - cr.dc;
+    return margin >= 0 ? "success" : margin >= -4 ? "success_at_cost" : "failure";
+  }
+  return ar && ar.success ? "success" : "failure";
+}
+
+// Turn the resolver-committed consequence (Ch3 Law 2 middle/failure bands) into
+// a short, already-true phrase the narrator must honor. The band prompt tells the
+// GM to narrate THIS specific committed change, never to invent its own. Returns
+// "" when there is nothing extra committed (a clean success carries no cost).
+function describeCommittedConsequence(consequence) {
+  if (!consequence || typeof consequence !== "object") return "";
+  if (consequence.applied === false && !isString(consequence.reason)) return "";
+  if (isString(consequence.reason)) return consequence.reason.trim().replace(/[.!?]+$/, "");
+  switch (consequence.type) {
+    case "damage":
+      return consequence.amount > 0 ? `it costs the player ${consequence.amount} vitality` : "";
+    case "condition":
+      return isString(consequence.condition) ? `the player is now ${consequence.condition}` : "";
+    case "resource":
+      return consequence.amount > 0 ? `a resource is spent (${consequence.resource || "supplies"})` : "";
+    case "objectState":
+      return isString(consequence.label) ? `the ${consequence.label} is now ${consequence.objectState || "worse off"}` : "";
+    default:
+      return "";
+  }
+}
+
 // The production STYLE CONTRACT (owner-picked from the 2026-07-03 prose ladder:
 // contract × llama-3.3-70b — docs/prose-ladder-2026-07-03.md). Every narration
 // branch (attempt/move/talk/search/take/quest/rest/use_item, plus the momentum
@@ -269,9 +304,34 @@ export function buildActionGmMessage(run, resolved) {
     }
     const cr = ar.checkResult;
     const rollText = cr && cr.total !== undefined && cr.total !== null ? ` (rolled ${cr.total} vs DC ${cr.dc})` : "";
+    // Ch3 Law 2 — the resolver already committed the band; the narrator states
+    // that committed truth, it never re-decides the outcome. Three bands, never
+    // "nothing happens": success (clean), success-at-a-cost (got it + a real
+    // committed cost), failure-with-consequence (denied + the situation changed).
+    // The committed cost/consequence is `ar.consequence` — narrate THAT, don't
+    // invent one. Prefer the resolver-stamped band; derive it defensively from
+    // the roll margin (then from success) if an older caller didn't stamp one.
+    const band = resolveNarrationBand(ar);
+    const costPhrase = describeCommittedConsequence(ar.consequence);
+    if (band === "success_at_cost") {
+      return (
+        `In the current scene, the player attempts: "${String(ar.intent || "an action")}". ` +
+        `The attempt SUCCEEDS AT A COST${rollText}: they get what they were after, but a real cost commits alongside it${costPhrase ? ` — ${costPhrase}` : ""}. ` +
+        `Narrate BOTH — the thing achieved AND the committed cost as an already-true fact (time lost, a resource spent, someone now aware, or a new complication). ` +
+        `Do NOT narrate a clean win, and do NOT invent a different cost than the one committed. Give them a specific new thing to act on next. ${suffix}`
+      );
+    }
+    if (band === "failure") {
+      return (
+        `In the current scene, the player attempts: "${String(ar.intent || "an action")}". ` +
+        `The attempt FAILS and the situation CHANGES${rollText}${costPhrase ? ` — ${costPhrase}` : ""}. ` +
+        `Narrate the failure moving the world: they do NOT get what they wanted, and the scene is now different — usually harder along the path they tried, often with a new pressure. ` +
+        `Never "nothing happens, try again"; narrate the committed consequence as already true, do not invent a different one. Give them a specific new thing to act on next. ${suffix}`
+      );
+    }
     return (
       `In the current scene, the player attempts: "${String(ar.intent || "an action")}". ` +
-      `The attempt ${ar.success ? "succeeds" : "fails"}${rollText}. ` +
+      `The attempt SUCCEEDS${rollText}. ` +
       `Narrate the CONCRETE outcome — what specifically changes, what they now learn, or what it costs — ` +
       `not a restatement of the surroundings. Give them a specific new thing to act on next. ${suffix}`
     );

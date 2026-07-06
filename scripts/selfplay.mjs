@@ -585,20 +585,94 @@ async function scenarioFailureConsequence(ctx) {
   ctx.assert("retry is foreclosed (closes the spam-retry hole)", retry.json.attemptResult?.foreclosed === true, "foreclosed:true", `foreclosed:${retry.json.attemptResult?.foreclosed}`);
   ctx.assert("foreclosed retry rolled NO dice", retry.json.attemptResult?.checkResult === null, "checkResult:null", `checkResult:${retry.json.attemptResult?.checkResult ? "set" : "null"}`);
 
-  // (c) NONE — a failure the GM marks as 'none' mutates NO state (failure can be
-  // consequence-free; not every failure is a punishment).
+  // (c) NONE → BACKSTOP (Ch3 Law 2 dead-turn guard): a rolled check that FAILS
+  // must move state even when the GM proposes 'none'. A stakes-free action should
+  // have been Tier 0 (no roll at all); once it IS a failed check, "nothing
+  // happens" is outlawed — the engine commits the small fixed backstop cost.
   const hpBeforeNone = hpOf((await scene(r)).json).current;
-  const none = await fail("listen at the empty doorway for any sound", { type: "none", reason: "only silence answers" });
-  ctx.assert("none consequence recorded", none.json.attemptResult?.consequence?.type === "none", "none", String(none.json.attemptResult?.consequence?.type));
+  const none = await fail("wrench the seized valve wheel", { type: "none", reason: "the wheel refuses to give" });
+  ctx.assert("failed check commits a cost even on 'none' (no dead turn)", none.json.attemptResult?.consequence?.applied === true, "applied:true", `applied:${none.json.attemptResult?.consequence?.applied}`);
   const hpAfterNone = hpOf((await scene(r)).json).current;
-  ctx.assert("'none' failure costs NO HP (consequence-free beat)", hpAfterNone === hpBeforeNone, `hp ${hpBeforeNone}`, `hp ${hpAfterNone}`);
+  ctx.assert("the backstop actually moved state (HP dropped)", hpAfterNone < hpBeforeNone, `hp < ${hpBeforeNone}`, `hp ${hpAfterNone}`);
 
-  // And an empty-room failure does NOT foreclose retry (foreclosure fits only
-  // GM-marked objects, never a blanket rule).
-  const reretry = await fail("listen at the empty doorway for any sound", { type: "none" });
-  ctx.assert("consequence-free failure stays freely retryable", reretry.json.attemptResult?.foreclosed !== true, "foreclosed:false", `foreclosed:${reretry.json.attemptResult?.foreclosed}`);
+  // The backstop is a COST, not a foreclosure — an ordinary failed check with no
+  // GM-marked object stays freely retryable (foreclosure fits only marked objects).
+  const reretry = await fail("wrench the seized valve wheel", { type: "none" });
+  ctx.assert("a backstopped failure stays freely retryable", reretry.json.attemptResult?.foreclosed !== true, "foreclosed:false", `foreclosed:${reretry.json.attemptResult?.foreclosed}`);
 
-  ctx.note(`HP ${hpBefore} → ${hpAfter} (damage), map tracked-torn + retry blocked, 'none' left HP at ${hpAfterNone}`);
+  ctx.note(`HP ${hpBefore} → ${hpAfter} (damage), map tracked-torn + retry blocked, 'none' backstop dropped HP to ${hpAfterNone}`);
+}
+
+// 1b2) CH3 RESOLUTION LAW — the locked three-tier / three-band resolution, proven
+// over real HTTP. Kills the Talk-to-Vesa bug (safe talk never rolls) and proves
+// every check band commits state (the dead-turn guard). Deterministic via the
+// gated attempt test-hook (fixedRoll + scripted proposal). Canon: docs/handbook/
+// ch3-checks-and-resolution.md.
+async function scenarioCh3Resolution(ctx) {
+  const r = await newRun();
+  ctx.runId = r.runId; ctx.token = r.token;
+
+  // A scripted attempt with a pinned roll + GM proposal (mod is 0 on a fresh run,
+  // so total == roll and the band is exact).
+  const attempt = (intent, { fixedRoll = 12, dc = 12, needsCheck = true, failureConsequence } = {}) =>
+    act(r, { type: "attempt", intent, testHook: { fixedRoll, providerOutput: {
+      summary: `You attempt: ${intent}`, recommendedAbility: "strength", dc, needsCheck,
+      edge: false, burden: false,
+      successNarration: "It works.", failureNarration: "It doesn't.",
+      proposedEffects: [], ...(failureConsequence !== undefined ? { failureConsequence } : {})
+    } } });
+
+  // ── LAW 1 — SAFE CONVERSATION IS AUTOMATIC (the Talk-to-Vesa bug) ──
+  // The provider is told needsCheck:true and the die is pinned to a 1 (a sure
+  // fail IF it rolled). The automatic-tier rule OVERRIDES the provider: no roll,
+  // cannot fail, the exchange advances.
+  const talk = await attempt("talk to Vesa about the missing crate", { fixedRoll: 1, needsCheck: true, dc: 8 });
+  const tar = talk.json.attemptResult || {};
+  ctx.assert("safe talk resolves ok over HTTP", talk.json.ok === true, "ok:true", `ok:${talk.json.ok} code:${talk.json.code || ""}`);
+  ctx.assert("LAW 1: safe conversation does NOT roll (needsCheck:false)", tar.needsCheck === false, "needsCheck:false", `needsCheck:${tar.needsCheck}`);
+  ctx.assert("LAW 1: no d20 was rolled on safe talk", tar.checkResult === null || tar.checkResult === undefined, "checkResult:null", `checkResult:${tar.checkResult ? "set" : "null"}`);
+  ctx.assert("LAW 1: safe talk CANNOT fail (the Talk-to-Vesa bug is dead)", tar.success === true, "success:true", `success:${tar.success}`);
+  ctx.assert("LAW 1: safe talk is the automatic band", tar.band === "automatic", "automatic", String(tar.band));
+
+  // Control: adversarial social (persuade) KEEPS its stakes — it still rolls.
+  const persuade = await attempt("intimidate Vesa into handing over the key", { fixedRoll: 5, dc: 12, needsCheck: true, failureConsequence: { type: "none" } });
+  ctx.assert("LAW 1: adversarial social still rolls (needsCheck:true)", persuade.json.attemptResult?.needsCheck === true, "needsCheck:true", `needsCheck:${persuade.json.attemptResult?.needsCheck}`);
+
+  // ── LAW 2 — THREE BANDS, EVERY BAND COMMITS STATE ──
+  const hpBand = async () => hpOf((await scene(r)).json).current;
+
+  // SUCCESS (meet the DC): clean, no cost.
+  const hp0 = await hpBand();
+  const win = await attempt("pry the loose grate open", { fixedRoll: 12, dc: 12 });
+  const war = win.json.attemptResult || {};
+  ctx.assert("LAW 2: meeting the DC is the SUCCESS band", war.band === "success", "success", String(war.band));
+  ctx.assert("LAW 2: a clean success commits no cost", (await hpBand()) === hp0, `hp ${hp0}`, `hp ${await hpBand()}`);
+  // Payload carries the full breakdown (d20 raw, DC, margin, band) for the UI.
+  ctx.assert("LAW 2: outcome payload exposes the roll breakdown", typeof war.checkResult?.total === "number" && typeof war.checkResult?.dc === "number" && typeof war.checkResult?.margin === "number" && typeof war.checkResult?.band === "string", "total+dc+margin+band", JSON.stringify({ t: war.checkResult?.total, dc: war.checkResult?.dc, m: war.checkResult?.margin, b: war.checkResult?.band }));
+
+  // SUCCESS AT A COST (miss by 1-4): intent commits AND a real cost commits.
+  const hp1 = await hpBand();
+  const cost = await attempt("pick the strongbox lock", { fixedRoll: 10, dc: 12, failureConsequence: { type: "damage", amount: 3, reason: "the pick bites your palm" } });
+  const car = cost.json.attemptResult || {};
+  ctx.assert("LAW 2: miss by 1-4 is the SUCCESS-AT-A-COST band", car.band === "success_at_cost", "success_at_cost", String(car.band));
+  ctx.assert("LAW 2: at-cost STILL gives the player what they wanted", car.success === true, "success:true", `success:${car.success}`);
+  ctx.assert("LAW 2: at-cost commits a real cost (HP dropped by 3)", (await hpBand()) === hp1 - 3, `hp ${hp1 - 3}`, `hp ${await hpBand()}`);
+
+  // FAILURE WITH CONSEQUENCE (miss by 5+): intent denied, situation changes.
+  const hp2 = await hpBand();
+  const fail5 = await attempt("force the barred door", { fixedRoll: 5, dc: 12, failureConsequence: { type: "damage", amount: 4, reason: "the door slams back into you" } });
+  const far = fail5.json.attemptResult || {};
+  ctx.assert("LAW 2: miss by 5+ is the FAILURE band", far.band === "failure", "failure", String(far.band));
+  ctx.assert("LAW 2: failure denies the intent", far.success === false, "success:false", `success:${far.success}`);
+  ctx.assert("LAW 2: failure changes the situation (HP dropped by 4)", (await hpBand()) === hp2 - 4, `hp ${hp2 - 4}`, `hp ${await hpBand()}`);
+
+  // DEAD-TURN GUARD: a failed check whose GM proposes 'none' STILL commits state.
+  const hp3 = await hpBand();
+  const deadGuard = await attempt("shoulder the jammed hatch", { fixedRoll: 5, dc: 12, failureConsequence: { type: "none", reason: "it doesn't budge" } });
+  ctx.assert("LAW 2 dead-turn guard: 'none' on a failed check still commits a cost", deadGuard.json.attemptResult?.consequence?.applied === true, "applied:true", `applied:${deadGuard.json.attemptResult?.consequence?.applied}`);
+  ctx.assert("LAW 2 dead-turn guard: state moved (no 'nothing happens')", (await hpBand()) < hp3, `hp < ${hp3}`, `hp ${await hpBand()}`);
+
+  ctx.note(`safe-talk automatic (no roll); bands success/at-cost/failure each committed a delta; 'none' backstopped`);
 }
 
 // 1c) MEANINGFUL FAILURE — LIVE PATH (the gate that catches the regression Opus
@@ -2204,6 +2278,7 @@ const SCENARIOS = [
   { key: "consequence", title: "CONSEQUENCE — actions mutate persisted state", fn: scenarioConsequence },
   { key: "possession", title: "POSSESSION — claimed items checked vs real inventory (retcons fail, improvisation rolls)", fn: scenarioPossession },
   { key: "failure", title: "MEANINGFUL FAILURE (hook) — engine enforces every consequence type", fn: scenarioFailureConsequence },
+  { key: "ch3", title: "CH3 RESOLUTION LAW — safe talk never rolls; every check band commits state (three-band, dead-turn guard)", fn: scenarioCh3Resolution },
   { key: "failure_live", title: "MEANINGFUL FAILURE (LIVE) — real failures vary, not flat-2HP; fallback rate", fn: scenarioFailureLive },
   { key: "lethality", title: "LETHALITY — 0 HP kills; death is permanent & terminal", fn: scenarioLethality },
   { key: "gating", title: "QUEST GATING — progress is earned, not handed out", fn: scenarioGating },
