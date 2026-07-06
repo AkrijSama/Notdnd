@@ -1172,6 +1172,13 @@ export function buildSoloScenePayload(run, options = {}) {
     // any action — so it reads as a GM welcome at the top of the scene, then
     // steps aside once play starts.
     openingNarration: isOpeningMoment(run) && isString(run.openingNarration) ? run.openingNarration : null,
+    // The paced opening BEAT SEQUENCE (authored set-piece): the client reveals
+    // these one at a time so the VOICE lands as a sequence, not a scroll-wall.
+    // Only at the opening moment; null when the run authors no beats (the client
+    // then renders openingNarration whole).
+    openingBeats: isOpeningMoment(run) && Array.isArray(run.openingBeats) && run.openingBeats.length
+      ? run.openingBeats.filter((b) => isString(b))
+      : null,
     rest: restPayload(currentLocation, policyProfile),
     player: buildPlayerPayload(run),
     visibleEntities,

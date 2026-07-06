@@ -973,15 +973,19 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
       (isStr(scenario.stakes) ? scenario.stakes : null);
   }
   // AUTHORED SET-PIECE OPENING (Babel's VOICE beat, §2): when a scenario authors
-  // its opening verbatim (opening.authoredNarration), it is delivered EXACTLY as
-  // written — the VOICE's six load-bearing beats are locked canon and must not be
-  // paraphrased by the GM. This is the beat-class "set-piece" budget honored by
-  // construction (the text is fixed). Bypasses the GM opening call entirely; the
-  // narrator only ever touches turns AFTER the opening. Falls through to the
-  // generated opening for scenarios that don't author one (e.g. the_shipment).
-  const authoredOpening = scenarioActive && isStr(scenario.opening?.authoredNarration)
-    ? String(scenario.opening.authoredNarration)
+  // its opening verbatim, it is delivered EXACTLY as written — the VOICE's
+  // load-bearing beats are locked canon and must not be paraphrased by the GM.
+  // Bypasses the GM opening call entirely; the narrator only touches turns AFTER
+  // the opening. Two forms: opening.authoredBeats (an ORDERED beat sequence — the
+  // paced set-piece the client reveals one beat at a time, so the VOICE lands
+  // instead of walling the player) or the legacy single opening.authoredNarration
+  // string. Beats are the preferred form; run.narration seeds from the joined text.
+  const authoredBeats = scenarioActive && Array.isArray(scenario.opening?.authoredBeats)
+    ? scenario.opening.authoredBeats.filter((b) => isStr(b)).map((b) => String(b))
     : null;
+  const authoredOpening = (authoredBeats && authoredBeats.length)
+    ? authoredBeats.join("\n\n")
+    : (scenarioActive && isStr(scenario.opening?.authoredNarration) ? String(scenario.opening.authoredNarration) : null);
   const opening = authoredOpening || await generateOpeningNarration({
     campaignId,
     runId: run.runId,
@@ -1012,6 +1016,12 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
   // gm-scene endpoint shows the GM voice on first load for legacy/compat paths.
   run.openingNarration = opening;
   run.narration = opening;
+  // The paced beat sequence (authored set-piece). The client reveals these one at
+  // a time so the opening lands as a sequence, not a scroll-wall. Absent for
+  // generated / single-string openings (the client then shows the full narration).
+  if (authoredBeats && authoredBeats.length) {
+    run.openingBeats = authoredBeats;
+  }
 
   const savedRun = saveSoloRun(run);
 

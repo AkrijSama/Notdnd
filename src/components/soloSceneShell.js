@@ -228,16 +228,45 @@ export function renderGmStatusPanel(gmStatus = null, selectedMode = "placeholder
 // World-entry opening: the AI-generated GM welcome, shown prominently at the top
 // of the scene the first time the player enters (server gates scene.openingNarration
 // to the opening moment). Styled as GM voice, distinct from the location copy.
-export function renderSoloSceneOpening(openingNarration = "") {
+function beatToParas(beat) {
+  const paras = String(beat || "")
+    .split(/\n{2,}/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  return (paras.length ? paras : [String(beat || "")]).map((part) => `<p>${escapeHtml(part)}</p>`).join("");
+}
+
+export function renderSoloSceneOpening(openingNarration = "", openingBeats = null) {
+  // PACED set-piece: when the opening is an authored BEAT SEQUENCE (openingBeats),
+  // reveal the beats one at a time in a staggered cascade instead of dumping the
+  // whole VOICE monologue as one scroll-wall — so it lands. Each beat is its own
+  // framed block, fading in after the previous; reduced-motion users get them all
+  // at once (no animation). Falls back to the single-string rendering otherwise.
+  const beats = Array.isArray(openingBeats)
+    ? openingBeats.map((b) => String(b || "").trim()).filter(Boolean)
+    : null;
+  if (beats && beats.length) {
+    const blocks = beats
+      .map((beat, i) => `<div class="solo-opening-beat" style="animation-delay:${(i * 1.1).toFixed(2)}s">${beatToParas(beat)}</div>`)
+      .join("");
+    return `
+      <section class="solo-scene-opening solo-opening-paced" role="note" aria-label="Opening narration">
+        <style>
+          .solo-opening-paced .solo-opening-beat { opacity: 0; animation: soloBeatIn 0.9s ease forwards; }
+          .solo-opening-paced .solo-opening-beat + .solo-opening-beat { margin-top: 0.9rem; padding-top: 0.9rem; border-top: 1px solid rgba(255,255,255,0.08); }
+          @keyframes soloBeatIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+          @media (prefers-reduced-motion: reduce) { .solo-opening-paced .solo-opening-beat { opacity: 1; animation: none; } }
+        </style>
+        <span class="solo-scene-opening-kicker">The VOICE speaks</span>
+        ${blocks}
+      </section>
+    `;
+  }
   const text = typeof openingNarration === "string" ? openingNarration.trim() : "";
   if (!text) {
     return "";
   }
-  const paragraphs = text
-    .split(/\n{2,}/)
-    .map((part) => part.trim())
-    .filter(Boolean);
-  const body = (paragraphs.length ? paragraphs : [text]).map((part) => `<p>${escapeHtml(part)}</p>`).join("");
+  const body = beatToParas(text);
   return `
     <section class="solo-scene-opening" role="note" aria-label="Opening narration">
       <span class="solo-scene-opening-kicker">The GM sets the scene</span>
@@ -2456,7 +2485,7 @@ export function renderSoloSceneShell(state = {}) {
                 <div class="solo-scene-layout" style="grid-template-columns: minmax(0, 1fr);">
                   <div class="solo-scene-center">
                     ${renderSoloUpgradePrompt(scene)}
-                    ${typeof scene.openingNarration === "string" && scene.openingNarration.trim() ? renderSoloSceneOpening(scene.openingNarration) : ""}
+                    ${(typeof scene.openingNarration === "string" && scene.openingNarration.trim()) || (Array.isArray(scene.openingBeats) && scene.openingBeats.length) ? renderSoloSceneOpening(scene.openingNarration, scene.openingBeats) : ""}
                     ${renderSoloSceneArt(scene.locationImageUri, { locked: scene.locationImageLocked })}
                     ${renderSoloActionOutcome(state)}
                     ${renderLocationPanel(

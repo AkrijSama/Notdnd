@@ -79,21 +79,69 @@ export function activeObjective(run) {
   }
 }
 
+// ── MOTIVATION LAYER (the "why it matters") ───────────────────────────────────
+// Suggestions must be MOTIVATED, not just possible: grounded in committed state AND
+// connected to why an action matters to THIS character. That "why" comes from two
+// sources this module reads (distinct from the scene-context lines — location/
+// people/ways-onward — that describe what's HERE): the character's situation
+// (their origin / what they've become) and the ACTIVE PRESSURES carried by the D.5
+// thread layer (the seeded fronts — "meaning across time"). Without these the GM is
+// an announcer listing possible moves; with them it offers reasons to act.
+
+// The character's standing — who they are NOW — as a one-line motivation anchor.
+// For an authored-origin world (Babel: "The Beckoned") this is the champion premise
+// the opening set up; it persists after run.narration is overwritten by action
+// prose, so motivation survives across turns.
+function characterSituation(run) {
+  const p = run?.player || {};
+  const bits = [];
+  if (isStr(p.origin)) bits.push(p.origin);
+  if (isStr(p.className) && !isStr(p.origin)) bits.push(p.className);
+  return bits.join("; ");
+}
+
+// Active pressures from the thread layer, at a PLAYER-APPROPRIATE reveal level: a
+// revealed thread contributes its agenda; a rumored thread only its title (its
+// agenda stays hidden until revealed). A hidden thread NEVER surfaces here — the
+// same reveal discipline the scene payload's thread summary uses. These are the
+// stakes an action can be motivated toward.
+function activePressures(run) {
+  const threads = run?.threads && typeof run.threads === "object" ? Object.values(run.threads) : [];
+  const out = [];
+  for (const t of threads) {
+    if (!t || typeof t !== "object") continue;
+    if (t.status === "resolved" || t.status === "expired" || t.status === "abandoned") continue;
+    const reveal = t.revealState || "hidden";
+    if (reveal === "hidden") continue;
+    const title = isStr(t.title) ? t.title : null;
+    if (reveal === "revealed") {
+      const agenda = isStr(t.agenda) ? t.agenda : "";
+      out.push(clip([title, agenda].filter(Boolean).join(" — ")));
+    } else if (title) {
+      out.push(clip(`${title} (stirring nearby)`));
+    }
+  }
+  return out.filter(Boolean).slice(0, 3);
+}
+
 // Deterministic, scene-aware fallback: always exactly 3, varied across
-// investigate / talk / move so the player sees the breadth of options.
+// investigate / talk-or-orient / move — and MOTIVATED (tied to pursuing the goal,
+// learning what's here, or getting your bearings) rather than the bare "call out
+// and see who answers" that reads as disconnected when the player is alone.
 export function buildFallbackSuggestions(run) {
   const location = run?.locations?.[run?.currentLocationId] || {};
   const locName = isStr(location.name) ? location.name : "the area";
   const npcs = presentNpcs(run);
   const moves = availableMoveNames(run);
+  const objective = activeObjective(run);
 
-  const investigate = `Search ${locName} for anything useful`;
+  const investigate = `Search ${locName} for anything that tells you what you're dealing with`;
   const talk = npcs.length && isStr(npcs[0].displayName)
-    ? `Approach ${npcs[0].displayName} and speak`
-    : "Call out and see who answers";
+    ? `Seek out ${npcs[0].displayName} — they may know more than they show`
+    : "Take stock of yourself and this place before you commit to a path";
   const move = moves.length
-    ? `Head toward ${moves[0]}`
-    : "Press on and explore further";
+    ? (isStr(objective) ? `Set out toward ${moves[0]} and pursue what you came for` : `Set out toward ${moves[0]} and see where it leads`)
+    : "Press deeper and find out what this place is hiding";
 
   return [investigate, talk, move].map(clip);
 }
@@ -104,6 +152,8 @@ function buildMessages(run) {
   const npcNames = presentNpcs(run).map((npc) => npc.displayName).filter(isStr);
   const moves = availableMoveNames(run);
   const objective = activeObjective(run);
+  const situation = characterSituation(run);
+  const pressures = activePressures(run);
   const recent = Array.isArray(run?.timeline)
     ? run.timeline.slice(-3).map((event) => event?.summary || event?.type).filter(isStr)
     : [];
@@ -111,7 +161,11 @@ function buildMessages(run) {
   const context = [
     `Location: ${isStr(location.name) ? location.name : "Unknown"}${isStr(location.description) ? ` — ${clip(location.description)}` : ""}`,
     `Character: ${isStr(player.displayName) ? player.displayName : "the adventurer"}${isStr(player.className) ? `, ${player.className}` : ""}`,
+    // MOTIVATION anchors (why an action matters to THIS character) — distinct from
+    // the scene-context lines above (what is HERE). See characterSituation / activePressures.
+    situation ? `Who you are: ${situation}` : "",
     objective ? `Current goal: ${objective}` : "",
+    pressures.length ? `Pressures in play: ${pressures.join("; ")}` : "",
     npcNames.length ? `People present: ${npcNames.join(", ")}` : "",
     moves.length ? `Ways onward: ${moves.join(", ")}` : "",
     recent.length ? `Recently: ${recent.join("; ")}` : "",
@@ -123,11 +177,15 @@ function buildMessages(run) {
       role: "system",
       content:
         "You suggest exactly 3 next actions for a player in a solo tabletop RPG. " +
-        "Each is a short imperative phrase (4 to 9 words), concrete and specific to THIS scene. " +
+        "Each is a short imperative phrase (4 to 12 words), concrete and specific to THIS scene. " +
+        "CRUCIAL: each action must be MOTIVATED, not merely possible — connect it to WHY it matters to " +
+        "this character right now (their situation/goal, the pressures in play, or what the scene just set up), " +
+        "so the player feels a reason to act, not just a list of things they are allowed to do. " +
         "The three must vary in approach: one to investigate or examine something here, one to talk to " +
-        "or interact with someone present, and one to move or advance toward the goal. " +
+        "or interact with someone present (or, if no one is here, to get oriented), and one to move or advance toward the goal. " +
+        "Ground every action in what the context establishes; never invent people, places, or objects not present. " +
         "No numbering, no quotes, no commentary. " +
-        'Reply ONLY with a compact JSON array of 3 strings, e.g. ["Search the stalls","Approach the warden","Head for the gate"].'
+        'Reply ONLY with a compact JSON array of 3 strings, e.g. ["Search the drone wreck for salvage worth carrying","Ask Grace what a license actually buys","Take the north road to Hollow Pine while the trail is quiet"].'
     },
     { role: "user", content: context || "A quiet, featureless scene with no clear features yet." }
   ];

@@ -13,6 +13,7 @@ import { buildSoloScenePayload } from "../server/solo/scene.js";
 import { resolveSoloAction } from "../server/solo/actions.js";
 import { resolveAbilityCheck } from "../server/solo/rules.js";
 import { BABEL_STATS } from "../server/solo/babelStats.js";
+import { buildFallbackSuggestions } from "../server/solo/suggestions.js";
 
 const FINGERPRINT = ["ashfall", "ember tavern", "the ember", "grim dark", "dark fantasy", "barrow", "torch-lit", "ruins", "rubble", "scuff", "crumbling", "cobblestone"];
 
@@ -51,10 +52,37 @@ void run0;
 
   // (2) VOICE opening delivered verbatim (set-piece)
   const opening = String(run.openingNarration || "").replace(/\s+/g, " ");
-  for (const beat of ["YOU ARE HEARD", "IT IS CALLED BABEL", "YOUR BODY SLEEPS ELSEWHERE", "I HAVE GIVEN YOU A WINDOW", "BOTH TEACH. CHOOSE"]) {
+  for (const beat of ["YOU ARE HEARD", "IT IS CALLED BABEL", "YOUR BODY SLEEPS ELSEWHERE", "I GIVE YOU A WINDOW", "BOTH TEACH. CHOOSE"]) {
     assert(`VOICE beat "${beat.slice(0, 22)}…" present`, opening.includes(beat), "present", "MISSING");
   }
   assert("sleeps-law: body never called dead without the not-dead framing", /DO NOT CALL IT DEAD/i.test(opening), "not-dead framing", "missing");
+
+  // (2b) DEFECT B — PACED opening + VOICE TEACHES THE WINDOW.
+  // The opening is a server-designated BEAT SEQUENCE (not one wall), and it carries
+  // a WINDOW-teaching beat that makes the STATUS window legible as the guidance tool.
+  const beats = scene.openingBeats;
+  assert("opening is a PACED beat sequence (not one wall)", Array.isArray(beats) && beats.length >= 5, ">=5 beats", `${Array.isArray(beats) ? beats.length : "none"}`);
+  const teach = (beats || []).find((b) => /THE WINDOW IS THE ONE THING I GIVE YOU TWICE|SIX MEASURES OF WHAT YOU ARE/i.test(b));
+  assert("VOICE has a WINDOW-TEACHING beat (makes the window legible)", Boolean(teach), "teaching beat present", "missing");
+  assert("teaching beat names the six measures (stats legible)", /STRENGTH, DEXTERITY, VITALITY, SPIRIT, INTELLECT, AND LUCK/i.test(teach || ""), "six stats named", "not named");
+  assert("teaching beat teaches skills = what you can do", /SKILLS.*THINGS YOU CAN DO|THINGS YOU CAN DO/i.test(teach || ""), "skills taught", "missing");
+  assert("teaching beat frames the window as the always-open guide that does not lie", /ALWAYS OPEN|DOES NOT LIE|WHEN YOU DO NOT KNOW/i.test((beats || []).join(" ")), "window-as-guide taught", "missing");
+  assert("VOICE stays rare (director decision): teaching directs to the WINDOW, not chatty advice", /I WILL SPEAK RARELY|I WILL NOT SPEAK OFTEN/i.test(opening), "rare-voice honored", "missing");
+
+  // (2c) DEFECT A — MOTIVATED suggestions (not cold/disconnected). At the fringe the
+  // player is alone; the fallback must NOT offer the old disconnected "call out and
+  // see who answers", must offer a motivated orientation instead, and must ground
+  // the move in a real exit (Hollow Pine) with a reason to take it.
+  const fb = buildFallbackSuggestions(run);
+  assert("fallback offers exactly 3 suggestions", Array.isArray(fb) && fb.length === 3, "3", `${fb.length}`);
+  assert("no cold disconnected 'call out and see who answers' when alone", !fb.some((s) => /call out and see who answers/i.test(s)), "absent", fb.join(" | "));
+  assert("alone → a MOTIVATED orientation is offered (get your bearings), not a phantom call", fb.some((s) => /take stock|bearings|before you commit/i.test(s)), "orientation hook", fb.join(" | "));
+  assert("the move suggestion is grounded in a real exit (Hollow Pine) AND motivated", fb.some((s) => /hollow pine/i.test(s) && /(pursue|see where it leads|came for)/i.test(s)), "grounded+motivated move", fb.join(" | "));
+  assert("the investigate suggestion is grounded in the committed location", fb.some((s) => /green static|fringe/i.test(s)), "grounded search", fb.join(" | "));
+  // The motivation layer can read the thread pressures (the scene payload exposes
+  // non-hidden threads); front_salvage is rumored, so it is a live pressure source.
+  const surfacedThreads = (scene.threads || []).map((t) => t.threadId);
+  assert("thread layer is available to motivate suggestions (rumored front surfaces)", surfacedThreads.includes("front_salvage"), "front_salvage surfaced", surfacedThreads.join(",") || "none");
 
   // (3) Awakening Origin (the Beckoned) applied as the race slot
   assert("player origin is The Beckoned", p.origin === "The Beckoned", "The Beckoned", p.origin);

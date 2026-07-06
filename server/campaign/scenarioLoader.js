@@ -291,6 +291,17 @@ export function loadScenarioIntoRun(run, scenario, options = {}) {
   }
   void startRef;
 
+  // Locations the OPENING makes KNOWN (the VOICE named the town to the north): the
+  // character has been told of them, so they are DISCOVERED — a legitimate told-of-
+  // knowledge event, exactly as a campaign main quest discovers its named
+  // destination (onboarding.js). This keeps the first move a NAMED, motivated step
+  // ("take the north road to Hollow Pine") instead of a fogged "unexplored path",
+  // giving the opening real traction.
+  for (const ref of Array.isArray(scenario.opening?.knownLocations) ? scenario.opening.knownLocations : []) {
+    const loc = run.locations[resolveLocationRef(ref)];
+    if (loc && loc.state && typeof loc.state === "object") loc.state.discovered = true;
+  }
+
   // 5. FAIL-LOUD — the whole run must validate after loading.
   const runV = validateSoloRun(run);
   if (!runV.ok) {
