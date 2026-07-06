@@ -567,6 +567,41 @@ are Book Two fuel. Priced as signatures (whitelist entries at full budget):
 **DG — zero instances (locked boundary).** The tier exists in the §4.3
 contract; no DG skill is defined, named, or held anywhere in Book One.
 
+**Flavor gloss — one line each, voiced to source [INVENTED — flavor only; every
+rank, stat, effect, budget, source above is LOCKED].** Charter reads
+tactical/corporate (rigs, rounds, overwatch); Assembly reads martial-artistry
+(forms, tempo, sky, the blade); Office reads containment/ritual (wards, seals,
+silence).
+
+*B — association patronage:*
+- **Smart Rounds** — Charter-issue guided ammunition; the rig runs the ballistics so the hunter only has to point.
+- **Overwatch Rig** — a deployed weapons drone slaved to your optics, taking the shot you didn't have the action for.
+- **Falling-Sky Art** — an Assembly overhead form: the whole body dropped through the strike, the world briefly slower for it.
+- **Duelist's Tempo** — raid-floor footwork drilled to reflex; you stand always half a beat inside the enemy's.
+- **Bastion Ward** — a held containment glyph, the Office's first lesson: stand still, and nothing gets through.
+- **Sanction Seal** — a silencing mark pinned to a throat or a maw; whatever wears it stops being able to answer.
+- **Salvager's Eye** — the broker's gift: you see the one crate worth carrying out before anyone else does.
+- **Breach Discipline** — trained to take the first hit and move anyway, the flinch converted into a step.
+
+*A — deep zones and the Threshold floors:*
+- **Stag-Breaker** — cut from killing an EZ-44-class heart; the blow that finally put the Stag's kin down, kept by the ones who lived.
+- **Static Walk** — you move the way the Green Static does: there, then not, and the swing meets air.
+- **Floor Grammar** — the Tower is written in a language and you have begun to read it; inside its walls, nothing surprises you twice.
+- **Choir Ward** ◆ — Kanbara Rei's teaching ward: a wall that sings when it is struck and hushes whatever struck it. The world has the diagrams, not her.
+- **Red Meridian** ◆ — the Assembly vice-captain's crimson line, a single drawn cut that keeps bleeding after it lands. Documented off floor 10; unteachable without him.
+- **Lantern Law** ◆ — the expedition healer's rule: no one on the rope dies of a thing you could have carried. A light held over a wound until it closes.
+
+*S — Tower-sourced, Book One's ceiling:*
+- **Threshold Vow** — the oath the Threshold asks of anyone who means to pass: the lower you fall, the harder you stand.
+- **Hundred-Hand Art** — a trial-floor form remembered from the first climbers' graves; one hunter, the strike-storm of ten.
+- **Signal Zero** — the last legible thing on floor 9, a cipher that, spoken, cuts the enemy's own signals to silence.
+- **Ghostlight Step** — you learn to walk the way the Tower's dead do: too fast to be where the blow lands.
+
+*SS / SSS — the trapped legends' signatures (unobtainable in Book One):*
+- **Pale Meridian** — Yoo Ha-eun's sword drawn to its end, a pale arc that takes a line of enemies at once and leaves her faster for each that falls; the move the highlight reels are made of.
+- **The Shut Door** — the Office's masterwork made personal: a wall around the whole party that answers every blow with silence. Nothing Kanbara closes has been opened.
+- **Longitude** — the rig-art's horizon, a line of fire that speaks on every tick of the clock for a full round; one of four such arts on Earth, and the reason the Coalition reached floor 10 at all.
+
 ---
 
 ## 5. Hunter RANK — the amalgamation formula [PROPOSED]
@@ -852,6 +887,46 @@ where the legends stopped**. Quest anchor:
   wake — and everything from floor 11 up is virgin narration, per the
   knowledge split. **Lebab remains secret throughout** (§8.3); nothing on
   floor 10 references the hinge.
+
+### 8.1b THE FIRST ASCENT COALITION — the world's edge, and its rumor [INVENTED — member characters and the world's rumor of the trap; canon — the Coalition, the trap, the three named legends]
+
+When the VOICE spoke and Babel opened, no single association could crew a first
+ascent: the black door reads souls and the Threshold kills the under-ranked
+(§8.1), so the three majors did the one thing they never do and pooled their
+champions. The **First Ascent Coalition** was that team — a joint, multi-flag
+expedition under one banner of convenience, the best hunters three nations could
+field, sent to chart the Tower before any rival could plant a flag first.
+Command was the Charter's; the raid core was the Assembly's; the wards were the
+Office's; a bench of S-ranks and a contract healer rounded it out. It reached
+**floor 10 — the deepest any human has stood — and stopped there.** Comm
+fragments still arrive; no relief team has ever reached them; the world's map
+ends exactly where they did.
+
+The three flags each sent a legend, and the national coding is the whole point.
+**Dane Okafor** — Charter marshal-commander, one of four SSS alive — is the
+logistics mind who made a three-flag team hold together at all: a planner the
+tabloids paint cold and the last fragments call the reason anyone up there is
+still breathing. **Yoo Ha-eun** — Seoul Assembly raid-captain — is the world's
+most famous living hunter, a blade prodigy with an agency and a highlight reel,
+the face on every vigil poster. **Kanbara Rei** — Quiet Office containment
+master — is her opposite in every way the Office prefers: no endorsements, no
+interviews, the specialist who builds the wall everyone else fights behind.
+Beneath them the names the families say and the world barely knows: the
+Assembly's trapped vice-captain **[INVENTED: Seo Kang-woo]**, whose Red Meridian
+◆ the world only has diagrams of, and the expedition's healer **[INVENTED: Marta
+Vey]**, whose Lantern Law ◆ is the reason the fragments still count the same
+names.
+
+What actually holds them is authored floor-10 truth the world does not have
+(§8.1a — *the world's theories are all wrong*) — so the world argues instead of
+knowing. The Charter's rumor is a one-way gate that sealed behind them. The
+Assembly's is a guardian on the Held Floor they can neither beat nor die to — a
+stalemate dressed as a siege. The Office says quietly what no family will
+repeat: that floor 10 is where the Tower begins charging its price in *soul*,
+and the Coalition is less trapped than *spending*. Every Gate Queue negotiation
+(§3.2) runs under this — the vigils, the day-count chyron, and the one phrase the
+newsfeeds kept when the last clean fragment came up the shaft: **[INVENTED:
+*"the Tenth still holds"*]**. No one knows if it is a status report or a prayer.
 
 ### 8.2 Floor 100 — the reveal
 
