@@ -286,6 +286,10 @@ function startServer() {
       ...process.env,
       PORT: String(port),
       NOTDND_HOST: host,
+      // Isolate the smoke run's waitlist writes from the real DB. Without this
+      // the child server defaults to server/db/waitlist.json and every run
+      // appends its fixture emails to production data.
+      NOTDND_WAITLIST_PATH: path.join(os.tmpdir(), `notdnd-smoke-waitlist-${port}.json`),
       NOTDND_MOCK_OPENROUTER: "true",
       NOTDND_STREAM: "true",
       // Seed the demo account the smoke tests log in with (gated off by default
