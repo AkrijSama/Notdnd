@@ -1,6 +1,6 @@
 import { providerSupportsReference, resolveImageProvider } from "../ai/providers.js";
 import { getAvailableSoloActions } from "./actions.js";
-import { MILESTONE_MAX, tierForMilestone } from "./progression.js";
+import { MILESTONE_MAX, tierForMilestone, displayLevelFor, rankForPlayer } from "./progression.js";
 import { getVisibleEntities, validateVisibleEntity } from "./entities.js";
 import { generatePlaceholderGmNarration, validateGmSceneOutput } from "./gm.js";
 import { getAvailableMoves } from "./movement.js";
@@ -678,6 +678,24 @@ export function buildPlayerPayload(run) {
         ? player.milestone
         : Math.min(MILESTONE_MAX, typeof player.level === "number" ? player.level : 1)
     ).label,
+    // The milestone counter itself (the engine's one progression truth) + the
+    // world-book display level. A Babel STATUS WINDOW reads these: displayLevel is
+    // the "LEVEL n" the world speaks, milestone drives the tier and content gates.
+    // No world-book map ⇒ displayLevel === milestone (identity).
+    milestone: typeof player.milestone === "number"
+      ? player.milestone
+      : Math.min(MILESTONE_MAX, typeof player.level === "number" ? player.level : 1),
+    displayLevel: displayLevelFor(
+      typeof player.milestone === "number" ? player.milestone : Math.min(MILESTONE_MAX, typeof player.level === "number" ? player.level : 1),
+      typeof player.xp === "number" ? player.xp : 0,
+      run?.worldBook?.progressionMap
+    ),
+    // Babel hunter rank (spec §5 RMS); "UNASSESSED" until a ranked skill is held.
+    // A display readout only — gates read the milestone, never this.
+    rank: rankForPlayer(player),
+    // The player's Awakening Origin (Babel's race slot) + its feat, when set.
+    origin: isString(player.origin) ? player.origin : null,
+    originFeat: isString(player.originFeat) ? player.originFeat : null,
     // State contract fields:
     xp: typeof player.xp === "number" ? player.xp : 0,
     resources: { hp: hpGauge, mp: mpGauge },
@@ -1121,7 +1139,11 @@ export function buildSoloScenePayload(run, options = {}) {
     // (C.25) — run.world.name is the single source of truth.
     world: {
       name: isString(run.world?.name) ? run.world.name : "",
-      tone: isString(run.world?.tone) ? run.world.tone : ""
+      tone: isString(run.world?.tone) ? run.world.tone : "",
+      // World-family discriminator (e.g. "babel"). The client keys its STATUS
+      // WINDOW off this — Babel renders the six-stat / rank / milestone panel
+      // instead of the default D&D AC/Speed/Mana sheet. Empty for default worlds.
+      variant: isString(run.world?.variant) ? run.world.variant : ""
     },
     vnMode: vnState.active,
     speakerId: vnState.speakerId,

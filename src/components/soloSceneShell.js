@@ -1113,7 +1113,7 @@ function formatMod(mod) {
 // Maps the server scene.player projection into the character sidebar/sheet shape
 // (SOLO_SAMPLE_CHARACTER). AC/speed aren't tracked on run.player, so the payload
 // sends null and we default here. Returns null when no player is present.
-export function characterFromScenePlayer(player) {
+export function characterFromScenePlayer(player, world = null) {
   if (!player || typeof player !== "object") {
     return null;
   }
@@ -1151,10 +1151,35 @@ export function characterFromScenePlayer(player) {
     name: full.charAt(0).toUpperCase() + full.slice(1),
     mod: formatMod(abilityModifier(Number(ab[full]) || 10))
   }));
+  // BABEL STATUS WINDOW (world-book §2.3): when the run is the Babel world-family
+  // (scene.world.variant === "babel"), the sheet is the VOICE's diegetic WINDOW —
+  // six relabeled stats (STR/DEX/VIT/Spirit/INT/Luck), a displayed Level + tier, a
+  // hunter Rank (or UNASSESSED), the Awakening Origin, and HP. No AC/Speed/Mana/
+  // D&D layout. The server owns the truth; this only relabels + reorders it.
+  const isBabel = Boolean(world && typeof world === "object" && world.variant === "babel");
+  const BABEL_STAT_ORDER = [
+    ["STR", "strength"], ["DEX", "dexterity"], ["VIT", "constitution"],
+    ["Spirit", "wisdom"], ["INT", "intelligence"], ["Luck", "charisma"]
+  ];
+  const babel = isBabel
+    ? {
+        origin: typeof player.origin === "string" ? player.origin : "The Beckoned",
+        originFeat: typeof player.originFeat === "string" ? player.originFeat : "",
+        rank: typeof player.rank === "string" ? player.rank : "UNASSESSED",
+        displayLevel: typeof player.displayLevel === "number" ? player.displayLevel : (typeof player.level === "number" ? player.level : 1),
+        milestoneTier: typeof player.milestoneTier === "string" ? player.milestoneTier : "",
+        stats: BABEL_STAT_ORDER.map(([key, full]) => {
+          const score = Number.isFinite(Number(ab[full])) ? Number(ab[full]) : 10;
+          return { key, score, mod: formatMod(abilityModifier(score)) };
+        })
+      }
+    : null;
   return {
     name: player.displayName || "Adventurer",
     className: player.className || "Adventurer",
-    level: typeof player.level === "number" && Number.isFinite(player.level) ? player.level : 1,
+    level: babel ? babel.displayLevel : (typeof player.level === "number" && Number.isFinite(player.level) ? player.level : 1),
+    // Babel STATUS WINDOW data (null for non-Babel worlds → default D&D sheet).
+    babel,
     hitPoints: { current: hp.current ?? 0, max: hp.max ?? 0 },
     // State contract: HP/MP gauges, XP, inventory, conditions — surfaced live.
     mana: { current: mp.current ?? 0, max: mp.max ?? 0 },
@@ -1223,7 +1248,91 @@ function gaugePct(gauge) {
   return max > 0 ? Math.max(0, Math.min(100, Math.round((cur / max) * 100))) : 0;
 }
 
+// BABEL STATUS WINDOW — the VOICE's diegetic character sheet (world-book §2.3):
+// six stats (STR/DEX/VIT/Spirit/INT/Luck), displayed Level + tier band, hunter
+// Rank (UNASSESSED until a ranked skill is held), the Awakening Origin, and HP.
+// No AC/Speed/Mana/D&D readouts — those are a different world's chassis dressing.
+// "THE WINDOW DOES NOT LIE."
+export function renderBabelStatusWindow(character = SOLO_SAMPLE_CHARACTER) {
+  const b = character.babel || {};
+  const hp = character.hitPoints || { current: 0, max: 0 };
+  const hpPct = gaugePct(hp);
+  const stats = (b.stats || [])
+    .map(
+      (s) => `
+        <div class="solo-ability-cell">
+          <div class="solo-ability-key">${escapeHtml(s.key)}</div>
+          <div class="solo-ability-mod">${escapeHtml(s.mod)}</div>
+          <div class="solo-ability-score">${escapeHtml(s.score)}</div>
+        </div>
+      `
+    )
+    .join("");
+  const inventory = Array.isArray(character.inventory) ? character.inventory : [];
+  const inventoryHtml = inventory.length
+    ? inventory
+        .map((item) => {
+          const name = typeof item?.name === "string" && item.name ? item.name : item?.id || "Item";
+          const qty = Number(item?.qty);
+          const qtyTag = Number.isFinite(qty) && qty > 1 ? `<span class="solo-inv-qty">×${qty}</span>` : "";
+          return `<li class="solo-inv-item"><span class="solo-inv-name">${escapeHtml(name)}</span>${qtyTag}</li>`;
+        })
+        .join("")
+    : `<li class="solo-inv-empty">You carry nothing.</li>`;
+  const conditions = Array.isArray(character.conditions) ? character.conditions : [];
+  const conditionsHtml = conditions.length
+    ? conditions
+        .map((cond) => {
+          const name = typeof cond?.name === "string" && cond.name ? cond.name : cond?.id || "Condition";
+          return `<div class="solo-condition"><span class="solo-condition-dot"></span><div><div class="solo-condition-name">${escapeHtml(name)}</div></div></div>`;
+        })
+        .join("")
+    : `<div class="solo-condition-empty">No active conditions.</div>`;
+  const skillCount = Array.isArray(character.skills) ? character.skills.length : 0;
+  return `
+    <aside class="solo-game-sidebar solo-babel-window" data-window="babel">
+      <div class="solo-portrait" data-portrait-for="player" data-portrait-img-class="solo-portrait-img">${character.portraitUri ? `<img class="solo-portrait-img" src="${escapeHtml(character.portraitUri)}" alt="${escapeHtml(character.name || "Character")} portrait" />` : `<div class="solo-portrait-pending"><span class="solo-portrait-spinner" aria-hidden="true"></span><small>Crafting your portrait… (~20s)</small></div>`}</div>
+      <div class="solo-sidebar-identity">
+        <div class="solo-stat-kicker">◄ STATUS ►</div>
+        <div class="solo-char-name">${escapeHtml(character.name)}</div>
+        <div class="solo-char-sub">Level ${escapeHtml(b.displayLevel)} · ${escapeHtml(b.milestoneTier || "")}</div>
+      </div>
+      <div class="solo-sidebar-block">
+        <div class="solo-passive-row"><span>RANK</span><span>${escapeHtml(b.rank || "UNASSESSED")}</span></div>
+        <div class="solo-passive-row"><span>ORIGIN</span><span>${escapeHtml(b.origin || "The Beckoned")}</span></div>
+      </div>
+      <div class="solo-sidebar-block">
+        <div class="solo-gauge-row">
+          <span class="solo-stat-kicker">Vitality</span>
+          <span class="solo-hp-value">${escapeHtml(hp.current)} <span>/ ${escapeHtml(hp.max)}</span></span>
+        </div>
+        <div class="solo-gauge-track"><div class="solo-gauge-fill solo-hp-fill" style="width:${hpPct}%;"></div></div>
+      </div>
+      <div class="solo-sidebar-block">
+        <div class="solo-stat-kicker">Attributes</div>
+        <div class="solo-ability-grid">${stats}</div>
+      </div>
+      <div class="solo-sidebar-block">
+        <div class="solo-passive-row"><span>Skills</span><span>${skillCount > 0 ? escapeHtml(skillCount) : "none"}</span></div>
+      </div>
+      <div class="solo-sidebar-block solo-inventory-block">
+        <div class="solo-stat-kicker">Inventory</div>
+        <ul class="solo-inv-list">${inventoryHtml}</ul>
+      </div>
+      <div class="solo-sidebar-block solo-conditions-block">
+        <div class="solo-stat-kicker">Conditions</div>
+        ${conditionsHtml}
+      </div>
+      <div class="solo-sidebar-block solo-window-motto">[ THE WINDOW DOES NOT LIE. ]</div>
+    </aside>
+  `;
+}
+
 export function renderSoloCharacterSidebar(character = SOLO_SAMPLE_CHARACTER) {
+  // BABEL: the diegetic STATUS WINDOW replaces the D&D sheet entirely (§2.3).
+  if (character && character.babel) {
+    return renderBabelStatusWindow(character);
+  }
   const hp = character.hitPoints || { current: 0, max: 0 };
   const mp = character.mana || { current: 0, max: 0 };
   const hpPct = gaugePct(hp);
@@ -3807,7 +3916,7 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
           gmStatus: state.scene?.gmStatus || null
         };
         if (refreshed?.player) {
-          state.character = characterFromScenePlayer(refreshed.player);
+          state.character = characterFromScenePlayer(refreshed.player, refreshed.world || state.scene?.world);
         }
         // Targeted update: only swap newly-available portraits + the location
         // background in place rather than rebuilding the whole shell (which
@@ -3842,7 +3951,7 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       if (state.scene && state.scene.player) {
         // Surface the player's real character (falls back to the sample only
         // when the payload genuinely lacks a player).
-        state.character = characterFromScenePlayer(state.scene.player);
+        state.character = characterFromScenePlayer(state.scene.player, state.scene.world);
       }
       // Adopt persisted battle-map positions (Phase 2) if the run has them.
       if (state.scene?.battleMap?.positions && typeof state.scene.battleMap.positions === "object") {

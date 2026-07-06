@@ -2274,7 +2274,110 @@ async function scenarioLocationSource(ctx) {
   await searchAndAudit("search @ The Sprawl Fringe");
 }
 
+// BABEL STARTER SLICE — the first gradeable Babel content, proven over HTTP on a
+// deliberately-contaminating worldgen base (Ashfall/ruins). Asserts, live: the
+// authored VOICE opening delivered verbatim (set-piece), ZERO worldgen bleed on
+// every committed surface, the Awakening Origin (the Beckoned) applied, the Babel
+// STATUS WINDOW payload (six stats, displayed level+tier, rank UNASSESSED), safe
+// conversation never rolls (Ch3 Law 1), and a real check landing a three-band
+// outcome that commits state. Reuses the location_source harness machinery.
+async function scenarioBabel(ctx) {
+  const authored = loadAuthoredScenario("babel");
+  const authoredFrontIds = (authored.fronts || []).map((f) => f.frontId);
+
+  const r = await newScenarioRun("babel");
+  ctx.runId = r.runId; ctx.token = r.token; ctx.campaignId = r.campaignId;
+  const prov = await answeringModel(r);
+  ctx.note(`babel loaded over an Ashfall-Reach/ruins worldgen base — ${provTag(prov)}`);
+
+  const s0 = (await scene(r)).json;
+
+  // (1) WORLD IDENTITY — the scenario is the sole setting; the Babel variant flag
+  // is set (the client keys the STATUS WINDOW off it).
+  ctx.assert("world name is Babel (authored world is the source of truth)", s0.world?.name === "Babel", "Babel", s0.world?.name || "(none)");
+  ctx.assert("world variant flag is 'babel' (STATUS WINDOW discriminator crosses the wire)", s0.world?.variant === "babel", "babel", s0.world?.variant || "(none)");
+  ctx.assert("committed start location is the authored Green Static fringe", String(s0.location?.name || "").toLowerCase() === "the green static — fringe", "The Green Static — Fringe", s0.location?.name || "(none)");
+
+  // (2) THE VOICE OPENING — delivered VERBATIM as a set-piece (§2.2 six beats).
+  const opening = String(s0.openingNarration || "").replace(/\s+/g, " ");
+  for (const beat of ["YOU ARE HEARD", "IT IS CALLED BABEL", "YOUR BODY SLEEPS ELSEWHERE", "I HAVE GIVEN YOU A WINDOW", "BOTH TEACH. CHOOSE"]) {
+    ctx.assert(`VOICE opening carries the authored beat "${beat.slice(0, 24)}…"`, opening.includes(beat), "authored beat present", opening ? "beat missing" : "(no opening)");
+  }
+  ctx.assert("VOICE opening never calls the body dead (sleeps-law)", !/\bdead\b/i.test(opening) || /NOT DEAD|DO NOT CALL IT DEAD/i.test(opening), "sleeps-law honored", "the word 'dead' leaked without the not-dead framing");
+
+  // (3) AWAKENING ORIGIN — the Beckoned is applied as the race slot (real boost + feat).
+  ctx.assert("player origin is The Beckoned (Awakening Origin applied)", s0.player?.origin === "The Beckoned", "The Beckoned", s0.player?.origin || "(none)");
+  ctx.assert("origin feat is the STATUS WINDOW", /window/i.test(String(s0.player?.originFeat || "")), "The STATUS WINDOW", s0.player?.originFeat || "(none)");
+
+  // (4) STATUS WINDOW payload — the six stats, displayed level + tier, rank.
+  const ab = s0.player?.abilities || {};
+  const hasSix = ["strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma"].every((k) => typeof ab[k] === "number");
+  ctx.assert("STATUS WINDOW carries the six ability scores (relabeled STR/DEX/VIT/INT/Spirit/Luck client-side)", hasSix, "six stats present", JSON.stringify(ab));
+  ctx.assert("rank reads UNASSESSED at zero ranked skills (spec §5)", s0.player?.rank === "UNASSESSED", "UNASSESSED", String(s0.player?.rank));
+  ctx.assert("displayed level is 1 at milestone 1 (identity mapping, no world-book map)", s0.player?.displayLevel === 1, "1", String(s0.player?.displayLevel));
+  ctx.assert("milestone tier is Tier I — Local", s0.player?.milestoneTier === "Tier I — Local", "Tier I — Local", String(s0.player?.milestoneTier));
+  ctx.note(`STATUS WINDOW: origin=${s0.player?.origin} · rank=${s0.player?.rank} · L${s0.player?.displayLevel} ${s0.player?.milestoneTier} · STR ${ab.strength}/DEX ${ab.dexterity}/VIT ${ab.constitution}/INT ${ab.intelligence}/Spirit ${ab.wisdom}/Luck ${ab.charisma} · HP ${s0.player?.hitPoints?.current}/${s0.player?.hitPoints?.max}`);
+
+  // (5) authored fronts present (world seeded; the three association fronts).
+  const threadIds = (s0.threads || []).map((t) => t.threadId);
+  for (const fid of authoredFrontIds) {
+    ctx.assert(`authored front '${fid}' present (scenario fully loaded)`, threadIds.includes(fid), fid, threadIds.length ? threadIds.join(",") : "no threads");
+  }
+
+  // (6) NO WORLDGEN BLEED at the opening (committed state + suggestions; prose WARNs).
+  assertScenarioSetting(ctx, { label: "opening @ the fringe", authored, scene: s0, narration: "" });
+
+  // (7) travel to Hollow Pine — setting stays authored; the town cast loaded.
+  await act(r, { type: "move", actorId: "player", toLocationId: "second_location" });
+  const town = (await scene(r)).json;
+  assertScenarioSetting(ctx, { label: "at Hollow Pine", authored, scene: town });
+  const townCast = (town.cast || []).map((c) => c.npcId || c.entityId || c.id);
+  for (const nid of ["npc_marshal", "npc_barkeep", "npc_broker", "npc_medic"]) {
+    ctx.assert(`Hollow Pine cast '${nid}' present`, townCast.includes(nid), nid, townCast.length ? townCast.join(",") : "no cast");
+  }
+
+  // (8) CH3 LAW LIVE — safe conversation with the cast NEVER rolls (the Talk-to-Vesa
+  // class of bug must not reappear in Babel).
+  const talk = await act(r, { type: "attempt", actorId: "player", intent: "talk to Marshal Grace about getting licensed" });
+  ctx.assert("safe conversation with Grace does NOT roll (Ch3 Law 1)", talk.json.attemptResult?.needsCheck === false, "needsCheck:false", `needsCheck:${talk.json.attemptResult?.needsCheck}`);
+  ctx.assert("safe conversation cannot fail", talk.json.attemptResult?.success === true, "success:true", `success:${talk.json.attemptResult?.success}`);
+
+  // (9) A REAL CHECK — a Static hazard, forced to a known roll, lands a three-band
+  // outcome that COMMITS state (the check economy live in Babel). Miss by 7 → the
+  // FAILURE band; the situation changes (HP committed).
+  await act(r, { type: "move", actorId: "player", toLocationId: "start_location" });
+  const hpBefore = hpOf((await scene(r)).json).current;
+  const hazard = await act(r, {
+    type: "attempt", actorId: "player",
+    intent: "force my way through a knot of corrupted, thorn-wired brush blocking the trail",
+    testHook: { fixedRoll: 5, providerOutput: {
+      summary: "You attempt: force through the corrupted brush", recommendedAbility: "strength", dc: 12,
+      needsCheck: true, edge: false, burden: false,
+      successNarration: "You tear through.", failureNarration: "The thorns tear back.",
+      proposedEffects: [], failureConsequence: { type: "damage", amount: 3, reason: "the wrong-grown thorns open your forearms" }
+    } }
+  });
+  const har = hazard.json.attemptResult || {};
+  ctx.assert("a real Static check rolls a d20 (three-band resolution engaged)", har.needsCheck === true && har.checkResult, "needsCheck:true + roll", `needsCheck:${har.needsCheck}`);
+  ctx.assert("miss by 5+ lands the FAILURE band (Ch3 Law 2)", har.band === "failure", "failure", String(har.band));
+  ctx.assert("the failed check COMMITS state (HP dropped — never a dead turn)", har.consequence?.applied === true, "applied:true", `applied:${har.consequence?.applied}`);
+  const hpAfter = hpOf((await scene(r)).json).current;
+  ctx.assert("the committed cost is visible in the STATUS WINDOW (HP fell)", hpAfter < hpBefore, `hp < ${hpBefore}`, `hp ${hpAfter}`);
+
+  // (10) a SEARCH of the fringe surfaces only authored detail (no default-world
+  // searchDetail — e.g. the "Scuffed Mark" — survived the override).
+  const search = await act(r, { type: "attempt", actorId: "player", intent: "I search the tree-line and the wrong-grown moss for anything worth noting." });
+  const sN = (await scene(r)).json;
+  assertScenarioSetting(ctx, { label: "search @ the fringe", authored, scene: sN, narration: String(search.json?.gmNarration || "") });
+  const revealed = (sN.discoveredDetails || []).map((d) => `${d.label || ""} ${d.description || ""}`).join("  ").toLowerCase();
+  const leaked = WORLDGEN_FINGERPRINT.filter((t) => revealed.includes(t));
+  ctx.assert("a fringe search surfaces only scenario-authored detail (no default searchDetail survived)", leaked.length === 0, "authored detail only", leaked.length ? `LEAKED: ${leaked.join(", ")}` : "clean");
+
+  ctx.note(`babel slice: VOICE verbatim, origin=Beckoned, STATUS WINDOW clean, safe-talk no-roll, Static check FAILURE band committed ${hpBefore}→${hpAfter} HP`);
+}
+
 const SCENARIOS = [
+  { key: "babel", title: "BABEL STARTER SLICE — VOICE opening (set-piece), zero worldgen bleed, Awakening Origin, STATUS WINDOW, Ch3 live (safe talk no-roll + three-band check)", fn: scenarioBabel, scenarioMode: true },
   { key: "consequence", title: "CONSEQUENCE — actions mutate persisted state", fn: scenarioConsequence },
   { key: "possession", title: "POSSESSION — claimed items checked vs real inventory (retcons fail, improvisation rolls)", fn: scenarioPossession },
   { key: "failure", title: "MEANINGFUL FAILURE (hook) — engine enforces every consequence type", fn: scenarioFailureConsequence },

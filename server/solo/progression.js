@@ -83,6 +83,34 @@ export function tierForMilestone(milestone) {
   return { band, label: TIER_LABELS[band] };
 }
 
+// ── Babel hunter RANK — the amalgamation formula (world-book spec §5) ──────────
+// Rank is the root-mean-square of a hunter's skill rank indices (E=1 … DG=9),
+// mapped back onto the ladder. A hunter with NO ranked skills is UNASSESSED — the
+// world's assessment rigs (and the Beckoned's WINDOW) have nothing to measure yet.
+// Pure; the rank ladder is chassis-fixed (spec §4.3). This is a DISPLAY readout;
+// no server logic gates on it (gates read the milestone — see meetsTier).
+export const RANK_LADDER = Object.freeze(["E", "D", "C", "B", "A", "S", "SS", "SSS", "DG"]);
+
+/** RMS of skill rank indices (1..9) → a ladder rank; "UNASSESSED" when empty. */
+export function rankFromSkillIndices(indices) {
+  const arr = (Array.isArray(indices) ? indices : []).filter((n) => Number.isFinite(n) && n >= 1 && n <= 9);
+  if (arr.length === 0) return "UNASSESSED";
+  const rms = Math.sqrt(arr.reduce((sum, n) => sum + n * n, 0) / arr.length);
+  const idx = Math.min(RANK_LADDER.length, Math.max(1, Math.round(rms)));
+  return RANK_LADDER[idx - 1];
+}
+
+/**
+ * A player's displayed hunter rank. Reads ranked skills off player.babelSkills
+ * (array of rank indices, or objects carrying { rankIndex }). No ranked skills
+ * (the Book One starter state) → "UNASSESSED". Pure; never throws.
+ */
+export function rankForPlayer(player) {
+  const skills = Array.isArray(player?.babelSkills) ? player.babelSkills : [];
+  const indices = skills.map((s) => (typeof s === "number" ? s : (isNumber(s?.rankIndex) ? s.rankIndex : NaN)));
+  return rankFromSkillIndices(indices);
+}
+
 // ── Phase 2: the world-book display-mapping contract (delta §3c) ─────────────
 //
 // A world book may supply run.worldBook.progressionMap:

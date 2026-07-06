@@ -283,13 +283,16 @@ export function createApiClient(baseUrl = "") {
         body: JSON.stringify({ definition, field, salt })
       });
     },
-    async createWorldRun({ world, character, draftPortraitId = null, mode = "sandbox" }) {
+    async createWorldRun({ world, character, draftPortraitId = null, mode = "sandbox", scenarioId = null }) {
       // mode: "sandbox" (open world, no authored spine — the default) or
       // "campaign" (guided adventure: main quest, job offers, a destination).
       // The server honors payload.mode; absent still means sandbox (index.js).
+      // scenarioId: an authored world-book (e.g. "babel") — the server loads it as
+      // the SOLE source of setting truth. Requires a non-sandbox mode (the loader
+      // ignores a scenario for a sandbox run), so callers force mode:"campaign".
       return request("/api/onboarding/world-run", {
         method: "POST",
-        body: JSON.stringify({ world, character, draftPortraitId, mode })
+        body: JSON.stringify({ world, character, draftPortraitId, mode, scenarioId })
       });
     },
     // Mid-creation portrait: request generation (server returns a draftId) and

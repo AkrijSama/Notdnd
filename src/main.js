@@ -1026,7 +1026,11 @@ async function enterWorld() {
       // the authored campaign spine (main quest, job offers, destination);
       // anything else stays the sandbox default. Read from worldDef, not the
       // server-resolved worldPreview (client-only field, not round-tripped).
-      mode: (uiState.onboarding.worldDef?.startMode === "guided") ? "campaign" : "sandbox"
+      // An authored world-book (scenarioId, e.g. Babel) ALWAYS runs campaign — the
+      // scenario loader ignores a scenario for a sandbox run, so a picked world
+      // forces mode:"campaign".
+      scenarioId: uiState.onboarding.worldDef?.scenarioId || null,
+      mode: (uiState.onboarding.worldDef?.scenarioId || uiState.onboarding.worldDef?.startMode === "guided") ? "campaign" : "sandbox"
     });
     if (response?.runId) {
       stopDraftPortraitPoll();
@@ -1063,8 +1067,9 @@ async function startOnboarding(payload) {
         chosenSkills: payload.chosenSkills,
         pronouns: payload.pronouns
       },
-      // Same start-mode wiring as the wizard path (F1).
-      mode: (uiState.onboarding.worldDef?.startMode === "guided") ? "campaign" : "sandbox"
+      // Same start-mode + authored-world wiring as the wizard path (F1).
+      scenarioId: uiState.onboarding.worldDef?.scenarioId || null,
+      mode: (uiState.onboarding.worldDef?.scenarioId || uiState.onboarding.worldDef?.startMode === "guided") ? "campaign" : "sandbox"
     });
     if (response?.runId) {
       window.location.search = `?soloRunId=${encodeURIComponent(response.runId)}`;

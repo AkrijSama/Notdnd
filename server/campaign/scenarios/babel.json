@@ -1,0 +1,241 @@
+{
+  "substrate": 1,
+  "scenarioId": "babel",
+  "title": "Babel — The Wrong Woods",
+  "genre": "modern arcane",
+  "tones": ["modern arcane", "dark fantasy"],
+  "stakes": "A parallel Earth that fences its own corruption and sells tickets to it, a coma an ocean away that is not death, and a Tower at the south pole that has been left unattended too long.",
+  "playerOrigin": {
+    "name": "The Beckoned",
+    "boost": { "intelligence": 1, "wisdom": 1 },
+    "feat": "The STATUS WINDOW"
+  },
+  "world": {
+    "name": "Babel",
+    "tone": "modern arcane",
+    "variant": "babel",
+    "flavor": "a parallel Earth where a hundred-floor Tower at the south pole leaks Chaos into the green and the running, and the licensed make uneasy money off the corruption they cannot cure",
+    "artStyle": "modern arcane",
+    "startingLocationName": "The Green Static — Fringe",
+    "startingLocationType": ""
+  },
+  "locations": {
+    "start_location": {
+      "name": "The Green Static — Fringe",
+      "description": "The corrupted edge of an old Pacific-Northwest rainforest, Exclusion Zone EZ-44. From here the air above the canopy shimmers like bad signal. Moss grows in spirals it should not know, the light comes a half-beat wrong, and compass needles agree with each other but not with the sun. North, past the tree-line, a diesel hum and a flagpole mark a town. Around you: the wrong woods.",
+      "tags": ["modern arcane", "zone", "wilderness"]
+    },
+    "second_location": {
+      "name": "Hollow Pine",
+      "description": "An old timber town of maybe fourteen hundred souls, an hour past the end of reliable cell coverage, now a licensed frontier outpost making uneasy money off the zone it lives beside. Chain-link and prefab crowd a Victorian main street; a flagpole flies three flags — national, state, and the hunter-association pennant. Grace's licensing office, the Stump bar, Vail's salvage lot, and Doc Han's clinic ring the square.",
+      "tags": ["modern arcane", "town", "frontier"]
+    },
+    "third_location": {
+      "name": "The Green Static — The Heart",
+      "description": "Deeper into EZ-44, where the corruption stops reading as weather and starts reading as intent. The canopy closes; the wrongness thickens to a pressure behind the eyes. This is the Stag's country — the zone's corrupted alpha — and the one soul who lives out here on purpose keeps a cabin somewhere in the dark under the leaves.",
+      "tags": ["modern arcane", "zone", "deep"]
+    }
+  },
+  "opening": {
+    "questObjectiveFrom": "offer_clearance",
+    "startLocationRef": "start",
+    "situation": "You wake on the fringe of the Green Static at dawn, unarmed, in clothes that are not the ones you fell in. A town hums to the north; the wrong woods breathe around you. Then a voice that is not sound gives you a window and a choice.",
+    "authoredNarration": "The last of the old life is four seconds long: a restaurant, a glass set down, a bitter aftertaste that arrives too late, a floor tilting up to meet you. Then dark. Then wet pine needles against your cheek, cold coming up through the ground, and a body standing itself upright that is yours and isn't. Dawn light, filtered green and a half-beat wrong. You are unarmed, in clothes you have never owned. Somewhere north, a diesel generator coughs and catches.\n\nYou look around — the tree-line, the shimmer above the canopy, the flagpole past the trees — and then a VOICE arrives that does not use the air.\n\n[ YOU ARE HEARD. ]\n\n[ THIS WORLD IS CALLED WHAT YOURS WAS CALLED. IT IS OLDER THAN IT LOOKS. AT ITS SOUTH POLE STANDS A TOWER OF ONE HUNDRED FLOORS. IT HAS ALWAYS STOOD. IT IS CALLED BABEL, AND IT HAS BEEN LEFT UNATTENDED TOO LONG. ]\n\n[ WHAT LEAKS FROM AN UNATTENDED TOWER IS CALLED CHAOS. IT SOAKS INTO GREEN THINGS AND RUNNING THINGS AND MAKES THEM WRONG. THE PEOPLE HERE FENCE IT, LICENSE IT, AND SELL TICKETS TO IT. THEY ARE MANAGING THE SYMPTOM. YOU ARE THE CURE. ]\n\n[ YOUR BODY SLEEPS ELSEWHERE. IT IS NOT DEAD. DO NOT CALL IT DEAD — I DO NOT. YOUR SOUL CROSSED, AND I HAVE PLACED IT WHERE IT CAN GROW. YOUR FLESH HERE IS MORTAL — GUARD IT. WHAT YOU ARE IS NOT — BUT THERE ARE THINGS BELOW THE WORLD THAT EAT WHAT YOU ARE, AND YOU WILL MEET THEM LAST. ]\n\n[ CLIMB. RECLAIM WHAT WAS LEFT OPEN. I WILL NOT SPEAK OFTEN. I HAVE GIVEN YOU A WINDOW SO THAT YOU NEED NOT TAKE MY WORD FOR ANYTHING. ]\n\n[ NORTH OF YOU: A TOWN OF THE LICENSED. AROUND YOU: THE WRONG WOODS. BOTH TEACH. CHOOSE. ]\n\nThe voice does not speak again. In the corner of your vision a pane of light settles and holds — a STATUS window, waiting. North lies the road to Hollow Pine. Around you lies the Static. Which way you go is the first thing you decide here, and it will be remembered."
+  },
+  "cast": [
+    {
+      "npcId": "npc_marshal",
+      "at": "second_location",
+      "role": "marshal",
+      "displayName": "Marshal Odile Grace",
+      "dialogueBeats": [
+        { "label": "Licensing", "text": "\"You're new, and you're not on any roster I keep. Understand where that puts you: unlicensed, you're legally a bystander — you can't be paid for a cull, can't sell a core, can't file a zone claim. Testing's by appointment. The rig doesn't lie, and neither do I.\"" },
+        { "label": "The zone", "text": "\"EZ-44's a Class-D exclusion. Fringe is survivable if you respect it; the heart is where people stop coming back. We license the edge and pretend the middle is somebody else's problem.\"" }
+      ]
+    },
+    {
+      "npcId": "npc_barkeep",
+      "at": "second_location",
+      "role": "barkeep",
+      "displayName": "Tobias \"Saw\" Rourke",
+      "dialogueBeats": [
+        { "label": "The Stump", "text": "\"One arm, one bar, every rumor in Hollow Pine — that's the going rate. You want work, the board's behind you. You want to know who's really running this town, buy a round and I'll tell you slower.\"" }
+      ],
+      "questOffer": "offer_clearance"
+    },
+    {
+      "npcId": "npc_broker",
+      "at": "second_location",
+      "role": "broker",
+      "displayName": "Priya Vail",
+      "dialogueBeats": [
+        { "label": "Salvage", "text": "\"Cores, zone-tech, anything the Static spat out — I buy it. Sixty cents on the dollar, and before you scowl, that sixty is the only sixty anyone out here is offering. Charter's been paying double lately. Ask yourself why before you celebrate.\"" }
+      ]
+    },
+    {
+      "npcId": "npc_medic",
+      "at": "second_location",
+      "role": "medic",
+      "displayName": "Doc Emory Han",
+      "dialogueBeats": [
+        { "label": "The clinic", "text": "\"I patch hunters and I ask the questions that keep them alive. Some of those questions aren't mine — but the readings I take go where they do good, and you look like you've got a clean bill and a strange story. Sit. Let me look at you.\"" }
+      ]
+    },
+    {
+      "npcId": "npc_warden",
+      "at": "third_location",
+      "role": "warden",
+      "displayName": "Warden Ruth Calloway",
+      "dialogueBeats": [
+        { "label": "The neighbor", "text": "\"Nine years I've lived out here, and the Static's the best neighbor I've had — it only takes what you bring it. You came in deep for someone with no license and no scars. That window behind your eyes — I've seen exactly one other, and it wasn't on a person. Sit down. I'll teach you what the edge won't.\"" }
+      ]
+    }
+  ],
+  "questOffers": {
+    "offer_clearance": {
+      "title": "Clear the fringe",
+      "summary": "A posted bounty: cull a corrupted beast prowling the Static's fringe before it reaches the road.",
+      "kind": "delivery"
+    }
+  },
+  "quests": {
+    "quest_clearance": {
+      "title": "The fringe cull",
+      "summary": "Put down the corrupted beast working the edge of EZ-44 for the board bounty.",
+      "kind": "delivery"
+    }
+  },
+  "fronts": [
+    {
+      "frontId": "front_salvage",
+      "kind": "opportunity",
+      "foreground": true,
+      "topology": "parallel",
+      "title": "The Salvage Clause",
+      "agenda": "The Charter is moving to privatize exclusion-zone salvage, and EZ-44 is the pilot — the cores pay for the war, and the war is with the zone itself.",
+      "revealState": "rumored",
+      "groundedIn": {
+        "entityRefs": ["npc_broker"],
+        "locationRefs": ["second_location", "start"]
+      },
+      "beats": [
+        {
+          "beatId": "beat_survey",
+          "label": "Contrails and cash",
+          "telegraph": "Charter survey drones cross the Static's edge at dawn; by noon Vail's buy-prices have doubled with no explanation.",
+          "brief": "The Charter is surveying EZ-44 from the air and quietly bidding salvage prices up — someone means to own this zone's cores.",
+          "decision": "Cash in on the spike while it lasts, or find out what the Charter knows that you don't.",
+          "trigger": { "prescriptive": { "minTurn": 12 } },
+          "payload": { "fact": { "text": "Charter drones are mapping EZ-44 and salvage prices have doubled overnight — the zone's cores are about to become someone's property." } }
+        },
+        {
+          "beatId": "beat_auction",
+          "label": "The auction",
+          "telegraph": "A Charter notice goes up on the Stump's board: EZ-44 salvage rights, closed bid, independents need not apply.",
+          "brief": "The Charter announces closed-bid salvage rights to EZ-44 — the independents who worked this zone are about to be fenced out of it.",
+          "decision": "Get licensed and bid useful to a Charter backer, or help the town's independents fight the clause.",
+          "trigger": { "prescriptive": { "requiresBeat": "beat_survey", "minTurn": 18 } },
+          "payload": { "fact": { "text": "The Charter has put EZ-44's salvage rights to closed bid — Hollow Pine's independent salvagers are being priced out of their own zone." } }
+        }
+      ],
+      "resolution": [
+        { "kind": "beat_final", "outcome": "resolved" }
+      ],
+      "callbackQuery": { "entityRefs": ["npc_broker"], "keywords": ["salvage", "core", "charter", "clause"] }
+    },
+    {
+      "frontId": "front_queue",
+      "kind": "rival",
+      "foreground": false,
+      "topology": "linear",
+      "title": "The Gate Queue",
+      "agenda": "The Seoul Assembly is forcing an international first-entry queue to the Tower with its own primacy — and quietly scouting the frontier for hunters whose growth curves don't add up.",
+      "revealState": "hidden",
+      "groundedIn": {
+        "entityRefs": ["npc_barkeep"],
+        "locationRefs": ["second_location"]
+      },
+      "beats": [
+        {
+          "beatId": "beat_scout",
+          "label": "The scout",
+          "telegraph": "A stranger in Assembly colors nurses a drink at the Stump and watches you a beat too long, then leaves a business card face-down on the bar.",
+          "brief": "An Assembly advance team is passing through Hollow Pine assessing frontier talent — and they have clocked your growth curve as statistically wrong.",
+          "decision": "Take the card and hear them out, or stay off the Assembly's map for as long as you can.",
+          "trigger": { "descriptive": { "onPlayerAt": "second_location" } },
+          "payload": { "fact": { "text": "An Assembly advance team has flagged you: your growth curve reads as statistically impossible, and now someone above the frontier knows your face." } }
+        },
+        {
+          "beatId": "beat_queue",
+          "label": "The queue",
+          "telegraph": "The newsfeed on the Stump's cracked screen leads with the Assembly's Gate Queue accord — numbered Tower-entry slots for signatory associations, none for independents.",
+          "brief": "The Assembly has announced the Gate Queue: the Tower's first entries go to signatory associations by number, and unaffiliated hunters get no slot at all.",
+          "decision": "Court a patron for a slot, or resolve to reach the Tower without anyone's permission.",
+          "trigger": { "prescriptive": { "requiresBeat": "beat_scout", "minTurn": 22 } },
+          "payload": { "fact": { "text": "The Gate Queue accord is signed — Tower entry is now rationed to association members, and an independent's only road in just got much longer." } }
+        }
+      ],
+      "resolution": [
+        { "kind": "beat_final", "outcome": "resolved" }
+      ],
+      "callbackQuery": { "entityRefs": ["npc_barkeep"], "keywords": ["assembly", "queue", "tower", "slot"] }
+    },
+    {
+      "frontId": "front_cordon",
+      "kind": "secret",
+      "foreground": false,
+      "topology": "linear",
+      "title": "The Quiet Cordon",
+      "agenda": "The Quiet Office believes EZ-44 is pre-bloom and means to close it — with Hollow Pine inside the line if the readings say so. The Office's math is right.",
+      "revealState": "hidden",
+      "groundedIn": {
+        "entityRefs": ["npc_medic"],
+        "locationRefs": ["second_location", "third_location"]
+      },
+      "beats": [
+        {
+          "beatId": "beat_readings",
+          "label": "The readings",
+          "telegraph": "Strangers with excellent manners and unmarked equipment quietly resurvey the Static's edge; Doc Han's clinic data starts going somewhere new.",
+          "brief": "Quiet Office assessors are resurveying EZ-44, and the town's own medic is feeding them readings — someone is building a case the zone is about to bloom.",
+          "decision": "Learn what the Office is measuring, or leave the containment specialists to their quiet math.",
+          "trigger": { "prescriptive": { "minTurn": 14 } },
+          "payload": { "fact": { "text": "The Quiet Office is resurveying EZ-44 and collecting the town's seep-readings — they are quietly building a case that the zone is pre-bloom." } }
+        },
+        {
+          "beatId": "beat_leak",
+          "label": "The line",
+          "telegraph": "A cordon proposal leaks to the Stump: a containment line drawn around EZ-44 — with Hollow Pine on the wrong side of it.",
+          "brief": "The Office's cordon proposal is public, and the line it draws puts Hollow Pine inside the zone it means to seal. And the Office's math is right.",
+          "decision": "Discredit the readings to save the town, or find out what the Office knows that the town would rather not.",
+          "trigger": { "prescriptive": { "requiresBeat": "beat_readings", "minTurn": 24 } },
+          "payload": { "fact": { "text": "The Quiet Office's cordon would seal Hollow Pine inside EZ-44 — and the terrible part is that their readings are correct: something under the Static is waking." } }
+        }
+      ],
+      "resolution": [
+        { "kind": "beat_final", "outcome": "resolved" }
+      ],
+      "callbackQuery": { "entityRefs": ["npc_medic"], "keywords": ["cordon", "office", "bloom", "readings"] }
+    }
+  ],
+  "secrets": [
+    {
+      "secretId": "secret_stag_core",
+      "text": "The Stag's core is worth a season of Vail's patience — and the Charter's doubled prices are a bet that someone will bring it in before the clause locks the zone.",
+      "frontRef": "front_salvage",
+      "reveal": { "onLocation": "third_location" }
+    },
+    {
+      "secretId": "secret_curve",
+      "text": "The Assembly isn't scouting talent. They're scouting anomalies — and the only growth curve on the frontier that breaks their models is yours.",
+      "frontRef": "front_queue",
+      "reveal": { "onEntityKnown": "npc_barkeep" }
+    },
+    {
+      "secretId": "secret_bloom",
+      "text": "The Office is right. The Stag is a symptom, not the disease; something under the Static is waking, and every other faction is arguing about property.",
+      "frontRef": "front_cordon",
+      "reveal": { "onLocation": "third_location" }
+    }
+  ]
+}

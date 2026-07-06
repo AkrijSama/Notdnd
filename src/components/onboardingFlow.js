@@ -71,6 +71,17 @@ function renderWorldStep(state) {
         <p class="onb-disclaimer">Fields you leave blank will be imagined by the AI.</p>
       </header>
 
+      <div class="onb-field onb-featured-world">
+        <label>Featured world</label>
+        <div class="onb-chips">
+          ${renderChip("Babel — The Wrong Woods (authored)", def.scenarioId === "babel", `data-world-scenario="babel"`)}
+          ${renderChip("Custom world — imagined for you", !def.scenarioId, `data-world-scenario=""`)}
+        </div>
+        ${def.scenarioId === "babel"
+          ? `<p class="onb-disclaimer">Babel is an authored world: it provides its own setting, the VOICE opening, cast, and STATUS WINDOW. The fields below are ignored for this run — press <strong>Generate World</strong> to continue to character creation.</p>`
+          : ""}
+      </div>
+
       <div class="onb-field">
         <label>World name</label>
         <input data-world-field="name" maxlength="80" placeholder="The Shattered Realm" value="${esc(def.name || "")}" ${loading ? "disabled" : ""} />
@@ -717,6 +728,12 @@ export function bindOnboardingFlow(root, handlers = {}) {
   });
   root.querySelectorAll("[data-world-mode]").forEach((button) => {
     button.addEventListener("click", () => handlers.onWorldField?.("startMode", button.getAttribute("data-world-mode")));
+  });
+  // Featured authored-world picker (e.g. Babel). Selecting one sets worldDef.scenarioId,
+  // which the world-run POST forwards (and forces mode:"campaign"). "" clears it back
+  // to a custom AI-generated world.
+  root.querySelectorAll("[data-world-scenario]").forEach((button) => {
+    button.addEventListener("click", () => handlers.onWorldField?.("scenarioId", button.getAttribute("data-world-scenario")));
   });
   root.querySelectorAll("[data-world-field]").forEach((field) => {
     if (typeof field.addEventListener === "function") {

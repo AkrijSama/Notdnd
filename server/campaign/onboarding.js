@@ -972,7 +972,17 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
       (isStr(scenario.questOffers?.[scenario.opening?.questObjectiveFrom]?.summary) && scenario.questOffers[scenario.opening.questObjectiveFrom].summary) ||
       (isStr(scenario.stakes) ? scenario.stakes : null);
   }
-  const opening = await generateOpeningNarration({
+  // AUTHORED SET-PIECE OPENING (Babel's VOICE beat, §2): when a scenario authors
+  // its opening verbatim (opening.authoredNarration), it is delivered EXACTLY as
+  // written — the VOICE's six load-bearing beats are locked canon and must not be
+  // paraphrased by the GM. This is the beat-class "set-piece" budget honored by
+  // construction (the text is fixed). Bypasses the GM opening call entirely; the
+  // narrator only ever touches turns AFTER the opening. Falls through to the
+  // generated opening for scenarios that don't author one (e.g. the_shipment).
+  const authoredOpening = scenarioActive && isStr(scenario.opening?.authoredNarration)
+    ? String(scenario.opening.authoredNarration)
+    : null;
+  const opening = authoredOpening || await generateOpeningNarration({
     campaignId,
     runId: run.runId,
     message: buildOpeningGmMessage({

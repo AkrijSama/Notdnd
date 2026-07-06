@@ -138,12 +138,34 @@ export function loadScenarioIntoRun(run, scenario, options = {}) {
   // with the scenario's, so there is exactly ONE source of setting truth.
   run.world = { ...run.world };
   if (scenario.world && typeof scenario.world === "object") {
-    for (const k of ["name", "tone", "flavor", "artStyle"]) {
+    // `variant` is the world-family discriminator (e.g. "babel") the scene
+    // payload surfaces so the client can render a world-specific STATUS WINDOW
+    // (Babel's six-stat / rank / milestone panel) instead of the default sheet.
+    for (const k of ["name", "tone", "flavor", "artStyle", "variant"]) {
       if (isString(scenario.world[k])) run.world[k] = scenario.world[k];
     }
     if (isString(scenario.world.artStyle)) {
       run.flags = { ...(run.flags || {}), artStyle: scenario.world.artStyle };
     }
+  }
+
+  // AWAKENING ORIGIN — the race slot, data-driven. A scenario may declare the
+  // player's origin (chassis race contract: a stat boost + a named feat). Babel
+  // fills this with the Beckoned (the player's canon origin: +1 INT, +1 Spirit,
+  // and the live STATUS WINDOW as its feat). Applied onto the already-built
+  // player abilities so it composes with character creation; real, not worldgen.
+  const origin = scenario.playerOrigin;
+  if (origin && typeof origin === "object" && run.player) {
+    run.player.abilities = { ...(run.player.abilities || {}) };
+    if (origin.boost && typeof origin.boost === "object") {
+      for (const [ability, delta] of Object.entries(origin.boost)) {
+        if (typeof run.player.abilities[ability] === "number" && Number.isFinite(delta)) {
+          run.player.abilities[ability] = Math.min(30, Math.max(1, run.player.abilities[ability] + delta));
+        }
+      }
+    }
+    if (isString(origin.name)) run.player.origin = origin.name.trim();
+    if (isString(origin.feat)) run.player.originFeat = origin.feat.trim();
   }
 
   for (const [locRef, loc] of Object.entries(scenario.locations || {})) {
