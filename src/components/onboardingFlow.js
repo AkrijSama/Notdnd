@@ -53,6 +53,10 @@ function renderChip(label, active, attr) {
 function renderWorldStep(state) {
   const def = state.worldDef || {};
   const loading = Boolean(state.loading);
+  // Authored worlds (a world book / scenarioId) own their setting, opening, cast,
+  // and visual register — the generic worldgen inputs, sandbox/guided toggle, and
+  // art-style picker are all redundant and are suppressed below.
+  const authored = Boolean(def.scenarioId);
   const toneChips = TONE_CHIPS.map((tone) => renderChip(tone, def.tone === tone, `data-world-tone="${esc(tone)}"`)).join("");
   const artCards = ART_STYLE_OPTIONS.map(
     (option) => `
@@ -66,9 +70,9 @@ function renderWorldStep(state) {
   return `
     <section class="onboarding-shell onb-world">
       <header class="onboarding-header">
-        <div class="tag">World Generator</div>
-        <h2>Define Your World</h2>
-        <p class="onb-disclaimer">Fields you leave blank will be imagined by the AI.</p>
+        <div class="tag">${authored ? "Authored World" : "World Generator"}</div>
+        <h2>${authored ? "An Authored World" : "Define Your World"}</h2>
+        <p class="onb-disclaimer">${authored ? "This world provides its own setting, the VOICE opening, cast, and STATUS WINDOW — there is nothing to configure here." : "Fields you leave blank will be imagined by the AI."}</p>
       </header>
 
       <div class="onb-field onb-featured-world">
@@ -77,16 +81,15 @@ function renderWorldStep(state) {
           ${renderChip("Babel — The Wrong Woods (authored)", def.scenarioId === "babel", `data-world-scenario="babel"`)}
           ${renderChip("Custom world — imagined for you", !def.scenarioId, `data-world-scenario=""`)}
         </div>
-        ${def.scenarioId === "babel"
-          ? `<p class="onb-disclaimer">Babel is an authored world: it provides its own setting, the VOICE opening, cast, and STATUS WINDOW. The fields below are ignored for this run — press <strong>Generate World</strong> to continue to character creation.</p>`
-          : ""}
       </div>
 
+      ${authored ? "" : `
       <div class="onb-field">
         <label>World name</label>
         <input data-world-field="name" maxlength="80" placeholder="The Shattered Realm" value="${esc(def.name || "")}" ${loading ? "disabled" : ""} />
-      </div>
+      </div>`}
 
+      ${authored ? "" : `
       <div class="onb-field">
         <label>Tone / setting</label>
         <div class="onb-chips">${toneChips}</div>
@@ -114,9 +117,9 @@ function renderWorldStep(state) {
       <div class="onb-field">
         <label>Art style</label>
         <div class="onb-art-grid">${artCards}</div>
-      </div>
+      </div>`}
 
-      <button class="onb-primary" data-action="generate-world" ${loading ? "disabled" : ""}>${loading ? "Generating…" : "Generate World"}</button>
+      <button class="onb-primary" data-action="generate-world" ${loading ? "disabled" : ""}>${authored ? "Continue to character creation" : (loading ? "Generating…" : "Generate World")}</button>
       ${state.error ? `<div class="onboarding-error">${esc(state.error)}</div>` : ""}
     </section>
   `;
@@ -128,10 +131,60 @@ function renderWorldStep(state) {
 const WIZARD_STEPS = ["Identity", "Race", "Class", "Background", "Abilities", "Review"];
 const STANDARD_ARRAY_DEFAULT = { strength: 15, dexterity: 14, constitution: 13, intelligence: 12, wisdom: 10, charisma: 8 };
 
-function renderWizardProgress(step) {
-  return `<div class="cw-progress">${WIZARD_STEPS.map(
-    (label, i) => `<span class="cw-step ${i + 1 === step ? "active" : ""} ${i + 1 < step ? "done" : ""}">${i + 1}. ${esc(label)}</span>`
+const AUTHORED_WIZARD_STEPS = ["Identity", "Origin", "Review"];
+const AUTHORED_WIZARD_SEQ = [1, 2, 6];
+
+function renderWizardProgress(step, authored = false) {
+  const labels = authored ? AUTHORED_WIZARD_STEPS : WIZARD_STEPS;
+  const seq = authored ? AUTHORED_WIZARD_SEQ : [1, 2, 3, 4, 5, 6];
+  const activeIdx = seq.indexOf(step);
+  return `<div class="cw-progress">${labels.map(
+    (label, i) => `<span class="cw-step ${i === activeIdx ? "active" : ""} ${activeIdx !== -1 && i < activeIdx ? "done" : ""}">${i + 1}. ${esc(label)}</span>`
   ).join("")}</div>`;
+}
+
+// Authored-world creation panels — the world book owns the origin (race/class-
+// equivalent); there is no 5e race pick, class, ability point-buy, AC, or Speed.
+const AUTHORED_ORIGIN_INFO = {
+  babel: {
+    name: "The Beckoned",
+    feat: "The STATUS WINDOW",
+    stats: "STR · DEX · VIT · SPIRIT · INT · LUCK",
+    blurb: "You wake on the fringe of the Green Static, granted a WINDOW that does not lie. In this world capability comes from your origin and what you earn in play — there are no classes, no armor class, and no ability point-buy. Your rank begins UNASSESSED and rises as you gain skills."
+  }
+};
+
+function renderAuthoredOrigin(c, scenarioId) {
+  const o = AUTHORED_ORIGIN_INFO[scenarioId];
+  if (!o) {
+    return `<div class="cw-grid"><div class="cw-card active"><div class="cw-card-title">Origin assigned by the story</div><div class="cw-card-sub">This authored world grants your origin in play.</div></div></div>`;
+  }
+  return `
+    <div class="cw-authored-origin">
+      <div class="cw-card active" style="cursor:default">
+        <div class="cw-card-title">${esc(o.name)}</div>
+        <div class="cw-card-meta">Origin feat: ${esc(o.feat)} · ${esc(o.stats)}</div>
+        <div class="cw-card-sub">${esc(o.blurb)}</div>
+      </div>
+      <p class="onb-disclaimer">This is the world's reserved origin for you — nothing to choose here. Continue to review and enter.</p>
+    </div>`;
+}
+
+function renderAuthoredReview(c, portrait = {}, scenarioId = "") {
+  const o = AUTHORED_ORIGIN_INFO[scenarioId] || {};
+  return `
+    <div class="cw-review cw-review--authored">
+      <div class="cw-review-portrait">
+        ${renderPortraitPreview(portrait, { charName: c.name, variant: "review" })}
+        <div class="cw-review-name">${esc(c.name || "Unnamed")}</div>
+        <div class="cw-review-sub">${esc(o.name || c.origin || "Origin")}${o.feat ? ` · ${esc(o.feat)}` : ""}</div>
+        ${renderPortraitEditor(portrait)}
+      </div>
+      <div class="cw-review-block">
+        <div class="onb-kicker">Your origin</div>
+        <p>${esc(o.blurb || "Your capabilities are granted by the world and earned in play.")}</p>
+      </div>
+    </div>`;
 }
 
 // Shared mid-creation portrait preview (steps 1 Identity + 6 Review). Reads
@@ -451,8 +504,21 @@ function renderCharacterWizard(state) {
   };
   // SRD-shaped custom content catalogs (from the user's homebrew); additive to SRD.
   const custom = state.customContent || {};
+  // Authored worlds run a trimmed wizard (Identity → Origin → Review): the origin
+  // is the world book's, not a 5e race/class, so the 5e Race/Class/Background/
+  // Abilities steps (and their Speed/AC/ability-buy surfacing) never render.
+  const authored = Boolean(state.worldDef?.scenarioId);
+  const scenarioId = state.worldDef?.scenarioId || "";
   let body;
-  if (step === 2) {
+  if (authored) {
+    if (step === 2) {
+      body = renderAuthoredOrigin(c, scenarioId);
+    } else if (step === 6) {
+      body = renderAuthoredReview(c, portrait, scenarioId);
+    } else {
+      body = renderCharIdentity(c, portrait);
+    }
+  } else if (step === 2) {
     body = renderCharRace(c, custom.races);
   } else if (step === 3) {
     body = renderCharClass(c, custom.classes);
@@ -489,7 +555,7 @@ function renderCharacterWizard(state) {
   return `
     <section class="onboarding-shell onb-world cw">
       <header class="onboarding-header"><div class="tag">Character Creation</div><h2>Create Your Character</h2></header>
-      ${renderWizardProgress(step)}
+      ${renderWizardProgress(step, authored)}
       <div class="cw-body">${body}</div>
       ${state.error ? `<div class="onboarding-error">${esc(state.error)}</div>` : ""}
       ${

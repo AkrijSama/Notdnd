@@ -108,6 +108,17 @@ function buildMessages(run) {
     ? run.timeline.slice(-3).map((event) => event?.summary || event?.type).filter(isStr)
     : [];
 
+  // INPUT SCOPING (defect 6): ground the "Scene:" context in the COMMITTED
+  // current-scene narration only. run.narration is seeded with the opening
+  // cold-open at run creation (onboarding.js) and is only overwritten once the
+  // player acts; feeding the un-acted opening bleeds stale opening content (e.g.
+  // the VOICE's real-world "abandoned restaurant") into the *current* forest
+  // scene's suggestions. Until an action updates it, omit it — the committed
+  // current location already grounds the scene. (This fixes the generator's
+  // INPUT; suggestion selection/ranking is a separate concern owned elsewhere.)
+  const currentNarration =
+    isStr(run?.narration) && run.narration !== run?.openingNarration ? run.narration : "";
+
   const context = [
     `Location: ${isStr(location.name) ? location.name : "Unknown"}${isStr(location.description) ? ` — ${clip(location.description)}` : ""}`,
     `Character: ${isStr(player.displayName) ? player.displayName : "the adventurer"}${isStr(player.className) ? `, ${player.className}` : ""}`,
@@ -115,7 +126,7 @@ function buildMessages(run) {
     npcNames.length ? `People present: ${npcNames.join(", ")}` : "",
     moves.length ? `Ways onward: ${moves.join(", ")}` : "",
     recent.length ? `Recently: ${recent.join("; ")}` : "",
-    isStr(run?.narration) ? `Scene: ${clip(run.narration)}` : ""
+    currentNarration ? `Scene: ${clip(currentNarration)}` : ""
   ].filter(Boolean).join("\n");
 
   return [
