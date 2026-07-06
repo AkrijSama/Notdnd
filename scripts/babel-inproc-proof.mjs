@@ -11,6 +11,8 @@ import { createWorldOnboardingRun } from "../server/campaign/onboarding.js";
 import { getSoloRun, saveSoloRun } from "../server/db/repository.js";
 import { buildSoloScenePayload } from "../server/solo/scene.js";
 import { resolveSoloAction } from "../server/solo/actions.js";
+import { resolveAbilityCheck } from "../server/solo/rules.js";
+import { BABEL_STATS } from "../server/solo/babelStats.js";
 
 const FINGERPRINT = ["ashfall", "ember tavern", "the ember", "grim dark", "dark fantasy", "barrow", "torch-lit", "ruins", "rubble", "scuff", "crumbling", "cobblestone"];
 
@@ -67,6 +69,41 @@ void run0;
   assert("displayed level is 1", p.displayLevel === 1, "1", p.displayLevel);
   assert("milestone is 1", p.milestone === 1, "1", p.milestone);
   assert("milestone tier is Tier I — Local", p.milestoneTier === "Tier I — Local", "Tier I — Local", p.milestoneTier);
+
+  // (4b) ANTI-LYING-SHEET GUARD — the stat the WINDOW displays is byte-identical
+  // to the stat the resolver resolves against. For each Babel canon stat: the
+  // server-emitted babelStats value === run.player.abilities[boundAbility], AND
+  // resolveAbilityCheck against that bound ability reads the SAME score (its
+  // ability modifier matches the modifier of the displayed score). Same number,
+  // same variable — "THE WINDOW DOES NOT LIE" is proven, not asserted by decree.
+  const bs = p.babelStats;
+  assert("payload carries the six-stat babelStats spine (single source)", Array.isArray(bs) && bs.length === 6, "6 stats", `${Array.isArray(bs) ? bs.length : "none"}`);
+  for (const { label, ability } of BABEL_STATS) {
+    const shown = (bs || []).find((s) => s.label === label);
+    const stored = run.player.abilities[ability];
+    assert(`WINDOW ${label} === abilities.${ability} (displayed is the stored variable)`, shown && shown.score === stored, stored, shown ? shown.score : "missing");
+    const cr = resolveAbilityCheck(run, { ability, dc: 10, checkId: "guard" }, { fixedRoll: 10 });
+    const expectedMod = Math.floor(((shown ? shown.score : 10) - 10) / 2);
+    assert(`resolver resolves a ${label} check against abilities.${ability} (same score the WINDOW shows)`, cr.ok === true && cr.abilityModifier === expectedMod, `mod ${expectedMod}`, `mod ${cr.abilityModifier}`);
+  }
+  // A Babel-WORDED recommendation ("spirit"/"vit"/"luck") resolves against the
+  // canon-bound ability, not an intent fallback — the resolver speaks the WINDOW's
+  // vocabulary. Prove the hardest case: "spirit" must land on wisdom (Spirit's bind).
+  const spiritCheck = resolveSoloAction(run, {
+    type: "attempt", actorId: "player",
+    intent: "steady my nerve against the wrongness pressing behind my eyes",
+    testHook: { fixedRoll: 12, providerOutput: {
+      summary: "You attempt: hold your nerve", recommendedAbility: "spirit", dc: 10,
+      needsCheck: true, edge: false, burden: false,
+      successNarration: "You hold.", failureNarration: "It gets in.", proposedEffects: []
+    } }
+  });
+  assert("a Babel-worded 'spirit' check resolves against wisdom (Spirit's canon bind), not a fallback", spiritCheck.attemptResult?.checkResult?.ability === "wisdom", "wisdom", spiritCheck.attemptResult?.checkResult?.ability);
+  saveSoloRun(spiritCheck.run); run = spiritCheck.run;
+
+  // The dead notdnd `stats` vocab (V2) is NOT a payload surface (it would name-
+  // collide with Babel Spirit/Luck while holding dead values — a lie).
+  assert("dead notdnd 'stats' vocab is not surfaced on the scene payload", p.stats === undefined, "absent", p.stats === undefined ? "absent" : JSON.stringify(p.stats));
 
   // (5) authored fronts present
   const threadIds = (scene.threads || []).map((t) => t.threadId);

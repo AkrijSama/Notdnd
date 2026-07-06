@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { getVisibleEntities } from "./entities.js";
 import { getAvailableMoves } from "./movement.js";
 import { ABILITIES, SKILLS, SKILL_ABILITY, resolveAbilityCheck } from "./rules.js";
+import { abilityForBabelWord } from "./babelStats.js";
 import {
   createDefaultForbiddenPolicyProfile,
   createDefaultMainlinePolicyProfile,
@@ -408,6 +409,15 @@ function abilityFromRecommendation(recommendation) {
       ability: SKILL_ABILITY[value] || "intelligence",
       skill: value
     };
+  }
+  // Babel canon words (STR/DEX/VIT/Spirit/INT/Luck + abbreviations) bind to the
+  // chassis ability the resolver reads — so a Babel-worded check resolves against
+  // the SAME ability the STATUS WINDOW displays for that stat (e.g. "spirit" →
+  // wisdom), instead of falling through to an intent heuristic. Single-sourced in
+  // babelStats.js. Additive: 5e keys/skills already resolved above.
+  const babelAbility = abilityForBabelWord(value);
+  if (babelAbility) {
+    return { ability: babelAbility, skill: null };
   }
   return null;
 }

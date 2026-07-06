@@ -1157,10 +1157,18 @@ export function characterFromScenePlayer(player, world = null) {
   // hunter Rank (or UNASSESSED), the Awakening Origin, and HP. No AC/Speed/Mana/
   // D&D layout. The server owns the truth; this only relabels + reorders it.
   const isBabel = Boolean(world && typeof world === "object" && world.variant === "babel");
+  // The Babel stat spine is single-sourced by the SERVER (player.babelStats,
+  // built from run.player.abilities via the same lookup the resolver uses — see
+  // server/solo/babelStats.js), so the WINDOW displays exactly what the check
+  // resolves against. The hardcoded map is only a defensive fallback if an older
+  // payload lacks babelStats; it derives from the same abilities the same way.
   const BABEL_STAT_ORDER = [
     ["STR", "strength"], ["DEX", "dexterity"], ["VIT", "constitution"],
     ["Spirit", "wisdom"], ["INT", "intelligence"], ["Luck", "charisma"]
   ];
+  const babelStatSource = Array.isArray(player.babelStats) && player.babelStats.length
+    ? player.babelStats.map((s) => [s.label, s.ability, s.score])
+    : BABEL_STAT_ORDER.map(([key, full]) => [key, full, Number.isFinite(Number(ab[full])) ? Number(ab[full]) : 10]);
   const babel = isBabel
     ? {
         origin: typeof player.origin === "string" ? player.origin : "The Beckoned",
@@ -1168,9 +1176,9 @@ export function characterFromScenePlayer(player, world = null) {
         rank: typeof player.rank === "string" ? player.rank : "UNASSESSED",
         displayLevel: typeof player.displayLevel === "number" ? player.displayLevel : (typeof player.level === "number" ? player.level : 1),
         milestoneTier: typeof player.milestoneTier === "string" ? player.milestoneTier : "",
-        stats: BABEL_STAT_ORDER.map(([key, full]) => {
-          const score = Number.isFinite(Number(ab[full])) ? Number(ab[full]) : 10;
-          return { key, score, mod: formatMod(abilityModifier(score)) };
+        stats: babelStatSource.map(([key, , score]) => {
+          const n = Number.isFinite(Number(score)) ? Number(score) : 10;
+          return { key, score: n, mod: formatMod(abilityModifier(n)) };
         })
       }
     : null;

@@ -1,6 +1,7 @@
 import { providerSupportsReference, resolveImageProvider } from "../ai/providers.js";
 import { getAvailableSoloActions } from "./actions.js";
 import { MILESTONE_MAX, tierForMilestone, displayLevelFor, rankForPlayer } from "./progression.js";
+import { babelStatBlock } from "./babelStats.js";
 import { getVisibleEntities, validateVisibleEntity } from "./entities.js";
 import { generatePlaceholderGmNarration, validateGmSceneOutput } from "./gm.js";
 import { getAvailableMoves } from "./movement.js";
@@ -714,7 +715,16 @@ export function buildPlayerPayload(run) {
     armorClass: typeof derived?.armorClass === "number" ? derived.armorClass : (typeof player.ac === "number" ? player.ac : null),
     speed: typeof derived?.speed === "number" ? derived.speed : (typeof player.speed === "number" ? player.speed : null),
     abilities: isPlainObject(player.abilities) ? { ...player.abilities } : {},
-    stats: isPlainObject(player.stats) ? { ...player.stats } : {},
+    // BABEL STATUS WINDOW spine (single source of truth — server/solo/babelStats.js):
+    // the six canon stats (STR/DEX/VIT/Spirit/INT/Luck) derived from `abilities`
+    // using the EXACT lookup the resolver does, so the value the WINDOW displays is
+    // byte-identical to the value a check against that stat resolves against. Only
+    // emitted for the Babel world-family; null elsewhere. NOTE: the legacy notdnd
+    // `stats` vocab (alchemy/charm/…) is deliberately NOT surfaced here — it is
+    // read by no resolver or display path, and its `spirit`/`luck` keys would
+    // name-collide with the Babel canon while holding dead values (a lie surface).
+    // It remains a persisted schema field (unread) pending a dedicated migration.
+    babelStats: run?.world?.variant === "babel" ? babelStatBlock(player.abilities) : null,
     skills: isPlainObject(player.skills) ? { ...player.skills } : {},
     portraitUri: isString(player.portraitUri) ? player.portraitUri : null,
     // Lifecycle status: alive | dying | stable | dead (legacy: active | downed).
