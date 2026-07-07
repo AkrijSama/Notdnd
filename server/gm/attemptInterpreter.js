@@ -266,7 +266,16 @@ export async function interpretAttemptWithGm({ providerInput, campaignId, editio
         edition,
         actorUserId,
         temperature: 0.2,
-        maxResponseTokens: INTERPRETER_MAX_TOKENS
+        maxResponseTokens: INTERPRETER_MAX_TOKENS,
+        // Reasoning OFF — this is structured adjudication (resolve intent → DC /
+        // ability / band / consequence), not open deliberation. On a reasoning GM
+        // model, reasoning-ON silently ate the whole INTERPRETER_MAX_TOKENS budget
+        // (measured: empty return on ~half of real attempts → the engine fell back
+        // to its generic default, MISfiring the adjudication). Reasoning-OFF sends
+        // the budget to the JSON and is verified equal-or-better on a 12-case
+        // battery (safe-talk vs check vs contested, DC ladder, ability/stat binding,
+        // three-band consequence) with ZERO empty returns — and ~4x faster.
+        reasoning: { enabled: false }
       }),
       INTERPRETER_TIMEOUT_MS
     );
