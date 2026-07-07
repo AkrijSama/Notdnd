@@ -48,6 +48,7 @@ import {
   completeSoloRun,
   createQuickstartCampaignFromParsed,
   addUserHomebrew,
+  createGuestUser,
   createSoloRun,
   deleteSoloRun,
   deleteUserHomebrew,
@@ -78,6 +79,7 @@ import {
   setLocationImageLocked,
   setSoloRunSuggestions,
   setUserTier,
+  upgradeGuestUser,
   findUserByEmail,
   updateImageAssetStatus,
   updateSoloRunBattleMap,
@@ -1248,7 +1250,27 @@ async function handleApi(req, res) {
     try {
       enforceAuthRateLimit(req);
       const payload = await readJsonBody(req);
-      const result = registerUser(payload);
+      // A guest registering keeps their identity: the guest user record is
+      // promoted in place (same user id), so every run/campaign they started
+      // as a guest is retained — "save your adventure", not "start over".
+      const current = resolveAuthUser(req);
+      const result = current?.isGuest
+        ? upgradeGuestUser(current.id, payload)
+        : registerUser(payload);
+      writeJson(res, 200, { ok: true, ...result });
+    } catch (error) {
+      routeError(res, error);
+    }
+    return true;
+  }
+
+  // Guest play: mint a playable anonymous identity (no email/password) so a
+  // stranger can start an adventure before deciding to register. Rate-limited
+  // like the other auth endpoints so it can't be used to mass-mint users.
+  if (req.method === "POST" && url.pathname === "/api/auth/guest") {
+    try {
+      enforceAuthRateLimit(req);
+      const result = createGuestUser();
       writeJson(res, 200, { ok: true, ...result });
     } catch (error) {
       routeError(res, error);

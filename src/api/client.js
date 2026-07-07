@@ -108,6 +108,19 @@ export function createApiClient(baseUrl = "") {
       }
       return response;
     },
+    async guest() {
+      // Guest play: mints an anonymous, fully playable identity. The returned
+      // token is stored exactly like a login token; registering later upgrades
+      // the same user in place, so a guest's runs survive account creation.
+      const response = await request("/api/auth/guest", {
+        method: "POST",
+        body: JSON.stringify({})
+      });
+      if (response?.token) {
+        this.setAuthToken(response.token);
+      }
+      return response;
+    },
     async login({ email, password }) {
       const response = await request("/api/auth/login", {
         method: "POST",

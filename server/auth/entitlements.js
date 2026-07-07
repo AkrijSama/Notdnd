@@ -26,7 +26,12 @@ export const FREE_DAILY_SESSION_LIMIT = 10;
 export const TIER_LIMITS = Object.freeze({
   free: { images: FREE_DAILY_IMAGE_LIMIT, sessions: FREE_DAILY_SESSION_LIMIT },
   adventurer: { images: Infinity, sessions: Infinity },
-  premium: { images: Infinity, sessions: Infinity }
+  premium: { images: Infinity, sessions: Infinity },
+  // Guests (no account) get a taste, not a pipeline: enough images for one
+  // session's art and a few runs, then the register nudge does its work.
+  // "guest" is a POLICY overlay keyed off user.isGuest — the persisted tier on
+  // a guest record stays "free", so upgrading to a real account changes nothing.
+  guest: { images: 6, sessions: 3 }
 });
 
 // BYOK (bring-your-own-key): a user supplying their own inference key is paying
@@ -58,6 +63,11 @@ export function requestHasByokKey(reqOrHeaders) {
 // Normalizes a user argument (sanitized user object, or null) into { id, tier }.
 function resolveUser(user) {
   const id = user && typeof user.id === "string" ? user.id : null;
+  // Guests get the stricter guest limits. isGuest arrives on the sanitized user
+  // from the per-request session lookup, so it is as fresh as a repository read.
+  if (id && user?.isGuest === true) {
+    return { id, tier: "guest" };
+  }
   // Prefer the tier on the passed object; fall back to a fresh repository read so
   // a stale/partial caller object can't grant the wrong entitlement.
   const tier = id ? getUserTier(id) : "free";

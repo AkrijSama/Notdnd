@@ -183,6 +183,7 @@ function sanitizeUser(user) {
     email: user.email,
     displayName: user.displayName,
     isAdmin: Boolean(user.isAdmin),
+    isGuest: Boolean(user.isGuest),
     tier: normalizeTier(user.tier),
     createdAt: user.createdAt
   };
@@ -1534,6 +1535,85 @@ export function registerUser({ email, password, displayName }) {
 
   db.users.push(user);
   db.userPrefsByUser[user.id] = { selectedCampaignId: null };
+
+  const token = createSessionForUser(user.id);
+  writeToDisk();
+
+  return {
+    user: sanitizeUser(user),
+    token,
+    expiresIn: SESSION_TTL_SECONDS
+  };
+}
+
+// Guest play: a real user record (stable id) with no credentials. Runs, campaign
+// membership, entitlement counters, and campaign-memory dirs all key on the user
+// id, so a guest who later registers keeps everything via upgradeGuestUser —
+// nothing is copied or moved. Guests can never be logged into (email is null, so
+// loginUser can't find them); their only key is the session token minted here.
+export function createGuestUser() {
+  ensureDb();
+
+  const user = {
+    id: uid("usr"),
+    email: null,
+    displayName: "Wanderer",
+    passwordHash: null,
+    passwordSalt: null,
+    passwordIterations: null,
+    resetToken: null,
+    resetTokenExpiresAt: null,
+    isAdmin: false,
+    isGuest: true,
+    tier: DEFAULT_USER_TIER,
+    createdAt: nowEpochSec()
+  };
+
+  db.users.push(user);
+  db.userPrefsByUser[user.id] = { selectedCampaignId: null };
+
+  const token = createSessionForUser(user.id);
+  writeToDisk();
+
+  return {
+    user: sanitizeUser(user),
+    token,
+    expiresIn: SESSION_TTL_SECONDS
+  };
+}
+
+// Promotes a guest to a full account IN PLACE — same user id, so every run,
+// campaign membership, and usage counter the guest accumulated is retained
+// without any migration. Validation mirrors registerUser exactly.
+export function upgradeGuestUser(userId, { email, password, displayName }) {
+  ensureDb();
+
+  const user = getUserById(userId);
+  if (!user) {
+    throw makeError("NOT_FOUND", "User not found.", 404);
+  }
+  if (!user.isGuest) {
+    throw makeError("CONFLICT", "This account is already registered.", 409);
+  }
+
+  const normalizedEmail = normalizeEmail(email);
+  if (!normalizedEmail || !normalizedEmail.includes("@")) {
+    throw makeError("BAD_REQUEST", "Valid email is required.", 400);
+  }
+  if (String(password || "").length < 8) {
+    throw makeError("BAD_REQUEST", "Password must be at least 8 characters.", 400);
+  }
+  if (getUserByEmail(normalizedEmail)) {
+    throw makeError("CONFLICT", "Email already registered.", 409);
+  }
+
+  const passwordRecord = hashPassword(password);
+  user.email = normalizedEmail;
+  user.displayName = normalizeDisplayName(displayName, normalizedEmail.split("@")[0]);
+  user.passwordHash = passwordRecord.hash;
+  user.passwordSalt = passwordRecord.salt;
+  user.passwordIterations = passwordRecord.iterations;
+  user.isGuest = false;
 
   const token = createSessionForUser(user.id);
   writeToDisk();

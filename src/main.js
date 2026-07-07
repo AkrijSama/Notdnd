@@ -163,7 +163,8 @@ function renderSoloHeader(user, accountMenuOpen = false, skin = "ashen", fontSet
         <span>AI RPG</span>
       </div>
       <div class="inline">
-        <span class="small">${user ? `Signed in: ${escapeHtml(user.displayName)}` : "Not signed in"}</span>
+        <span class="small">${user ? (user.isGuest ? "Playing as guest" : `Signed in: ${escapeHtml(user.displayName)}`) : "Not signed in"}</span>
+        ${user && user.isGuest ? `<button data-action="guest-save">Save your adventure</button>` : ""}
         ${
           user
             ? `
@@ -173,8 +174,12 @@ function renderSoloHeader(user, accountMenuOpen = false, skin = "ashen", fontSet
                   accountMenuOpen
                     ? `
                       <div class="account-dropdown account-dropdown--wide" role="menu">
-                        <button class="account-dropdown-item" role="menuitem" data-action="open-account">Account Settings</button>
-                        <button class="account-dropdown-item" role="menuitem" data-action="open-homebrew">Manage Homebrew</button>
+                        ${
+                          user.isGuest
+                            ? `<button class="account-dropdown-item" role="menuitem" data-action="guest-save">Save your adventure</button>`
+                            : `<button class="account-dropdown-item" role="menuitem" data-action="open-account">Account Settings</button>
+                        <button class="account-dropdown-item" role="menuitem" data-action="open-homebrew">Manage Homebrew</button>`
+                        }
                         <div class="account-dropdown-appearance">
                           <span class="account-dropdown-kicker">Appearance</span>
                           ${renderSoloThemeSwitcher(skin, fontSet)}
@@ -354,6 +359,30 @@ function renderAuthPanel(state) {
   const user = state.auth?.user;
   if (!uiState.showAuthPanel) {
     return "";
+  }
+
+  // A guest who opens the account panel is here for one thing: keeping their
+  // adventure. Registering upgrades the guest identity in place (same user id
+  // server-side), so every run they started stays theirs.
+  if (user && user.isGuest) {
+    return `
+      <section class="module-card solo-guest-save-card">
+        <div class="module-header">
+          <h3>Save your adventure</h3>
+          <span class="tag">Playing as guest</span>
+        </div>
+        <p class="small">Create a free account to keep this adventure. Your progress stays exactly where it is.</p>
+        <form id="auth-form" class="field">
+          <input name="displayName" placeholder="Display Name" />
+          <input name="email" type="email" placeholder="email" required />
+          <input name="password" type="password" placeholder="password (min 8 chars)" required />
+          <button type="submit">Save my adventure</button>
+        </form>
+        <div class="inline">
+          <button class="ghost" data-action="dismiss-auth">Keep playing as guest</button>
+        </div>
+      </section>
+    `;
   }
 
   if (user) {
@@ -1176,14 +1205,40 @@ function openOnboardingCampaignDashboard() {
   scheduleRender();
 }
 
+// Guest play (DEFECT 13): the first screen must be the game, not a registration
+// wall. One click mints an anonymous identity server-side and drops the visitor
+// straight into onboarding; the save/register prompt comes AFTER they're hooked.
+async function startGuestPlay() {
+  try {
+    await apiClient.guest();
+    realtimeClient.setToken(apiClient.getAuthToken());
+    await store.bootstrapRemote();
+    uiState.onboarding = {
+      ...uiState.onboarding,
+      step: "world",
+      error: ""
+    };
+    uiState.showAuthPanel = false;
+    uiState.authMessage = "";
+    scheduleRender();
+  } catch (error) {
+    uiState.authMessage = String(error.message || error);
+    scheduleRender();
+  }
+}
+
 async function handleAuthSubmit(form) {
   const payload = new FormData(form);
   const email = String(payload.get("email") || "").trim();
   const password = String(payload.get("password") || "");
   const displayName = String(payload.get("displayName") || "").trim();
 
+  // A signed-in guest submitting the auth form is saving their adventure — the
+  // server upgrades the guest identity in place, so this is always a register.
+  const wasGuest = Boolean(store.getState().auth?.user?.isGuest);
+
   try {
-    if (uiState.authMode === "register") {
+    if (uiState.authMode === "register" || wasGuest) {
       await apiClient.register({ email, password, displayName });
     } else {
       await apiClient.login({ email, password });
@@ -1209,7 +1264,9 @@ async function handleAuthSubmit(form) {
       };
     }
     await loadCampaignMembers();
-    uiState.authMessage = `Signed in as ${me.user.displayName}`;
+    uiState.authMessage = wasGuest
+      ? `Adventure saved — signed in as ${me.user.displayName}`
+      : `Signed in as ${me.user.displayName}`;
     uiState.showAuthPanel = false;
     scheduleRender();
   } catch (error) {
@@ -1226,6 +1283,30 @@ function bindAppEvents() {
       scheduleRender();
     });
   }
+
+  const guestPlay = appRoot.querySelector("[data-action='guest-play']");
+  if (guestPlay) {
+    guestPlay.addEventListener("click", () => {
+      startGuestPlay();
+    });
+  }
+
+  const dismissAuth = appRoot.querySelector("[data-action='dismiss-auth']");
+  if (dismissAuth) {
+    dismissAuth.addEventListener("click", () => {
+      uiState.showAuthPanel = false;
+      scheduleRender();
+    });
+  }
+
+  appRoot.querySelectorAll("[data-action='guest-save']").forEach((button) => {
+    button.addEventListener("click", () => {
+      uiState.showAuthPanel = true;
+      uiState.authMode = "register";
+      uiState.showAccountMenu = false;
+      scheduleRender();
+    });
+  });
 
   const toggleAccountMenu = appRoot.querySelector("[data-action='toggle-account-menu']");
   if (toggleAccountMenu) {
@@ -1565,7 +1646,8 @@ function renderApp() {
           <section class="module-card solo-login-card">
             <h2>Inkborne</h2>
             <p class="solo-login-tagline">An atmospheric solo RPG with an AI game master that remembers every choice you make.</p>
-            <p class="small">Create a free account or sign in to begin your adventure.</p>
+            <button class="solo-guest-play-btn" data-action="guest-play">Play now — no account needed</button>
+            <p class="small">Free to start. Your adventure saves automatically.</p>
           </section>
           ${renderAuthPanel(state)}
         </main>
@@ -1732,6 +1814,12 @@ async function bootstrap() {
     uiState.apiHealthy = false;
   }
 
+  // ?save=1: the in-run guest banner hands off here to register ("Save your
+  // adventure"). Must suppress the auto-resume redirect below, or the register
+  // panel would never be seen — the player would bounce straight back into the
+  // run they just left.
+  const wantsSave = new URLSearchParams(window.location.search).get("save") === "1";
+
   let authenticated = false;
   try {
     const me = await apiClient.me();
@@ -1771,9 +1859,9 @@ async function bootstrap() {
         const activeRuns = allRuns.filter((run) => run?.status === "active");
         if (activeRuns.length > 0) {
           const mostRecent = activeRuns[0];
-          if (justExited) {
-            // Explicit exit: land on the solo home with a Continue card instead
-            // of auto-re-entering the run we just left.
+          if (justExited || wantsSave) {
+            // Explicit exit (or a save-adventure handoff): land on the solo home
+            // with a Continue card instead of auto-re-entering the run.
             uiState.resumeRunId = mostRecent.runId;
           } else {
             window.location.search = `?soloRunId=${encodeURIComponent(mostRecent.runId)}`;
@@ -1784,6 +1872,11 @@ async function bootstrap() {
         // fall through to the solo home if solo-run listing fails
       }
     }
+  }
+
+  if (wantsSave && authenticated) {
+    uiState.showAuthPanel = true;
+    uiState.authMode = "register";
   }
 
   scheduleRender();
