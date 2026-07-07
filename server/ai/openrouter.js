@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { AsyncLocalStorage } from "node:async_hooks";
+import { recordGmServe } from "../runtimeStatus.js";
 
 // OpenAI-compatible chat-completions endpoint. Defaults to OpenRouter but can
 // point at any compatible provider (Gemini AI Studio, Groq, etc.) via env.
@@ -764,7 +765,9 @@ async function requestWithFallback(messages, preferredModel, options = {}) {
   // no key, content never leaves the box. Edition resolved per-call (not a const).
   if (edition === "forbidden") {
     const local = resolveGmProvider("forbidden");
-    return requestOpenRouter(messages, local.model, { ...options, provider: local });
+    const tf = Date.now();
+    const res = await requestOpenRouter(messages, local.model, { ...options, provider: local });
+    return { ...res, providerLabel: "local", latencyMs: Date.now() - tf, local: true };
   }
 
   // TESTING two-lane cloud chain (flagged, off by default). When active it REPLACES
@@ -778,14 +781,21 @@ async function requestWithFallback(messages, preferredModel, options = {}) {
   }
 
   // Mainline: cloud preferred model -> cloud fallback model -> LOCAL fallback.
+  // Each successful path is stamped with its real serving attribution
+  // (providerLabel + latencyMs + local) so callers can record what ACTUALLY
+  // served — the cloud-chain path already returns the same shape.
   const tiers = resolveModelTiers();
+  const t0 = Date.now();
   try {
-    return await requestOpenRouter(messages, preferredModel, options);
+    const res = await requestOpenRouter(messages, preferredModel, options);
+    return { ...res, providerLabel: "openrouter", latencyMs: Date.now() - t0, local: false };
   } catch (primaryError) {
     let cloudError = primaryError;
     if (preferredModel !== tiers.fallback) {
       try {
-        return await requestOpenRouter(messages, tiers.fallback, options);
+        const tf = Date.now();
+        const res = await requestOpenRouter(messages, tiers.fallback, options);
+        return { ...res, providerLabel: "openrouter", latencyMs: Date.now() - tf, local: false };
       } catch (fallbackError) {
         cloudError = fallbackError;
       }
@@ -802,7 +812,9 @@ async function requestWithFallback(messages, preferredModel, options = {}) {
           `falling back to LOCAL ${local.baseUrl} (model ${local.model})`
       );
       try {
-        return await requestOpenRouter(messages, local.model, { ...options, provider: local, stream: false });
+        const tl = Date.now();
+        const res = await requestOpenRouter(messages, local.model, { ...options, provider: local, stream: false });
+        return { ...res, providerLabel: "local", latencyMs: Date.now() - tl, local: true };
       } catch (localError) {
         console.warn(`[GM] LOCAL fallback also failed: ${String(localError?.message || localError).slice(0, 160)}`);
       }
@@ -883,6 +895,17 @@ export async function generateNarrative(messages, campaignId, options = {}) {
   captureGmCall(campaignId, "narrative", messages);
   const response = await requestWithFallback(messages, tiers.narrative, options);
   pushUsage(campaignId, response.model === tiers.fallback ? "fallback" : "narrative", response.model, response.tokensUsed, response.cost);
+  // Live attribution for the debug panel: the model that ACTUALLY served this
+  // GM turn (narrative is the headline "GM MODEL"), not the configured value.
+  recordGmServe({
+    tier: "narrative",
+    model: response.model,
+    provider: response.providerLabel || "openrouter",
+    latencyMs: response.latencyMs,
+    local: response.local === true || response.providerLabel === "local",
+    fallback: response.model !== tiers.narrative,
+    configuredModel: tiers.narrative
+  });
   return response;
 }
 

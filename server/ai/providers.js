@@ -1,4 +1,5 @@
 import { comfyuiImage } from "./comfyui.js";
+import { recordImageServe } from "../runtimeStatus.js";
 
 const PLACEHOLDER_MEDIA = {
   image: "IMAGE_RESULT_PLACEHOLDER_URL",
@@ -788,7 +789,9 @@ export async function generateImage({
   // Mock short-circuits: no network, never fails — skip the failover machinery
   // (and its retry delay) entirely so mock/test runs stay instant.
   if (isMockImageProvider(primary)) {
-    return dispatchImageProvider("mock", args);
+    const mockResult = await dispatchImageProvider("mock", args);
+    recordImageServe({ provider: mockResult.provider, model: "mock", mock: true });
+    return mockResult;
   }
 
   // Build the failover chain: primary first, then the priority list, deduped.
@@ -811,7 +814,17 @@ export async function generateImage({
     // delay. Any error (throw, non-200, timeout) is treated as retriable.
     for (let attempt = 1; attempt <= 2; attempt += 1) {
       try {
-        return await dispatchImageProvider(candidate, args);
+        const result = await dispatchImageProvider(candidate, args);
+        // Live attribution for the debug panel: what ACTUALLY rendered (provider
+        // + checkpoint/model), not the configured env value. For comfyui the
+        // checkpoint rides along; other providers surface their model where known.
+        recordImageServe({
+          provider: result.provider,
+          model: result.model || (result.provider === "pollinations" ? POLLINATIONS_MODEL : null),
+          checkpoint: result.checkpoint || null,
+          mock: Boolean(result.mock)
+        });
+        return result;
       } catch (error) {
         lastError = error;
         tried.push(`${candidate} (attempt ${attempt})`);

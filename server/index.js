@@ -29,9 +29,10 @@ function loadDotenv() {
 loadDotenv();
 
 import { createAiJobProcessor } from "./ai/processor.js";
-import { generateNarrative, generateRaw, getCampaignUsage, getModelTiers, runWithBatteryContext } from "./ai/openrouter.js";
+import { generateNarrative, generateRaw, getCampaignUsage, getModelTiers, resolveCloudChain, resolveGmModel, runWithBatteryContext } from "./ai/openrouter.js";
+import { getBuildInfo, getGmServe, getImageServe, debugPanelDefault } from "./runtimeStatus.js";
 import { appendTurnLog, logTurnEvent } from "./logging/sessionLog.js";
-import { generateWithProvider, listAiProviders, pollinationsEditConfigured } from "./ai/providers.js";
+import { generateWithProvider, listAiProviders, pollinationsEditConfigured, resolveImageProvider } from "./ai/providers.js";
 import { detectImageExt, parseMultipartFile, readJsonBody, readRawBody, serveStatic, writeJson, writeText } from "./api/http.js";
 import { handleQuickstartBuildPayload, handleQuickstartParsePayload } from "./api/quickstartRoutes.js";
 import { createLemonSqueezyWebhookHandler } from "./api/lemonsqueezy.js";
@@ -1197,6 +1198,40 @@ async function handleApi(req, res) {
       timestamp: Date.now(),
       dbPath: resolveStorePath(),
       realtimeConnections: wsHub.connectionCount()
+    });
+    return true;
+  }
+
+  // Debug/status: the single source of truth for "what is LIVE right now" — the
+  // build the server is on, the GM model that ACTUALLY served the last turn
+  // (never the configured value, so a silent 429→fallback is visible), and the
+  // image provider/checkpoint that actually rendered. Feeds the in-app debug
+  // panel. No secrets exposed (model names, short SHA, provider labels only), so
+  // it needs no auth — the panel reads it before/around a run. `debugDefault`
+  // tells the client whether to show the panel by default (dev on, prod off).
+  if (req.method === "GET" && url.pathname === "/api/debug/status") {
+    let cloudChain = "off";
+    try {
+      const lanes = resolveCloudChain();
+      cloudChain = lanes ? lanes.map((lane) => lane.name).join(" → ") : "off (mainline)";
+    } catch {
+      cloudChain = "unknown";
+    }
+    const build = getBuildInfo();
+    writeJson(res, 200, {
+      ok: true,
+      build,
+      gm: {
+        configuredModel: resolveGmModel(),
+        served: getGmServe()
+      },
+      image: {
+        configuredProvider: resolveImageProvider(),
+        served: getImageServe()
+      },
+      cloudChain,
+      nodeEnv: build.nodeEnv,
+      debugDefault: debugPanelDefault()
     });
     return true;
   }

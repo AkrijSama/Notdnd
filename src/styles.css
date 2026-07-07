@@ -4225,3 +4225,90 @@ textarea.hb-input { min-height: 76px; resize: vertical; }
 .hb-item-actions { display: flex; gap: 6px; flex: none; }
 .hb-item-actions .ghost { padding: 5px 10px; font-size: 12px; }
 .hb-delete:hover { border-color: #b9543a; color: #e8a08f; }
+
+/* ── Debug/status panel ──────────────────────────────────────────────────────
+   Glanceable LIVE overlay: BUILD · GM MODEL actually serving · IMAGE provider.
+   Fixed bottom-right, above everything; monospace for scan-ability. Toggle via
+   the `~` key or the ⚙ button (see src/components/debugPanel.js). */
+.dbg-wrap {
+  position: fixed;
+  right: 14px;
+  bottom: 14px;
+  z-index: 2147483000;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+.dbg-fab {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid rgba(180, 180, 200, 0.35);
+  background: rgba(18, 18, 24, 0.82);
+  color: #cfd2e6;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+  transition: transform 0.12s ease, border-color 0.12s ease;
+}
+.dbg-fab:hover { transform: rotate(30deg); border-color: rgba(200, 200, 230, 0.7); }
+.dbg-fab-active { border-color: #6f7bd6; color: #aeb6ff; }
+.dbg-card {
+  position: absolute;
+  right: 0;
+  bottom: 42px;
+  width: 340px;
+  max-width: 82vw;
+  background: rgba(14, 15, 20, 0.94);
+  border: 1px solid rgba(150, 155, 190, 0.28);
+  border-radius: 10px;
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.55);
+  color: #d8dae8;
+  backdrop-filter: blur(6px);
+  overflow: hidden;
+}
+.dbg-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid rgba(150, 155, 190, 0.18);
+}
+.dbg-title { font-size: 11px; letter-spacing: 0.14em; color: #8b90ad; }
+.dbg-close {
+  border: none;
+  background: transparent;
+  color: #9aa;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+}
+.dbg-close:hover { color: #fff; }
+.dbg-body { padding: 8px 10px 10px; }
+.dbg-row {
+  display: grid;
+  grid-template-columns: 84px 1fr;
+  gap: 8px;
+  padding: 5px 0;
+  font-size: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+.dbg-row:last-child { border-bottom: none; }
+.dbg-k { color: #7f849c; letter-spacing: 0.06em; }
+.dbg-v { color: #d8dae8; word-break: break-word; }
+.dbg-ok { color: #8fdca0; }
+.dbg-warn { color: #f2c66d; }
+.dbg-muted { color: #7f849c; }
+.dbg-sub { color: #8b90ad; font-size: 11px; }
+.dbg-tag {
+  display: inline-block;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(242, 198, 109, 0.16);
+  color: #f2c66d;
+  border: 1px solid rgba(242, 198, 109, 0.4);
+  vertical-align: middle;
+}

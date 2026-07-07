@@ -21,9 +21,14 @@ import {
 } from "./components/soloSceneShell.js";
 import { createRealtimeClient } from "./realtime/client.js";
 import { createStore } from "./state/store.js";
+import { mountDebugPanel } from "./components/debugPanel.js";
 
 const apiClient = createApiClient("");
 const store = createStore({ apiClient });
+
+// Live debug/status overlay (BUILD · GM MODEL actually serving · IMAGE provider).
+// Toggle with `~` or the corner ⚙; shown by default in dev, hidden in prod.
+mountDebugPanel(apiClient);
 
 const uiState = {
   compendiumQuery: "",

@@ -98,6 +98,11 @@ export function createApiClient(baseUrl = "") {
     async health() {
       return request("/api/health");
     },
+    async debugStatus() {
+      // Short timeout: the debug panel polls this and must never hang the poll
+      // loop if the server is mid-restart.
+      return request("/api/debug/status", { timeoutMs: 4000 });
+    },
     async register({ email, password, displayName }) {
       const response = await request("/api/auth/register", {
         method: "POST",

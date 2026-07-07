@@ -256,7 +256,7 @@ export async function comfyuiImage({ prompt, style, seed, width, height, fetchIm
   const connectTimeoutMs = Math.max(500, Number(env("COMFYUI_CONNECT_TIMEOUT_MS", "5000")) || 5000);
   const totalTimeoutMs = Math.max(5000, Number(env("COMFYUI_TIMEOUT_MS", "120000")) || 120000);
 
-  const { workflow, styleKey } = comfyuiWorkflowForStyle(style, { prompt, seed, width, height });
+  const { workflow, styleKey, checkpoint } = comfyuiWorkflowForStyle(style, { prompt, seed, width, height });
 
   // 1) Queue the workflow. This returns quickly even for slow renders, so the
   //    short deadline here only bites when ComfyUI is down/unreachable — the
@@ -348,6 +348,10 @@ export async function comfyuiImage({ prompt, style, seed, width, height, fetchIm
     provider: "comfyui",
     mock: false,
     bytes: Buffer.from(await imageRes.arrayBuffer()),
-    url: viewUrl
+    url: viewUrl,
+    // Surface the real serving attribution for the debug panel: the style key
+    // selected and the checkpoint that actually rendered this image.
+    model: styleKey,
+    checkpoint
   };
 }
