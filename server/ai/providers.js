@@ -1,3 +1,5 @@
+import { comfyuiImage } from "./comfyui.js";
+
 const PLACEHOLDER_MEDIA = {
   image: "IMAGE_RESULT_PLACEHOLDER_URL",
   voice: "VOICE_RESULT_PLACEHOLDER_URL"
@@ -699,7 +701,11 @@ function isWiredImageProvider(provider) {
   if (p === "cloudflare") {
     return Boolean(String(process.env.CF_ACCOUNT_ID || "").trim() && String(process.env.CF_API_TOKEN || "").trim());
   }
-  return p === "pollinations" || p === "fal" || isMockImageProvider(p);
+  // comfyui is keyless (a URL with a default), so it is always "wired" — but it
+  // is deliberately NOT in IMAGE_PROVIDER_PRIORITY: it only runs when explicitly
+  // selected as the primary provider, and reachability is checked at call time
+  // (a down ComfyUI fails fast into the rest of the chain).
+  return p === "pollinations" || p === "fal" || p === "comfyui" || isMockImageProvider(p);
 }
 
 // Dispatches one generation to a single, concrete provider. Throws for providers
@@ -720,6 +726,18 @@ async function dispatchImageProvider(provider, args) {
   }
   if (p === "fal") {
     return falImage({ prompt: args.prompt, referenceImageUrl: args.referenceImageUrl, fetchImpl: args.fetchImpl });
+  }
+  if (p === "comfyui") {
+    return comfyuiImage({
+      prompt: args.prompt,
+      // The RAW style key (not the prompt suffix) — it selects the per-style
+      // ComfyUI workflow/checkpoint. The prompt already carries the styled text.
+      style: args.style,
+      seed: args.seed,
+      width: args.width,
+      height: args.height,
+      fetchImpl: args.fetchImpl
+    });
   }
   if (p === "cloudflare") {
     return cloudflareImage({
@@ -761,7 +779,9 @@ export async function generateImage({
   providerPriority = IMAGE_PROVIDER_PRIORITY
 } = {}) {
   const styledPrompt = String(style || "").trim() ? `${prompt}, ${String(style).trim()} style` : prompt;
-  const args = { prompt: styledPrompt, referenceImageUrl, seed, width, height, fetchImpl };
+  // The raw style key rides along for providers that select a workflow/checkpoint
+  // by style (comfyui); prompt-only providers ignore it.
+  const args = { prompt: styledPrompt, style, referenceImageUrl, seed, width, height, fetchImpl };
 
   const primary = String(provider || resolveImageProvider() || "mock").trim().toLowerCase();
 
