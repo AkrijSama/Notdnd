@@ -2300,7 +2300,12 @@ async function scenarioBabel(ctx) {
 
   // (2) THE VOICE OPENING — delivered VERBATIM as a set-piece (§2.2 six beats).
   const opening = String(s0.openingNarration || "").replace(/\s+/g, " ");
-  for (const beat of ["YOU ARE HEARD", "IT IS CALLED BABEL", "YOUR BODY SLEEPS ELSEWHERE", "I HAVE GIVEN YOU A WINDOW", "BOTH TEACH. CHOOSE"]) {
+  // Beat strings must match babel.json's authored wording verbatim (the opening
+  // is delivered EXACTLY as written — onboarding bypasses the GM for it). The
+  // window beat is authored "I GIVE YOU A WINDOW" (not "I HAVE GIVEN…"); the old
+  // string checked a phrase the scenario never contained, so it failed on every
+  // model regardless of prose quality. Aligned to the source of truth.
+  for (const beat of ["YOU ARE HEARD", "IT IS CALLED BABEL", "YOUR BODY SLEEPS ELSEWHERE", "I GIVE YOU A WINDOW", "BOTH TEACH. CHOOSE"]) {
     ctx.assert(`VOICE opening carries the authored beat "${beat.slice(0, 24)}…"`, opening.includes(beat), "authored beat present", opening ? "beat missing" : "(no opening)");
   }
   ctx.assert("VOICE opening never calls the body dead (sleeps-law)", !/\bdead\b/i.test(opening) || /NOT DEAD|DO NOT CALL IT DEAD/i.test(opening), "sleeps-law honored", "the word 'dead' leaked without the not-dead framing");
