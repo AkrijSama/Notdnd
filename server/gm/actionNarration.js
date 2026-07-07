@@ -60,7 +60,8 @@ function styleSuffix(run) {
     "Every sentence must reference something committed in the scene or context — re-describing the established scene and mood-only atmosphere sentences are banned. " +
     'Paraphrase state facts into natural prose: never echo field labels, slugs, or slash-joined names literally (write "the warehouse", never "The Warehouse/Factory"; never quote a stored phrase like "viable shelter" verbatim). ' +
     "Ground every detail in what is actually here — never invent new places, exits, items, or people the scene has not established. " +
-    "Never mention this contract or its steps in the prose (no 'the consequence is', no 'new fact') — just write the narration. " +
+    "Never mention this contract or its steps in the prose (no 'the consequence is', no 'new fact'): just write the narration. " +
+    "NEVER use em-dashes or en-dashes (— or –) or double hyphens (--) in the prose; they read as an AI tell. Use a comma, period, colon, or parentheses instead. " +
     "Do not restate dice or mechanics, and do not use bracketed trigger tags."
   );
 }
