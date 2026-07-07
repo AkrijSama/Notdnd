@@ -228,12 +228,40 @@ export function renderGmStatusPanel(gmStatus = null, selectedMode = "placeholder
 // World-entry opening: the AI-generated GM welcome, shown prominently at the top
 // of the scene the first time the player enters (server gates scene.openingNarration
 // to the opening moment). Styled as GM voice, distinct from the location copy.
+// Quoted speech inside narration prose gets a distinct color (#19). We have no
+// structured speaker for in-prose speech (only the talk/VN path carries a name),
+// so this is a render-time pass: split each paragraph on quoted runs (straight
+// OR curly quotes), escape every segment, and wrap the quoted ones in
+// .solo-dialogue. Escaping happens per-segment so the wrapper markup is the only
+// HTML we introduce — the quote text itself is still escaped.
+const DIALOGUE_RE = /(“[^”]*”|"[^"]*")/g;
+function paragraphInnerHtml(text) {
+  const raw = String(text || "");
+  if (!raw) {
+    return "";
+  }
+  return raw
+    .split(DIALOGUE_RE)
+    .filter((seg) => seg !== "" && seg !== undefined)
+    .map((seg) => {
+      const isQuote = /^“[\s\S]*”$/.test(seg) || (/^"[\s\S]*"$/.test(seg) && seg.length >= 2);
+      return isQuote
+        ? `<span class="solo-dialogue">${escapeHtml(seg)}</span>`
+        : escapeHtml(seg);
+    })
+    .join("");
+}
+
+// Split a narration string into spaced <p> paragraphs on blank lines, with
+// quoted dialogue colored. The ONE narration renderer — every prose surface
+// (opening, ambient location copy, per-turn GM narration) routes through this so
+// treatment is consistent (#12/#18/#19): real paragraph breaks, real spacing.
 function beatToParas(beat) {
   const paras = String(beat || "")
     .split(/\n{2,}/)
     .map((part) => part.trim())
     .filter(Boolean);
-  return (paras.length ? paras : [String(beat || "")]).map((part) => `<p>${escapeHtml(part)}</p>`).join("");
+  return (paras.length ? paras : [String(beat || "")]).map((part) => `<p>${paragraphInnerHtml(part)}</p>`).join("");
 }
 
 export function renderSoloSceneOpening(openingNarration = "", openingBeats = null) {
@@ -319,8 +347,7 @@ export function renderGmNarrationPanel(gmNarration = null, gmStatus = null, sele
   return `
     <div class="solo-gm-placeholder solo-gm-narration">
       <span>${escapeHtml(narration.tone || "neutral")} GM Narration</span>
-      <strong>${escapeHtml(narration.title || "Current Scene")}</strong>
-      <p>${escapeHtml(narration.body || "")}</p>
+      ${beatToParas(narration.body || "")}
       ${
         Array.isArray(narration.sensoryDetails) && narration.sensoryDetails.length
           ? `<div class="solo-tag-row">${narration.sensoryDetails
@@ -348,9 +375,7 @@ export function renderLocationPanel(location = {}, gmNarration = null, gmStatus 
         </div>
       </div>
       <div class="solo-location-copy">
-        <div class="solo-section-kicker">Current Location</div>
-        <h3>${escapeHtml(location.name || "Current Location")}</h3>
-        <p>${escapeHtml(location.description || "No location description is available.")}</p>
+        ${beatToParas(location.description || "No location description is available.")}
         ${options.suppressGm ? "" : renderGmNarrationPanel(gmNarration, gmStatus, selectedMode, debug)}
       </div>
     </section>
@@ -997,18 +1022,17 @@ export const SOLO_SKINS = {
   // fantasy). Mirrors the :root leather-tome palette so the scene shell matches
   // the home/onboarding surfaces. Texture is a fine gradient cross-hatch (grain)
   // — kept quote-free so it's safe inside the inline style="" attribute.
-  // Default skin — re-themed brown/leather -> very dark DEEP COBALT. Gold/amber
-  // accents (--accent / --accent-2 / --accent-bright / --accent-grad-* /
-  // --accent-border) are PRESERVED as the accent against cobalt. Mirrors the
-  // :root cobalt token map so the scene shell matches home/onboarding surfaces.
+  // Default skin — "Black grimoire": black leather + SILVER (#21). Mirrors the
+  // :root black-leather token map so the scene shell matches home/onboarding
+  // surfaces. All accents are silver/steel — no gold, brown, or cobalt.
   ashen: {
-    "--bg": "#060912", "--panel": "#0c1322", "--card": "#101a30", "--inset": "#070b16",
-    "--card-dim": "#0a1426", "--tabbar": "#080d18", "--border": "#1d2b46", "--border-faint": "#16223a",
-    "--border-strong": "#2c3f63", "--text": "#dde5f4", "--text-bright": "#f0f4fb", "--text-2": "#aab6cf",
-    "--text-muted": "#8493ad", "--text-label": "#7d8aa6", "--text-faint": "#5d6884", "--accent": "#b08545",
-    "--accent-2": "#d8b46a", "--accent-bright": "#d8b46a", "--accent-grad-a": "#c79a4e", "--accent-grad-b": "#946f30",
-    "--accent-border": "#4a3a1e", "--on-accent": "#0b1020",
-    "--texture": "repeating-linear-gradient(34deg,rgba(216,180,106,.022) 0 1px,transparent 1px 3px),repeating-linear-gradient(-22deg,rgba(0,0,0,.20) 0 1px,transparent 1px 4px)",
+    "--bg": "#050506", "--panel": "#0d0d10", "--card": "#101013", "--inset": "#070708",
+    "--card-dim": "#0b0b0e", "--tabbar": "#08080a", "--border": "#202024", "--border-faint": "#17171a",
+    "--border-strong": "#34343b", "--text": "#d9dbe0", "--text-bright": "#f1f2f5", "--text-2": "#b0b3bb",
+    "--text-muted": "#8b8e96", "--text-label": "#83868e", "--text-faint": "#5f626a", "--accent": "#c2c6cf",
+    "--accent-2": "#e7e9ee", "--accent-bright": "#e7e9ee", "--accent-grad-a": "#cfd3db", "--accent-grad-b": "#9498a1",
+    "--accent-border": "#4c4d54", "--on-accent": "#0a0a0b",
+    "--texture": "repeating-linear-gradient(34deg,rgba(214,217,224,.02) 0 1px,transparent 1px 3px),repeating-linear-gradient(-22deg,rgba(0,0,0,.22) 0 1px,transparent 1px 4px)",
     "--texture-size": "auto"
   },
   dragon: {
@@ -1050,13 +1074,13 @@ export const SOLO_FONTS = {
 };
 
 const SOLO_SKIN_SWATCHES = {
-  ashen: "linear-gradient(135deg,#d8b46a,#0c1322)",
+  ashen: "linear-gradient(135deg,#e7e9ee,#0d0d10)",
   dragon: "linear-gradient(135deg,#cf5236,#0f1411)",
   lava: "linear-gradient(135deg,#ff6a1f,#16100d)",
   wood: "linear-gradient(135deg,#86a544,#161310)"
 };
 
-const SOLO_SKIN_LABELS = { ashen: "Cobalt Keep", dragon: "Dragonscale", lava: "Molten Forge", wood: "Wildwood" };
+const SOLO_SKIN_LABELS = { ashen: "Black Grimoire", dragon: "Dragonscale", lava: "Molten Forge", wood: "Wildwood" };
 const SOLO_FONT_LABELS = { tome: "Tome", court: "Court", iron: "Iron" };
 
 export const SOLO_TABS = [
@@ -1561,56 +1585,26 @@ export function renderSoloGameTabs(activeTab = "scene") {
 }
 
 export function renderSoloSceneInputBar(state = {}) {
-  const scene = state.scene || {};
-  const actions = Array.isArray(scene.availableActions) ? scene.availableActions : [];
-  const chips = actions
-    .filter((action) => action.enabled !== false)
-    .slice(0, 4)
-    .map((action) => {
-      const label = labelForAction(action);
-      return `<button type="button" class="solo-scene-chip" data-solo-action="${escapeHtml(action.type || "")}" data-location-id="${escapeHtml(action.toLocationId || "")}" data-entity-id="${escapeHtml(action.entityId || action.targetEntityId || "")}" data-rest-type="${escapeHtml(action.restType || "")}" data-item-id="${escapeHtml(action.itemId || "")}">${escapeHtml(label)}</button>`;
-    })
-    .join("");
-
   const confirmation = typeof state.npcCreatorConfirmation === "string" ? state.npcCreatorConfirmation : "";
 
   // While any action is in flight, disable the input + submit (prevents
   // double-submit) and surface the wait in the button label.
   const busy = Boolean(state.busy);
 
-  // Optional, editable next-action suggestions for this scene. Clicking one fills
-  // the input (the player can edit it before submitting); the input itself is
-  // always the "type your own" option. Pure scaffolding — never forces a choice.
-  const suggestions = Array.isArray(scene.suggestedActions)
-    ? scene.suggestedActions.filter((entry) => typeof entry === "string" && entry.trim().length).slice(0, 3)
-    : [];
-  const hasSuggestions = suggestions.length > 0;
-  const suggestionChips = suggestions
-    .map(
-      (entry) =>
-        `<button type="button" class="solo-suggestion" data-solo-suggestion="${escapeHtml(entry)}" ${busy ? "disabled" : ""}>${escapeHtml(entry)}</button>`
-    )
-    .join("");
-
+  // #16: both chrome rows around the input are gone — the top AI-hook
+  // "Suggested" chips (scene.suggestedActions) and the bottom verb row
+  // (scene.availableActions). The free-text input is the whole interface: type
+  // what you do. The "bring someone in" tool + its confirmation stay.
   return `
     <div class="solo-scene-input">
-      ${
-        hasSuggestions
-          ? `<div class="solo-suggestions" role="group" aria-label="Suggested actions">
-        <span class="solo-suggestions-label">Suggested</span>
-        ${suggestionChips}
-      </div>`
-          : ""
-      }
       <div class="solo-scene-input-row">
-        <input type="text" class="solo-scene-field" data-solo-attempt-input placeholder="${hasSuggestions ? "…or describe your own action" : "What do you do?"}" value="${escapeHtml(state.attemptDraft || "")}" ${busy ? "disabled" : ""} />
+        <input type="text" class="solo-scene-field" data-solo-attempt-input placeholder="What do you do?" value="${escapeHtml(state.attemptDraft || "")}" ${busy ? "disabled" : ""} />
         <button type="button" class="solo-attempt-submit" data-solo-attempt-submit ${busy ? "disabled" : ""}>${busy ? "Thinking…" : "Attempt"}</button>
       </div>
       <div class="solo-scene-tools">
         <button type="button" class="solo-bring-in" data-solo-npc-create>＋ Bring someone in</button>
       </div>
       ${confirmation ? `<div class="solo-npc-confirm" role="status">${escapeHtml(confirmation)}</div>` : ""}
-      ${chips ? `<div class="solo-scene-chips">${chips}</div>` : ""}
     </div>
   `;
 }

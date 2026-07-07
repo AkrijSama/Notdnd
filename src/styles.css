@@ -7,59 +7,60 @@
      hosts cyberpunk / cosmic-horror worlds as comfortably as fantasy. Other
      skins (dragon/lava/wood) override these same var NAMES via soloThemeVarString.
      ------------------------------------------------------------------------- */
-  /* Re-themed brown/leather -> very dark DEEP COBALT at the token root (every
-     panel/border/chip/tab inherits via these vars — no per-component cobalt).
-     The aged-GOLD accents below are deliberately preserved as the accent against
-     cobalt (strong gold-on-cobalt contrast). */
-  --bg: #060912;
-  --panel: #0c1322;
-  --panel-alt: #15203a;
-  --surface: #0a1020;
-  --surface-strong: #16233e;
-  --input-bg: #070b16;
-  --ink: #dde5f4;           /* cool vellum — reads on cobalt */
-  --muted: #8493ad;
-  --accent: #b08545;        /* aged gold — PRESERVED accent on cobalt */
-  --accent-2: #b94c2d;      /* warm red — legacy GM surfaces; semantics unchanged */
-  --accent-3: #6f8fc4;
-  --line: #233453;          /* deep-cobalt seam */
-  --line-strong: #32486e;
-  --good: #7faf60;
-  --warn: #d9a23d;
-  --pill-good-bg: rgba(127, 175, 96, 0.18);
-  --pill-warn-bg: rgba(217, 162, 61, 0.18);
+  /* BLACK LEATHER + SILVER (#21). Every panel/border/chip/tab inherits via these
+     vars — no per-component color. Base is black and hues of black (near-black,
+     charcoal, dark leather); the accent is SILVER, not gold/brown/blue. Legacy
+     var NAMES (--gold-foil, --gold-edge, --accent-border) are kept so no consumer
+     breaks; their VALUES are now silver. */
+  --bg: #050506;
+  --panel: #0d0d10;
+  --panel-alt: #17171b;
+  --surface: #0a0a0d;
+  --surface-strong: #1a1a1f;
+  --input-bg: #060607;
+  --ink: #d9dbe0;           /* silvered vellum — reads on black */
+  --muted: #8b8e96;
+  --accent: #c2c6cf;        /* SILVER — the accent against black leather */
+  --accent-2: #9498a1;      /* cool steel — legacy GM surfaces (was warm red) */
+  --accent-3: #71757e;
+  --line: #262629;          /* charcoal seam */
+  --line-strong: #3a3a40;
+  --good: #86b06a;
+  --warn: #c9b083;          /* pale pewter-amber (desaturated, not gold) */
+  --pill-good-bg: rgba(134, 176, 106, 0.16);
+  --pill-warn-bg: rgba(201, 176, 131, 0.14);
   --radius-lg: 20px;
   --radius-md: 12px;
-  --shadow: 0 18px 40px rgba(0, 0, 0, 0.62);
+  --shadow: 0 18px 40px rgba(0, 0, 0, 0.7);
 
-  /* Skin-semantic vars — defaults are the leather-tome base. The solo shell and
+  /* Skin-semantic vars — defaults are the black-leather base. The solo shell and
      home/onboarding surfaces override these via soloThemeVarString on a themed
      root. Defining them HERE means they are never phantom: any surface resolves
      a real value with or without a skin applied. Fonts default to "Tome". */
-  --card: #101a30;
-  --inset: #070b16;
-  --text: #dde5f4;
-  --text-bright: #f0f4fb;
-  --text-2: #aab6cf;
-  --text-muted: #8493ad;
-  --border: #1d2b46;
-  --border-strong: #2c3f63;
-  --on-accent: #0b1020;     /* dark cobalt ink on gold foil */
-  --accent-border: #4a3a1e; /* gold-tooled edge under foil controls (PRESERVED) */
-  /* Lighter gold highlight (the skins' --accent-2). Separate name so it never
-     collides with :root --accent-2 (a warm red used by legacy GM surfaces). */
-  --accent-bright: #d8b46a; /* gold leaf — the foil edge / highlight */
+  --card: #101013;
+  --inset: #070708;
+  --text: #d9dbe0;
+  --text-bright: #f1f2f5;
+  --text-2: #b0b3bb;
+  --text-muted: #8b8e96;
+  --border: #202024;
+  --border-strong: #34343b;
+  --on-accent: #0a0a0b;     /* black ink on silver foil */
+  --accent-border: #4c4d54; /* steel-tooled edge under foil controls */
+  /* Lighter silver highlight (the skins' --accent-2). Separate name so it never
+     collides with :root --accent-2 (a cool steel used by legacy GM surfaces). */
+  --accent-bright: #e7e9ee; /* bright silver — the foil edge / highlight */
   --font-display: 'Cinzel', Georgia, serif;
   --font-body: 'Spectral', Georgia, 'Times New Roman', serif;
 
   /* ---- Depth & material system (CSS only — no binary assets) ----
-     Reused everywhere so the UI reads as layered leather, not flat panels. */
-  --oxblood: #0c1830;       /* re-themed: deep-cobalt depth shadow (was leather oxblood) */
-  /* Hot-foil gradient for stamped display type (background-clip: text). */
-  --gold-foil: linear-gradient(176deg, #f0dca2 0%, #d8b46a 36%, #b08545 64%, #8a6326 100%);
-  --gold-edge: rgba(216, 180, 106, 0.16);   /* hairline gold rule on key surfaces */
-  --emboss: inset 0 1px 0 rgba(216, 180, 106, 0.07), inset 0 -14px 30px rgba(0, 0, 0, 0.42);
-  --deboss: inset 0 2px 5px rgba(0, 0, 0, 0.72), inset 0 -1px 0 rgba(216, 180, 106, 0.05);
+     Reused everywhere so the UI reads as layered black leather, not flat panels. */
+  --oxblood: #0a0a0d;       /* near-black depth shadow */
+  /* Hot-foil gradient for stamped display type (background-clip: text) — SILVER. */
+  --gold-foil: linear-gradient(176deg, #f4f5f8 0%, #d2d5dc 36%, #a9adb6 64%, #71757e 100%);
+  --gold-edge: rgba(214, 217, 224, 0.16);   /* hairline silver rule on key surfaces */
+  --emboss: inset 0 1px 0 rgba(214, 217, 224, 0.08), inset 0 -14px 30px rgba(0, 0, 0, 0.5);
+  --deboss: inset 0 2px 5px rgba(0, 0, 0, 0.78), inset 0 -1px 0 rgba(214, 217, 224, 0.06);
   --elev-1: 0 8px 22px rgba(0, 0, 0, 0.5);
   --elev-2: 0 18px 44px rgba(0, 0, 0, 0.6);
   --vignette: radial-gradient(135% 120% at 50% 28%, transparent 52%, rgba(0, 0, 0, 0.5) 100%);
@@ -79,14 +80,14 @@ body {
   font-family: "Space Grotesk", sans-serif;
   color: var(--ink);
   min-height: 100vh;
-  /* Black leather with an oxblood undertone: a low gold sheen at the spine (top),
-     warm oxblood pooling toward the bottom corner, and a vignette so attention
-     settles inward. Reads as a closed tome's cover, genre-neutral. */
+  /* Black leather with a faint SILVER sheen at the spine (top), a cool charcoal
+     pooling toward the bottom corner, and a vignette so attention settles inward.
+     Reads as a closed black tome's cover, genre-neutral. No gold, no brown. */
   background:
     var(--vignette),
-    radial-gradient(125% 80% at 50% -12%, rgba(216, 180, 106, 0.06), transparent 56%),
-    radial-gradient(110% 80% at 82% 116%, rgba(42, 15, 14, 0.55), transparent 62%),
-    linear-gradient(162deg, #0b0908 0%, #110c0a 54%, #090605 100%);
+    radial-gradient(125% 80% at 50% -12%, rgba(214, 217, 224, 0.05), transparent 56%),
+    radial-gradient(110% 80% at 82% 116%, rgba(18, 18, 22, 0.6), transparent 62%),
+    linear-gradient(162deg, #080809 0%, #0d0d10 54%, #060607 100%);
   background-attachment: fixed;
 }
 
@@ -149,23 +150,23 @@ textarea {
 /* Primary button — a gold-foil stamp pressed into leather: brushed-gold fill,
    embossed top sheen + recessed lower edge, hot-stamp text shadow. */
 button {
-  border: 1px solid var(--accent-border, #4a3a1e);
+  border: 1px solid var(--accent-border, #4c4d54);
   border-radius: 999px;
   padding: 10px 18px;
   background:
-    linear-gradient(180deg, var(--accent-bright, #d8b46a) 0%, var(--accent, #b08545) 52%, #946f30 100%);
+    linear-gradient(180deg, var(--accent-bright, #e7e9ee) 0%, var(--accent, #c2c6cf) 52%, #9498a1 100%);
   color: var(--on-accent, #1a1206);
   cursor: pointer;
   font-weight: 600;
   text-shadow: 0 1px 0 rgba(255, 244, 214, 0.3);
-  box-shadow: var(--emboss, inset 0 1px 0 rgba(216, 180, 106, 0.07)), 0 6px 16px rgba(0, 0, 0, 0.42);
+  box-shadow: var(--emboss, inset 0 1px 0 rgba(214, 217, 224, 0.07)), 0 6px 16px rgba(0, 0, 0, 0.42);
   transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease;
 }
 
 button:hover {
   transform: translateY(-1px);
   filter: brightness(1.07);
-  box-shadow: var(--emboss, inset 0 1px 0 rgba(216, 180, 106, 0.07)), 0 11px 24px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--emboss, inset 0 1px 0 rgba(214, 217, 224, 0.07)), 0 11px 24px rgba(0, 0, 0, 0.5);
 }
 
 button:active {
@@ -174,7 +175,7 @@ button:active {
 }
 
 button:focus-visible {
-  outline: 2px solid var(--accent-bright, #d8b46a);
+  outline: 2px solid var(--accent-bright, #e7e9ee);
   outline-offset: 2px;
 }
 
@@ -188,7 +189,7 @@ button.ghost {
 }
 
 button.ghost:hover {
-  background: rgba(216, 180, 106, 0.07);
+  background: rgba(214, 217, 224, 0.07);
   border-color: var(--accent);
   filter: none;
 }
@@ -230,8 +231,8 @@ button.alt:hover {
   border-radius: var(--radius-lg);
   padding: 14px 18px;
   box-shadow:
-    var(--emboss, inset 0 1px 0 rgba(216, 180, 106, 0.07)),
-    inset 0 0 0 1px var(--gold-edge, rgba(216, 180, 106, 0.16)),
+    var(--emboss, inset 0 1px 0 rgba(214, 217, 224, 0.07)),
+    inset 0 0 0 1px var(--gold-edge, rgba(214, 217, 224, 0.16)),
     var(--elev-1, 0 8px 22px rgba(0, 0, 0, 0.5));
   backdrop-filter: blur(6px);
 }
@@ -279,8 +280,8 @@ button.alt:hover {
 }
 .account-dropdown-appearance {
   padding: 11px 14px 13px;
-  border-top: 1px solid var(--border, #2e2420);
-  border-bottom: 1px solid var(--border, #2e2420);
+  border-top: 1px solid var(--border, #202024);
+  border-bottom: 1px solid var(--border, #202024);
   display: grid;
   gap: 8px;
 }
@@ -306,8 +307,8 @@ button.alt:hover {
   font-size: 25px;
   font-weight: 600;
   letter-spacing: 0.05em;
-  color: var(--accent-bright, #d8b46a);
-  background: var(--gold-foil, linear-gradient(176deg, #f0dca2, #b08545));
+  color: var(--accent-bright, #e7e9ee);
+  background: var(--gold-foil, linear-gradient(176deg, #f4f5f8, #c2c6cf));
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -360,8 +361,8 @@ button.alt:hover {
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   box-shadow:
-    var(--emboss, inset 0 1px 0 rgba(216, 180, 106, 0.07)),
-    inset 0 0 0 1px var(--gold-edge, rgba(216, 180, 106, 0.16)),
+    var(--emboss, inset 0 1px 0 rgba(214, 217, 224, 0.07)),
+    inset 0 0 0 1px var(--gold-edge, rgba(214, 217, 224, 0.16)),
     var(--shadow);
 }
 
@@ -382,7 +383,7 @@ button.alt:hover {
   padding: 12px;
   border-radius: var(--radius-md);
   border: 1px solid var(--line);
-  background: linear-gradient(180deg, var(--panel-alt, #15203a) 0%, var(--panel, #0c1322) 100%);
+  background: linear-gradient(180deg, var(--panel-alt, #17171b) 0%, var(--panel, #0d0d10) 100%);
 }
 
 .metric-value {
@@ -461,7 +462,7 @@ button.alt:hover {
 .field textarea:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: var(--deboss, inset 0 2px 5px rgba(0, 0, 0, 0.72)), 0 0 0 2px rgba(216, 180, 106, 0.22);
+  box-shadow: var(--deboss, inset 0 2px 5px rgba(0, 0, 0, 0.72)), 0 0 0 2px rgba(214, 217, 224, 0.22);
 }
 
 .field input::placeholder,
@@ -517,7 +518,7 @@ button.alt:hover {
   overflow: hidden;
   display: grid;
   grid-template-columns: repeat(10, 1fr);
-  background: linear-gradient(180deg, var(--inset, #070b16) 0%, var(--card, #101a30) 100%);
+  background: linear-gradient(180deg, var(--inset, #070b16) 0%, var(--card, #101013) 100%);
 }
 
 .map-cell {
@@ -594,7 +595,7 @@ button.alt:hover {
 
 .progress {
   height: 10px;
-  background: var(--surface-strong, #16233e);
+  background: var(--surface-strong, #1a1a1f);
   border-radius: 999px;
   overflow: hidden;
   border: 1px solid var(--line);
@@ -623,17 +624,17 @@ button.alt:hover {
   min-height: 72vh;
   padding: clamp(20px, 3vw, 40px);
   border-radius: var(--radius-lg, 20px);
-  color: var(--text, #ece1c7);
+  color: var(--text, #d9dbe0);
   font-family: var(--font-body, Georgia, "Times New Roman", serif);
   /* Refined dark panel: a deep layered base (not a muddy flat gradient) with a
      faint warm glow up top. Texture + vignette are layered via ::before/::after. */
   background:
-    radial-gradient(130% 80% at 50% -12%, rgba(200, 154, 75, 0.12), transparent 58%),
-    linear-gradient(168deg, var(--panel, #221a13) 0%, var(--bg, #14100c) 56%, var(--inset, #120c07) 100%);
-  border: 1px solid var(--border-strong, #503f2e);
+    radial-gradient(130% 80% at 50% -12%, rgba(200, 204, 214, 0.12), transparent 58%),
+    linear-gradient(168deg, var(--panel, #141417) 0%, var(--bg, #14100c) 56%, var(--inset, #070708) 100%);
+  border: 1px solid var(--border-strong, #34343b);
   /* Ornamental inner gold hairline + soft inner shadow for depth + outer drop. */
   box-shadow:
-    inset 0 0 0 1px rgba(200, 154, 75, 0.10),
+    inset 0 0 0 1px rgba(200, 204, 214, 0.10),
     inset 0 2px 60px rgba(0, 0, 0, 0.55),
     var(--shadow, 0 14px 34px rgba(0, 0, 0, 0.55));
   display: grid;
@@ -678,7 +679,7 @@ button.alt:hover {
   display: grid;
   gap: 10px;
   padding-bottom: 16px;
-  border-bottom: 1px solid var(--border, #2e2420);
+  border-bottom: 1px solid var(--border, #202024);
 }
 
 /* Eyebrow chip above the title (e.g. "World Generator"). */
@@ -688,8 +689,8 @@ button.alt:hover {
   letter-spacing: 0.18em;
   text-transform: uppercase;
   font-weight: 700;
-  color: var(--on-accent, #1c1308);
-  background: linear-gradient(135deg, var(--accent-bright, #e0b352), var(--accent, #c89a4b));
+  color: var(--on-accent, #0a0a0b);
+  background: linear-gradient(135deg, var(--accent-bright, #e7e9ee), var(--accent, #c2c6cf));
   padding: 4px 12px;
   border-radius: 999px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
@@ -701,14 +702,14 @@ button.alt:hover {
   font-weight: 600;
   line-height: 1.04;
   letter-spacing: 0.01em;
-  color: var(--text-bright, #f0e6d4);
-  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.5), 0 0 26px rgba(200, 154, 75, 0.12);
+  color: var(--text-bright, #f1f2f5);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.5), 0 0 26px rgba(200, 204, 214, 0.12);
 }
 
 .onboarding-header p,
 .onboarding-header .onb-disclaimer {
   margin: 0;
-  color: var(--text-2, #b3a48c);
+  color: var(--text-2, #b0b3bb);
   font-size: 14px;
 }
 
@@ -729,7 +730,7 @@ button.alt:hover {
 
 .onboarding-form input,
 .onboarding-form textarea {
-  border: 1px solid var(--line-strong, rgba(200, 154, 75, 0.32));
+  border: 1px solid var(--line-strong, rgba(200, 204, 214, 0.32));
   border-radius: 12px;
   padding: 10px 12px;
   background: var(--input-bg, rgba(8, 6, 4, 0.78));
@@ -742,7 +743,7 @@ button.alt:hover {
 .onboarding-form textarea:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: var(--deboss, inset 0 2px 5px rgba(0, 0, 0, 0.72)), 0 0 0 2px rgba(216, 180, 106, 0.22);
+  box-shadow: var(--deboss, inset 0 2px 5px rgba(0, 0, 0, 0.72)), 0 0 0 2px rgba(214, 217, 224, 0.22);
 }
 
 .onboarding-form textarea {
@@ -767,7 +768,7 @@ button.alt:hover {
   z-index: 1;
   display: grid;
   gap: 10px;
-  border: 1px solid rgba(200, 154, 75, 0.22);
+  border: 1px solid rgba(200, 204, 214, 0.22);
   border-radius: 14px;
   padding: 12px;
   max-height: 52vh;
@@ -780,7 +781,7 @@ button.alt:hover {
   gap: 4px;
   padding: 10px 12px;
   border-radius: 12px;
-  border: 1px solid rgba(200, 154, 75, 0.18);
+  border: 1px solid rgba(200, 204, 214, 0.18);
   background: rgba(40, 30, 21, 0.55);
 }
 
@@ -798,7 +799,7 @@ button.alt:hover {
 }
 
 .onboarding-message-text {
-  color: #ece1c7;
+  color: #d9dbe0;
   line-height: 1.45;
   white-space: pre-wrap;
 }
@@ -844,7 +845,7 @@ button.alt:hover {
   height: 100%;
   width: 0%;
   border-radius: 999px;
-  background: linear-gradient(90deg, #b8924a, #e7c878);
+  background: linear-gradient(90deg, #c2c6cf, #e7e9ee);
   transition: width 160ms ease;
 }
 
@@ -857,7 +858,7 @@ button.alt:hover {
   gap: 12px;
   padding: 10px 12px;
   border-radius: 12px;
-  border: 1px solid rgba(200, 154, 75, 0.3);
+  border: 1px solid rgba(200, 204, 214, 0.3);
   background: rgba(20, 14, 9, 0.78);
 }
 
@@ -933,15 +934,15 @@ button.alt:hover {
 
 .solo-location-image {
   min-height: 260px;
-  border: 1px dashed rgba(200, 154, 75, 0.28);
+  border: 1px dashed rgba(200, 204, 214, 0.28);
   border-radius: 14px;
   display: grid;
   place-items: center;
   padding: 18px;
   color: var(--muted);
   background:
-    linear-gradient(rgba(200, 154, 75, 0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(200, 154, 75, 0.05) 1px, transparent 1px),
+    linear-gradient(rgba(200, 204, 214, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(200, 204, 214, 0.05) 1px, transparent 1px),
     var(--surface);
   background-size: 22px 22px;
 }
@@ -1028,7 +1029,7 @@ button.alt:hover {
   text-align: center;
   border: 1px solid var(--line, #3d2f22);
   border-radius: var(--radius-lg, 20px);
-  background: var(--panel, #221a13);
+  background: var(--panel, #141417);
   box-shadow: var(--shadow, 0 14px 34px rgba(0, 0, 0, 0.55));
 }
 .solo-death-kicker {
@@ -1041,11 +1042,11 @@ button.alt:hover {
 .solo-death-title {
   font-family: var(--font-display, Georgia, serif);
   font-size: 28px;
-  color: var(--ink, #ece1c7);
+  color: var(--ink, #d9dbe0);
   margin: 0 0 8px;
 }
 .solo-death-sub {
-  color: var(--muted, #95897a);
+  color: var(--muted, #8b8e96);
   margin: 0 0 22px;
 }
 .solo-death-summary {
@@ -1059,19 +1060,19 @@ button.alt:hover {
   justify-content: space-between;
   gap: 16px;
   padding: 8px 12px;
-  border: 1px solid var(--border, #2e2420);
+  border: 1px solid var(--border, #202024);
   border-radius: 8px;
   background: var(--card-dim, #160f09);
 }
 .solo-death-summary dt {
-  color: var(--muted, #95897a);
+  color: var(--muted, #8b8e96);
   font-size: 13px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
 .solo-death-summary dd {
   margin: 0;
-  color: var(--ink, #ece1c7);
+  color: var(--ink, #d9dbe0);
   font-weight: 600;
 }
 .solo-death-home {
@@ -1094,37 +1095,37 @@ button.alt:hover {
   margin: auto;
   padding: 36px 32px;
   text-align: center;
-  border: 1px solid var(--accent, #c89a4b);
+  border: 1px solid var(--accent, #c2c6cf);
   border-radius: var(--radius-lg, 20px);
-  background: var(--panel, #221a13);
-  box-shadow: 0 0 0 1px rgba(200, 154, 75, 0.35) inset, var(--shadow, 0 14px 34px rgba(0, 0, 0, 0.55));
+  background: var(--panel, #141417);
+  box-shadow: 0 0 0 1px rgba(200, 204, 214, 0.35) inset, var(--shadow, 0 14px 34px rgba(0, 0, 0, 0.55));
 }
 .solo-victory-kicker {
   font-size: 13px;
   letter-spacing: 0.32em;
   text-transform: uppercase;
-  color: var(--accent, #c89a4b);
+  color: var(--accent, #c2c6cf);
   margin-bottom: 10px;
 }
 .solo-victory-title {
   font-family: var(--font-display, Georgia, serif);
   font-size: 28px;
-  color: var(--accent, #c89a4b);
+  color: var(--accent, #c2c6cf);
   margin: 0 0 8px;
 }
 .solo-victory-narration {
-  color: var(--ink, #ece1c7);
+  color: var(--ink, #d9dbe0);
   font-style: italic;
   line-height: 1.5;
   min-height: 1.5em;
   margin: 0 0 18px;
 }
 .solo-victory-sub {
-  color: var(--ink, #ece1c7);
+  color: var(--ink, #d9dbe0);
   margin: 0 0 22px;
 }
 .solo-victory-sub strong {
-  color: var(--accent, #c89a4b);
+  color: var(--accent, #c2c6cf);
 }
 .solo-victory-summary {
   display: grid;
@@ -1137,19 +1138,19 @@ button.alt:hover {
   justify-content: space-between;
   gap: 16px;
   padding: 8px 12px;
-  border: 1px solid rgba(200, 154, 75, 0.35);
+  border: 1px solid rgba(200, 204, 214, 0.35);
   border-radius: 8px;
   background: var(--card-dim, #160f09);
 }
 .solo-victory-summary dt {
-  color: var(--muted, #95897a);
+  color: var(--muted, #8b8e96);
   font-size: 13px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
 .solo-victory-summary dd {
   margin: 0;
-  color: var(--ink, #ece1c7);
+  color: var(--ink, #d9dbe0);
   font-weight: 600;
 }
 .solo-victory-home {
@@ -1160,7 +1161,7 @@ button.alt:hover {
 /* ---- Quest objective (Journal panel + scene-header hint) -------------- */
 .solo-quest-title {
   display: block;
-  color: var(--accent, #c89a4b);
+  color: var(--accent, #c2c6cf);
   font-size: 15px;
 }
 .solo-quest-objective {
@@ -1168,12 +1169,12 @@ button.alt:hover {
 }
 .solo-quest-stage {
   margin-top: 6px;
-  color: var(--accent, #c89a4b);
+  color: var(--accent, #c2c6cf);
   letter-spacing: 0.04em;
 }
 .solo-game-objective {
   margin-top: 4px;
-  color: var(--accent, #c89a4b);
+  color: var(--accent, #c2c6cf);
   letter-spacing: 0.02em;
 }
 
@@ -1185,13 +1186,13 @@ button:disabled {
 }
 
 .solo-scene-shell-polished {
-  --scene-bg: rgba(34, 26, 19, 0.94);
+  --scene-bg: rgba(12, 12, 15, 0.94);
   --scene-panel: var(--surface);
   --scene-panel-alt: var(--panel-alt);
   --scene-border: var(--line);
   --scene-muted: var(--muted);
   --scene-accent: var(--accent);
-  --scene-selected: rgba(200, 154, 75, 0.14);
+  --scene-selected: rgba(200, 204, 214, 0.12);
 }
 
 .solo-scene-title {
@@ -1270,8 +1271,8 @@ button:disabled {
 
 .solo-entity-card.inspectable:hover,
 .solo-entity-card.inspectable:focus {
-  border-color: rgba(200, 154, 75, 0.5);
-  box-shadow: 0 8px 20px rgba(200, 154, 75, 0.14);
+  border-color: rgba(200, 204, 214, 0.5);
+  box-shadow: 0 8px 20px rgba(200, 204, 214, 0.14);
   outline: none;
 }
 
@@ -1333,7 +1334,7 @@ button:disabled {
   /* 2:3 portrait frame so the inner image is shown whole (top-anchored), not as
      a wide-short horizontal strip that sliced the face. */
   aspect-ratio: 512 / 768;
-  border: 1px dashed rgba(200, 154, 75, 0.26);
+  border: 1px dashed rgba(200, 204, 214, 0.26);
   border-radius: 12px;
   background: var(--scene-panel);
   color: var(--scene-muted);
@@ -1500,7 +1501,7 @@ button:disabled {
   margin-left: calc(50% - 50vw);
   padding: 16px clamp(16px, 2.4vw, 56px) 18px;
   background: var(--bg, #1c1510);
-  color: var(--text, #e8dcc8);
+  color: var(--text, #d9dbe0);
   font-family: var(--font-body, Georgia, "Times New Roman", serif);
 }
 
@@ -1521,15 +1522,15 @@ button:disabled {
   font-size: 17px;
   line-height: 1;
   border-radius: 9px;
-  background: var(--inset, #120c07);
-  border: 1px solid var(--border, #2e2420);
-  color: var(--text-2, #b3a48c);
+  background: var(--inset, #070708);
+  border: 1px solid var(--border, #202024);
+  color: var(--text-2, #b0b3bb);
 }
 .solo-settings-btn::-webkit-details-marker,
 .solo-settings-btn::marker { display: none; content: ""; }
 .solo-settings[open] .solo-settings-btn {
-  color: var(--accent, #c8922a);
-  border-color: var(--accent, #c8922a);
+  color: var(--accent, #a9adb6);
+  border-color: var(--accent, #a9adb6);
 }
 .solo-settings-menu {
   position: absolute;
@@ -1538,7 +1539,7 @@ button:disabled {
   min-width: 260px;
   padding: 16px 18px;
   background: var(--panel, #171009);
-  border: 1px solid var(--border, #2e2420);
+  border: 1px solid var(--border, #202024);
   border-radius: 12px;
   box-shadow: 0 18px 50px rgba(0, 0, 0, 0.55);
 }
@@ -1565,9 +1566,9 @@ button:disabled {
   font-size: 9px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--accent-2, #e0b352);
-  border: 1px solid var(--accent, #c8922a);
-  background: var(--inset, #120c07);
+  color: var(--accent-2, #e7e9ee);
+  border: 1px solid var(--accent, #a9adb6);
+  background: var(--inset, #070708);
   border-radius: 4px;
   padding: 3px 7px;
   font-weight: 700;
@@ -1596,7 +1597,7 @@ button:disabled {
   border-radius: 10px;
   overflow: hidden;
   box-shadow: 0 18px 50px rgba(0, 0, 0, 0.4);
-  border: 1px solid var(--border, #2e2420);
+  border: 1px solid var(--border, #202024);
   min-height: 620px;
 }
 
@@ -1608,7 +1609,7 @@ button:disabled {
   background: var(--panel, #171009);
   background-image: var(--texture, none);
   background-size: var(--texture-size, auto);
-  border-right: 1px solid var(--border, #2e2420);
+  border-right: 1px solid var(--border, #202024);
   display: flex;
   flex-direction: column;
 }
@@ -1619,19 +1620,19 @@ button:disabled {
      whole composite with no distortion. Bounded by the sidebar width clamp. */
   aspect-ratio: 1 / 1;
   flex: none;
-  border-bottom: 1px solid var(--border, #2e2420);
+  border-bottom: 1px solid var(--border, #202024);
   background:
     radial-gradient(46px 56px at 50% 96%, #0a0705 60%, transparent 62%),
-    radial-gradient(120% 95% at 50% 18%, #2a1f14, var(--inset, #120c07) 70%);
+    radial-gradient(120% 95% at 50% 18%, #2a1f14, var(--inset, #070708) 70%);
 }
 .solo-sidebar-identity {
   padding: 16px 18px 14px;
-  border-bottom: 1px solid var(--border, #2e2420);
+  border-bottom: 1px solid var(--border, #202024);
 }
 .solo-char-name {
   font-family: var(--font-display, Georgia, serif);
   font-size: 19px;
-  color: var(--text-bright, #f0e6d4);
+  color: var(--text-bright, #f1f2f5);
   line-height: 1.2;
 }
 .solo-char-sub {
@@ -1641,7 +1642,7 @@ button:disabled {
 }
 .solo-sidebar-block {
   padding: 16px 18px;
-  border-bottom: 1px solid var(--border, #2e2420);
+  border-bottom: 1px solid var(--border, #202024);
 }
 .solo-stat-kicker {
   font-size: 11px;
@@ -1661,14 +1662,14 @@ button:disabled {
 .solo-hp-value {
   font-family: var(--font-body, Georgia, serif);
   font-size: 15px;
-  color: var(--text, #e8dcc8);
+  color: var(--text, #d9dbe0);
 }
 .solo-hp-value span { color: var(--text-faint, #7a6c58); font-size: 12px; }
 .solo-hp-track {
   height: 9px;
-  background: var(--inset, #0e0a06);
+  background: var(--inset, #070708);
   border-radius: 5px;
-  border: 1px solid var(--border, #2e2420);
+  border: 1px solid var(--border, #202024);
   overflow: hidden;
 }
 .solo-hp-fill {
@@ -1689,14 +1690,14 @@ button:disabled {
 .solo-gauge-row.is-muted { opacity: 0.5; }
 .solo-gauge-track {
   height: 9px;
-  background: var(--inset, #0e0a06);
+  background: var(--inset, #070708);
   border-radius: 5px;
-  border: 1px solid var(--border, #2e2420);
+  border: 1px solid var(--border, #202024);
   overflow: hidden;
   margin-bottom: 8px;
 }
 .solo-gauge-fill { height: 100%; border-radius: 4px; transition: width 0.25s ease; }
-.solo-mp-fill { background: linear-gradient(90deg, #2f5a8a, #4f86c6); }
+.solo-mp-fill { background: linear-gradient(90deg, #454b57, #7c828e); }
 .solo-xp-row {
   display: flex;
   align-items: baseline;
@@ -1704,7 +1705,7 @@ button:disabled {
   gap: 8px;
   margin-top: 6px;
 }
-.solo-xp-value { font-size: 13px; font-weight: 700; color: var(--accent-bright, #d8b46a); }
+.solo-xp-value { font-size: 13px; font-weight: 700; color: var(--accent-bright, #e7e9ee); }
 .solo-inv-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .solo-inv-item {
   display: flex;
@@ -1712,15 +1713,15 @@ button:disabled {
   justify-content: space-between;
   gap: 8px;
   font-size: 13px;
-  color: var(--text, #e8dcc8);
+  color: var(--text, #d9dbe0);
   padding: 5px 9px;
   border-radius: 7px;
-  background: var(--inset, #120c07);
-  border: 1px solid var(--border, #2e2420);
+  background: var(--inset, #070708);
+  border: 1px solid var(--border, #202024);
 }
-.solo-inv-qty { font-size: 11px; color: var(--text-2, #b3a48c); flex: none; }
+.solo-inv-qty { font-size: 11px; color: var(--text-2, #b0b3bb); flex: none; }
 .solo-inv-empty,
-.solo-condition-empty { font-size: 12px; font-style: italic; color: var(--muted, #9b8c76); }
+.solo-condition-empty { font-size: 12px; font-style: italic; color: var(--muted, #8b8e96); }
 
 /* Interactable inventory + inspectable skills (STATUS WINDOW / sidebar / sheet).
    Native <details> so expand/collapse is keyboard-accessible with zero JS. */
@@ -1735,19 +1736,19 @@ button:disabled {
   list-style: none;
 }
 .solo-inv-summary::-webkit-details-marker { display: none; }
-.solo-inv-summary::after { content: "▸"; font-size: 10px; color: var(--muted, #9b8c76); flex: none; }
+.solo-inv-summary::after { content: "▸"; font-size: 10px; color: var(--muted, #8b8e96); flex: none; }
 .solo-inv-detail[open] > .solo-inv-summary::after { content: "▾"; }
 .solo-inv-body { padding: 6px 2px 2px; }
-.solo-inv-desc { margin: 0 0 6px; font-size: 12px; line-height: 1.45; color: var(--text-2, #b3a48c); }
+.solo-inv-desc { margin: 0 0 6px; font-size: 12px; line-height: 1.45; color: var(--text-2, #b0b3bb); }
 .solo-inv-use { font-size: 12px; padding: 3px 12px; }
 .solo-skill-list { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .solo-skill-item {
   font-size: 13px;
-  color: var(--text, #e8dcc8);
+  color: var(--text, #d9dbe0);
   padding: 5px 9px;
   border-radius: 7px;
-  background: var(--inset, #120c07);
-  border: 1px solid var(--border, #2e2420);
+  background: var(--inset, #070708);
+  border: 1px solid var(--border, #202024);
 }
 .solo-skill-summary {
   display: flex;
@@ -1758,26 +1759,26 @@ button:disabled {
   list-style: none;
 }
 .solo-skill-summary::-webkit-details-marker { display: none; }
-.solo-skill-rank { font-size: 11px; letter-spacing: 0.08em; color: var(--accent-bright, #d8b46a); flex: none; }
+.solo-skill-rank { font-size: 11px; letter-spacing: 0.08em; color: var(--accent-bright, #e7e9ee); flex: none; }
 .solo-skill-body { padding: 6px 2px 2px; }
-.solo-skill-effect { margin: 0 0 4px; font-size: 12px; line-height: 1.45; color: var(--text-2, #b3a48c); }
-.solo-skill-facts { margin: 0; font-size: 11px; font-style: italic; color: var(--muted, #9b8c76); }
-.solo-skill-empty { margin-top: 6px; font-size: 12px; font-style: italic; color: var(--muted, #9b8c76); }
-.solo-skill-ability { font-size: 10px; color: var(--muted, #9b8c76); }
-.solo-sheet-skill { border-bottom: 1px solid var(--border, #2e2420); }
+.solo-skill-effect { margin: 0 0 4px; font-size: 12px; line-height: 1.45; color: var(--text-2, #b0b3bb); }
+.solo-skill-facts { margin: 0; font-size: 11px; font-style: italic; color: var(--muted, #8b8e96); }
+.solo-skill-empty { margin-top: 6px; font-size: 12px; font-style: italic; color: var(--muted, #8b8e96); }
+.solo-skill-ability { font-size: 10px; color: var(--muted, #8b8e96); }
+.solo-sheet-skill { border-bottom: 1px solid var(--border, #202024); }
 .solo-sheet-skill-summary { cursor: pointer; list-style: none; }
 .solo-sheet-skill-summary::-webkit-details-marker { display: none; }
 .solo-sheet-skill-desc {
   margin: 2px 0 8px;
   font-size: 12px;
   line-height: 1.45;
-  color: var(--text-2, #b3a48c);
+  color: var(--text-2, #b0b3bb);
 }
 .solo-mini-stats { display: flex; gap: 10px; margin-top: 14px; }
 .solo-mini-stat {
   flex: 1;
-  background: var(--inset, #120c07);
-  border: 1px solid var(--border, #2e2420);
+  background: var(--inset, #070708);
+  border: 1px solid var(--border, #202024);
   border-radius: 6px;
   padding: 9px 0;
   text-align: center;
@@ -1785,7 +1786,7 @@ button:disabled {
 .solo-mini-val {
   font-family: var(--font-body, Georgia, serif);
   font-size: 20px;
-  color: var(--text, #e8dcc8);
+  color: var(--text, #d9dbe0);
 }
 .solo-mini-label {
   font-size: 10px;
@@ -1796,8 +1797,8 @@ button:disabled {
 }
 .solo-ability-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
 .solo-ability-cell {
-  background: var(--inset, #120c07);
-  border: 1px solid var(--border, #2e2420);
+  background: var(--inset, #070708);
+  border: 1px solid var(--border, #202024);
   border-radius: 6px;
   padding: 8px 0;
   text-align: center;
@@ -1811,10 +1812,10 @@ button:disabled {
 .solo-ability-mod {
   font-family: var(--font-body, Georgia, serif);
   font-size: 18px;
-  color: var(--text, #e8dcc8);
+  color: var(--text, #d9dbe0);
   margin-top: 1px;
 }
-.solo-ability-mod.accent { color: var(--accent, #c8922a); }
+.solo-ability-mod.accent { color: var(--accent, #a9adb6); }
 .solo-ability-score { font-size: 10px; color: var(--text-faint, #6e6150); }
 .solo-passive-block { border-bottom: none; }
 .solo-passive-row {
@@ -1825,7 +1826,7 @@ button:disabled {
 }
 .solo-passive-row span:first-child { color: var(--text-muted, #9a8b76); }
 .solo-passive-row span:last-child {
-  color: var(--text, #e8dcc8);
+  color: var(--text, #d9dbe0);
   font-family: var(--font-body, Georgia, serif);
 }
 
@@ -1839,8 +1840,8 @@ button:disabled {
 }
 .solo-game-header {
   padding: 20px 28px 0;
-  border-bottom: 1px solid var(--border, #2e2420);
-  background: var(--card, #1a130c);
+  border-bottom: 1px solid var(--border, #202024);
+  background: var(--card, #101013);
 }
 .solo-breadcrumb {
   font-size: 11px;
@@ -1851,7 +1852,7 @@ button:disabled {
 .solo-game-title {
   font-family: var(--font-display, Georgia, serif);
   font-size: 28px;
-  color: var(--text-bright, #f0e6d4);
+  color: var(--text-bright, #f1f2f5);
   line-height: 1.1;
   margin-bottom: 14px;
 }
@@ -1861,8 +1862,8 @@ button:disabled {
 .solo-game-tabs {
   width: 100%;
   display: flex;
-  border-top: 1px solid var(--border, #2e2420);
-  background: var(--bg-card, var(--card, #1a130c));
+  border-top: 1px solid var(--border, #202024);
+  background: var(--bg-card, var(--card, #101013));
   padding: 0 24px;
   gap: 0;
 }
@@ -1884,8 +1885,8 @@ button:disabled {
   white-space: nowrap;
 }
 .solo-game-tab.active {
-  color: var(--text-bright, #f0e6d4);
-  border-top-color: var(--accent, #c8922a);
+  color: var(--text-bright, #f1f2f5);
+  border-top-color: var(--accent, #a9adb6);
 }
 .solo-game-content { flex: 1; overflow-y: auto; }
 .solo-tab-panel[hidden] { display: none; }
@@ -1976,39 +1977,39 @@ button:disabled {
   line-height: 1;
   padding: 7px 12px;
   border-radius: 8px;
-  border: 1px solid var(--border, #2e2420);
+  border: 1px solid var(--border, #202024);
   background: rgba(10, 7, 5, 0.72);
-  color: var(--text, #f0e4cc);
+  color: var(--text, #d9dbe0);
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
   transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
 }
 .solo-scene-art-btn:hover {
   background: rgba(10, 7, 5, 0.92);
-  border-color: var(--accent, #c89a4b);
+  border-color: var(--accent, #c2c6cf);
 }
 .solo-scene-art-btn:active {
   transform: translateY(1px);
 }
 .solo-scene-art-btn--save {
-  border-color: var(--accent, #c89a4b);
-  background: var(--accent, #c89a4b);
-  color: var(--on-accent, #1c1308);
+  border-color: var(--accent, #c2c6cf);
+  background: var(--accent, #c2c6cf);
+  color: var(--on-accent, #0a0a0b);
   font-weight: 600;
 }
 .solo-scene-art-btn--save:hover {
-  background: var(--accent, #c89a4b);
+  background: var(--accent, #c2c6cf);
   filter: brightness(1.08);
 }
 .solo-scene-input { padding: 18px 28px 22px; max-width: none; }
 .solo-scene-input-row { display: flex; gap: 12px; align-items: stretch; }
 .solo-scene-field {
   flex: 1;
-  background: var(--inset, #120c07);
+  background: var(--inset, #070708);
   border: 1px solid var(--border-strong, #3a2e22);
   border-radius: 7px;
   padding: 0 18px;
   height: 52px;
-  color: var(--text-bright, #f0e6d4);
+  color: var(--text-bright, #f1f2f5);
   font-size: 15px;
   font-family: var(--font-body, Georgia, serif);
   outline: none;
@@ -2017,10 +2018,10 @@ button:disabled {
   flex: none;
   padding: 0 30px;
   height: 52px;
-  background: linear-gradient(180deg, var(--accent-grad-a, #d29b32), var(--accent-grad-b, #bd8420));
-  border: 1px solid var(--accent-2, #e0b352);
+  background: linear-gradient(180deg, var(--accent-grad-a, #cfd3db), var(--accent-grad-b, #9498a1));
+  border: 1px solid var(--accent-2, #e7e9ee);
   border-radius: 7px;
-  color: var(--on-accent, #1c1308);
+  color: var(--on-accent, #0a0a0b);
   font-size: 13px;
   font-weight: 700;
   letter-spacing: 0.12em;
@@ -2033,7 +2034,7 @@ button:disabled {
   background: none;
   border: 1px solid var(--border-strong, #3a2e22);
   border-radius: 6px;
-  color: var(--text-2, #b3a48c);
+  color: var(--text-2, #b0b3bb);
   font-size: 13px;
   cursor: pointer;
   font-family: inherit;
@@ -2054,16 +2055,16 @@ button:disabled {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--text-2, #b3a48c);
+  color: var(--text-2, #b0b3bb);
   opacity: 0.8;
   margin-right: 2px;
 }
 .solo-suggestion {
   padding: 8px 14px;
-  background: var(--inset, #120c07);
-  border: 1px solid var(--accent-2, #e0b352);
+  background: var(--inset, #070708);
+  border: 1px solid var(--accent-2, #e7e9ee);
   border-radius: 999px;
-  color: var(--text-bright, #f0e6d4);
+  color: var(--text-bright, #f1f2f5);
   font-family: inherit;
   font-size: clamp(0.95rem, 0.5vw + 0.85rem, 1.15rem);
   line-height: 1.25;
@@ -2072,7 +2073,7 @@ button:disabled {
 }
 .solo-suggestion:hover {
   background: linear-gradient(180deg, rgba(210, 155, 50, 0.2), rgba(189, 132, 32, 0.12));
-  border-color: var(--accent, #d29b32);
+  border-color: var(--accent, #cfd3db);
   color: var(--text-bright, #f7efdd);
 }
 .solo-suggestion:disabled {
@@ -2093,27 +2094,27 @@ button:disabled {
   display: flex;
   justify-content: space-between;
   padding: 9px 0;
-  border-bottom: 1px solid var(--border-faint, #221a13);
+  border-bottom: 1px solid var(--border-faint, #141417);
   font-size: 13px;
-  color: var(--text-2, #b3a48c);
+  color: var(--text-2, #b0b3bb);
 }
-.solo-sheet-row span:last-child { font-family: var(--font-body, Georgia, serif); color: var(--text, #e8dcc8); }
-.solo-sheet-row .proficient { color: var(--accent, #c8922a); }
-.solo-dot { color: var(--accent, #c8922a); font-size: 10px; }
+.solo-sheet-row span:last-child { font-family: var(--font-body, Georgia, serif); color: var(--text, #d9dbe0); }
+.solo-sheet-row .proficient { color: var(--accent, #a9adb6); }
+.solo-dot { color: var(--accent, #a9adb6); font-size: 10px; }
 .solo-combat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .solo-combat-card {
-  background: var(--card, #1a130c);
-  border: 1px solid var(--border, #2e2420);
+  background: var(--card, #101013);
+  border: 1px solid var(--border, #202024);
   border-radius: 6px;
   padding: 12px;
 }
 .solo-combat-val {
   font-family: var(--font-body, Georgia, serif);
   font-size: 22px;
-  color: var(--text, #e8dcc8);
+  color: var(--text, #d9dbe0);
   margin-top: 3px;
 }
-.solo-proficiencies { font-size: 13px; line-height: 1.8; color: var(--text-2, #b3a48c); }
+.solo-proficiencies { font-size: 13px; line-height: 1.8; color: var(--text-2, #b0b3bb); }
 
 /* ---- Map tab ---- */
 .solo-map-tab {
@@ -2126,8 +2127,8 @@ button:disabled {
 .solo-map-board {
   display: grid;
   gap: 1px;
-  background: var(--border, #2e2420);
-  border: 1px solid var(--border, #2e2420);
+  background: var(--border, #202024);
+  border: 1px solid var(--border, #202024);
   border-radius: 8px;
   overflow: hidden;
 }
@@ -2153,15 +2154,15 @@ button:disabled {
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
 }
 .solo-token img { width: 100%; height: 100%; object-fit: cover; object-position: center top; }
-.solo-token-player { background: var(--accent, #c8922a); color: #1c1308; border-color: #f0e4cc; }
-.solo-token-npc { background: #3a4654; color: #f0e4cc; border-color: #6e6150; }
-.solo-token-item { background: #6a4a2a; color: #f0e4cc; border-color: #a9824e; }
+.solo-token-player { background: var(--accent, #a9adb6); color: #0a0a0b; border-color: #d9dbe0; }
+.solo-token-npc { background: #2a2a30; color: #d9dbe0; border-color: #6e6150; }
+.solo-token-item { background: #34343b; color: #d9dbe0; border-color: #4c4d54; }
 /* Always-on presence map (light, read-only) — surfaces scene.battleMap tokens.
    CSS grid places each token at its (x,y); no drag/movement/fog here. */
 .solo-rail-presence { padding-bottom: 4px; }
 .solo-presence { display: flex; flex-direction: column; gap: 8px; }
 .solo-presence-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
-.solo-presence-loc { font-size: 12px; font-weight: 600; color: var(--accent-bright, #d8b46a); text-align: right; }
+.solo-presence-loc { font-size: 12px; font-weight: 600; color: var(--accent-bright, #e7e9ee); text-align: right; }
 .solo-presence-grid {
   display: grid;
   gap: 0;
@@ -2169,8 +2170,8 @@ button:disabled {
   width: 100%;
   padding: 5px;
   border-radius: 10px;
-  border: 1px solid var(--border, #2e2420);
-  background: var(--inset, #120c07);
+  border: 1px solid var(--border, #202024);
+  background: var(--inset, #070708);
   box-shadow: var(--deboss, inset 0 2px 5px rgba(0, 0, 0, 0.5));
 }
 /* Terrain/ground layer — one cell per grid coordinate, sitting BENEATH the
@@ -2180,14 +2181,14 @@ button:disabled {
   border-right: 1px solid rgba(0, 0, 0, 0.28);
   border-bottom: 1px solid rgba(0, 0, 0, 0.28);
   border-radius: 1px;
-  background: var(--solo-terrain, #28324a);
+  background: var(--solo-terrain, #2a2a30);
   box-shadow: inset 0 0 3px rgba(0, 0, 0, 0.35);
 }
 /* Terrain skins — re-themed to deep-cobalt tones (was leather-brown) so the
    presence-map ground matches the cobalt panels. --solo-terrain is the base
    ground; the inline per-cell brightness mottle keeps the floor from looking flat. */
 .solo-presence-grid.terrain-stone  { --solo-terrain: #2a3344; }
-.solo-presence-grid.terrain-ruins  { --solo-terrain: #2e3850; }
+.solo-presence-grid.terrain-ruins  { --solo-terrain: #262629; }
 .solo-presence-grid.terrain-forest { --solo-terrain: #213a33; }
 .solo-presence-grid.terrain-water  { --solo-terrain: #1c2a36; }
 .solo-presence-grid.terrain-sand   { --solo-terrain: #3a3122; }
@@ -2219,7 +2220,7 @@ button:disabled {
   justify-content: center;
   width: 100%;
   height: 100%;
-  color: var(--solo-accent, #6ea8fe);
+  color: var(--solo-accent, #c2c6cf);
   opacity: 0.82;
   /* Keep pointer events so the native `title` tooltip fires on hover — without
      this the feature markers were mute (aria-label is screen-reader-only, never
@@ -2234,8 +2235,8 @@ button:disabled {
   text-shadow: 0 0 3px rgba(8, 14, 28, 0.9);
 }
 .solo-presence-feature.solo-feature-exit { color: #8fd6a8; opacity: 0.95; }
-.solo-presence-feature.solo-feature-hazard { color: #e0a35a; opacity: 0.95; }
-.solo-presence-feature.solo-feature-loot { color: #e9d27a; opacity: 0.95; }
+.solo-presence-feature.solo-feature-hazard { color: #c2c6cf; opacity: 0.95; }
+.solo-presence-feature.solo-feature-loot { color: #e7e9ee; opacity: 0.95; }
 /* Presence-map feature legend — makes the glyph system legible (a bare ◆ told
    the player nothing). Honest to state: only features actually placed appear. */
 .solo-presence-legend {
@@ -2244,20 +2245,20 @@ button:disabled {
   gap: 6px 12px;
   margin-top: 6px;
   font-size: 11px;
-  color: var(--muted, #9b8c76);
+  color: var(--muted, #8b8e96);
 }
 .solo-presence-legend-item { display: inline-flex; align-items: center; gap: 5px; }
-.solo-presence-legend-item .solo-feature-glyph { color: var(--solo-accent, #6ea8fe); font-size: 12px; }
+.solo-presence-legend-item .solo-feature-glyph { color: var(--solo-accent, #c2c6cf); font-size: 12px; }
 .solo-presence-legend-item .solo-feature-exit { color: #8fd6a8; }
-.solo-presence-legend-item .solo-feature-hazard { color: #e0a35a; }
-.solo-presence-legend-item .solo-feature-loot { color: #e9d27a; }
+.solo-presence-legend-item .solo-feature-hazard { color: #c2c6cf; }
+.solo-presence-legend-item .solo-feature-loot { color: #e7e9ee; }
 .solo-presence-empty {
   font-size: 12px;
   font-style: italic;
-  color: var(--muted, #9b8c76);
+  color: var(--muted, #8b8e96);
   padding: 12px 10px;
   text-align: center;
-  border: 1px dashed var(--border, #2e2420);
+  border: 1px dashed var(--border, #202024);
   border-radius: 10px;
 }
 /* Procedural local-area map (home base + discovered POIs, fog over the rest). */
@@ -2269,10 +2270,10 @@ button:disabled {
   width: 100%;
   padding: 4px;
   border-radius: 10px;
-  border: 1px solid var(--border, #2e2420);
+  border: 1px solid var(--border, #202024);
   background:
     radial-gradient(circle at 50% 45%, rgba(200, 146, 42, 0.10), transparent 60%),
-    var(--inset, #120c07);
+    var(--inset, #070708);
   box-shadow: var(--deboss, inset 0 2px 5px rgba(0, 0, 0, 0.5));
 }
 .solo-area-fog {
@@ -2300,21 +2301,21 @@ button:disabled {
   border-radius: 5px;
   font-size: 11px;
   line-height: 1;
-  color: #f0e4cc;
-  background: #3a4654;
+  color: #d9dbe0;
+  background: #2a2a30;
   border: 1px solid #6e6150;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
 }
-.solo-area-poi-ruins .solo-area-glyph { background: #4a3a2a; border-color: #a9824e; }
+.solo-area-poi-ruins .solo-area-glyph { background: #34343b; border-color: #4c4d54; }
 .solo-area-poi-forest .solo-area-glyph { background: #233f23; border-color: #4e7a4e; }
-.solo-area-poi-water .solo-area-glyph { background: #1c3346; border-color: #4e7aa9; }
+.solo-area-poi-water .solo-area-glyph { background: #1a1a1f; border-color: #7c828e; }
 .solo-area-poi.is-home .solo-area-glyph {
-  background: var(--accent, #c8922a);
-  color: #1c1308;
-  border-color: #f0e4cc;
+  background: var(--accent, #a9adb6);
+  color: #0a0a0b;
+  border-color: #d9dbe0;
 }
 .solo-area-poi.is-current .solo-area-glyph {
-  outline: 2px solid var(--accent-bright, #d8b46a);
+  outline: 2px solid var(--accent-bright, #e7e9ee);
   outline-offset: 1px;
 }
 .solo-area-name {
@@ -2328,17 +2329,17 @@ button:disabled {
   text-overflow: ellipsis;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
 }
-.solo-area-foot { color: var(--muted, #9b8c76); }
+.solo-area-foot { color: var(--muted, #8b8e96); }
 .solo-map-legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 13px; }
 .solo-map-legend-item { display: inline-flex; align-items: center; gap: 6px; }
 .solo-map-legend-item .solo-token { width: 22px; height: 22px; }
 .solo-map-tab:focus { outline: none; }
-.solo-map-tab:focus-visible { outline: 1px solid var(--accent, #c8922a); outline-offset: 2px; }
+.solo-map-tab:focus-visible { outline: 1px solid var(--accent, #a9adb6); outline-offset: 2px; }
 .solo-map-status { margin-left: auto; }
 .solo-map-undo { padding: 4px 12px; }
 .solo-token { cursor: grab; }
 .solo-token:active { cursor: grabbing; }
-.solo-token-selected { outline: 2px solid var(--accent, #c8922a); outline-offset: 1px; box-shadow: 0 0 0 2px rgba(200, 146, 42, 0.4), 0 1px 4px rgba(0, 0, 0, 0.5); }
+.solo-token-selected { outline: 2px solid var(--accent, #a9adb6); outline-offset: 1px; box-shadow: 0 0 0 2px rgba(200, 146, 42, 0.4), 0 1px 4px rgba(0, 0, 0, 0.5); }
 .solo-map-cell.legal { background: linear-gradient(180deg, #1d2a1c, #16231a); box-shadow: inset 0 0 0 1px rgba(127, 175, 96, 0.45); cursor: pointer; }
 .solo-map-cell.legal:hover { background: linear-gradient(180deg, #25361f, #1b2a1d); }
 .solo-map-sub { font-size: 13px; color: var(--text-faint, #6e6150); margin-top: 8px; }
@@ -2388,50 +2389,50 @@ button:disabled {
   background: var(--panel, #171009);
   background-image: var(--texture, none);
   background-size: var(--texture-size, auto);
-  border-left: 1px solid var(--border, #2e2420);
+  border-left: 1px solid var(--border, #202024);
   overflow-y: auto;
   /* Reserve a clean top band for the absolutely-positioned settings cog
      (.solo-settings: top 14px + 38px tall = ~52px) so it gets its own corner
      and never overlaps the "Where you are" header at the rail's top. */
   padding-top: 46px;
 }
-.solo-rail-block { padding: 18px 20px; border-bottom: 1px solid var(--border, #2e2420); }
+.solo-rail-block { padding: 18px 20px; border-bottom: 1px solid var(--border, #202024); }
 .solo-condition {
   display: flex;
   align-items: center;
   gap: 10px;
-  background: var(--inset, #120c07);
-  border: 1px solid var(--border, #2e2420);
+  background: var(--inset, #070708);
+  border: 1px solid var(--border, #202024);
   border-radius: 6px;
   padding: 11px 14px;
 }
-.solo-condition-dot { width: 8px; height: 8px; border-radius: 50%; background: #3a6a82; flex: none; }
-.solo-condition-name { font-size: 13px; color: var(--text, #e8dcc8); }
+.solo-condition-dot { width: 8px; height: 8px; border-radius: 50%; background: #5a5e66; flex: none; }
+.solo-condition-name { font-size: 13px; color: var(--text, #d9dbe0); }
 .solo-condition-note { font-size: 11px; color: var(--text-label, #8a7c68); }
 .solo-roll {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: var(--inset, #120c07);
-  border: 1px solid var(--border, #2e2420);
+  background: var(--inset, #070708);
+  border: 1px solid var(--border, #202024);
   border-radius: 6px;
   padding: 10px 12px;
   margin-bottom: 9px;
 }
 .solo-roll:last-child { margin-bottom: 0; }
-.solo-roll-name { font-size: 1rem; color: var(--text-2, #b3a48c); }
+.solo-roll-name { font-size: 1rem; color: var(--text-2, #b0b3bb); }
 .solo-roll-detail { font-size: 0.9rem; color: var(--text-faint, #6e6150); }
 .solo-roll-total { font-family: var(--font-body, Georgia, serif); font-size: 1.5rem; }
 .solo-roll-total.good { color: #6b9a3e; }
-.solo-roll-total.accent { color: var(--accent, #c8922a); }
+.solo-roll-total.accent { color: var(--accent, #a9adb6); }
 .solo-relationship {
-  background: var(--inset, #120c07);
-  border: 1px solid var(--border, #2e2420);
+  background: var(--inset, #070708);
+  border: 1px solid var(--border, #202024);
   border-radius: 6px;
   padding: 14px;
 }
 .solo-relationship-head { margin-bottom: 12px; }
-.solo-relationship-name { font-size: 14px; color: var(--text, #e8dcc8); font-family: var(--font-body, Georgia, serif); }
+.solo-relationship-name { font-size: 14px; color: var(--text, #d9dbe0); font-family: var(--font-body, Georgia, serif); }
 .solo-relationship-row {
   display: flex;
   justify-content: space-between;
@@ -2441,9 +2442,9 @@ button:disabled {
   color: var(--text-muted, #9a8b76);
 }
 .solo-pips { letter-spacing: 3px; font-size: 11px; }
-.solo-pips b { font-weight: 400; color: var(--border, #2e2420); }
+.solo-pips b { font-weight: 400; color: var(--border, #202024); }
 .solo-pips b.good { color: #6b9a3e; }
-.solo-pips b.accent { color: var(--accent, #c8922a); }
+.solo-pips b.accent { color: var(--accent, #a9adb6); }
 
 /* ---- Retint the reused functional panels to match the active skin ---- */
 .solo-game-shell .module-card,
@@ -2451,9 +2452,9 @@ button:disabled {
 .solo-game-shell .solo-location-card,
 .solo-game-shell .solo-gm-placeholder,
 .solo-game-shell .solo-detail-sheet {
-  background: var(--card, #1a130c);
-  border-color: var(--border, #2e2420);
-  color: var(--text, #e8dcc8);
+  background: var(--card, #101013);
+  border-color: var(--border, #202024);
+  color: var(--text, #d9dbe0);
 }
 .solo-game-shell .solo-tab-panel > .solo-panel,
 .solo-game-shell .solo-tab-panel > .module-card { margin: 22px 40px; }
@@ -2495,7 +2496,7 @@ button:disabled {
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  border-right: 1px solid var(--border, #2e2420);
+  border-right: 1px solid var(--border, #202024);
 }
 /* World-entry opening narration: prominent GM voice at the top of the scene,
    visually distinct from the location copy. Uses solo skin vars (defined on
@@ -2511,10 +2512,10 @@ button:disabled {
   flex-wrap: wrap;
   margin: 4px 4px 10px;
   padding: 10px 14px;
-  border: 1px solid var(--accent, #c89a4b);
+  border: 1px solid var(--accent, #c2c6cf);
   border-radius: 10px;
-  background: linear-gradient(180deg, rgba(200, 154, 75, 0.14), rgba(200, 154, 75, 0.05));
-  color: var(--text, #ece1c7);
+  background: linear-gradient(180deg, rgba(200, 204, 214, 0.12), rgba(200, 204, 214, 0.04));
+  color: var(--text, #d9dbe0);
   font-size: 13px;
 }
 .solo-upgrade-prompt-msg {
@@ -2526,8 +2527,8 @@ button:disabled {
   display: inline-block;
   padding: 6px 14px;
   border-radius: 8px;
-  background: var(--accent, #c89a4b);
-  color: #1a130c;
+  background: var(--accent, #c2c6cf);
+  color: var(--on-accent, #0a0a0b);
   font-weight: 700;
   text-decoration: none;
   letter-spacing: 0.02em;
@@ -2536,40 +2537,55 @@ button:disabled {
   filter: brightness(1.08);
 }
 
+/* #12: the opening is NO LONGER a boxed/highlighted callout — no border, no
+   fill, no glow. It shares the exact prose treatment of ambient narration so
+   ALL narration reads as one consistent surface. The only distinction kept is
+   the small VOICE/GM speaker label (#20), which is a subtle silver kicker, not
+   a colored box. */
 .solo-scene-opening {
   flex: none;
   position: relative;
-  margin: 4px 4px 10px;
-  padding: 16px 20px 16px 22px;
-  border: 1px solid var(--border-strong, #503f2e);
-  border-left: 3px solid var(--accent, #c89a4b);
-  border-radius: 12px;
-  background:
-    radial-gradient(120% 100% at 0% 0%, rgba(200, 154, 75, 0.10), transparent 60%),
-    var(--card, #1a130c);
-  box-shadow: inset 0 0 0 1px rgba(200, 154, 75, 0.06), 0 8px 22px rgba(0, 0, 0, 0.35);
-  color: var(--text, #ece1c7);
+  margin: 4px 4px 14px;
+  padding: 0 20px 0 22px;
+  border: none;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  color: var(--text, #d9dbe0);
 }
+/* #20: named-speaker label. The VOICE opening ("The VOICE speaks") gets a
+   distinct silver kicker with a hairline underline so a named voice reads
+   differently from the ambient GM. Structured speaker identity only exists for
+   the VOICE opening + the talk/VN overlay (.solo-vn-speaker below); in-prose NPC
+   speech has no name, so it gets only the dialogue color (#19). */
 .solo-scene-opening-kicker {
-  display: block;
+  display: inline-block;
   font-size: 10px;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
   font-weight: 700;
-  color: var(--accent, #c89a4b);
-  margin-bottom: 8px;
+  color: var(--accent-bright, #e7e9ee);
+  margin-bottom: 10px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--line-strong, #3a3a40);
 }
 .solo-scene-opening p {
-  margin: 0 0 8px;
+  margin: 0 0 1.05em;
   font-family: var(--font-body, Georgia, serif);
   /* One narration type-scale across every beat: the set-piece opening shares the
-     same clamp as location + GM narration (was a fixed 15px, ~half the size). */
+     same clamp as location + GM narration. */
   font-size: clamp(1.35rem, 1.1vw + 1rem, 1.85rem);
-  line-height: 1.55;
-  color: var(--text-bright, #f0e6d4);
+  line-height: 1.6;
+  color: var(--text-bright, #f1f2f5);
 }
 .solo-scene-opening p:last-child {
   margin-bottom: 0;
+}
+/* #19: quoted dialogue inside any narration reads in a distinct BRIGHT SILVER,
+   set off from the softer prose grey, so speech pops without a nameplate. */
+.solo-dialogue {
+  color: var(--accent-bright, #e7e9ee);
+  font-style: italic;
 }
 /* Location copy sits at its NATURAL height so it always reads at full size — it
    must never collapse into a scrolling sliver. The input bar still pins to the
@@ -2581,7 +2597,7 @@ button:disabled {
 }
 .solo-scene-center .solo-location-copy h3 {
   font-family: var(--font-display, Georgia, serif);
-  color: var(--text-bright, #f0e6d4);
+  color: var(--text-bright, #f1f2f5);
   font-size: clamp(1.5rem, 1.4vw + 1.1rem, 2.1rem);
   line-height: 1.2;
 }
@@ -2591,15 +2607,22 @@ button:disabled {
 .solo-scene-center .solo-gm-narration p {
   /* Readable scale (~2x): the narration + location prose are the primary reading
      surface. clamp() keeps it big on wide panels and steps down on narrow ones so
-     the scrolling scene column never overflows horizontally. */
+     the scrolling scene column never overflows horizontally. #18b: real vertical
+     spacing between paragraphs so narration reads as spaced paragraphs, not a
+     slab (the render now splits body/description on blank lines into <p>s). */
   font-size: clamp(1.35rem, 1.1vw + 1rem, 1.85rem);
-  line-height: 1.55;
+  line-height: 1.6;
+  margin: 0 0 1.05em;
+}
+.solo-scene-center .solo-location-copy > p:last-child,
+.solo-scene-center .solo-gm-narration p:last-child {
+  margin-bottom: 0;
 }
 .solo-scene-center .solo-scene-input {
   flex: none;
   margin-top: auto;
-  border-top: 1px solid var(--border, #2e2420);
-  background: var(--card, #1a130c);
+  border-top: 1px solid var(--border, #202024);
+  background: var(--card, #101013);
 }
 
 /* NPC column — entities with atmospheric portraits, exits beneath. */
@@ -2615,7 +2638,7 @@ button:disabled {
 .solo-scene-npc .module-card {
   margin: 0;
   border: none;
-  border-bottom: 1px solid var(--border, #2e2420);
+  border-bottom: 1px solid var(--border, #202024);
   border-radius: 0;
   background: transparent;
 }
@@ -2629,10 +2652,10 @@ button:disabled {
   height: 84px;
   margin-bottom: 8px;
   border-radius: 8px;
-  border: 1px solid var(--border-faint, #221a13);
+  border: 1px solid var(--border-faint, #141417);
   background:
     radial-gradient(58% 60% at 50% 40%, rgba(200, 146, 42, 0.20), transparent 70%),
-    radial-gradient(130% 95% at 50% 8%, #2a1f14, var(--inset, #120c07) 72%);
+    radial-gradient(130% 95% at 50% 8%, #2a1f14, var(--inset, #070708) 72%);
 }
 
 /* Right-rail result panels sit flush inside their rail blocks. */
@@ -2675,10 +2698,10 @@ button:disabled {
 @media (max-width: 1080px) {
   .solo-game-frame { flex-direction: column; min-height: 0; }
   .solo-game-sidebar,
-  .solo-game-rail { width: auto; border: none; border-bottom: 1px solid var(--border, #2e2420); }
+  .solo-game-rail { width: auto; border: none; border-bottom: 1px solid var(--border, #202024); }
   /* Stack the scene's centre and NPC columns on narrow screens. */
   .solo-scene-layout { grid-template-columns: 1fr; height: auto; }
-  .solo-scene-center { border-right: none; border-bottom: 1px solid var(--border, #2e2420); }
+  .solo-scene-center { border-right: none; border-bottom: 1px solid var(--border, #202024); }
   .solo-scene-center .solo-location-copy > p,
   .solo-scene-center .solo-gm-narration p { -webkit-line-clamp: unset; }
 }
@@ -2717,8 +2740,8 @@ button:disabled {
   width: min(880px, 94vw);
   padding: 18px 22px;
   border-radius: 16px;
-  background: linear-gradient(180deg, var(--card, #1a130c), var(--panel, #171009));
-  border: 1px solid var(--accent-border, #4a3a1e);
+  background: linear-gradient(180deg, var(--card, #101013), var(--panel, #171009));
+  border: 1px solid var(--accent-border, #4c4d54);
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
   cursor: pointer;
   animation: solo-vn-rise 220ms cubic-bezier(0.22, 1, 0.36, 1);
@@ -2731,8 +2754,8 @@ button:disabled {
   aspect-ratio: 512 / 768;
   border-radius: 12px;
   overflow: hidden;
-  background: var(--inset, #120c07);
-  border: 1px solid var(--border, #2e2420);
+  background: var(--inset, #070708);
+  border: 1px solid var(--border, #202024);
   /* Crossfade whenever a fresh portrait element is rendered (expression change). */
   animation: solo-vn-fade 200ms ease-out;
 }
@@ -2751,14 +2774,14 @@ button:disabled {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  background: radial-gradient(120% 80% at 50% 0, rgba(200, 146, 42, 0.16), transparent 60%), var(--inset, #120c07);
+  background: radial-gradient(120% 80% at 50% 0, rgba(200, 146, 42, 0.16), transparent 60%), var(--inset, #070708);
   color: var(--text-faint, #6e6150);
 }
 .solo-vn-portrait-placeholder span {
   font-family: var(--font-display, Georgia, serif);
   font-size: 54px;
   line-height: 1;
-  color: var(--accent, #c8922a);
+  color: var(--accent, #a9adb6);
   opacity: 0.7;
 }
 .solo-vn-portrait-placeholder small {
@@ -2776,7 +2799,7 @@ button:disabled {
   font-size: 20px;
   font-weight: 700;
   letter-spacing: 0.02em;
-  color: var(--accent-2, #e0b352);
+  color: var(--accent-2, #e7e9ee);
   text-shadow: 0 1px 0 rgba(0, 0, 0, 0.5);
   margin-bottom: 10px;
 }
@@ -2785,14 +2808,14 @@ button:disabled {
   min-height: 96px;
   font-size: 16px;
   line-height: 1.55;
-  color: var(--text, #e8dcc8);
+  color: var(--text, #d9dbe0);
   white-space: pre-wrap;
 }
 /* Blinking caret while the line is still being revealed. */
 .solo-vn-text:not(.is-complete)::after {
   content: "▍";
   margin-left: 1px;
-  color: var(--accent, #c8922a);
+  color: var(--accent, #a9adb6);
   animation: solo-vn-caret 900ms step-end infinite;
 }
 .solo-vn-controls {
@@ -2807,9 +2830,9 @@ button:disabled {
   font-family: var(--font-display, Georgia, serif);
   font-weight: 700;
   letter-spacing: 0.04em;
-  background: linear-gradient(180deg, var(--accent-grad-a, #d29b32), var(--accent-grad-b, #bd8420));
-  border: 1px solid var(--accent-2, #e0b352);
-  color: var(--on-accent, #1c1308);
+  background: linear-gradient(180deg, var(--accent-grad-a, #cfd3db), var(--accent-grad-b, #9498a1));
+  border: 1px solid var(--accent-2, #e7e9ee);
+  color: var(--on-accent, #0a0a0b);
 }
 .solo-vn-next:hover {
   filter: brightness(1.06);
@@ -2830,18 +2853,18 @@ button:disabled {
 .solo-vn-exchange {
   font-size: 13px;
   line-height: 1.4;
-  color: var(--text-2, #b3a48c);
+  color: var(--text-2, #b0b3bb);
 }
 .solo-vn-exchange-who {
   font-weight: 700;
-  color: var(--accent-2, #e0b352);
+  color: var(--accent-2, #e7e9ee);
   margin-right: 6px;
 }
 .solo-vn-exchange-player {
-  color: var(--text, #e8dcc8);
+  color: var(--text, #d9dbe0);
 }
 .solo-vn-exchange-player .solo-vn-exchange-who {
-  color: var(--text-bright, #f0e6d4);
+  color: var(--text-bright, #f1f2f5);
 }
 .solo-vn-exchange-system {
   font-style: italic;
@@ -2857,10 +2880,10 @@ button:disabled {
   min-width: 0;
   height: 44px;
   padding: 0 14px;
-  background: var(--inset, #120c07);
+  background: var(--inset, #070708);
   border: 1px solid var(--border-strong, #3a2e22);
   border-radius: 8px;
-  color: var(--text-bright, #f0e6d4);
+  color: var(--text-bright, #f1f2f5);
   font-size: 14px;
   font-family: inherit;
 }
@@ -2869,7 +2892,7 @@ button:disabled {
 }
 .solo-vn-reply-input:focus {
   outline: none;
-  border-color: var(--accent-2, #e0b352);
+  border-color: var(--accent-2, #e7e9ee);
 }
 .solo-vn-reply-submit {
   flex: none;
@@ -2879,9 +2902,9 @@ button:disabled {
   border-radius: 8px;
   font-family: var(--font-display, Georgia, serif);
   font-weight: 700;
-  background: linear-gradient(180deg, var(--accent-grad-a, #d29b32), var(--accent-grad-b, #bd8420));
-  border: 1px solid var(--accent-2, #e0b352);
-  color: var(--on-accent, #1c1308);
+  background: linear-gradient(180deg, var(--accent-grad-a, #cfd3db), var(--accent-grad-b, #9498a1));
+  border: 1px solid var(--accent-2, #e7e9ee);
+  color: var(--on-accent, #0a0a0b);
 }
 .solo-vn-reply-submit:hover {
   filter: brightness(1.06);
@@ -2897,13 +2920,13 @@ button:disabled {
   border-radius: 8px;
   background: transparent;
   border: 1px solid var(--border-strong, #3a2e22);
-  color: var(--text-2, #b3a48c);
+  color: var(--text-2, #b0b3bb);
   font-size: 13px;
   font-family: inherit;
 }
 .solo-vn-end:hover {
-  color: var(--text-bright, #f0e6d4);
-  border-color: var(--accent-border, #4a3a1e);
+  color: var(--text-bright, #f1f2f5);
+  border-color: var(--accent-border, #4c4d54);
 }
 @keyframes solo-vn-dim {
   from { opacity: 0; }
@@ -2956,7 +2979,7 @@ button:disabled {
 .solo-scene-tools { display: flex; gap: 10px; margin-top: 10px; }
 .solo-bring-in {
   appearance: none;
-  border: 1px dashed var(--accent-border, #4a3a1e);
+  border: 1px dashed var(--accent-border, #4c4d54);
   background: transparent;
   color: var(--ink-soft, #d8c7a6);
   border-radius: 10px;
@@ -2967,7 +2990,7 @@ button:disabled {
 }
 .solo-bring-in:hover {
   background: rgba(120, 90, 40, 0.16);
-  border-color: var(--accent, #c79a4e);
+  border-color: var(--accent, #c2c6cf);
 }
 .solo-npc-confirm {
   margin-top: 10px;
@@ -2995,8 +3018,8 @@ button:disabled {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--inset, #120c07);
-  border: 1px solid var(--accent-border, #4a3a1e);
+  background: var(--inset, #070708);
+  border: 1px solid var(--accent-border, #4c4d54);
   color: var(--ink-soft, #d8c7a6);
   font-weight: 600;
 }
@@ -3006,7 +3029,7 @@ button:disabled {
 .solo-cast-role { font-size: 12px; opacity: 0.75; }
 .solo-cast-bringback {
   appearance: none;
-  border: 1px solid var(--accent-border, #4a3a1e);
+  border: 1px solid var(--accent-border, #4c4d54);
   background: transparent;
   color: var(--ink-soft, #d8c7a6);
   border-radius: 8px;
@@ -3042,8 +3065,8 @@ button:disabled {
   overflow: auto;
   padding: 20px 22px;
   border-radius: 16px;
-  background: linear-gradient(180deg, var(--card, #1a130c), var(--panel, #171009));
-  border: 1px solid var(--accent-border, #4a3a1e);
+  background: linear-gradient(180deg, var(--card, #101013), var(--panel, #171009));
+  border: 1px solid var(--accent-border, #4c4d54);
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
   display: flex;
   flex-direction: column;
@@ -3072,8 +3095,8 @@ button:disabled {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--inset, #120c07);
-  border: 1px solid var(--accent-border, #4a3a1e);
+  background: var(--inset, #070708);
+  border: 1px solid var(--accent-border, #4c4d54);
   color: var(--ink-soft, #d8c7a6);
   font-weight: 600;
 }
@@ -3095,9 +3118,9 @@ button:disabled {
   box-sizing: border-box;
   padding: 9px 11px;
   border-radius: 9px;
-  background: var(--inset, #120c07);
-  border: 1px solid var(--accent-border, #4a3a1e);
-  color: var(--ink, #f0e4cc);
+  background: var(--inset, #070708);
+  border: 1px solid var(--accent-border, #4c4d54);
+  color: var(--ink, #d9dbe0);
   font: inherit;
   resize: vertical;
 }
@@ -3112,9 +3135,9 @@ button:disabled {
 .solo-npc-actions { display: flex; justify-content: flex-end; gap: 10px; }
 .solo-npc-submit {
   appearance: none;
-  border: 1px solid var(--accent, #c79a4e);
-  background: var(--accent, #c79a4e);
-  color: #1a130c;
+  border: 1px solid var(--accent, #c2c6cf);
+  background: var(--accent, #c2c6cf);
+  color: #101013;
   border-radius: 9px;
   padding: 9px 16px;
   font-weight: 600;
@@ -3128,7 +3151,7 @@ button:disabled {
 
 /* ---- World generator onboarding (Ticket 39) ---- */
 .onb-world { display: flex; flex-direction: column; gap: 16px; }
-.onb-disclaimer { font-style: italic; color: var(--text-2, #b3a48c); }
+.onb-disclaimer { font-style: italic; color: var(--text-2, #b0b3bb); }
 .onb-field { display: flex; flex-direction: column; gap: 8px; }
 .onb-field > label {
   font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; font-weight: 600;
@@ -3138,43 +3161,43 @@ button:disabled {
    fallbacks — dark inset field, legible ink, gold focus ring. No phantom vars. */
 .onb-field input, .onb-field textarea {
   width: 100%; box-sizing: border-box; padding: 11px 13px; border-radius: 10px;
-  background: var(--inset, #120c07); border: 1px solid var(--border, #2e2420);
-  color: var(--text, #ece1c7); font-family: var(--font-body, Georgia, serif); font-size: 15px;
+  background: var(--inset, #070708); border: 1px solid var(--border, #202024);
+  color: var(--text, #d9dbe0); font-family: var(--font-body, Georgia, serif); font-size: 15px;
   resize: vertical; transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
 }
 .onb-field input::placeholder, .onb-field textarea::placeholder {
   color: var(--text-muted, #9a8b76); opacity: 0.7;
 }
 .onb-field input:focus, .onb-field textarea:focus {
-  outline: none; border-color: var(--accent, #c89a4b);
-  box-shadow: 0 0 0 3px rgba(200, 154, 75, 0.18);
-  background: color-mix(in srgb, var(--inset, #120c07) 86%, var(--accent, #c89a4b) 14%);
+  outline: none; border-color: var(--accent, #c2c6cf);
+  box-shadow: 0 0 0 3px rgba(200, 204, 214, 0.18);
+  background: color-mix(in srgb, var(--inset, #070708) 86%, var(--accent, #c2c6cf) 14%);
 }
 .onb-chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .onb-chip {
-  appearance: none; border: 1px solid var(--border, #2e2420); background: var(--card, #1a130c);
-  color: var(--text-2, #b3a48c); border-radius: 999px; padding: 7px 14px; font-size: 13px;
+  appearance: none; border: 1px solid var(--border, #202024); background: var(--card, #101013);
+  color: var(--text-2, #b0b3bb); border-radius: 999px; padding: 7px 14px; font-size: 13px;
   font-family: var(--font-body, Georgia, serif); cursor: pointer;
   transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease, transform 0.1s ease;
 }
-.onb-chip:hover { border-color: var(--accent, #c89a4b); color: var(--text-bright, #f0e6d4); }
+.onb-chip:hover { border-color: var(--accent, #c2c6cf); color: var(--text-bright, #f1f2f5); }
 .onb-chip:active { transform: translateY(1px); }
 .onb-chip.active {
-  background: linear-gradient(135deg, var(--accent-bright, #e0b352), var(--accent, #c89a4b));
-  border-color: var(--accent-bright, #e0b352); color: var(--on-accent, #1c1308); font-weight: 600;
-  box-shadow: 0 3px 12px rgba(200, 154, 75, 0.28);
+  background: linear-gradient(135deg, var(--accent-bright, #e7e9ee), var(--accent, #c2c6cf));
+  border-color: var(--accent-bright, #e7e9ee); color: var(--on-accent, #0a0a0b); font-weight: 600;
+  box-shadow: 0 3px 12px rgba(200, 204, 214, 0.28);
 }
 .onb-art-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
 .onb-art-card {
   appearance: none; cursor: pointer; text-align: left; padding: 0 0 10px; overflow: hidden;
-  border: 1px solid var(--border, #2e2420); border-radius: 12px;
-  background: var(--card, #1a130c); color: var(--text, #ece1c7);
+  border: 1px solid var(--border, #202024); border-radius: 12px;
+  background: var(--card, #101013); color: var(--text, #d9dbe0);
   transition: border-color 0.15s ease, transform 0.12s ease, box-shadow 0.15s ease;
 }
-.onb-art-card:hover { transform: translateY(-2px); border-color: var(--border-strong, #503f2e); box-shadow: 0 10px 24px rgba(0, 0, 0, 0.4); }
+.onb-art-card:hover { transform: translateY(-2px); border-color: var(--border-strong, #34343b); box-shadow: 0 10px 24px rgba(0, 0, 0, 0.4); }
 .onb-art-card.active {
-  border-color: var(--accent, #c89a4b);
-  box-shadow: 0 0 0 1px var(--accent, #c89a4b) inset, 0 10px 28px rgba(200, 154, 75, 0.22);
+  border-color: var(--accent, #c2c6cf);
+  box-shadow: 0 0 0 1px var(--accent, #c2c6cf) inset, 0 10px 28px rgba(200, 204, 214, 0.22);
 }
 /* Frame matches the 10:7 source aspect of the sample assets so they fit cleanly
    with no top/bottom crop — uniform across all three cards regardless of width. */
@@ -3185,19 +3208,19 @@ button:disabled {
 .onb-art-sample { width: 100%; height: 100%; object-fit: cover; object-position: center 38%; display: block; }
 .onb-art-illustrated { background: linear-gradient(135deg, #3a2a14, #6b4a1f); }
 .onb-art-anime { background: linear-gradient(135deg, #2a2440, #6a4f86); }
-.onb-art-cinematic { background: linear-gradient(135deg, #14181f, #3a4654); }
+.onb-art-cinematic { background: linear-gradient(135deg, #14181f, #2a2a30); }
 .onb-art-label { font-weight: 600; padding: 8px 12px 2px; font-family: var(--font-display, 'Cinzel', serif); }
-.onb-art-card.active .onb-art-label { color: var(--accent-bright, #e0b352); }
+.onb-art-card.active .onb-art-label { color: var(--accent-bright, #e7e9ee); }
 .onb-art-blurb { font-size: 12px; color: var(--text-muted, #9a8b76); padding: 0 12px; }
 .onb-primary {
-  appearance: none; border: 1px solid var(--accent-bright, #e0b352);
-  background: linear-gradient(135deg, var(--accent-bright, #e0b352), var(--accent, #c89a4b));
-  color: var(--on-accent, #1c1308); border-radius: 12px; padding: 13px 22px;
+  appearance: none; border: 1px solid var(--accent-bright, #e7e9ee);
+  background: linear-gradient(135deg, var(--accent-bright, #e7e9ee), var(--accent, #c2c6cf));
+  color: var(--on-accent, #0a0a0b); border-radius: 12px; padding: 13px 22px;
   font-weight: 700; font-family: var(--font-display, 'Cinzel', serif); letter-spacing: 0.02em;
-  cursor: pointer; box-shadow: 0 6px 18px rgba(200, 154, 75, 0.28);
+  cursor: pointer; box-shadow: 0 6px 18px rgba(200, 204, 214, 0.28);
   transition: transform 0.12s ease, box-shadow 0.15s ease, filter 0.15s ease;
 }
-.onb-primary:hover { transform: translateY(-1px); filter: brightness(1.06); box-shadow: 0 10px 26px rgba(200, 154, 75, 0.36); }
+.onb-primary:hover { transform: translateY(-1px); filter: brightness(1.06); box-shadow: 0 10px 26px rgba(200, 204, 214, 0.36); }
 .onb-primary:active { transform: translateY(0); }
 .onb-primary[disabled] { opacity: 0.55; cursor: progress; filter: none; box-shadow: none; }
 .onb-preview { display: flex; flex-direction: column; gap: 14px; }
@@ -3207,7 +3230,7 @@ button:disabled {
 .onb-kicker { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.7; margin-bottom: 6px; }
 .onb-preview-meta { display: flex; gap: 8px; flex-wrap: wrap; }
 .onb-regen, .onb-regen-text {
-  appearance: none; border: 1px solid var(--line, #3d2f22); background: transparent; color: var(--muted, #95897a);
+  appearance: none; border: 1px solid var(--line, #3d2f22); background: transparent; color: var(--muted, #8b8e96);
   border-radius: 8px; padding: 4px 8px; font-size: 12px; cursor: pointer;
 }
 .onb-regen-text { margin-top: 8px; }
@@ -3215,34 +3238,34 @@ button:disabled {
 @media (max-width: 640px) { .onb-art-grid { grid-template-columns: 1fr; } }
 
 /* ---- Solo scene settings cog menu ---- */
-.solo-settings.open .solo-settings-btn { color: var(--accent, #c8922a); border-color: var(--accent, #c8922a); }
+.solo-settings.open .solo-settings-btn { color: var(--accent, #a9adb6); border-color: var(--accent, #a9adb6); }
 .solo-cog-menu { min-width: 200px; padding: 8px; display: flex; flex-direction: column; gap: 2px; }
 .solo-cog-item {
   appearance: none; text-align: left; width: 100%; cursor: pointer;
   background: transparent; border: none; border-radius: 8px;
-  color: var(--text, #f0e4cc); padding: 9px 11px; font-size: 14px;
+  color: var(--text, #d9dbe0); padding: 9px 11px; font-size: 14px;
 }
-.solo-cog-item:hover { background: var(--inset, #120c07); }
+.solo-cog-item:hover { background: var(--inset, #070708); }
 .solo-cog-note { padding: 6px 11px; font-size: 12px; font-style: italic; opacity: 0.7; }
 
 /* ---- Character creation wizard (Ticket 38) ---- */
 .cw-progress { display: flex; flex-wrap: wrap; gap: 6px; }
-.cw-step { font-size: 12px; padding: 5px 11px; border-radius: 999px; border: 1px solid var(--border, #2e2420); color: var(--text-muted, #9a8b76); }
-.cw-step.active { background: linear-gradient(135deg, var(--accent-bright, #e0b352), var(--accent, #c89a4b)); color: var(--on-accent, #1c1308); border-color: var(--accent-bright, #e0b352); font-weight: 600; }
-.cw-step.done { color: var(--text, #ece1c7); border-color: var(--border-strong, #503f2e); }
+.cw-step { font-size: 12px; padding: 5px 11px; border-radius: 999px; border: 1px solid var(--border, #202024); color: var(--text-muted, #9a8b76); }
+.cw-step.active { background: linear-gradient(135deg, var(--accent-bright, #e7e9ee), var(--accent, #c2c6cf)); color: var(--on-accent, #0a0a0b); border-color: var(--accent-bright, #e7e9ee); font-weight: 600; }
+.cw-step.done { color: var(--text, #d9dbe0); border-color: var(--border-strong, #34343b); }
 .cw-body { display: flex; flex-direction: column; gap: 14px; }
 .onb-hint { font-size: 12px; color: var(--text-muted, #9a8b76); }
 .cw-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
 .cw-card {
   appearance: none; cursor: pointer; text-align: left; display: flex; flex-direction: column; gap: 4px;
-  padding: 14px; border-radius: 12px; border: 1px solid var(--border, #2e2420);
-  background: var(--card, #1a130c); color: var(--text, #ece1c7);
+  padding: 14px; border-radius: 12px; border: 1px solid var(--border, #202024);
+  background: var(--card, #101013); color: var(--text, #d9dbe0);
   transition: border-color 0.15s ease, transform 0.12s ease, box-shadow 0.15s ease;
 }
-.cw-card:hover { transform: translateY(-2px); border-color: var(--border-strong, #503f2e); box-shadow: 0 10px 24px rgba(0, 0, 0, 0.4); }
-.cw-card.active { border-color: var(--accent, #c89a4b); box-shadow: 0 0 0 1px var(--accent, #c89a4b) inset, 0 8px 22px rgba(200, 154, 75, 0.2); }
-.cw-card-title { font-weight: 700; font-family: var(--font-display, 'Cinzel', "Sora", sans-serif); font-size: 16px; color: var(--text-bright, #f0e6d4); }
-.cw-card-meta { font-size: 12px; color: var(--accent, #c89a4b); }
+.cw-card:hover { transform: translateY(-2px); border-color: var(--border-strong, #34343b); box-shadow: 0 10px 24px rgba(0, 0, 0, 0.4); }
+.cw-card.active { border-color: var(--accent, #c2c6cf); box-shadow: 0 0 0 1px var(--accent, #c2c6cf) inset, 0 8px 22px rgba(200, 204, 214, 0.2); }
+.cw-card-title { font-weight: 700; font-family: var(--font-display, 'Cinzel', "Sora", sans-serif); font-size: 16px; color: var(--text-bright, #f1f2f5); }
+.cw-card-meta { font-size: 12px; color: var(--accent, #c2c6cf); }
 .cw-card-sub { font-size: 12px; opacity: 0.8; }
 .cw-card-traits { font-size: 11px; opacity: 0.6; }
 .cw-abilities { display: flex; flex-direction: column; gap: 8px; }
@@ -3253,11 +3276,11 @@ button:disabled {
 .cw-mod { opacity: 0.7; font-size: 13px; }
 .cw-remaining, .cw-pool { font-size: 13px; opacity: 0.85; }
 .cw-derived { display: flex; flex-wrap: wrap; gap: 14px; padding: 10px 12px; border-radius: 10px; background: var(--surface, #1c1610); border: 1px solid var(--line, #3d2f22); }
-.cw-derived span b { color: var(--accent, #c89a4b); margin-right: 4px; }
+.cw-derived span b { color: var(--accent, #c2c6cf); margin-right: 4px; }
 /* Inline "what's still required" hint above the gated Enter the World button. */
 .cw-validation {
   margin: 4px 0 10px;
-  color: var(--warn, #d9a23d);
+  color: var(--warn, #c9b083);
   font-size: 13px;
   text-align: right;
 }
@@ -3280,23 +3303,23 @@ button:disabled {
   position: relative;
   width: 280px; height: 280px; max-width: 100%;
   border-radius: 14px; overflow: hidden; box-sizing: border-box; padding: 14px;
-  background: var(--input-bg, #100c08); border: 1px solid var(--line-strong, #503f2e);
+  background: var(--input-bg, #100c08); border: 1px solid var(--line-strong, #34343b);
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 10px; color: var(--muted, #95897a); text-align: center;
+  gap: 10px; color: var(--muted, #8b8e96); text-align: center;
 }
 .onb-portrait-preview.onb-portrait-review { width: 320px; height: 320px; margin: 0 auto; }
 .onb-portrait-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
 .onb-portrait-spinner {
   width: 28px; height: 28px; flex: none;
-  border: 3px solid var(--line-strong, #503f2e); border-top-color: var(--accent, #c89a4b);
+  border: 3px solid var(--line-strong, #34343b); border-top-color: var(--accent, #c2c6cf);
   border-radius: 50%; animation: solo-spin 0.9s linear infinite;
 }
-.onb-portrait-regenerating { border-color: var(--accent, #c89a4b); animation: onb-portrait-pulse 1.4s ease-in-out infinite; }
+.onb-portrait-regenerating { border-color: var(--accent, #c2c6cf); animation: onb-portrait-pulse 1.4s ease-in-out infinite; }
 .onb-portrait-overlay {
   position: absolute; left: 0; right: 0; bottom: 0;
   display: flex; align-items: center; justify-content: center; gap: 8px;
   padding: 8px 10px; font-size: 12px;
-  color: var(--ink, #ece1c7); background: rgba(16, 12, 8, 0.78);
+  color: var(--ink, #d9dbe0); background: rgba(16, 12, 8, 0.78);
 }
 .onb-portrait-overlay .onb-portrait-spinner { width: 16px; height: 16px; border-width: 2px; }
 /* Reroll control overlaid on the portrait preview (:root vars + fallbacks). */
@@ -3310,21 +3333,21 @@ button:disabled {
   font-size: 12px;
   font-family: inherit;
   cursor: pointer;
-  color: var(--ink, #ece1c7);
+  color: var(--ink, #d9dbe0);
   background: rgba(16, 12, 8, 0.8);
-  border: 1px solid var(--line-strong, #503f2e);
+  border: 1px solid var(--line-strong, #34343b);
 }
 .onb-portrait-redo:hover {
-  border-color: var(--accent, #c89a4b);
-  color: var(--accent, #c89a4b);
+  border-color: var(--accent, #c2c6cf);
+  color: var(--accent, #c2c6cf);
 }
 .onb-portrait-redo:disabled {
   opacity: 0.5;
   cursor: default;
 }
 @keyframes onb-portrait-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(200, 154, 75, 0); }
-  50% { box-shadow: 0 0 0 3px rgba(200, 154, 75, 0.35); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(200, 204, 214, 0); }
+  50% { box-shadow: 0 0 0 3px rgba(200, 204, 214, 0.35); }
 }
 @media (prefers-reduced-motion: reduce) {
   .onb-portrait-spinner { animation: none; }
@@ -3359,7 +3382,7 @@ button:disabled {
 .onb-portrait-edits-left {
   font-size: 11px;
   letter-spacing: 0.04em;
-  color: var(--accent, #c89a4b);
+  color: var(--accent, #c2c6cf);
   white-space: nowrap;
 }
 .onb-portrait-edits-left.is-spent { color: var(--accent-2, #b94c2d); }
@@ -3382,10 +3405,10 @@ button:disabled {
   transition: border-color 0.12s ease, transform 0.12s ease;
 }
 .onb-portrait-version img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.onb-portrait-version:hover { transform: translateY(-1px); border-color: var(--accent, #c89a4b); }
+.onb-portrait-version:hover { transform: translateY(-1px); border-color: var(--accent, #c2c6cf); }
 .onb-portrait-version.is-current {
-  border-color: var(--accent-bright, #d8b46a);
-  box-shadow: 0 0 0 1px var(--accent-bright, #d8b46a);
+  border-color: var(--accent-bright, #e7e9ee);
+  box-shadow: 0 0 0 1px var(--accent-bright, #e7e9ee);
 }
 .onb-portrait-edit-row { display: flex; gap: 8px; }
 .onb-portrait-edit-input {
@@ -3399,19 +3422,19 @@ button:disabled {
   font-family: var(--font-body, Georgia, serif);
   font-size: 13px;
 }
-.onb-portrait-edit-input::placeholder { color: var(--muted, #9b8c76); }
+.onb-portrait-edit-input::placeholder { color: var(--muted, #8b8e96); }
 .onb-portrait-edit-input:focus {
   outline: none;
-  border-color: var(--accent, #c89a4b);
-  box-shadow: 0 0 0 2px rgba(216, 180, 106, 0.22);
+  border-color: var(--accent, #c2c6cf);
+  box-shadow: 0 0 0 2px rgba(214, 217, 224, 0.22);
 }
 .onb-portrait-edit-input:disabled { opacity: 0.6; }
 .onb-portrait-edit-send {
   flex: 0 0 auto;
   padding: 9px 16px;
   border-radius: 9px;
-  border: 1px solid var(--accent-border, #4a3a1e);
-  background: linear-gradient(135deg, var(--accent-bright, #d8b46a), var(--accent, #b08545));
+  border: 1px solid var(--accent-border, #4c4d54);
+  background: linear-gradient(135deg, var(--accent-bright, #e7e9ee), var(--accent, #c2c6cf));
   color: var(--on-accent, #1a1206);
   font-weight: 700;
   font-size: 13px;
@@ -3425,14 +3448,14 @@ button:disabled {
   gap: 2px;
   padding: 10px 12px;
   border-radius: 9px;
-  border: 1px solid var(--accent, #b08545);
-  background: linear-gradient(180deg, rgba(200, 154, 75, 0.14), rgba(200, 154, 75, 0.05));
+  border: 1px solid var(--accent, #c2c6cf);
+  background: linear-gradient(180deg, rgba(200, 204, 214, 0.14), rgba(200, 204, 214, 0.05));
   color: var(--text, #e9ddc4);
   font-size: 12.5px;
 }
-.onb-portrait-upgrade strong { color: var(--accent-bright, #d8b46a); }
+.onb-portrait-upgrade strong { color: var(--accent-bright, #e7e9ee); }
 .onb-portrait-edit-error { font-size: 12px; color: var(--accent-2, #b94c2d); }
-.onb-portrait-edit-hint { font-size: 11.5px; color: var(--muted, #9b8c76); font-style: italic; }
+.onb-portrait-edit-hint { font-size: 11.5px; color: var(--muted, #8b8e96); font-style: italic; }
 @media (max-width: 640px) {
   .onb-portrait-editor { width: 100%; }
 }
@@ -3441,10 +3464,10 @@ button:disabled {
 .cw-ab-cell { text-align: center; padding: 8px 4px; border-radius: 10px; background: var(--surface, #1c1610); border: 1px solid var(--line, #3d2f22); }
 .cw-ab-key { font-size: 11px; opacity: 0.7; }
 .cw-ab-score { font-size: 20px; font-weight: 700; }
-.cw-ab-mod { font-size: 12px; color: var(--accent, #c89a4b); }
+.cw-ab-mod { font-size: 12px; color: var(--accent, #c2c6cf); }
 .cw-review-block { display: flex; flex-direction: column; gap: 4px; }
 .cw-review-row { display: flex; flex-wrap: wrap; gap: 8px; font-size: 13px; }
-.cw-review-row .prof { color: var(--accent, #c89a4b); font-weight: 600; }
+.cw-review-row .prof { color: var(--accent, #c2c6cf); font-weight: 600; }
 @media (max-width: 640px) { .cw-ability-grid { grid-template-columns: repeat(3, 1fr); } }
 
 /* ---- Player portrait (solo sidebar) ---- */
@@ -3470,8 +3493,8 @@ button:disabled {
 .solo-portrait-spinner {
   width: 22px;
   height: 22px;
-  border: 2px solid var(--line-strong, #503f2e);
-  border-top-color: var(--accent, #c89a4b);
+  border: 2px solid var(--line-strong, #34343b);
+  border-top-color: var(--accent, #c2c6cf);
   border-radius: 50%;
   animation: solo-spin 0.9s linear infinite;
 }
@@ -3481,7 +3504,7 @@ button:disabled {
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  background: linear-gradient(90deg, transparent, rgba(200, 154, 75, 0.18), transparent);
+  background: linear-gradient(90deg, transparent, rgba(200, 204, 214, 0.18), transparent);
   background-size: 200% 100%;
   animation: solo-shimmer 1.4s ease-in-out infinite;
 }
@@ -3502,7 +3525,7 @@ button:disabled {
   border-radius: 8px;
   border: 1px solid var(--accent-2, #b94c2d);
   background: rgba(185, 76, 45, 0.16);
-  color: var(--text-bright, #f0e6d4);
+  color: var(--text-bright, #f1f2f5);
   font-size: 14px;
 }
 .solo-banner-msg { flex: 1; }
@@ -3521,9 +3544,9 @@ button:disabled {
 
 /* Informational variant (vs. the default reddish alert): the one-time
    "your world is being illustrated" notice. Dark background, amber/gold text,
-   consistent with the dark-fantasy aesthetic (--accent #c89a4b). */
+   consistent with the dark-fantasy aesthetic (--accent #c2c6cf). */
 .solo-banner-info {
-  border-color: rgba(200, 154, 75, 0.7);
+  border-color: rgba(200, 204, 214, 0.7);
   background: rgba(28, 22, 10, 0.78);
   color: #e6c780;
 }
@@ -3536,8 +3559,8 @@ button:disabled {
   margin: 10px 0;
   padding: 8px 12px;
   border-radius: 8px;
-  border: 1px solid var(--line-strong, #503f2e);
-  background: var(--inset, #120c07);
+  border: 1px solid var(--line-strong, #34343b);
+  background: var(--inset, #070708);
   color: var(--text-muted, #b8a98f);
   font-size: 13px;
   font-style: italic;
@@ -3546,8 +3569,8 @@ button:disabled {
   content: "";
   width: 14px;
   height: 14px;
-  border: 2px solid var(--line-strong, #503f2e);
-  border-top-color: var(--accent, #c89a4b);
+  border: 2px solid var(--line-strong, #34343b);
+  border-top-color: var(--accent, #c2c6cf);
   border-radius: 50%;
   animation: solo-spin 0.9s linear infinite;
 }
@@ -3575,7 +3598,7 @@ button:disabled {
   justify-content: space-between;
   gap: 16px;
   flex-wrap: wrap;
-  border: 1px solid var(--accent, #c89a4b);
+  border: 1px solid var(--accent, #c2c6cf);
 }
 .resume-banner-copy { display: flex; flex-direction: column; gap: 2px; }
 
@@ -3642,11 +3665,11 @@ button:disabled {
        the primary tome but quieter so it reads as reserved, framed space. */
     background:
       var(--leather-grain),
-      radial-gradient(130% 80% at 50% -20%, rgba(216, 180, 106, 0.06), transparent 60%),
+      radial-gradient(130% 80% at 50% -20%, rgba(214, 217, 224, 0.06), transparent 60%),
       linear-gradient(168deg, rgba(30, 23, 20, 0.55), rgba(10, 7, 6, 0.55));
     background-size: 160px 160px, auto, auto;
     box-shadow:
-      inset 0 0 0 1px var(--gold-edge, rgba(216, 180, 106, 0.16)),
+      inset 0 0 0 1px var(--gold-edge, rgba(214, 217, 224, 0.16)),
       inset 0 2px 40px rgba(0, 0, 0, 0.5);
   }
   .solo-home-zone-shelf {
@@ -3685,7 +3708,7 @@ button:disabled {
   flex-direction: column;
   gap: 24px;
   padding: clamp(24px, 4vw, 44px) clamp(20px, 3vw, 40px);
-  color: var(--text, #ece1c7);
+  color: var(--text, #d9dbe0);
   font-family: var(--font-body, Georgia, serif);
   border-radius: var(--radius-lg, 20px);
   border: 1px solid var(--border-strong, #3d2d1f);
@@ -3694,12 +3717,12 @@ button:disabled {
      gold-edged cover. */
   background:
     var(--leather-grain),
-    radial-gradient(130% 70% at 50% -10%, rgba(216, 180, 106, 0.10), transparent 58%),
+    radial-gradient(130% 70% at 50% -10%, rgba(214, 217, 224, 0.10), transparent 58%),
     radial-gradient(120% 90% at 50% 120%, rgba(42, 15, 14, 0.4), transparent 60%),
     linear-gradient(168deg, var(--panel-alt, #1e1714) 0%, var(--panel, #17120f) 52%, var(--inset, #0a0706) 100%);
   background-size: 160px 160px, auto, auto, auto;
   box-shadow:
-    inset 0 0 0 1px var(--gold-edge, rgba(216, 180, 106, 0.16)),
+    inset 0 0 0 1px var(--gold-edge, rgba(214, 217, 224, 0.16)),
     inset 0 2px 60px rgba(0, 0, 0, 0.6),
     var(--elev-2, 0 18px 44px rgba(0, 0, 0, 0.6));
 }
@@ -3728,7 +3751,7 @@ button:disabled {
   width: min(220px, 60%);
   height: 1px;
   margin-top: 4px;
-  background: linear-gradient(90deg, transparent, var(--accent, #b08545), transparent);
+  background: linear-gradient(90deg, transparent, var(--accent, #c2c6cf), transparent);
   opacity: 0.7;
 }
 .solo-home-hero h2 {
@@ -3737,8 +3760,8 @@ button:disabled {
   font-weight: 600;
   letter-spacing: 0.04em;
   /* Gold hot-foil, matching the wordmark signature. */
-  color: var(--accent-bright, #d8b46a);
-  background: var(--gold-foil, linear-gradient(176deg, #f0dca2, #b08545));
+  color: var(--accent-bright, #e7e9ee);
+  background: var(--gold-foil, linear-gradient(176deg, #f4f5f8, #c2c6cf));
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -3758,13 +3781,13 @@ button:disabled {
   font-family: var(--font-display, 'Cinzel', Georgia, serif);
   letter-spacing: 0.02em;
   padding: 13px 30px;
-  border: 1px solid var(--accent-bright, #e0b352);
-  background: linear-gradient(135deg, var(--accent-bright, #e0b352), var(--accent, #c89a4b));
-  color: var(--on-accent, #1c1308);
-  box-shadow: 0 6px 18px rgba(200, 154, 75, 0.3);
+  border: 1px solid var(--accent-bright, #e7e9ee);
+  background: linear-gradient(135deg, var(--accent-bright, #e7e9ee), var(--accent, #c2c6cf));
+  color: var(--on-accent, #0a0a0b);
+  box-shadow: 0 6px 18px rgba(200, 204, 214, 0.3);
   transition: transform 0.12s ease, box-shadow 0.15s ease, filter 0.15s ease;
 }
-.solo-home-start button:hover { transform: translateY(-1px); filter: brightness(1.06); box-shadow: 0 10px 26px rgba(200, 154, 75, 0.4); }
+.solo-home-start button:hover { transform: translateY(-1px); filter: brightness(1.06); box-shadow: 0 10px 26px rgba(200, 204, 214, 0.4); }
 .solo-home-run-list {
   display: flex;
   flex-direction: column;
@@ -3786,7 +3809,7 @@ button:disabled {
     linear-gradient(168deg, var(--card, #19130f), var(--card-dim, #120d09));
   background-size: 160px 160px, auto;
   box-shadow:
-    var(--emboss, inset 0 1px 0 rgba(216, 180, 106, 0.07)),
+    var(--emboss, inset 0 1px 0 rgba(214, 217, 224, 0.07)),
     var(--elev-1, 0 8px 22px rgba(0, 0, 0, 0.5));
   transition: transform 0.16s ease, box-shadow 0.16s ease;
 }
@@ -3798,14 +3821,14 @@ button:disabled {
   bottom: 10px;
   width: 3px;
   border-radius: 999px;
-  background: linear-gradient(180deg, transparent, var(--accent, #b08545), transparent);
+  background: linear-gradient(180deg, transparent, var(--accent, #c2c6cf), transparent);
   opacity: 0.55;
 }
 .solo-home-run-card.primary {
-  border-color: var(--accent-border, #4a3a1e);
+  border-color: var(--accent-border, #4c4d54);
   box-shadow:
-    inset 0 0 0 1px var(--gold-edge, rgba(216, 180, 106, 0.16)),
-    var(--emboss, inset 0 1px 0 rgba(216, 180, 106, 0.07)),
+    inset 0 0 0 1px var(--gold-edge, rgba(214, 217, 224, 0.16)),
+    var(--emboss, inset 0 1px 0 rgba(214, 217, 224, 0.07)),
     var(--elev-2, 0 18px 44px rgba(0, 0, 0, 0.6));
 }
 .solo-home-run-card.primary::before { opacity: 0.9; width: 4px; }
@@ -3823,8 +3846,8 @@ button:disabled {
   font-size: 11px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--muted, #95897a);
-  border: 1px solid var(--border, #2e2420);
+  color: var(--muted, #8b8e96);
+  border: 1px solid var(--border, #202024);
   border-radius: 999px;
   padding: 4px 12px;
   white-space: nowrap;
@@ -3852,10 +3875,10 @@ button:disabled {
   font-weight: 600;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: var(--accent, #b08545);
+  color: var(--accent, #c2c6cf);
   margin-bottom: 12px;
   padding-bottom: 8px;
-  border-bottom: 1px solid var(--gold-edge, rgba(216, 180, 106, 0.16));
+  border-bottom: 1px solid var(--gold-edge, rgba(214, 217, 224, 0.16));
 }
 
 /* Delete control for past adventures (badge + delete sit on the card's right).
@@ -3877,8 +3900,8 @@ button:disabled {
 }
 .solo-home-run-delete {
   background: transparent;
-  border: 1px solid var(--line-strong, #503f2e);
-  color: var(--muted, #95897a);
+  border: 1px solid var(--line-strong, #34343b);
+  color: var(--muted, #8b8e96);
   font-size: 12px;
   padding: 4px 12px;
   border-radius: 999px;
@@ -3900,7 +3923,7 @@ button:disabled {
 }
 .solo-home-run-confirm-text {
   font-size: 12px;
-  color: var(--ink, #ece1c7);
+  color: var(--ink, #d9dbe0);
   opacity: 0.85;
 }
 .solo-home-run-delete-confirm,
@@ -3914,7 +3937,7 @@ button:disabled {
 .solo-home-run-delete-confirm {
   background: #8a3b2c;
   border: 1px solid #a84633;
-  color: var(--ink, #ece1c7);
+  color: var(--ink, #d9dbe0);
 }
 .solo-home-run-delete-confirm:hover {
   background: #a84633;
@@ -3925,11 +3948,11 @@ button:disabled {
 }
 .solo-home-run-delete-cancel {
   background: transparent;
-  border: 1px solid var(--line-strong, #503f2e);
-  color: var(--muted, #95897a);
+  border: 1px solid var(--line-strong, #34343b);
+  color: var(--muted, #8b8e96);
 }
 .solo-home-run-delete-cancel:hover {
-  color: var(--ink, #ece1c7);
+  color: var(--ink, #d9dbe0);
 }
 
 /* ── Resumable saved-campaign card: title row, progress lines, primary Continue,
@@ -3949,14 +3972,14 @@ button:disabled {
   border-radius: 999px;
   padding: 2px 9px;
   white-space: nowrap;
-  border: 1px solid var(--border, #2e2420);
-  color: var(--muted, #95897a);
+  border: 1px solid var(--border, #202024);
+  color: var(--muted, #8b8e96);
 }
 /* Active = alive (gilt); completed = settled (muted); abandoned = warning-warm. */
 .solo-home-run-status--active {
-  color: var(--accent-bright, #d8b46a);
-  border-color: var(--accent-border, #4a3a1e);
-  background: var(--gold-edge, rgba(216, 180, 106, 0.12));
+  color: var(--accent-bright, #e7e9ee);
+  border-color: var(--accent-border, #4c4d54);
+  background: var(--gold-edge, rgba(214, 217, 224, 0.12));
 }
 .solo-home-run-status--completed {
   color: #8fb89a;
@@ -3976,7 +3999,7 @@ button:disabled {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
-.solo-home-run-quest em { color: var(--accent, #b08545); font-style: normal; }
+.solo-home-run-quest em { color: var(--accent, #c2c6cf); font-style: normal; }
 .solo-home-run-footnote {
   color: var(--muted, #7d7264);
   font-size: 11px;
@@ -3992,9 +4015,9 @@ button:disabled {
   border-radius: 999px;
   cursor: pointer;
   white-space: nowrap;
-  color: var(--on-accent, #1c1308);
-  border: 1px solid var(--accent-border, #4a3a1e);
-  background: linear-gradient(135deg, var(--accent-bright, #d8b46a), var(--accent, #b08545));
+  color: var(--on-accent, #0a0a0b);
+  border: 1px solid var(--accent-border, #4c4d54);
+  background: linear-gradient(135deg, var(--accent-bright, #e7e9ee), var(--accent, #c2c6cf));
   box-shadow: var(--elev-1, 0 8px 22px rgba(0, 0, 0, 0.5));
   transition: transform 0.14s ease, box-shadow 0.14s ease, filter 0.14s ease;
 }
@@ -4008,8 +4031,8 @@ button:disabled {
 }
 .solo-home-run-rename-btn {
   background: transparent;
-  border: 1px solid var(--line-strong, #503f2e);
-  color: var(--muted, #95897a);
+  border: 1px solid var(--line-strong, #34343b);
+  color: var(--muted, #8b8e96);
   font-size: 12px;
   padding: 4px 12px;
   border-radius: 999px;
@@ -4018,9 +4041,9 @@ button:disabled {
   transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
 }
 .solo-home-run-rename-btn:hover {
-  color: var(--accent-bright, #d8b46a);
-  border-color: var(--accent-border, #4a3a1e);
-  background: var(--gold-edge, rgba(216, 180, 106, 0.1));
+  color: var(--accent-bright, #e7e9ee);
+  border-color: var(--accent-border, #4c4d54);
+  background: var(--gold-edge, rgba(214, 217, 224, 0.1));
 }
 /* Inline rename form — fills the card body while editing. */
 .solo-home-run-rename {
@@ -4033,21 +4056,21 @@ button:disabled {
   font-size: 11px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--accent, #b08545);
+  color: var(--accent, #c2c6cf);
 }
 .solo-home-run-rename-input {
   width: 100%;
   padding: 9px 12px;
   border-radius: 8px;
-  border: 1px solid var(--line-strong, #503f2e);
+  border: 1px solid var(--line-strong, #34343b);
   background: var(--input-bg, #14100b);
-  color: var(--ink, #ece1c7);
+  color: var(--ink, #d9dbe0);
   font-size: 14px;
 }
 .solo-home-run-rename-input:focus {
   outline: none;
-  border-color: var(--accent, #b08545);
-  box-shadow: 0 0 0 2px var(--gold-edge, rgba(216, 180, 106, 0.16));
+  border-color: var(--accent, #c2c6cf);
+  box-shadow: 0 0 0 2px var(--gold-edge, rgba(214, 217, 224, 0.16));
 }
 .solo-home-run-rename-actions { display: flex; gap: 8px; }
 .solo-home-run-rename-save {
@@ -4055,9 +4078,9 @@ button:disabled {
   padding: 5px 16px;
   border-radius: 999px;
   cursor: pointer;
-  color: var(--on-accent, #1c1308);
-  border: 1px solid var(--accent-border, #4a3a1e);
-  background: linear-gradient(135deg, var(--accent-bright, #d8b46a), var(--accent, #b08545));
+  color: var(--on-accent, #0a0a0b);
+  border: 1px solid var(--accent-border, #4c4d54);
+  background: linear-gradient(135deg, var(--accent-bright, #e7e9ee), var(--accent, #c2c6cf));
 }
 .solo-home-run-rename-save:hover { filter: brightness(1.06); }
 .solo-home-run-rename-cancel {
@@ -4066,10 +4089,10 @@ button:disabled {
   border-radius: 999px;
   cursor: pointer;
   background: transparent;
-  border: 1px solid var(--line-strong, #503f2e);
-  color: var(--muted, #95897a);
+  border: 1px solid var(--line-strong, #34343b);
+  color: var(--muted, #8b8e96);
 }
-.solo-home-run-rename-cancel:hover { color: var(--ink, #ece1c7); }
+.solo-home-run-rename-cancel:hover { color: var(--ink, #d9dbe0); }
 .solo-login-card {
   max-width: 480px;
   margin: 0 auto;
@@ -4095,8 +4118,8 @@ button:disabled {
   font-weight: 600;
   cursor: pointer;
   border-radius: 8px;
-  border: 1px solid var(--line-strong, #503f2e);
-  background: var(--accent, #b98a4b);
+  border: 1px solid var(--line-strong, #34343b);
+  background: var(--accent, #c2c6cf);
   color: #1a140c;
 }
 .solo-guest-play-btn:hover { filter: brightness(1.08); }
@@ -4109,24 +4132,24 @@ button:disabled {
   padding: 6px 40px 6px 12px;
   font-size: 12px;
   letter-spacing: 0.02em;
-  color: var(--muted, #95897a);
+  color: var(--muted, #8b8e96);
   background: rgba(0, 0, 0, 0.35);
-  border-bottom: 1px solid var(--line-strong, #503f2e);
+  border-bottom: 1px solid var(--line-strong, #34343b);
 }
 .solo-guest-banner-save {
   padding: 3px 10px;
   font-size: 12px;
   cursor: pointer;
   border-radius: 6px;
-  border: 1px solid var(--accent, #b98a4b);
+  border: 1px solid var(--accent, #c2c6cf);
   background: transparent;
-  color: var(--accent, #b98a4b);
+  color: var(--accent, #c2c6cf);
 }
 .solo-guest-banner-save:hover {
-  background: var(--accent, #b98a4b);
+  background: var(--accent, #c2c6cf);
   color: #1a140c;
 }
-.solo-guest-save-card { border-color: var(--accent, #b98a4b); }
+.solo-guest-save-card { border-color: var(--accent, #c2c6cf); }
 
 /* Entity Sheet portrait image (player portrait surfaced via portraitUri) */
 .solo-detail-portrait-img { width: 100%; height: 100%; object-fit: cover; object-position: center top; border-radius: 8px; display: block; }
@@ -4145,8 +4168,8 @@ button:disabled {
   margin-left: 6px;
   padding: 2px 7px;
   border-radius: 999px;
-  color: var(--on-accent, #1c1308);
-  background: linear-gradient(135deg, var(--accent-bright, #e0b352), var(--accent, #c89a4b));
+  color: var(--on-accent, #0a0a0b);
+  background: linear-gradient(135deg, var(--accent-bright, #e7e9ee), var(--accent, #c2c6cf));
 }
 .cw-card--homebrew { border-style: dashed; }
 .cw-card--homebrew.active { border-style: solid; }
@@ -4158,18 +4181,18 @@ button:disabled {
   max-width: 1040px;
   margin: 0 auto;
   padding: clamp(20px, 3vw, 38px);
-  color: var(--text, #ece1c7);
+  color: var(--text, #d9dbe0);
   font-family: var(--font-body, Georgia, serif);
   border-radius: var(--radius-lg, 20px);
-  border: 1px solid var(--border-strong, #503f2e);
+  border: 1px solid var(--border-strong, #34343b);
   background:
-    radial-gradient(130% 70% at 50% -10%, rgba(200, 154, 75, 0.10), transparent 58%),
-    linear-gradient(168deg, var(--panel, #221a13) 0%, var(--bg, #14100c) 58%, var(--inset, #120c07) 100%);
-  box-shadow: inset 0 0 0 1px rgba(200, 154, 75, 0.08), var(--shadow, 0 14px 34px rgba(0, 0, 0, 0.55));
+    radial-gradient(130% 70% at 50% -10%, rgba(200, 204, 214, 0.10), transparent 58%),
+    linear-gradient(168deg, var(--panel, #141417) 0%, var(--bg, #14100c) 58%, var(--inset, #070708) 100%);
+  box-shadow: inset 0 0 0 1px rgba(200, 204, 214, 0.08), var(--shadow, 0 14px 34px rgba(0, 0, 0, 0.55));
 }
 .hb-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 18px; }
-.hb-header h2 { font-family: var(--font-display, 'Cinzel', Georgia, serif); font-size: clamp(22px, 3vw, 32px); color: var(--text-bright, #f0e6d4); margin: 6px 0 4px; }
-.hb-sub { color: var(--text-2, #b3a48c); font-size: 14px; max-width: 60ch; margin: 0; }
+.hb-header h2 { font-family: var(--font-display, 'Cinzel', Georgia, serif); font-size: clamp(22px, 3vw, 32px); color: var(--text-bright, #f1f2f5); margin: 6px 0 4px; }
+.hb-sub { color: var(--text-2, #b0b3bb); font-size: 14px; max-width: 60ch; margin: 0; }
 .hb-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 360px); gap: 22px; }
 @media (max-width: 760px) { .hb-body { grid-template-columns: 1fr; } }
 
@@ -4177,13 +4200,13 @@ button:disabled {
 .hb-tab {
   appearance: none; cursor: pointer; font: inherit; font-size: 13px;
   padding: 7px 14px; border-radius: 999px;
-  border: 1px solid var(--border, #2e2420); background: var(--card, #1a130c); color: var(--text-2, #b3a48c);
+  border: 1px solid var(--border, #202024); background: var(--card, #101013); color: var(--text-2, #b0b3bb);
   transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
 }
-.hb-tab:hover { border-color: var(--accent, #c89a4b); color: var(--text-bright, #f0e6d4); }
+.hb-tab:hover { border-color: var(--accent, #c2c6cf); color: var(--text-bright, #f1f2f5); }
 .hb-tab.active {
-  background: linear-gradient(135deg, var(--accent-bright, #e0b352), var(--accent, #c89a4b));
-  border-color: var(--accent-bright, #e0b352); color: var(--on-accent, #1c1308); font-weight: 600;
+  background: linear-gradient(135deg, var(--accent-bright, #e7e9ee), var(--accent, #c2c6cf));
+  border-color: var(--accent-bright, #e7e9ee); color: var(--on-accent, #0a0a0b); font-weight: 600;
 }
 
 .hb-form { display: flex; flex-direction: column; gap: 12px; }
@@ -4191,10 +4214,10 @@ button:disabled {
 .hb-label > span { text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; }
 .hb-input {
   width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: 10px; font: inherit; font-size: 15px;
-  background: var(--inset, #120c07); border: 1px solid var(--border, #2e2420); color: var(--text, #ece1c7);
+  background: var(--inset, #070708); border: 1px solid var(--border, #202024); color: var(--text, #d9dbe0);
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
-.hb-input:focus { outline: none; border-color: var(--accent, #c89a4b); box-shadow: 0 0 0 3px rgba(200, 154, 75, 0.18); }
+.hb-input:focus { outline: none; border-color: var(--accent, #c2c6cf); box-shadow: 0 0 0 3px rgba(200, 204, 214, 0.18); }
 textarea.hb-input { min-height: 76px; resize: vertical; }
 .hb-input::placeholder { color: var(--text-muted, #9a8b76); opacity: 0.7; }
 .hb-hint { color: var(--text-muted, #9a8b76); font-size: 11px; }
@@ -4207,20 +4230,20 @@ textarea.hb-input { min-height: 76px; resize: vertical; }
 .hb-form-actions { display: flex; gap: 10px; align-items: center; margin-top: 4px; }
 .hb-error {
   padding: 9px 12px; border-radius: 9px; font-size: 13px;
-  background: rgba(150, 60, 50, 0.16); border: 1px solid rgba(190, 90, 80, 0.45); color: var(--text-bright, #f0e6d4);
+  background: rgba(150, 60, 50, 0.16); border: 1px solid rgba(190, 90, 80, 0.45); color: var(--text-bright, #f1f2f5);
 }
 
-.hb-list-col h3 { font-family: var(--font-display, 'Cinzel', Georgia, serif); color: var(--text-bright, #f0e6d4); font-size: 18px; margin: 0 0 12px; }
+.hb-list-col h3 { font-family: var(--font-display, 'Cinzel', Georgia, serif); color: var(--text-bright, #f1f2f5); font-size: 18px; margin: 0 0 12px; }
 .hb-empty { color: var(--text-muted, #9a8b76); font-size: 14px; font-style: italic; }
 .hb-group { margin-bottom: 16px; }
-.hb-group h4 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--accent, #c89a4b); margin: 0 0 8px; }
+.hb-group h4 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--accent, #c2c6cf); margin: 0 0 8px; }
 .hb-item {
   display: flex; justify-content: space-between; align-items: center; gap: 12px;
   padding: 10px 12px; margin-bottom: 8px; border-radius: 10px;
-  background: var(--card, #1a130c); border: 1px solid var(--border, #2e2420);
+  background: var(--card, #101013); border: 1px solid var(--border, #202024);
 }
 .hb-item-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.hb-item-main strong { color: var(--text-bright, #f0e6d4); }
+.hb-item-main strong { color: var(--text-bright, #f1f2f5); }
 .hb-item-summary { font-size: 12px; color: var(--text-muted, #9a8b76); }
 .hb-item-actions { display: flex; gap: 6px; flex: none; }
 .hb-item-actions .ghost { padding: 5px 10px; font-size: 12px; }
@@ -4251,7 +4274,7 @@ textarea.hb-input { min-height: 76px; resize: vertical; }
   transition: transform 0.12s ease, border-color 0.12s ease;
 }
 .dbg-fab:hover { transform: rotate(30deg); border-color: rgba(200, 200, 230, 0.7); }
-.dbg-fab-active { border-color: #6f7bd6; color: #aeb6ff; }
+.dbg-fab-active { border-color: #4c4d54; color: #c2c6cf; }
 .dbg-card {
   position: absolute;
   right: 0;
@@ -4274,7 +4297,7 @@ textarea.hb-input { min-height: 76px; resize: vertical; }
   background: rgba(255, 255, 255, 0.04);
   border-bottom: 1px solid rgba(150, 155, 190, 0.18);
 }
-.dbg-title { font-size: 11px; letter-spacing: 0.14em; color: #8b90ad; }
+.dbg-title { font-size: 11px; letter-spacing: 0.14em; color: #8b8e96; }
 .dbg-close {
   border: none;
   background: transparent;
@@ -4295,12 +4318,12 @@ textarea.hb-input { min-height: 76px; resize: vertical; }
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
 .dbg-row:last-child { border-bottom: none; }
-.dbg-k { color: #7f849c; letter-spacing: 0.06em; }
+.dbg-k { color: #83868e; letter-spacing: 0.06em; }
 .dbg-v { color: #d8dae8; word-break: break-word; }
 .dbg-ok { color: #8fdca0; }
-.dbg-warn { color: #f2c66d; }
-.dbg-muted { color: #7f849c; }
-.dbg-sub { color: #8b90ad; font-size: 11px; }
+.dbg-warn { color: #c9b083; }
+.dbg-muted { color: #83868e; }
+.dbg-sub { color: #8b8e96; font-size: 11px; }
 .dbg-tag {
   display: inline-block;
   font-size: 9px;
@@ -4308,7 +4331,7 @@ textarea.hb-input { min-height: 76px; resize: vertical; }
   padding: 1px 5px;
   border-radius: 4px;
   background: rgba(242, 198, 109, 0.16);
-  color: #f2c66d;
+  color: #c9b083;
   border: 1px solid rgba(242, 198, 109, 0.4);
   vertical-align: middle;
 }
