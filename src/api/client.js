@@ -174,12 +174,22 @@ export function createApiClient(baseUrl = "") {
     },
     async fetchSoloGmScene(runId, options = {}) {
       const query = options.mode ? `?mode=${encodeURIComponent(options.mode)}` : "";
-      return request(`/api/solo/runs/${encodeURIComponent(runId)}/gm-scene${query}`);
+      // GM-bound like the action call — the ambient scene narration can hit the
+      // same slow model/fallback path, so give it the same headroom (was 25s).
+      return request(`/api/solo/runs/${encodeURIComponent(runId)}/gm-scene${query}`, { timeoutMs: 90000 });
     },
     async postSoloAction(runId, action) {
       return request(`/api/solo/runs/${encodeURIComponent(runId)}/actions`, {
         method: "POST",
-        body: JSON.stringify({ action })
+        body: JSON.stringify({ action }),
+        // A GM turn is legitimately slow: the server's own backstop is ~65s
+        // (GM_LOCAL_TIMEOUT_MS + 5s) and a cloud→local fallback hop adds more, plus
+        // the attempt interpreter runs BEFORE narration. The old 25s default aborted
+        // these still-working turns client-side; the turn had already COMMITTED
+        // server-side, so the view froze on the pre-action state and the player
+        // appeared "thrown back" to an earlier turn. Give the action call headroom
+        // above the server ceiling so a slow-but-working turn is never abandoned.
+        timeoutMs: 120000
       });
     },
     async saveSoloBattleMap(runId, battleMap) {

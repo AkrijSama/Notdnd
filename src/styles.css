@@ -4256,9 +4256,19 @@ textarea.hb-input { min-height: 76px; resize: vertical; }
 .dbg-wrap {
   position: fixed;
   right: 14px;
-  bottom: 14px;
+  /* Top-right, NOT bottom-right: the solo scene's action input + "Attempt"
+     button live at the bottom-right, and an open debug card there intercepted
+     clicks on Attempt. Anchoring top-right keeps the panel clear of the play
+     controls. pointer-events:none on the wrapper (auto on its children) means
+     the empty gutter around the FAB/card never eats a click meant for the game. */
+  top: 14px;
   z-index: 2147483000;
+  pointer-events: none;
   font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+.dbg-fab,
+.dbg-card {
+  pointer-events: auto;
 }
 .dbg-fab {
   width: 34px;
@@ -4278,7 +4288,7 @@ textarea.hb-input { min-height: 76px; resize: vertical; }
 .dbg-card {
   position: absolute;
   right: 0;
-  bottom: 42px;
+  top: 42px;
   width: 340px;
   max-width: 82vw;
   background: rgba(14, 15, 20, 0.94);

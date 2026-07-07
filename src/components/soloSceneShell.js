@@ -3301,7 +3301,12 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       const anchor = pickAnchor();
       try {
         if (anchor && typeof anchor.scrollIntoView === "function") {
-          anchor.scrollIntoView({ block: "center" });
+          // "nearest" (not "center"): scroll the MINIMUM needed to bring the live
+          // turn into view — no scroll at all when it is already visible. The old
+          // "center" re-centred the viewport on EVERY narration turn, yanking the
+          // screen even when nothing needed to move (the #15 "scroll-jumps every
+          // turn" complaint). Smooth behaviour: if you can already see it, you stay put.
+          anchor.scrollIntoView({ block: "nearest" });
         } else if (typeof container.scrollHeight === "number") {
           container.scrollTop = container.scrollHeight;
         }
@@ -3604,8 +3609,24 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     try {
       await fn();
     } catch (error) {
-      state.banner = String(error?.message || error || "Something went wrong. Try again.");
-      state.bannerKind = "error";
+      // SELF-HEAL: a slow-but-working GM turn can outrun even the raised client
+      // timeout (or a transient network blip can drop the response) AFTER the
+      // server already COMMITTED the turn. Without recovery the view froze on the
+      // stale pre-action scene and the player appeared "thrown back" to an earlier
+      // turn (the #A blocker). Re-sync to the server's true current state so the
+      // display can never diverge from committed reality. Best-effort: if the
+      // reload also fails, fall back to the raw error and let the next poll retry.
+      let resynced = false;
+      try {
+        await loadScene();
+        resynced = true;
+      } catch {
+        // reconcile failed too — keep the hard error below
+      }
+      state.banner = resynced
+        ? "That turn took a while — caught up to the latest."
+        : String(error?.message || error || "Something went wrong. Try again.");
+      state.bannerKind = resynced ? "info" : "error";
     } finally {
       state.busy = null;
       clearLag();
