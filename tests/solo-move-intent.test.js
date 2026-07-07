@@ -79,3 +79,30 @@ test("PIPELINE: an unreachable move-intent is REFUSED — location unchanged, no
   assert.equal(res.attemptResult.gated, true, "refused (no LLM false-arrival narration)");
   assert.match(res.attemptResult.narration, /no path|can't|cannot|reach/i);
 });
+
+// ── Route-taking ("take the north road to X") — caught live in the guest walk:
+// the Babel VOICE teaches this exact phrasing, and "take" (the item-take verb)
+// wasn't a move trigger, so the walk narrated into the void instead of moving.
+test('ROUTE-TAKING: "take the north road to <place>" is a MOVE and resolves the named exit', () => {
+  const run = discoveredRun();
+  const d = detectMoveIntent(run, "Take the north road to Ashenmoor Market Square");
+  assert.ok(d?.reachable, "route-taking is a move intent");
+  assert.equal(d.toLocationId, "second_location");
+});
+
+test('ROUTE-TAKING commits through the full pipeline (free-text attempt actually moves)', () => {
+  const run = discoveredRun();
+  const resolved = resolveSoloAction(run, {
+    type: "attempt",
+    actorId: "player",
+    intent: "take the road north to Ashenmoor Market Square"
+  });
+  assert.equal(resolved.ok, true);
+  assert.equal(resolved.run.currentLocationId, "second_location", "the move COMMITTED");
+});
+
+test('ROUTE-TAKING does not hijack item takes: "take the crate" is NOT a move', () => {
+  const run = discoveredRun();
+  assert.equal(detectMoveIntent(run, "take the crate"), null);
+  assert.equal(detectMoveIntent(run, "take the sword from the pedestal"), null);
+});

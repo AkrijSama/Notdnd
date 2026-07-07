@@ -1,6 +1,6 @@
 import { providerSupportsReference, resolveImageProvider } from "../ai/providers.js";
 import { getAvailableSoloActions } from "./actions.js";
-import { MILESTONE_MAX, tierForMilestone, displayLevelFor, rankForPlayer } from "./progression.js";
+import { MILESTONE_MAX, RANK_LADDER, tierForMilestone, displayLevelFor, rankForPlayer } from "./progression.js";
 import { babelStatBlock } from "./babelStats.js";
 import { getVisibleEntities, validateVisibleEntity } from "./entities.js";
 import { generatePlaceholderGmNarration, validateGmSceneOutput } from "./gm.js";
@@ -649,6 +649,42 @@ function playerInventoryArray(run) {
   }));
 }
 
+// Babel WINDOW skill list — the display projection of player.babelSkills (the
+// SAME records rankForPlayer reads, so the list, the count, and RANK can never
+// contradict). Records may be bare rank indices or objects; both normalize to a
+// stable display shape. "What a skill does" comes from its `effect`/`name`
+// fields when the acquisition system writes them; absent fields render null and
+// the client shows the provenance it does have. Server owns this projection so
+// the WINDOW stays a dumb, honest display.
+function babelSkillDetails(skills) {
+  if (!Array.isArray(skills)) {
+    return [];
+  }
+  return skills.map((s, i) => {
+    const rankIndex = typeof s === "number" ? s : (typeof s?.rankIndex === "number" ? s.rankIndex : NaN);
+    const rank =
+      Number.isFinite(rankIndex) && rankIndex >= 1 && rankIndex <= RANK_LADDER.length
+        ? RANK_LADDER[Math.round(rankIndex) - 1]
+        : null;
+    const record = isPlainObject(s) ? s : {};
+    const rawId = isString(record.skillId) ? record.skillId : "";
+    const name = isString(record.name) && record.name
+      ? record.name
+      : rawId
+        ? rawId.replace(/^skill[_-]/, "").replace(/[_-]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+        : "Unnamed skill";
+    return {
+      id: rawId || `skill_${i}`,
+      name,
+      rank,
+      stat: isString(record.stat) ? record.stat : null,
+      effect: isString(record.effect) ? record.effect : null,
+      source: isString(record.source) ? record.source : null,
+      acquiredAtMilestone: typeof record.acquiredAtMilestone === "number" ? record.acquiredAtMilestone : null
+    };
+  });
+}
+
 export function buildPlayerPayload(run) {
   const player = isPlainObject(run?.player) ? run.player : {};
   const hp = isPlainObject(player.resources?.hitPoints) ? player.resources.hitPoints : null;
@@ -732,6 +768,9 @@ export function buildPlayerPayload(run) {
     // name-collide with the Babel canon while holding dead values (a lie surface).
     // It remains a persisted schema field (unread) pending a dedicated migration.
     babelStats: run?.world?.variant === "babel" ? babelStatBlock(player.abilities) : null,
+    // Babel WINDOW skills, display-normalized (name/rank/stat/effect/provenance)
+    // from the same records rankForPlayer reads. Null outside the Babel family.
+    babelSkills: run?.world?.variant === "babel" ? babelSkillDetails(player.babelSkills) : null,
     skills: isPlainObject(player.skills) ? { ...player.skills } : {},
     portraitUri: isString(player.portraitUri) ? player.portraitUri : null,
     // Lifecycle status: alive | dying | stable | dead (legacy: active | downed).

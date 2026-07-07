@@ -101,6 +101,13 @@ const MOVE_PREP =
 const MOVE_FORWARD_RE = /\b(?:deep(?:er)?|onward|onwards?|forward|forwards?|further|ahead|inward|inwards?|delve|descend|the (?:unexplored|unmarked|dark|narrow|hidden) (?:path|passage|corridor|way|hall)|into the (?:ruin|dark|depth|passage|hall|gloom|shadow|deep)|down the (?:path|passage|corridor|hall|stair|steps?)|press on|carry on)\b/i;
 const MOVE_BACKWARD_RE = /\b(?:back|backward|backwards?|return|retreat|the way (?:i|we|you) came|out of here|leave this (?:place|room|area))\b/i;
 const MOVE_INTENT_RE = new RegExp(`\\b${MOVE_VERB}\\b[^.?!]*?\\b${MOVE_PREP}\\b`, "i");
+// "take the north road to Hollow Pine" — route-taking is a MOVE, not an item
+// take. "take" is deliberately NOT in MOVE_VERB (it is the item-take verb, and
+// detectTakeIntent runs first in actions.js), so it only counts as movement when
+// its object is a way to somewhere. Caught live in the guest walk: the Babel
+// VOICE itself teaches this exact phrasing, and it narrated into the void
+// instead of committing the move.
+const TAKE_ROUTE_RE = /\b(?:take|takes|taking|took)\b[^.?!]*?\b(?:road|roads|path|paths|trail|trails|track|route|way|street|bridge|stairs?|pass|causeway|crossing|ferry)\b/i;
 const LOCATION_STOPWORDS = new Set(["the", "a", "an", "of", "and", "to", "at", "in", "on", "near", "old", "new"]);
 
 function locationNameTokens(name) {
@@ -137,9 +144,17 @@ export function detectMoveIntent(run, intent) {
   const text = String(intent || "").toLowerCase();
   const forward = MOVE_FORWARD_RE.test(text);
   const backward = MOVE_BACKWARD_RE.test(text);
-  // A move intent is verb+preposition ("head to …") OR a bare directional cue
-  // ("go deeper" / "press forward" / "head back").
-  if (!text || !(MOVE_INTENT_RE.test(text) || ((forward || backward) && new RegExp(`\\b${MOVE_VERB}\\b`, "i").test(text)))) {
+  // A move intent is verb+preposition ("head to …"), a route-taking phrase
+  // ("take the north road to …"), OR a bare directional cue ("go deeper" /
+  // "press forward" / "head back").
+  if (
+    !text ||
+    !(
+      MOVE_INTENT_RE.test(text) ||
+      TAKE_ROUTE_RE.test(text) ||
+      ((forward || backward) && new RegExp(`\\b${MOVE_VERB}\\b`, "i").test(text))
+    )
+  ) {
     return null;
   }
   const moves = getAvailableMoves(run);

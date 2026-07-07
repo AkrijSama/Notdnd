@@ -1140,6 +1140,30 @@ function formatMod(mod) {
 // Maps the server scene.player projection into the character sidebar/sheet shape
 // (SOLO_SAMPLE_CHARACTER). AC/speed aren't tracked on run.player, so the payload
 // sends null and we default here. Returns null when no player is present.
+// What each 5e skill DOES — static rules text so the sheet's skill rows are
+// inspectable (expand to read) instead of a bare name+modifier. Keys match the
+// lowercase names the server emits in player.skills.
+const SKILL_INFO = {
+  acrobatics: { ability: "DEX", desc: "Stay on your feet: balancing, tumbling, flips, and slipping free of a grapple." },
+  "animal handling": { ability: "WIS", desc: "Calm, read, or direct animals — soothe a spooked mount, sense a beast's intent." },
+  arcana: { ability: "INT", desc: "Recall lore about spells, magic items, planes, and magical phenomena." },
+  athletics: { ability: "STR", desc: "Climb, jump, swim, grapple — raw physical effort under pressure." },
+  deception: { ability: "CHA", desc: "Convince someone of a falsehood: lies, disguises, misdirection, bluffs." },
+  history: { ability: "INT", desc: "Recall lore about past events, people, kingdoms, wars, and old customs." },
+  insight: { ability: "WIS", desc: "Read intentions: detect lies, predict a move, sense what someone really wants." },
+  intimidation: { ability: "CHA", desc: "Influence through threats, hostile presence, or the promise of violence." },
+  investigation: { ability: "INT", desc: "Deduce from clues: search a room properly, spot a forgery, work out how something happened." },
+  medicine: { ability: "WIS", desc: "Stabilize the dying, diagnose illness, and judge what wounded a body." },
+  nature: { ability: "INT", desc: "Recall lore about terrain, plants, animals, weather, and natural cycles." },
+  perception: { ability: "WIS", desc: "Notice things: hidden foes, faint sounds, small details others miss." },
+  performance: { ability: "CHA", desc: "Hold an audience: music, storytelling, acting, and public spectacle." },
+  persuasion: { ability: "CHA", desc: "Influence in good faith: tact, negotiation, etiquette, honest appeals." },
+  religion: { ability: "INT", desc: "Recall lore about deities, rites, holy symbols, and religious orders." },
+  "sleight of hand": { ability: "DEX", desc: "Manual trickery: palm an object, pick a pocket, plant something unseen." },
+  stealth: { ability: "DEX", desc: "Go unseen and unheard: sneak past guards, hide, tail someone." },
+  survival: { ability: "WIS", desc: "Track, forage, navigate wilds, predict weather, and avoid natural hazards." }
+};
+
 export function characterFromScenePlayer(player, world = null) {
   if (!player || typeof player !== "object") {
     return null;
@@ -1170,10 +1194,15 @@ export function characterFromScenePlayer(player, world = null) {
         : { current: 0, max: 0 };
   const mp = res.mp && typeof res.mp === "object" ? res.mp : { current: 0, max: 0 };
   const skillsObj = player.skills && typeof player.skills === "object" ? player.skills : {};
-  const skills = Object.entries(skillsObj).map(([name, value]) => ({
-    name: name.charAt(0).toUpperCase() + name.slice(1),
-    mod: formatMod(Number(value) || 0)
-  }));
+  const skills = Object.entries(skillsObj).map(([name, value]) => {
+    const info = SKILL_INFO[name.toLowerCase()] || null;
+    return {
+      name: name.charAt(0).toUpperCase() + name.slice(1),
+      mod: formatMod(Number(value) || 0),
+      ability: info?.ability || "",
+      description: info?.desc || ""
+    };
+  });
   const saves = ABILITY_ORDER.map(([, full]) => ({
     name: full.charAt(0).toUpperCase() + full.slice(1),
     mod: formatMod(abilityModifier(Number(ab[full]) || 10))
@@ -1203,6 +1232,10 @@ export function characterFromScenePlayer(player, world = null) {
         rank: typeof player.rank === "string" ? player.rank : "UNASSESSED",
         displayLevel: typeof player.displayLevel === "number" ? player.displayLevel : (typeof player.level === "number" ? player.level : 1),
         milestoneTier: typeof player.milestoneTier === "string" ? player.milestoneTier : "",
+        // Ranked-skill surface: count + display records (server-normalized from
+        // the SAME player.babelSkills that rank is computed from).
+        rankedSkillCount: typeof player.rankedSkillCount === "number" ? player.rankedSkillCount : 0,
+        skillDetails: Array.isArray(player.babelSkills) ? player.babelSkills : [],
         stats: babelStatSource.map(([key, , score]) => {
           const n = Number.isFinite(Number(score)) ? Number(score) : 10;
           return { key, score: n, mod: formatMod(abilityModifier(n)) };
@@ -1304,13 +1337,27 @@ export function renderBabelStatusWindow(character = SOLO_SAMPLE_CHARACTER) {
     )
     .join("");
   const inventory = Array.isArray(character.inventory) ? character.inventory : [];
+  // Inventory rows are INTERACTABLE: expand for the item's description, and Use
+  // it right here when the server marks it usable (same data-solo-action wire as
+  // the Inventory tab, so one delegation handles both surfaces).
   const inventoryHtml = inventory.length
     ? inventory
         .map((item) => {
           const name = typeof item?.name === "string" && item.name ? item.name : item?.id || "Item";
-          const qty = Number(item?.qty);
+          const qty = Number(item?.qty ?? item?.quantity);
           const qtyTag = Number.isFinite(qty) && qty > 1 ? `<span class="solo-inv-qty">×${qty}</span>` : "";
-          return `<li class="solo-inv-item"><span class="solo-inv-name">${escapeHtml(name)}</span>${qtyTag}</li>`;
+          const itemId = typeof item?.id === "string" && item.id ? item.id : (typeof item?.itemId === "string" ? item.itemId : "");
+          const description = typeof item?.description === "string" && item.description ? item.description : "No further detail — examine it in play.";
+          const usable = item?.usable === true;
+          return `<li class="solo-inv-item">
+            <details class="solo-inv-detail">
+              <summary class="solo-inv-summary"><span class="solo-inv-name">${escapeHtml(name)}</span>${qtyTag}</summary>
+              <div class="solo-inv-body">
+                <p class="solo-inv-desc">${escapeHtml(description)}</p>
+                ${itemId && usable ? `<button type="button" class="ghost solo-inv-use" data-solo-action="use_item" data-item-id="${escapeHtml(itemId)}">Use</button>` : ""}
+              </div>
+            </details>
+          </li>`;
         })
         .join("")
     : `<li class="solo-inv-empty">You carry nothing.</li>`;
@@ -1326,7 +1373,33 @@ export function renderBabelStatusWindow(character = SOLO_SAMPLE_CHARACTER) {
   // Skills shown in the WINDOW are the RANKED skills that define rank (the same
   // source rankForPlayer reads), NOT the 5e 18-row table — so count and RANK
   // never contradict (defect 4). A Beckoned start has none → "none" + UNASSESSED.
+  // Each held skill is INSPECTABLE: expand to read its rank/stat/effect —
+  // these are the records the RANK amalgamation is computed from.
+  const skillDetails = Array.isArray(b.skillDetails) ? b.skillDetails : [];
   const skillCount = typeof b.rankedSkillCount === "number" ? b.rankedSkillCount : 0;
+  const skillsHtml = skillDetails.length
+    ? `<ul class="solo-skill-list">${skillDetails
+        .map((skill) => {
+          const name = typeof skill?.name === "string" && skill.name ? skill.name : "Unnamed skill";
+          const rank = typeof skill?.rank === "string" && skill.rank ? skill.rank : "—";
+          const facts = [
+            skill?.stat ? `Keyed to ${String(skill.stat).toUpperCase()}` : "",
+            typeof skill?.acquiredAtMilestone === "number" ? `Awakened at milestone ${skill.acquiredAtMilestone}` : "",
+            skill?.source ? `Source: ${skill.source}` : ""
+          ].filter(Boolean);
+          return `<li class="solo-skill-item">
+            <details class="solo-skill-detail">
+              <summary class="solo-skill-summary"><span class="solo-skill-name">${escapeHtml(name)}</span><span class="solo-skill-rank">[ ${escapeHtml(rank)} ]</span></summary>
+              <div class="solo-skill-body">
+                ${skill?.effect ? `<p class="solo-skill-effect">${escapeHtml(skill.effect)}</p>` : ""}
+                ${facts.length ? `<p class="solo-skill-facts">${escapeHtml(facts.join(" · "))}</p>` : ""}
+                ${!skill?.effect && !facts.length ? `<p class="solo-skill-facts">The WINDOW records this skill but offers no further description.</p>` : ""}
+              </div>
+            </details>
+          </li>`;
+        })
+        .join("")}</ul>`
+    : `<div class="solo-skill-empty">none — skills are earned in play, and they define your RANK.</div>`;
   return `
     <aside class="solo-game-sidebar solo-babel-window" data-window="babel">
       <div class="solo-portrait" data-portrait-for="player" data-portrait-img-class="solo-portrait-img">${character.portraitUri ? `<img class="solo-portrait-img" src="${escapeHtml(character.portraitUri)}" alt="${escapeHtml(character.name || "Character")} portrait" />` : `<div class="solo-portrait-pending"><span class="solo-portrait-spinner" aria-hidden="true"></span><small>Crafting your portrait… (~20s)</small></div>`}</div>
@@ -1352,6 +1425,7 @@ export function renderBabelStatusWindow(character = SOLO_SAMPLE_CHARACTER) {
       </div>
       <div class="solo-sidebar-block">
         <div class="solo-passive-row"><span>Skills</span><span>${skillCount > 0 ? escapeHtml(skillCount) : "none"}</span></div>
+        ${skillsHtml}
       </div>
       <div class="solo-sidebar-block solo-inventory-block">
         <div class="solo-stat-kicker">Inventory</div>
@@ -1391,14 +1465,27 @@ export function renderSoloCharacterSidebar(character = SOLO_SAMPLE_CHARACTER) {
 
   // State contract: player.inventory[] (each {id,name,qty}). Always shown so the
   // player can see what they carry; resolvers append to it as actions land.
+  // Interactable (same treatment as the Babel WINDOW): expand for the item's
+  // description, Use in place when the server marks it usable.
   const inventory = Array.isArray(character.inventory) ? character.inventory : [];
   const inventoryHtml = inventory.length
     ? inventory
         .map((item) => {
           const name = typeof item?.name === "string" && item.name ? item.name : item?.id || "Item";
-          const qty = Number(item?.qty);
+          const qty = Number(item?.qty ?? item?.quantity);
           const qtyTag = Number.isFinite(qty) && qty > 1 ? `<span class="solo-inv-qty">×${qty}</span>` : "";
-          return `<li class="solo-inv-item"><span class="solo-inv-name">${escapeHtml(name)}</span>${qtyTag}</li>`;
+          const itemId = typeof item?.id === "string" && item.id ? item.id : (typeof item?.itemId === "string" ? item.itemId : "");
+          const description = typeof item?.description === "string" && item.description ? item.description : "No further detail — examine it in play.";
+          const usable = item?.usable === true;
+          return `<li class="solo-inv-item">
+            <details class="solo-inv-detail">
+              <summary class="solo-inv-summary"><span class="solo-inv-name">${escapeHtml(name)}</span>${qtyTag}</summary>
+              <div class="solo-inv-body">
+                <p class="solo-inv-desc">${escapeHtml(description)}</p>
+                ${itemId && usable ? `<button type="button" class="ghost solo-inv-use" data-solo-action="use_item" data-item-id="${escapeHtml(itemId)}">Use</button>` : ""}
+              </div>
+            </details>
+          </li>`;
         })
         .join("")
     : `<li class="solo-inv-empty">Your pack is empty.</li>`;
@@ -1590,7 +1677,19 @@ export function renderSoloCharacterSheet(character = SOLO_SAMPLE_CHARACTER) {
       </div>
       <div class="solo-sheet-col">
         <div class="solo-stat-kicker">Skills</div>
-        <div class="solo-sheet-list">${(character.skills || []).map(row).join("")}</div>
+        <div class="solo-sheet-list">${(character.skills || [])
+          .map((entry) =>
+            entry.description
+              ? `<details class="solo-sheet-skill">
+                  <summary class="solo-sheet-row solo-sheet-skill-summary">
+                    <span class="${entry.proficient ? "proficient" : ""}">${escapeHtml(entry.name)}${entry.ability ? ` <span class="solo-skill-ability">(${escapeHtml(entry.ability)})</span>` : ""}${entry.proficient ? ` <span class="solo-dot">●</span>` : ""}</span>
+                    <span class="${entry.proficient ? "proficient" : ""}">${escapeHtml(entry.mod)}</span>
+                  </summary>
+                  <p class="solo-sheet-skill-desc">${escapeHtml(entry.description)}</p>
+                </details>`
+              : row(entry)
+          )
+          .join("")}</div>
         <div class="solo-stat-kicker" style="margin-top:26px;">Proficiencies</div>
         <div class="solo-proficiencies">${escapeHtml(character.proficiencies)}</div>
       </div>
@@ -2451,6 +2550,7 @@ export function renderSoloSceneShell(state = {}) {
         <button type="button" class="solo-settings-btn" data-solo-menu-toggle aria-haspopup="true" aria-expanded="${state.menuOpen ? "true" : "false"}" aria-label="Menu" title="Menu">⚙</button>
         ${state.menuOpen ? `
           <div class="solo-settings-menu solo-cog-menu" role="menu">
+            ${state.isGuest ? `<button type="button" class="solo-cog-item" data-solo-guest-save role="menuitem">Save your adventure</button>` : ""}
             <button type="button" class="solo-cog-item" data-solo-exit role="menuitem">Leave Adventure</button>
             <button type="button" class="solo-cog-item" data-solo-cog="Settings" role="menuitem">Settings</button>
             <button type="button" class="solo-cog-item" data-solo-cog="Report a bug" role="menuitem">Report a bug</button>
@@ -2458,6 +2558,14 @@ export function renderSoloSceneShell(state = {}) {
           </div>
         ` : ""}
       </div>
+      ${
+        state.isGuest
+          ? `<div class="solo-guest-banner">
+              <span>Playing as guest — your progress lives in this browser until you save it.</span>
+              <button type="button" class="solo-guest-banner-save" data-solo-guest-save>Save your adventure</button>
+            </div>`
+          : ""
+      }
       <div class="solo-game-layout">
       <div class="solo-game-frame solo-scene-grid">
         ${renderSoloCharacterSidebar(character)}
@@ -2570,6 +2678,13 @@ export function bindSoloSceneShell(root, handlers = {}) {
 
   root.querySelectorAll("[data-solo-home]").forEach((button) => {
     button.addEventListener("click", () => handlers.onReturnHome?.());
+  });
+
+  // Guest save: hand off to the home screen with the register panel open. The
+  // run is untouched — registering upgrades the guest in place, then the run is
+  // right there on the home screen to continue.
+  root.querySelectorAll("[data-solo-guest-save]").forEach((button) => {
+    button.addEventListener("click", () => handlers.onGuestSave?.());
   });
 
   root.querySelectorAll("[data-solo-menu-toggle]").forEach((button) => {
@@ -3048,7 +3163,11 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     // Guards re-entry while a Redo/Save location-image request is in flight.
     sceneArtBusy: null,
     skin: normalizeSkin(readSoloThemePref(SOLO_SKIN_STORAGE_KEY, "ashen")),
-    fontSet: normalizeFontSet(readSoloThemePref(SOLO_FONT_STORAGE_KEY, "tome"))
+    fontSet: normalizeFontSet(readSoloThemePref(SOLO_FONT_STORAGE_KEY, "tome")),
+    // Guest play: when the player has no real account, the shell offers a
+    // persistent "save your adventure" affordance. Registering upgrades the
+    // guest identity in place server-side, so the run is never lost.
+    isGuest: false
   };
 
   // External/timer-triggered renders are deferred while a text field is focused
@@ -3079,6 +3198,7 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       onReload: loadScene,
       onExit: handleExit,
       onReturnHome: handleReturnHome,
+      onGuestSave: handleGuestSave,
       onDismissBanner: handleDismissBanner,
       onMenuToggle: handleMenuToggle,
       onCogPlaceholder: handleCogPlaceholder,
@@ -3710,6 +3830,16 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     returnHome();
   }
 
+  function handleGuestSave() {
+    if (typeof window === "undefined") {
+      return;
+    }
+    // ?save=1 tells the home screen to open the register panel ("Save your
+    // adventure"). Deliberately NOT marked as an exited run — the adventure
+    // continues right after saving.
+    window.location.href = "/?save=1";
+  }
+
   function handleDialogueClose() {
     // Close the dialogue overlay without reloading the scene. The talk result
     // remains in state so the right-rail summary stays visible.
@@ -4296,6 +4426,18 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
 
   render();
   loadScene();
+  // Guest probe (fire-and-forget): learn whether this player is a guest so the
+  // shell can offer "save your adventure". Failure means no banner — never a
+  // blocked scene.
+  Promise.resolve()
+    .then(() => apiClient.me())
+    .then((me) => {
+      if (me?.user?.isGuest === true) {
+        state.isGuest = true;
+        externalRender();
+      }
+    })
+    .catch(() => {});
   return {
     reload: loadScene
   };

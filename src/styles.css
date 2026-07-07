@@ -1721,6 +1721,58 @@ button:disabled {
 .solo-inv-qty { font-size: 11px; color: var(--text-2, #b3a48c); flex: none; }
 .solo-inv-empty,
 .solo-condition-empty { font-size: 12px; font-style: italic; color: var(--muted, #9b8c76); }
+
+/* Interactable inventory + inspectable skills (STATUS WINDOW / sidebar / sheet).
+   Native <details> so expand/collapse is keyboard-accessible with zero JS. */
+.solo-inv-item:has(> .solo-inv-detail) { display: block; }
+.solo-inv-detail { width: 100%; }
+.solo-inv-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  cursor: pointer;
+  list-style: none;
+}
+.solo-inv-summary::-webkit-details-marker { display: none; }
+.solo-inv-summary::after { content: "▸"; font-size: 10px; color: var(--muted, #9b8c76); flex: none; }
+.solo-inv-detail[open] > .solo-inv-summary::after { content: "▾"; }
+.solo-inv-body { padding: 6px 2px 2px; }
+.solo-inv-desc { margin: 0 0 6px; font-size: 12px; line-height: 1.45; color: var(--text-2, #b3a48c); }
+.solo-inv-use { font-size: 12px; padding: 3px 12px; }
+.solo-skill-list { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.solo-skill-item {
+  font-size: 13px;
+  color: var(--text, #e8dcc8);
+  padding: 5px 9px;
+  border-radius: 7px;
+  background: var(--inset, #120c07);
+  border: 1px solid var(--border, #2e2420);
+}
+.solo-skill-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  cursor: pointer;
+  list-style: none;
+}
+.solo-skill-summary::-webkit-details-marker { display: none; }
+.solo-skill-rank { font-size: 11px; letter-spacing: 0.08em; color: var(--accent-bright, #d8b46a); flex: none; }
+.solo-skill-body { padding: 6px 2px 2px; }
+.solo-skill-effect { margin: 0 0 4px; font-size: 12px; line-height: 1.45; color: var(--text-2, #b3a48c); }
+.solo-skill-facts { margin: 0; font-size: 11px; font-style: italic; color: var(--muted, #9b8c76); }
+.solo-skill-empty { margin-top: 6px; font-size: 12px; font-style: italic; color: var(--muted, #9b8c76); }
+.solo-skill-ability { font-size: 10px; color: var(--muted, #9b8c76); }
+.solo-sheet-skill { border-bottom: 1px solid var(--border, #2e2420); }
+.solo-sheet-skill-summary { cursor: pointer; list-style: none; }
+.solo-sheet-skill-summary::-webkit-details-marker { display: none; }
+.solo-sheet-skill-desc {
+  margin: 2px 0 8px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-2, #b3a48c);
+}
 .solo-mini-stats { display: flex; gap: 10px; margin-top: 14px; }
 .solo-mini-stat {
   flex: 1;
@@ -4030,6 +4082,51 @@ button:disabled {
   max-width: 40ch;
   opacity: 0.92;
 }
+
+/* Guest play: the first-touch CTA on the login card, and the in-run/save
+   surfaces. The CTA is the PRIMARY action on the landing screen — the game
+   comes first, the account form is the secondary path below it. */
+.solo-guest-play-btn {
+  display: block;
+  width: 100%;
+  margin: 10px auto 8px;
+  padding: 12px 18px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: 8px;
+  border: 1px solid var(--line-strong, #503f2e);
+  background: var(--accent, #b98a4b);
+  color: #1a140c;
+}
+.solo-guest-play-btn:hover { filter: brightness(1.08); }
+.solo-guest-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 6px 40px 6px 12px;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  color: var(--muted, #95897a);
+  background: rgba(0, 0, 0, 0.35);
+  border-bottom: 1px solid var(--line-strong, #503f2e);
+}
+.solo-guest-banner-save {
+  padding: 3px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  border-radius: 6px;
+  border: 1px solid var(--accent, #b98a4b);
+  background: transparent;
+  color: var(--accent, #b98a4b);
+}
+.solo-guest-banner-save:hover {
+  background: var(--accent, #b98a4b);
+  color: #1a140c;
+}
+.solo-guest-save-card { border-color: var(--accent, #b98a4b); }
 
 /* Entity Sheet portrait image (player portrait surfaced via portraitUri) */
 .solo-detail-portrait-img { width: 100%; height: 100%; object-fit: cover; object-position: center top; border-radius: 8px; display: block; }
