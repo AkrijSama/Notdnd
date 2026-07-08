@@ -1859,34 +1859,37 @@ button:disabled {
 /* Full-width bottom tab bar spanning all three columns (designer spec). The
    bar is a sibling of .solo-game-frame inside .solo-game-layout, pinned to the
    bottom of the game frame. */
+/* #29: compact IN-HEADER tab strip (relocated from the wasted full-width bottom
+   row). A slim segmented control under the title, not a reserved bottom bar. */
 .solo-game-tabs {
-  width: 100%;
   display: flex;
-  border-top: 1px solid var(--border, #202024);
-  background: var(--bg-card, var(--card, #101013));
-  padding: 0 24px;
-  gap: 0;
+  gap: 2px;
+  margin-top: 10px;
+  padding: 3px;
+  border-radius: 8px;
+  border: 1px solid var(--border, #202024);
+  background: var(--inset, #070708);
 }
 .solo-game-tab {
   flex: 1;
   text-align: center;
-  padding: 14px 0;
-  font-size: 12.5px;
-  letter-spacing: 0.1em;
+  padding: 7px 0;
+  font-size: 11px;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   background: none;
   border: none;
-  border-bottom: none;
-  border-top: 3px solid transparent;
-  color: var(--text-label, #8a7c68);
+  border-radius: 6px;
+  color: var(--text-label, #83868e);
   cursor: pointer;
   font-family: inherit;
   font-weight: 600;
   white-space: nowrap;
 }
+.solo-game-tab:hover { color: var(--text-2, #b0b3bb); }
 .solo-game-tab.active {
-  color: var(--text-bright, #f1f2f5);
-  border-top-color: var(--accent, #a9adb6);
+  color: var(--on-accent, #0a0a0b);
+  background: var(--accent, #c2c6cf);
 }
 .solo-game-content { flex: 1; overflow-y: auto; }
 .solo-tab-panel[hidden] { display: none; }
@@ -2486,16 +2489,19 @@ button:disabled {
 .solo-scene-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) clamp(280px, 22vw, 360px);
-  /* Fill the scene panel but GROW with content rather than locking to its exact
-     height. The scene tab panel owns the scroll (overflow-y:auto), so a tall
-     column scrolls there instead of crushing the location copy to fit. */
-  min-height: 100%;
+  /* #34 step 2: BOUND the zones to the panel height (was min-height:100%, which
+     let the column grow unbounded so flex:1 never resolved to real remaining
+     space and the log could not scroll). height:100% gives .solo-scene-center a
+     definite box, so the narration log's flex:1 resolves and it scrolls itself. */
+  height: 100%;
+  min-height: 0;
 }
 .solo-scene-center {
   display: flex;
   flex-direction: column;
   min-width: 0;
   min-height: 0;
+  height: 100%;
   border-right: 1px solid var(--border, #202024);
 }
 
@@ -2512,32 +2518,88 @@ button:disabled {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  height: 100%;
 }
+/* #34: the STAGE and INPUT DOCK are flex:none siblings of the scrolling log, so
+   they stay put simply by not scrolling — the LOG is the single internal
+   scroller (no position:sticky, no nested/competing scroll). */
 .solo-stage {
-  position: sticky;
-  top: 0;
-  z-index: 3;
   flex: none;
-  /* Opaque so scrolled narration never bleeds under the pinned art. */
   background: var(--bg, #050506);
-  padding: 2px 4px 10px;
+  padding: 2px 4px 8px;
   margin: 0;
   border-bottom: 1px solid var(--border, #202024);
 }
+/* #34 step 5 + #31: the pinned stage art is a CONSISTENT-height banner. Dropping
+   the aspect-ratio:3/2 lock (which swung the banner from letterbox on a narrow
+   column to over-tall on a wide one) for a fixed clamped height + object-fit:cover
+   on the img (already set) means the image never distorts and the log always has
+   readable room below it. Capped lower than the old clamp(240px,34vh,420px). */
+.solo-stage .solo-scene-art {
+  aspect-ratio: auto;
+  height: clamp(170px, 24vh, 300px);
+  min-height: 0;
+  max-height: none;
+}
+/* #34 step 1: the log IS the scroller — flex:1 to take the remaining bounded
+   height, min-height:0 so it can actually shrink-and-scroll, overflow-y:auto. */
 .solo-narration-log {
   flex: 1 1 auto;
-  min-height: 140px;
-  padding: 16px 6px 10px;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 8px 14px;
 }
+/* #30: the input dock gets more vertical room (was 8px/2px) so the field and
+   its submit sit comfortably, not cramped against the log border. */
 .solo-input-dock {
-  position: sticky;
-  bottom: 0;
-  z-index: 3;
   flex: none;
   background: var(--bg, #050506);
-  padding: 8px 0 2px;
+  padding: 14px 4px 10px;
   border-top: 1px solid var(--border, #202024);
 }
+
+/* #32 THIN CHECK-RESULT STRIP + #33 THREE DISTINCT BANDS. One compact row on the
+   stage: a band badge (glyph + label), the roll, then the dimmed intent. The band
+   is triple-coded — a colored left rule + a colored badge + a distinct glyph +
+   distinct label — so Success / Success-at-cost / Failure are unmistakable. */
+.solo-action-outcome {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 6px 4px 2px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border-left: 3px solid var(--border-strong, #34343b);
+  background: var(--inset, #070708);
+  font-size: 13px;
+}
+.solo-outcome-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  font-size: 12px;
+}
+.solo-outcome-glyph { font-size: 14px; line-height: 1; }
+.solo-outcome-roll { font-family: var(--font-body, Georgia, serif); font-size: 18px; font-weight: 700; color: var(--text, #d9dbe0); }
+.solo-outcome-dc { color: var(--muted, #8b8e96); font-size: 13px; }
+.solo-outcome-intent { color: var(--muted, #8b8e96); font-size: 12px; font-style: italic; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Success — green. */
+.solo-action-outcome.band-success { border-left-color: #86b06a; }
+.solo-action-outcome.band-success .solo-outcome-badge { color: #86b06a; }
+/* Success at a cost — amber, tinted background so it reads as its OWN state, not
+   a shade of success or failure. This is the one that must never look like a win. */
+.solo-action-outcome.band-cost {
+  border-left-color: #d8c06a;
+  background: linear-gradient(180deg, rgba(216, 192, 106, 0.12), rgba(216, 192, 106, 0.04));
+}
+.solo-action-outcome.band-cost .solo-outcome-badge { color: #e2cf83; }
+/* Failure — red. */
+.solo-action-outcome.band-failure { border-left-color: #c86a6a; }
+.solo-action-outcome.band-failure .solo-outcome-badge { color: #c86a6a; }
 
 /* Append-only narration log entries. Oldest at top, newest at bottom; each turn
    is a spaced block with an optional "You <intent>" header + roll and, when a
@@ -2562,14 +2624,21 @@ button:disabled {
 }
 .solo-log-roll {
   margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   font-size: 12px;
   font-weight: 700;
   padding: 2px 9px;
   border-radius: 6px;
   border: 1px solid var(--border-strong, #34343b);
 }
-.solo-log-roll.hit { color: var(--good, #86b06a); }
-.solo-log-roll.miss { color: var(--accent-2, #9498a1); }
+.solo-log-roll-glyph { font-size: 11px; }
+/* #33: the three bands are triple-coded (color + glyph + label) so a sub-DC
+   "cost" can never be mistaken for a clean success. Shared with the stage strip. */
+.solo-log-roll.band-success { color: #86b06a; border-color: rgba(134, 176, 106, 0.5); }
+.solo-log-roll.band-cost { color: #d8c06a; border-color: rgba(216, 192, 106, 0.55); background: rgba(216, 192, 106, 0.08); }
+.solo-log-roll.band-failure { color: #c86a6a; border-color: rgba(200, 106, 106, 0.5); }
 .solo-log-speaker {
   font-family: var(--font-display, Georgia, serif);
   font-size: 16px;
@@ -2765,18 +2834,24 @@ button:disabled {
    ========================================================================= */
 @media (min-width: 1081px) {
   .solo-game-shell { height: 100vh; overflow: hidden; }
-  /* The layout (frame + bottom tab bar) fills the padded shell; the frame
-     flexes to leave the tab bar its natural height pinned at the bottom. */
-  .solo-game-layout { height: calc(100vh - 34px); }
+  /* The layout fills the shell's padded content box (height:100% = 100vh minus the
+     shell's 34px vertical padding). #29: the tab bar moved into the header, so the
+     layout no longer needs to also subtract a bottom tab row — the frame fills the
+     whole layout and the in-header tabs ride with each main's header. */
+  .solo-game-layout { height: 100%; }
   .solo-game-frame { flex: 1; min-height: 0; }
   .solo-game-main { min-height: 0; }
-  .solo-game-content { min-height: 0; overflow: hidden; }
-  /* Tabs scroll internally. The scene tab must NOT be overflow:hidden — after
-     the tab bar moved to a full-width bottom bar (19c8c38) the frame shrank and
-     hidden overflow clipped the scene's attempt-input bar below the fold,
-     making it unreachable/unfocusable. Allow vertical scroll instead. */
-  .solo-tab-panel { height: 100%; box-sizing: border-box; }
-  .solo-tab-panel[data-solo-tabpanel="scene"] { overflow-y: auto; }
+  /* #34 step 3: .solo-game-content is a flex column so the active tab panel gets
+     the bounded remaining height; it does NOT scroll (single scroller lives
+     deeper, in the narration log). */
+  .solo-game-content { min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
+  .solo-tab-panel { flex: 1 1 auto; min-height: 0; box-sizing: border-box; }
+  /* The SCENE tab does NOT scroll here — its narration log is the single internal
+     scroller (#34). Making the panel a bounded flex column lets the stage/dock
+     pin and the log scroll between them, with the input always reachable. */
+  .solo-tab-panel[data-solo-tabpanel="scene"] { overflow: hidden; display: flex; flex-direction: column; }
+  /* Non-scene tabs (Actions/Character/Inventory/Map/Journal) still scroll as a
+     whole panel — they have no internal-scroll zone. */
   .solo-tab-panel:not([data-solo-tabpanel="scene"]) { overflow-y: auto; }
 }
 

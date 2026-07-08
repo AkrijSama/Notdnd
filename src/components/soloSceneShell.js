@@ -439,8 +439,11 @@ export function renderNarrationLog(entries = []) {
     .map((entry) => {
       const cr = entry.checkResult || null;
       const hasRoll = cr && cr.total != null;
+      // #33: band-code the log roll tag (success / cost / failure), matching the
+      // stage strip so the three outcomes read identically wherever they appear.
+      const b = outcomeBandInfo(entry);
       const rollTag = hasRoll
-        ? `<span class="solo-log-roll ${entry.success === false ? "miss" : "hit"}">${escapeHtml(cr.total)}${cr.dc != null ? ` vs DC ${escapeHtml(cr.dc)}` : ""}</span>`
+        ? `<span class="solo-log-roll band-${b.key}"><span class="solo-log-roll-glyph" aria-hidden="true">${b.glyph}</span>${escapeHtml(cr.total)}${cr.dc != null ? ` / ${escapeHtml(cr.dc)}` : ""}</span>`
         : "";
       const header =
         entry.intent && String(entry.intent).trim()
@@ -716,6 +719,34 @@ function renderCheckResult(checkResult = null) {
 // only when the most recent timeline event is an attempt, so a later move/search
 // never re-surfaces a stale roll. Returns "" otherwise. Reuses existing classes
 // (no new CSS rules) with shared :root accent vars applied inline.
+// #33 THREE VISUALLY DISTINCT OUTCOME BANDS. The Ch3 resolution has three bands,
+// and a sub-DC "success at a cost" must NEVER read as a clean "Success". Returns
+// a band descriptor that is TRIPLE-CODED (distinct key/color, distinct label,
+// distinct glyph) so the three are impossible to confuse at a glance. Prefers the
+// resolver-stamped band/outcomeLabel (#28); falls back to margin, then boolean.
+export function outcomeBandInfo(outcome = {}) {
+  const cr = outcome.checkResult || null;
+  let band = typeof outcome.band === "string" ? outcome.band : null;
+  if (!band) {
+    if (cr && cr.total != null && cr.dc != null) {
+      const margin = Number(cr.total) - Number(cr.dc);
+      band = margin >= 0 ? "success" : margin >= -4 ? "success_at_cost" : "failure";
+    } else {
+      band = outcome.success === true ? "success" : "failure";
+    }
+  }
+  const MAP = {
+    success: { key: "success", label: "Success", glyph: "✓" },
+    success_at_cost: { key: "cost", label: "Success at a cost", glyph: "⚑" },
+    failure: { key: "failure", label: "Failure", glyph: "✕" }
+  };
+  const info = MAP[band] || MAP.failure;
+  // Honor a resolver-provided label if present, but keep the band key/glyph.
+  return typeof outcome.outcomeLabel === "string" && outcome.outcomeLabel.trim()
+    ? { ...info, label: outcome.outcomeLabel.trim() }
+    : info;
+}
+
 export function renderSoloActionOutcome(state = {}) {
   const scene = state.scene || {};
   const timeline = Array.isArray(scene.recentTimeline) ? scene.recentTimeline : [];
@@ -728,22 +759,20 @@ export function renderSoloActionOutcome(state = {}) {
     return "";
   }
   const cr = outcome.checkResult || null;
-  const success = outcome.success === true;
-  const intent = String(outcome.intent || "Your action").trim() || "Your action";
+  const b = outcomeBandInfo(outcome);
   const hasTotal = cr && cr.total !== undefined && cr.total !== null;
   const hasDc = cr && cr.dc !== undefined && cr.dc !== null;
-  const rollLine = hasTotal
-    ? `<span class="solo-roll-total ${success ? "good" : "accent"}" style="font-size:22px;line-height:1;">${escapeHtml(cr.total)}</span>
-       <span class="small">${hasDc ? `Rolled ${escapeHtml(cr.total)} vs DC ${escapeHtml(cr.dc)}` : `Rolled ${escapeHtml(cr.total)}`}</span>`
+  const roll = hasTotal
+    ? `<span class="solo-outcome-roll">${escapeHtml(cr.total)}${hasDc ? `<span class="solo-outcome-dc"> / ${escapeHtml(cr.dc)}</span>` : ""}</span>`
     : "";
+  const intent = String(outcome.intent || "").trim();
+  // #32: one thin row. Band glyph + label + roll on the left; the attempted
+  // intent trails, dimmed. No card chrome, no gold stripe.
   return `
-    <div class="module-card solo-panel solo-action-outcome solo-attempt-result ${success ? "found" : "empty"}" role="status"
-         style="margin:4px 4px 10px;border-left:3px solid var(--accent, #c89a4b);">
-      <div class="solo-check-result" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-        <span class="tag ${success ? "success" : "danger"}">${success ? "Success" : "Failure"}</span>
-        ${rollLine}
-      </div>
-      <p class="small" style="margin:6px 0 0;">You attempted: ${escapeHtml(intent)}</p>
+    <div class="solo-action-outcome band-${b.key}" role="status">
+      <span class="solo-outcome-badge"><span class="solo-outcome-glyph" aria-hidden="true">${b.glyph}</span>${escapeHtml(b.label)}</span>
+      ${roll}
+      ${intent ? `<span class="solo-outcome-intent">${escapeHtml(intent)}</span>` : ""}
     </div>
   `;
 }
@@ -2660,6 +2689,9 @@ export function renderSoloSceneShell(state = {}) {
                 ? `<div class="small solo-game-objective">Objective: ${escapeHtml(scene.quests.mainQuest.objective)}</div>`
                 : ""
             }
+            <!-- #29: tabs relocated here (top, in-header) off the wasted full-width
+                 bottom row, as a compact strip integrated with the scene chrome. -->
+            ${renderSoloGameTabs(activeTab)}
           </div>
           <div class="solo-game-content">
             ${
@@ -2749,7 +2781,6 @@ export function renderSoloSceneShell(state = {}) {
         </main>
         ${renderSoloRightRail(state)}
       </div>
-      ${renderSoloGameTabs(activeTab)}
       </div>
       ${renderSoloDialogueOverlay(state)}
       ${renderNpcCreatorModal(state)}
@@ -3352,22 +3383,32 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
   // to scroll back down to the result + input each turn. We capture scrollTop
   // before the rebuild and restore it after binding, alongside the focus/caret
   // guard. Covers every render path (runAction, loadScene, click handlers).
-  const SOLO_SCROLL_SELECTOR = ".solo-game-content";
-  function captureSoloScroll() {
+  // #34: the narration log is the single internal scroller now (styles.css), so
+  // scroll capture/restore MUST target it — targeting the old .solo-game-content
+  // (which no longer scrolls on the scene tab) is why passive renders reset the
+  // player's scroll position. Fall back to .solo-game-content for the other tabs.
+  // Prefer the narration log (the scene tab's internal scroller); on the other
+  // tabs the log is absent, so fall back to .solo-game-content. Two ordered
+  // lookups — a comma selector would return the ancestor .solo-game-content by
+  // document order, defeating the whole point.
+  function getSoloScroller() {
     if (typeof root.querySelector !== "function") {
       return null;
     }
-    const el = root.querySelector(SOLO_SCROLL_SELECTOR);
+    return root.querySelector(".solo-narration-log") || root.querySelector(".solo-game-content");
+  }
+  function captureSoloScroll() {
+    const el = getSoloScroller();
     if (!el || typeof el.scrollTop !== "number") {
       return null;
     }
     return { top: el.scrollTop };
   }
   function restoreSoloScroll(snapshot) {
-    if (!snapshot || typeof root.querySelector !== "function") {
+    if (!snapshot) {
       return;
     }
-    const el = root.querySelector(SOLO_SCROLL_SELECTOR);
+    const el = getSoloScroller();
     if (!el) {
       return;
     }
@@ -3385,12 +3426,17 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
   // never yanked to the top, and the thinking banner stays in view while pending.
   // Reflow-safe: the scene art <img> usually loads AFTER this render and grows the
   // container, so we re-anchor once it loads (one-shot) to avoid being stranded.
-  const SOLO_LIVE_TURN_ANCHORS = [".solo-thinking", ".solo-action-outcome", ".solo-scene-input"];
+  // #34 step 4: on a new turn, land the view on the NEWEST narration entry (the
+  // last .solo-log-entry), NOT the sticky input dock. Anchoring the input dock is
+  // what made the view appear to jump to the top / hide the fresh text behind the
+  // dock. Prefer the last log entry; fall back to the thinking indicator while a
+  // turn is in flight, then the input as a last resort.
+  const SOLO_LIVE_TURN_ANCHORS = [".solo-log-entry:last-child", ".solo-thinking", ".solo-scene-input"];
   function scrollLiveTurnIntoView() {
     if (typeof root.querySelector !== "function") {
       return;
     }
-    const container = root.querySelector(SOLO_SCROLL_SELECTOR);
+    const container = getSoloScroller();
     if (!container) {
       return;
     }
@@ -3407,12 +3453,12 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       const anchor = pickAnchor();
       try {
         if (anchor && typeof anchor.scrollIntoView === "function") {
-          // "nearest" (not "center"): scroll the MINIMUM needed to bring the live
-          // turn into view — no scroll at all when it is already visible. The old
-          // "center" re-centred the viewport on EVERY narration turn, yanking the
-          // screen even when nothing needed to move (the #15 "scroll-jumps every
-          // turn" complaint). Smooth behaviour: if you can already see it, you stay put.
-          anchor.scrollIntoView({ block: "nearest" });
+          // #34 step 4: land the newest narration entry at the TOP of the log so
+          // the player reads the fresh turn from its beginning (block:"start").
+          // This only fires on a live turn (anchorLiveTurnPending); passive poll
+          // renders restore the player's scroll position instead, so scrolling
+          // back through history is never yanked.
+          anchor.scrollIntoView({ block: "start" });
         } else if (typeof container.scrollHeight === "number") {
           container.scrollTop = container.scrollHeight;
         }
@@ -4254,6 +4300,9 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       intent: ar && ar.intent ? String(ar.intent) : "",
       checkResult: ar && ar.checkResult ? ar.checkResult : null,
       success: ar ? ar.success : undefined,
+      // #33: carry the resolver band/label so the log roll tag is band-coded too.
+      band: ar && typeof ar.band === "string" ? ar.band : null,
+      outcomeLabel: ar && typeof ar.outcomeLabel === "string" ? ar.outcomeLabel : null,
       text,
       speaker: soleSceneSpeaker(scene) || (state.talkResult && state.talkResult.speakerName) || null
     });
