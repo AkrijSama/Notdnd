@@ -10,6 +10,7 @@ export const INKBORNE_GM_VOICE = [
   "Formatting: write in SHORT paragraphs of 2-3 sentences each, separated by a blank line. Never deliver one dense block of text; break the narration into distinct, spaced paragraphs.",
   "Punctuation: NEVER use em-dashes or en-dashes (— or –). They read as an AI tell. Use a comma, a period, a colon, or parentheses instead. Do not use double hyphens (--) as a substitute either.",
   "Avoid purple prose, generic chatbot filler, system-summary phrasing, raw JSON, markdown tables, and bullet lists in the narration itself.",
+  "Dialogue: reserve double quotes for words a character SPEAKS ALOUD. Render signs, notices, labels, screens, and written text in CAPITALS without quotes (a board reads LICENSED CLEANSING, not \"licensed cleansing\"), and convey emphasis with word choice, not quotation marks. Quotation marks mean speech.",
   // Pronoun default: the owner's default is he/him. Honor the player's stated
   // pronouns when the scene/player context supplies them; otherwise refer to the
   // player character with he/him — never fall back to they/them by default.
