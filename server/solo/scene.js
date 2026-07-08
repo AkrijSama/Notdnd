@@ -3,6 +3,7 @@ import { getAvailableSoloActions } from "./actions.js";
 import { MILESTONE_MAX, RANK_LADDER, tierForMilestone, displayLevelFor, rankForPlayer } from "./progression.js";
 import { babelStatBlock } from "./babelStats.js";
 import { deriveClock } from "./worldClock.js";
+import { conditionStatusPayload } from "./conditions.js";
 import { getVisibleEntities, validateVisibleEntity } from "./entities.js";
 import { generatePlaceholderGmNarration, validateGmSceneOutput } from "./gm.js";
 import { getAvailableMoves } from "./movement.js";
@@ -749,7 +750,10 @@ export function buildPlayerPayload(run) {
     xp: typeof player.xp === "number" ? player.xp : 0,
     resources: { hp: hpGauge, mp: mpGauge },
     inventory: playerInventoryArray(run),
-    conditions: Array.isArray(player.conditions) ? player.conditions : [],
+    // CONDITIONS (#26): each active condition with its effect text and minutes
+    // remaining (null = persists until cleared), ticked against the world clock —
+    // the STATUS WINDOW reads one truth, never recomputed client-side.
+    conditions: conditionStatusPayload(run, run?.world?.time?.minutes),
     // WORLD CLOCK (#14): derived day / time-of-day / phase from the committed
     // world.time.minutes, so the STATUS WINDOW reads one truth (never recomputed
     // client-side). { day, clock:"HH:MM", phase, isNight, isDark, minuteOfDay }.

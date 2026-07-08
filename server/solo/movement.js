@@ -6,6 +6,7 @@ import {
   validateSoloRun
 } from "./schema.js";
 import { advanceClock } from "./worldClock.js";
+import { tickConditions } from "./conditions.js";
 
 // WORLD CLOCK (#14): in-fiction minutes a single location move costs.
 const TRAVEL_MINUTES = 10;
@@ -398,6 +399,8 @@ export function resolveMovementAction(run, action, options = {}) {
   // is a district-scale hop; ~10 in-fiction minutes keeps day/night honest without
   // burning hours per step. (The legacy tick bump above is left for any reader of it.)
   advanceClock(updatedRun, TRAVEL_MINUTES, { now, fallback: TRAVEL_MINUTES });
+  // CONDITIONS (#26): travel time can expire a timed condition — shed the elapsed.
+  tickConditions(updatedRun, updatedRun.world?.time?.minutes);
 
   // Reaching new ground breaks a failure-loop: clear the consecutive-failure
   // streak (see attempt.js / actionNarration.js escalation) — you made progress.

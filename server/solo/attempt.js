@@ -13,7 +13,8 @@ import {
 import { getUsableInventoryItems } from "./useItem.js";
 import { POLICY_VIOLATION_NARRATION, screenPlayerIntent } from "./safety.js";
 import { applyDamage, isIncapacitated } from "./death.js";
-import { advanceClock, sanitizeDurationMinutes, DEFAULT_OBSERVE_MINUTES, DEFAULT_ACTION_MINUTES, DEFAULT_CHECK_MINUTES } from "./worldClock.js";
+import { advanceClock, ensureClock, sanitizeDurationMinutes, DEFAULT_OBSERVE_MINUTES, DEFAULT_ACTION_MINUTES, DEFAULT_CHECK_MINUTES } from "./worldClock.js";
+import { applyCondition, tickConditions } from "./conditions.js";
 
 const PROVIDER_OUTPUT_FIELDS = new Set([
   "summary",
@@ -766,8 +767,15 @@ export function validateAttemptProviderOutput(output, options = {}) {
           push(errors, "failureConsequence.amount", "Expected number from 0 to 999");
         }
       }
-      if (fc.type === "condition" && !isString(fc.condition)) {
-        push(errors, "failureConsequence.condition", "Expected non-empty condition id/name");
+      if (fc.type === "condition") {
+        if (!isString(fc.condition)) {
+          push(errors, "failureConsequence.condition", "Expected non-empty condition id/name");
+        }
+        // #26: optional timer — a NUMBER when present (server clamps magnitude);
+        // a non-number is a hard reject so a stray string can't slip through.
+        if (fc.durationMinutes !== undefined && fc.durationMinutes !== null && !isNumber(fc.durationMinutes)) {
+          push(errors, "failureConsequence.durationMinutes", "Expected number");
+        }
       }
       if (fc.type === "objectState" && !isString(fc.objectState)) {
         push(errors, "failureConsequence.objectState", "Expected non-empty objectState");
@@ -824,7 +832,15 @@ function normalizeFailureConsequence(fc) {
     return { type: "damage", amount: isNumber(fc.amount) && fc.amount >= 0 ? Math.round(fc.amount) : null, reason };
   }
   if (fc.type === "condition") {
-    return { type: "condition", condition: isString(fc.condition) ? sanitizeText(fc.condition) : "", reason };
+    // #26: optional GM-supplied effect text + timer; the conditions module fills
+    // Ch8 vocab defaults for whatever is omitted, and the server bounds the timer.
+    return {
+      type: "condition",
+      condition: isString(fc.condition) ? sanitizeText(fc.condition) : "",
+      effect: isString(fc.effect) ? sanitizeText(fc.effect) : undefined,
+      durationMinutes: isNumber(fc.durationMinutes) && fc.durationMinutes > 0 ? Math.round(fc.durationMinutes) : undefined,
+      reason
+    };
   }
   if (fc.type === "objectState") {
     return {
@@ -1110,25 +1126,14 @@ export function resolveRetryForeclosure(run, context) {
   return harderMatch ? { effect: "harder", object: harderMatch } : { effect: "none", object: null };
 }
 
-// Adds a condition to player.conditions (contract array of { id, name }), idempotent
-// by id so the same failed check can't stack duplicates. Returns the entry or null.
-function addPlayerCondition(run, name) {
-  const player = run?.player;
-  if (!isPlainObject(player)) {
-    return null;
-  }
-  if (!Array.isArray(player.conditions)) {
-    player.conditions = [];
-  }
-  const id = slugify(name) || "condition";
-  const displayName = isString(name) ? name : id;
-  const existing = player.conditions.find((entry) => isPlainObject(entry) && entry.id === id);
-  if (existing) {
-    return existing;
-  }
-  const entry = { id, name: displayName };
-  player.conditions.push(entry);
-  return entry;
+// Adds a TIMED condition to player.conditions (#26). Delegates to the conditions
+// module, which owns the { id, name, effect, durationMinutes, appliedAtMinutes,
+// expiresAtMinutes } shape, the vocab defaults, and refresh-on-reapply. Applied at
+// the CURRENT world clock (pre-action-advance), so it starts ticking immediately.
+// `spec` may be a bare name or { name/condition, effect, durationMinutes }.
+function addPlayerCondition(run, spec) {
+  const nowMinutes = run?.world?.time?.minutes;
+  return applyCondition(run, spec, typeof nowMinutes === "number" ? nowMinutes : 0);
 }
 
 // Spends a named resource as a real cost: hp routes through the lethality core;
@@ -1188,8 +1193,22 @@ export function enforceFailureConsequence(run, spec, context, now) {
       return { type: "damage", applied: Boolean(damage), amount: damage ? damage.amount : 0, reason, damage };
     }
     case "condition": {
-      const entry = addPlayerCondition(run, consequence.condition);
-      return { type: "condition", applied: Boolean(entry), condition: entry ? entry.name : consequence.condition, conditionId: entry ? entry.id : null, reason };
+      // #26: a TIMED condition. Pass any GM-supplied effect/durationMinutes; the
+      // conditions module fills vocab defaults (Ch8 FF-status) for what's omitted.
+      const entry = addPlayerCondition(run, {
+        name: consequence.condition,
+        effect: consequence.effect,
+        durationMinutes: consequence.durationMinutes
+      });
+      return {
+        type: "condition",
+        applied: Boolean(entry),
+        condition: entry ? entry.name : consequence.condition,
+        conditionId: entry ? entry.id : null,
+        effect: entry ? entry.effect : null,
+        durationMinutes: entry ? entry.durationMinutes : null,
+        reason
+      };
     }
     case "objectState": {
       const entry = markObjectDegraded(run, context, consequence, now);
@@ -1716,6 +1735,15 @@ export function resolveAttemptAction(run, action, options = {}) {
     };
   }
 
+  // CONDITIONS (#26). Shed timed conditions whose lifetime elapsed BEFORE this turn
+  // (i.e. during prior turns' committed time), evaluated against the current clock.
+  // Ticking at turn START — not end — guarantees a condition INFLICTED this turn (by
+  // a failed check below) survives the turn it lands in, rather than being cut down
+  // instantly by this same action's own duration advance. ensureClock backfills a
+  // legacy { day, tick } run so the comparison has a real minute basis.
+  ensureClock(updatedRun);
+  const conditionsTick = tickConditions(updatedRun, updatedRun.world?.time?.minutes);
+
   // IMPOSSIBILITY / AUTHORITY GATE (pre-roll). Runs BEFORE the provider call and
   // the d20: reality-breaking, godhood/authority-by-fiat, summon-from-nothing, and
   // retconned-ownership intents are REFUSED outright — no roll, no success (a
@@ -1952,7 +1980,12 @@ export function resolveAttemptAction(run, action, options = {}) {
     // WORLD CLOCK (#14): the committed time advance for this action { minutes,
     // before/after {day,clock,phase}, dayRolled, phaseChanged }. The narrator and
     // status window read the AFTER clock; nothing downstream re-computes time.
-    timeAdvance: timeAdvance || null
+    timeAdvance: timeAdvance || null,
+    // CONDITIONS (#26): conditions shed as this turn BEGAN because their timer had
+    // elapsed since a prior turn ([{id,name}]) — the narrator can acknowledge the
+    // affliction lifting. Ticked at turn start (not end) so a condition INFLICTED
+    // this turn is always present for the turn it lands in, never shed instantly.
+    conditionsShed: conditionsTick && Array.isArray(conditionsTick.shed) ? conditionsTick.shed : []
   };
 
   const memoryEffect = (providerOutput.proposedEffects || []).find((effect) => effect.type === "memory_fact" && isString(effect.text));

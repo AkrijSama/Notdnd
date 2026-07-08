@@ -6,6 +6,7 @@ import {
   validateSoloRun
 } from "./schema.js";
 import { advanceClock } from "./worldClock.js";
+import { tickConditions } from "./conditions.js";
 
 const REST_TYPES = new Set(["short", "long"]);
 // WORLD CLOCK (#14): rest's legacy `timeAdvanced` is in HOURS (short=1, long=8);
@@ -244,6 +245,9 @@ export function resolveRestAction(run, action, options = {}) {
   // day/night phase moves (a long rest passes 8h; short passes 1h). Bounded by the
   // per-advance cap in advanceClock, so a long rest lands as a large-but-sane jump.
   advanceClock(updatedRun, timeAdvanced * REST_HOUR_MINUTES, { now, fallback: timeAdvanced * REST_HOUR_MINUTES });
+  // CONDITIONS (#26): a rest passes hours — shed every timed condition it outlasts
+  // (a long rest clears most afflictions; a short rest clears the brief ones).
+  tickConditions(updatedRun, updatedRun.world?.time?.minutes);
 
   const resources = updatedRun.player?.resources || {};
   if (restType === "short") {

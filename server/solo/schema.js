@@ -313,7 +313,9 @@ function validateInventoryEntry(entry, path, errors) {
   validateOptionalNumber(entry.qty, `${path}.qty`, errors);
 }
 
-// player.conditions entry — { id, name } plus arbitrary extra fields.
+// player.conditions entry — { id, name } plus the optional TIMED fields (#26):
+// effect (string), durationMinutes/appliedAtMinutes (number), expiresAtMinutes
+// (number OR null = persists until cleared). Extra fields still tolerated.
 function validateConditionEntry(entry, path, errors) {
   if (!isPlainObject(entry)) {
     push(errors, path, "Expected object");
@@ -321,6 +323,13 @@ function validateConditionEntry(entry, path, errors) {
   }
   validateRequiredString(entry.id, `${path}.id`, errors);
   validateRequiredString(entry.name, `${path}.name`, errors);
+  validateOptionalString(entry.effect, `${path}.effect`, errors);
+  validateOptionalNumber(entry.durationMinutes, `${path}.durationMinutes`, errors);
+  validateOptionalNumber(entry.appliedAtMinutes, `${path}.appliedAtMinutes`, errors);
+  // expiresAtMinutes: a number when timed, null when permanent.
+  if (entry.expiresAtMinutes !== undefined && entry.expiresAtMinutes !== null) {
+    validateNumber(entry.expiresAtMinutes, `${path}.expiresAtMinutes`, errors);
+  }
 }
 
 // scene.battleMap token — { entityId, kind, x, y } plus arbitrary extra fields.

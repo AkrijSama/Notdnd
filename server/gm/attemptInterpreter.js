@@ -158,7 +158,7 @@ export function buildAttemptInterpreterMessages(providerInput) {
     "PER-CASE INTEGRITY — choose the consequence that fits the fiction:",
     '- If you set needsCheck:true, the action HAS stakes by definition, so failing it costs something — do NOT propose {"type":"none"} for a check (the server will apply a fallback cost anyway). Reserve "none" only for a truly stakes-free action you also marked needsCheck:false.',
     '- Use "damage" only when failing plausibly hurts the body (a fall, a trap, a backlash). Keep amounts small (1-6).',
-    '- Use "condition" when failure imposes a status (frightened after a horror, prone after a slip).',
+    '- Use "condition" when failure imposes a status (frightened after a horror, prone after a slip). You MAY add "durationMinutes" (how long it lasts) on the consequence; omit it and the server uses a sane default for that status. The server ticks it down against the clock and sheds it when it expires.',
     '- Use "objectState" when failure DEGRADES a physical thing the action acted on, AND retrying the same thing should change: set retryEffect "blocked" (it cannot be done that way again — a torn map, a snapped key) or "harder" (a jammed lock). Leave retryEffect "none" if re-attempting should stay open.',
     '- Use "resource" for a non-HP cost (spent charges, a dropped torch).',
     "Choose the ONE consequence that best fits the fiction. When in doubt, prefer \"none\" over an unearned cost.",
