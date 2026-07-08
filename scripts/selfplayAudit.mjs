@@ -185,6 +185,15 @@ export function knownNamesFromScene(scene = {}) {
   for (const i of scene.playerInventory || []) add(i.name);
   for (const i of scene.player?.inventory || []) add(i.name);
   for (const d of scene.discoveredDetails || []) add(d.label);
+  // Committed lore/place facts (#41): once the server commits a GM-asserted place
+  // as canonical lore (npcCommit.commitNarratedLoreFact, type "gm_lore"), the name
+  // is real — the grader must vouch it. Read the surfaced memory facts' committed
+  // place name (payload.name) so a committed landmark is no longer a phantom.
+  for (const f of scene.relevantMemoryFacts || []) {
+    if (f && (f.type === "gm_lore" || (Array.isArray(f.tags) && f.tags.includes("lore")))) {
+      add(f.payload?.name);
+    }
+  }
   for (const q of scene.quests?.activeQuests || []) add(q.title);
   if (scene.quests?.mainQuest) add(scene.quests.mainQuest.title);
   const states = scene.location?.flags?.objectStates || {};

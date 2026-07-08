@@ -121,7 +121,7 @@ import { buildGmRuntimeStatus } from "./solo/gmSmoke.js";
 import { enqueueDraftPortrait, enqueueImageJob, enqueueLocationImageJob, enqueuePlayerImageJob, enqueueVnBodyImageJob, getDraftPortrait, writeUploadedBasePortrait } from "./solo/imageWorker.js";
 import { enqueueIdentityJob, runIdentityJob } from "./solo/npcIdentity.js";
 import { buildNpcIntroDirective, buildSoloScenePayload, collectNpcsWithPendingIntro } from "./solo/scene.js";
-import { auditAndCommitNarratedNpcs } from "./solo/npcCommit.js";
+import { auditAndCommitNarratedNpcs, auditAndCommitNarratedLore } from "./solo/npcCommit.js";
 import { refreshSceneSuggestions } from "./solo/suggestions.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -1707,10 +1707,21 @@ async function handleApi(req, res) {
           const freshForNpc = getSoloRun(responseRun.runId);
           if (freshForNpc) {
             const committedNpcs = auditAndCommitNarratedNpcs(freshForNpc, gmNarration, knownNames);
-            if (committedNpcs.length > 0) {
+            // PHANTOM PLACE/LORE (#41): commit any GM-asserted landmark ("the Old
+            // Watchtower") as canonical lore so the reference persists as truth
+            // instead of a phantom the next turn can contradict — the class that
+            // scored a grading session F/0.
+            const committedLore = auditAndCommitNarratedLore(freshForNpc, gmNarration, knownNames);
+            if (committedNpcs.length > 0 || committedLore.length > 0) {
               saveSoloRun(freshForNpc);
               responseRun.npcs = freshForNpc.npcs;
-              logTurnEvent(responseRun.runId, `#27 committed ${committedNpcs.length} narrated NPC(s): ${committedNpcs.join(", ")}`);
+              responseRun.memoryFacts = freshForNpc.memoryFacts;
+              if (committedNpcs.length > 0) {
+                logTurnEvent(responseRun.runId, `#27 committed ${committedNpcs.length} narrated NPC(s): ${committedNpcs.join(", ")}`);
+              }
+              if (committedLore.length > 0) {
+                logTurnEvent(responseRun.runId, `#41 committed ${committedLore.length} narrated place/lore fact(s): ${committedLore.join(", ")}`);
+              }
             }
           }
         }
