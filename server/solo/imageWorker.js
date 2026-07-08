@@ -394,6 +394,28 @@ async function generateSlot({ runId, npcId, slot, assetId, prompt, style, refere
  * @param {{ runId: string, npcId: string, style?: string, basePrompt?: string }} job
  * @returns {Promise<{ ok: boolean, base?: object, variants?: object[], reason?: string }>}
  */
+// #50: ground the NPC portrait in the COMMITTED gender + description CLI 1 exposes
+// on the entity, so "Mara (female)" renders a woman rather than the base model's
+// default. Reads gender/sex, falling back to pronouns; description falls back to
+// appearance. Best-effort — returns "" when the entity carries nothing to ground.
+export function npcGroundingClause(npc) {
+  if (!npc || typeof npc !== "object") {
+    return "";
+  }
+  const gender = String(npc.gender || npc.sex || "").trim().toLowerCase();
+  const pronouns = String(npc.pronouns || "").trim().toLowerCase();
+  let genderWord = "";
+  if (/\b(female|woman|girl|f)\b/.test(gender) || /\b(she|her)\b/.test(pronouns)) {
+    genderWord = "a woman";
+  } else if (/\b(male|man|boy|m)\b/.test(gender) || /\b(he|him)\b/.test(pronouns)) {
+    genderWord = "a man";
+  } else if (/non-?binary|enby|androgynous|they/.test(gender) || /\b(they|them)\b/.test(pronouns)) {
+    genderWord = "an androgynous person";
+  }
+  const description = String(npc.description || npc.appearance || "").trim();
+  return [genderWord, description].filter(Boolean).join(", ");
+}
+
 export async function runImageJob(job = {}) {
   const runId = String(job.runId || "").trim();
   const npcId = String(job.npcId || "").trim();
@@ -415,11 +437,17 @@ export async function runImageJob(job = {}) {
   const seed = Number.isFinite(Number(npc?.identitySeed)) ? Number(npc.identitySeed) : null;
   // Prefer an explicit job prompt, then the NPC's generated portraitPrompt,
   // then a role-based fallback (never the bare npcId stub).
-  const basePrompt = String(
+  const rawBasePrompt = String(
     job.basePrompt ||
     npc?.portraitPrompt ||
     `portrait of a ${npc?.role || npcId}, dark fantasy, detailed`
   ).trim();
+  // #50: prepend the committed gender/description grounding (unless the prompt
+  // already opens with it) so the rendered portrait matches the committed entity.
+  const grounding = npcGroundingClause(npc);
+  const basePrompt = grounding && !rawBasePrompt.toLowerCase().includes(grounding.toLowerCase())
+    ? `${rawBasePrompt}, ${grounding}`
+    : rawBasePrompt;
 
   // Base portrait anchors every variant. If a base already exists (e.g. a user
   // upload marked "generated"), reuse it instead of regenerating; otherwise
