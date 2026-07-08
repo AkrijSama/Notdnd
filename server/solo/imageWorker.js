@@ -211,9 +211,26 @@ function normalizePortraitCharacter(character = {}) {
         ? character.characterClass.trim()
         : null,
     background: isStr(character.background) ? character.background.trim() : null,
-    pronouns: isStr(character.pronouns) ? character.pronouns.trim() : null
+    pronouns: isStr(character.pronouns) ? character.pronouns.trim() : null,
+    origin: isStr(character.origin) ? character.origin.trim() : null
   };
 }
+
+// Canon player identity: the Babel authored origin "The Beckoned" is a modern-day
+// Earth human pulled into the fantasy world (isekai champion), NOT a native
+// high-fantasy race. Without an explicit modern-Earth cue, the fantasy tone +
+// painterly framing defaults the figure to a generic fantasy elf (the 2026-07-08
+// portrait-canon bug). When the origin is Beckoned we frame a present-day human
+// and override any fantasy race default with a hard elf/fantasy negation.
+const BECKONED_ORIGIN_RE = /beckoned/i;
+function isBeckonedOrigin(origin) {
+  return BECKONED_ORIGIN_RE.test(String(origin || ""));
+}
+const MODERN_EARTH_SUBJECT =
+  "a present-day modern Earth human, ordinary contemporary real-world person, modern casual clothing";
+const MODERN_EARTH_NEGATION =
+  "ordinary human, human rounded ears, absolutely NOT pointed elf ears, NOT a fantasy elf, " +
+  "NOT high-fantasy costume, NOT medieval armor, NOT a fantasy native";
 
 // Shared prompt for the player + draft full-body character-sheet portrait.
 // Visual descriptors for the 10 creator races. Naming a race alone (e.g.
@@ -247,6 +264,32 @@ function raceVisualDescriptor(race) {
 export function buildPlayerPortraitPrompt(character = {}, world = {}) {
   const c = normalizePortraitCharacter(character);
   const tone = isStr(world.tone) ? world.tone.trim() : "dark fantasy";
+  // Canon-origin override: The Beckoned is a modern-Earth human champion, not a
+  // fantasy race. Frame a present-day person "out of place" in the fantasy tone
+  // and hard-negate the elf/fantasy default (which the medium framing otherwise
+  // reintroduces). Origin comes from the character record (run.player.origin).
+  const origin = c.origin || (isStr(world.origin) ? world.origin.trim() : null);
+  if (isBeckonedOrigin(origin)) {
+    // The Babel creator fills BOTH race and class slots with the origin string
+    // ("The Beckoned") as placeholders (src/main.js). Drop any class/background
+    // that is really just the origin echoed back, so it never reads as a class.
+    const realClass = c.characterClass && !isBeckonedOrigin(c.characterClass) ? c.characterClass : null;
+    const realBackground = c.background && !isBeckonedOrigin(c.background) ? c.background : null;
+    const beckonedSubject =
+      [
+        c.name ? `${c.name},` : null,
+        c.pronouns ? `${c.pronouns},` : null,
+        MODERN_EARTH_SUBJECT + ",",
+        realClass,
+        realBackground ? `${realBackground} background` : null
+      ]
+        .filter(Boolean)
+        .join(" ") || MODERN_EARTH_SUBJECT;
+    return (
+      `character portrait of ${beckonedSubject}, a modern-day person newly pulled into a ${tone} world, ` +
+      `${artStyleDirection(world.artStyle, "player")}, ${MODERN_EARTH_NEGATION}`
+    );
+  }
   // Express the race's visual identity, not just its name, so uncommon races
   // (Aasimar, Tiefling, Dragonborn, …) render distinctly.
   const raceKey = String(c.race || "").trim().toLowerCase();
@@ -262,10 +305,11 @@ export function buildPlayerPortraitPrompt(character = {}, world = {}) {
     ]
       .filter(Boolean)
       .join(" ") || "wanderer";
-  // Pointed ears belong ONLY to elves/half-elves. For every other race, repeat
-  // the negation as a trailing (heavily-weighted) clause so the descriptor in the
-  // subject can't be quietly overridden by the medium/style framing.
-  const earEmphasis = raceKey && !POINTED_EAR_RACES.has(raceKey)
+  // Pointed ears belong ONLY to elves/half-elves. For every other race — AND when
+  // no race is set (the default is Human) — repeat the negation as a trailing
+  // (heavily-weighted) clause so the descriptor in the subject can't be quietly
+  // overridden by the medium/style framing (which defaults humanoids to elves).
+  const earEmphasis = !POINTED_EAR_RACES.has(raceKey)
     ? ", human rounded ears, absolutely NOT pointed elf ears, NOT fantasy elf features"
     : "";
   return `character portrait of ${subject}, ${tone}, ${artStyleDirection(world.artStyle, "player")}${earEmphasis}`;
@@ -278,7 +322,9 @@ export function buildPlayerPortraitPrompt(character = {}, world = {}) {
 function playerPortraitSeed(character = {}, world = {}) {
   const c = normalizePortraitCharacter(character);
   const style = isStr(world?.artStyle) ? world.artStyle.trim().toLowerCase() : "illustrated";
-  return hashOf(`${c.name || ""}|${c.race || ""}|${c.characterClass || ""}|${style}`);
+  // Include origin: switching to/from The Beckoned changes the prompt materially,
+  // so it must yield a different seed (deterministic providers key off the seed).
+  return hashOf(`${c.name || ""}|${c.race || ""}|${c.characterClass || ""}|${c.origin || ""}|${style}`);
 }
 
 // Draft asset namespace id: hashed over EVERY prompt-affecting field so any
@@ -530,7 +576,10 @@ export async function runPlayerImageJob(job = {}) {
     race: character.race || player.race || null,
     class: character.class || player.className || player.characterClass || null,
     background: character.background || player.background || null,
-    pronouns: character.pronouns || player.pronouns || null
+    pronouns: character.pronouns || player.pronouns || null,
+    // Canon origin (The Beckoned = modern-Earth human) drives the modern-Earth
+    // portrait framing over any fantasy race default.
+    origin: character.origin || player.origin || null
   };
   const prompt = buildPlayerPortraitPrompt(merged, run.world || {});
   const seed = playerPortraitSeed(merged, run.world || {});

@@ -803,7 +803,10 @@ async function maybeRequestDraftPortrait() {
         race: c.race,
         characterClass: c.characterClass,
         background: c.background,
-        pronouns: c.pronouns
+        pronouns: c.pronouns,
+        // Authored origin (The Beckoned) drives the modern-Earth portrait framing
+        // so the creator preview matches the run portrait (portrait-canon fix).
+        origin: c.origin
       },
       world: { tone: world.tone, artStyle: world.artStyle, name: world.name },
       nonce
@@ -937,7 +940,7 @@ async function submitPortraitEdit(rawInstruction) {
   scheduleRender();
   try {
     const res = await apiClient.editDraftPortrait({
-      character: { name: c.name, race: c.race, characterClass: c.characterClass, background: c.background, pronouns: c.pronouns },
+      character: { name: c.name, race: c.race, characterClass: c.characterClass, background: c.background, pronouns: c.pronouns, origin: c.origin },
       world: { tone: world.tone, artStyle: world.artStyle, name: world.name },
       instruction,
       sourceImageUrl: sourceUri,
