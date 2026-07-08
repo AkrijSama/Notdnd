@@ -56,24 +56,28 @@ function makeProviderError(message, code = "UPSTREAM_AI_ERROR", statusCode = 502
 }
 
 // The three locked campaign art styles (mirrors ART_STYLES in solo/worldGen.js).
-// Checkpoint names are placeholders for whatever the local/hosted ComfyUI has
-// installed — the director points the env at real files when testing quality.
+// Checkpoints map to the two SDXL models actually installed on the local rig
+// (see comfyui-8gb-freeze-constraint): Juggernaut XI (a versatile realistic /
+// painterly base) covers both illustrated and cinematic; Illustrious XL (an
+// anime-native SDXL) covers anime. Any of these is overridable per style via
+// NOTDND_COMFYUI_CHECKPOINT_<STYLE> or globally via NOTDND_COMFYUI_CHECKPOINT,
+// so a hosted rig with different files needs no code change.
 // Negatives steer each style away from its most common failure mode.
 const STYLE_PRESETS = Object.freeze({
   illustrated: {
-    checkpoint: "sd_xl_base_1.0.safetensors",
+    checkpoint: "Juggernaut-XI-byRunDiffusion.safetensors",
     negative:
       "photograph, photorealistic, 3d render, text, watermark, signature, logo, frame, border, blurry, lowres, deformed hands",
     cfg: 6.5
   },
   anime: {
-    checkpoint: "animagine-xl-3.1.safetensors",
+    checkpoint: "Illustrious-XL-v2.0.safetensors",
     negative:
       "photorealistic, photograph, 3d render, western comic, text, watermark, signature, logo, blurry, lowres, deformed hands",
     cfg: 7
   },
   cinematic: {
-    checkpoint: "juggernautXL_v9.safetensors",
+    checkpoint: "Juggernaut-XI-byRunDiffusion.safetensors",
     negative:
       "anime, cartoon, illustration, painting, text, watermark, signature, logo, frame, blurry, lowres, deformed hands",
     cfg: 5.5

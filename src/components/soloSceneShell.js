@@ -147,8 +147,41 @@ export function createAttemptAction(attempt = {}) {
     type: "attempt",
     actorId: "player",
     intent: attempt.intent || "",
+    // #37/#38: carry the client's classification so CLI 1's intent router
+    // (task #39) doesn't have to re-sniff. Additive + defaulted — the server
+    // ignores it until the router consumes it, so this can't regress today.
+    mode: attempt.mode || "action",
     targetId: attempt.targetId || null
   };
+}
+
+// #39: hard cap on a turn's text — long enough for an elaborate action or a line
+// of speech, short enough to keep interpreter token cost bounded.
+export const SOLO_INPUT_MAXLEN = 500;
+
+// #37/#38: the three input modes, in the shape CLI 1's router (#39) expects.
+export const SOLO_INPUT_MODE_META = Object.freeze({
+  action: { label: "Action", hint: "Your character acts" },
+  speech: { label: "Speech", hint: "Your character speaks aloud" },
+  ooc: { label: "OOC", hint: "Out of character — a note to the GM" }
+});
+
+// Classify a free-text turn the way the director set the routing:
+//   leading /ooc      -> OOC   (a note to the GM; the marker is stripped)
+//   leading quote     -> SPEECH (said aloud; quotes are KEPT so the GM sees it spoken)
+//   anything else     -> ACTION (done)
+// Returns { mode, intent, display }: `intent` is what the server resolves,
+// `display` is the raw text. Pure + exported so it's unit-testable and shared
+// by the render (mode chip) and the submit path (payload).
+export function classifyInput(raw = "") {
+  const trimmed = String(raw || "").trim();
+  if (/^\/ooc\b/i.test(trimmed)) {
+    return { mode: "ooc", intent: trimmed.replace(/^\/ooc\b\s*/i, ""), display: trimmed };
+  }
+  if (trimmed.length > 1 && /^["'“”‘’]/.test(trimmed)) {
+    return { mode: "speech", intent: trimmed, display: trimmed };
+  }
+  return { mode: "action", intent: trimmed, display: trimmed };
 }
 
 export function renderSceneHeader(scene = {}, state = {}) {
@@ -474,6 +507,46 @@ export function soleSceneSpeaker(scene = {}) {
   const ents = Array.isArray(scene.visibleEntities) ? scene.visibleEntities : [];
   const npcs = ents.filter((e) => e && e.entityType === "npc" && (e.displayName || e.name));
   return npcs.length === 1 ? npcs[0].displayName || npcs[0].name : null;
+}
+
+// Strip the server's "npc:" id prefix (speakerId may arrive raw).
+function bareNpcId(id) {
+  return String(id || "").replace(/^npc:/i, "").trim();
+}
+
+// #20-full: resolve the ACTIVE speaker for a turn even when several NPCs are on
+// stage, using CLI 1's authoritative fields in priority order:
+//   1. talkResult — the NPC who just spoke THIS turn (speakerName / npcId).
+//   2. scene.speakerId — the VN's current active speaker (mapped to a display
+//      name through the cast roster).
+//   3. soleSceneSpeaker — the single-NPC ambient fallback (0/2+ => null).
+// Returns a display name or null. This is what un-blocks nameplates in a
+// multi-NPC scene: soleSceneSpeaker alone goes silent the moment a second NPC
+// appears; speakerId/talkResult name the one who is actually talking.
+export function resolveSceneSpeaker(scene = {}, talkResult = null) {
+  const cast = Array.isArray(scene.cast) ? scene.cast : [];
+  const nameForId = (id) => {
+    const bare = bareNpcId(id);
+    if (!bare) {
+      return null;
+    }
+    const hit = cast.find((c) => c && bareNpcId(c.npcId) === bare);
+    return (hit && (hit.displayName || hit.name)) || null;
+  };
+  if (talkResult && typeof talkResult === "object") {
+    const spoke = (typeof talkResult.speakerName === "string" && talkResult.speakerName.trim())
+      || nameForId(talkResult.npcId);
+    if (spoke) {
+      return spoke;
+    }
+  }
+  if (scene.speakerId) {
+    const active = nameForId(scene.speakerId);
+    if (active) {
+      return active;
+    }
+  }
+  return soleSceneSpeaker(scene);
 }
 
 export function renderMovementPanel(scene = {}) {
@@ -1704,6 +1777,16 @@ export function renderSoloGameTabs(activeTab = "scene") {
   `;
 }
 
+// #15: the "GM is thinking / Loading scene" strip, extracted so the turn
+// fast-path can repaint just this node (inside data-solo-thinking) in place.
+export function renderSoloThinkingIndicator(state = {}) {
+  if (!state.gmThinking && !state.sceneReloading) {
+    return "";
+  }
+  const label = state.gmThinking ? "The GM is thinking…" : "Loading scene…";
+  return `<div class="solo-thinking" role="status">${label}</div>`;
+}
+
 export function renderSoloSceneInputBar(state = {}) {
   const confirmation = typeof state.npcCreatorConfirmation === "string" ? state.npcCreatorConfirmation : "";
 
@@ -1715,11 +1798,24 @@ export function renderSoloSceneInputBar(state = {}) {
   // #22: the orphaned "+ Bring someone in" tool (a multiplayer stub) is removed
   // from the solo build. The free-text input is the whole interface: type what
   // you do. The NPC-creator confirmation line still renders if one is pending.
+  // #37/#38/#39: a thin meta row under the field shows the live-classified mode
+  // (Action / Speech / OOC) and the char counter. Both are updated in place as
+  // the player types (no re-render — see bindSoloSceneShell), so the chip below
+  // reflects only the initial draft state.
+  const draft = String(state.attemptDraft || "");
+  const cls = classifyInput(draft);
+  const meta = SOLO_INPUT_MODE_META[cls.mode] || SOLO_INPUT_MODE_META.action;
+  const count = draft.length;
+  const over = count > SOLO_INPUT_MAXLEN;
   return `
     <div class="solo-scene-input">
       <div class="solo-scene-input-row">
-        <input type="text" class="solo-scene-field" data-solo-attempt-input placeholder="What do you do?" value="${escapeHtml(state.attemptDraft || "")}" ${busy ? "disabled" : ""} />
+        <input type="text" class="solo-scene-field" data-solo-attempt-input placeholder="What do you do?  (&quot;quote&quot; to speak · /ooc to ask the GM)" value="${escapeHtml(draft)}" maxlength="${SOLO_INPUT_MAXLEN}" ${busy ? "disabled" : ""} />
         <button type="button" class="solo-attempt-submit" data-solo-attempt-submit ${busy ? "disabled" : ""}>${busy ? "Thinking…" : "Attempt"}</button>
+      </div>
+      <div class="solo-scene-input-meta">
+        <span class="solo-input-mode solo-input-mode--${cls.mode}" data-solo-input-mode title="${escapeHtml(meta.hint)}">${escapeHtml(meta.label)}</span>
+        <span class="solo-input-count${over ? " is-over" : ""}" data-solo-charcount>${count}/${SOLO_INPUT_MAXLEN}</span>
       </div>
       ${confirmation ? `<div class="solo-npc-confirm" role="status">${escapeHtml(confirmation)}</div>` : ""}
     </div>
@@ -2713,7 +2809,9 @@ export function renderSoloSceneShell(state = {}) {
                     <div class="solo-stage" data-solo-stage>
                       ${renderSoloUpgradePrompt(scene)}
                       ${renderSoloSceneArt(scene.locationImageUri, { locked: scene.locationImageLocked })}
-                      ${renderSoloActionOutcome(state)}
+                      <!-- #15: stable wrapper so the turn fast-path can repaint the
+                           outcome strip in place without rebuilding the stage. -->
+                      <div data-solo-outcome>${renderSoloActionOutcome(state)}</div>
                     </div>
                     <!-- #25 ZONE 2 — SCROLLABLE NARRATION LOG: turn-by-turn prose
                          accumulates as readable history (independent scroll). On the
@@ -2730,11 +2828,9 @@ export function renderSoloSceneShell(state = {}) {
                     </div>
                     <!-- #25 ZONE 3 — INPUT DOCK: pinned at the bottom. -->
                     <div class="solo-input-dock">
-                      ${
-                        state.gmThinking || state.sceneReloading
-                          ? `<div class="solo-thinking" role="status">${state.gmThinking ? "The GM is thinking…" : "Loading scene…"}</div>`
-                          : ""
-                      }
+                      <!-- #15: stable wrapper so the fast-path can toggle the
+                           thinking indicator without rebuilding the dock/input. -->
+                      <div data-solo-dock-status>${renderSoloThinkingIndicator(state)}</div>
                       ${renderSoloSceneInputBar(state)}
                     </div>
                   </div>
@@ -3108,9 +3204,8 @@ export function bindSoloSceneShell(root, handlers = {}) {
   }
 
   // ---- In-scene NPC creator modal + cast roster ----
-  root.querySelectorAll("[data-solo-npc-create]").forEach((button) => {
-    button.addEventListener("click", () => handlers.onOpenNpcCreator?.());
-  });
+  // #22: the "+ Bring someone in" entry point (data-solo-npc-create) was removed
+  // from the solo build; its binding is gone too (it matched nothing — inert).
   root.querySelectorAll("[data-scene-redo]").forEach((button) => {
     button.addEventListener("click", () => handlers.onSceneRedo?.());
   });
@@ -3153,11 +3248,35 @@ export function bindSoloSceneShell(root, handlers = {}) {
 
   const attemptInput = root.querySelectorAll("[data-solo-attempt-input]")[0] || null;
   const submitAttempt = () => {
-    const intent = String(attemptInput?.value || "").trim();
-    if (!intent) {
+    // #37/#38: classify at submit so the mode travels with the turn. Speech keeps
+    // its quotes; /ooc is stripped to its note. Empty (e.g. a bare "/ooc") no-ops.
+    const cls = classifyInput(attemptInput?.value || "");
+    if (!cls.intent) {
       return;
     }
-    handlers.onAttempt?.({ intent });
+    handlers.onAttempt?.({ intent: cls.intent, mode: cls.mode });
+  };
+  // #37/#38/#39: keep the mode chip + char counter in sync as the player types,
+  // patching just those two nodes in place (no re-render — the whole point of the
+  // stage-DOM-stability work, and it keeps caret/focus intact while typing).
+  const syncInputMeta = () => {
+    const val = attemptInput ? attemptInput.value || "" : "";
+    const c = classifyInput(val);
+    const m = SOLO_INPUT_MODE_META[c.mode] || SOLO_INPUT_MODE_META.action;
+    const modeEl = typeof root.querySelector === "function" ? root.querySelector("[data-solo-input-mode]") : null;
+    if (modeEl) {
+      modeEl.textContent = m.label;
+      modeEl.className = `solo-input-mode solo-input-mode--${c.mode}`;
+      modeEl.setAttribute("title", m.hint);
+    }
+    const countEl = typeof root.querySelector === "function" ? root.querySelector("[data-solo-charcount]") : null;
+    if (countEl) {
+      const n = val.length;
+      countEl.textContent = `${n}/${SOLO_INPUT_MAXLEN}`;
+      if (typeof countEl.classList?.toggle === "function") {
+        countEl.classList.toggle("is-over", n > SOLO_INPUT_MAXLEN);
+      }
+    }
   };
   root.querySelectorAll("[data-solo-attempt-submit]").forEach((button) => {
     button.addEventListener("click", submitAttempt);
@@ -3178,6 +3297,7 @@ export function bindSoloSceneShell(root, handlers = {}) {
   if (attemptInput && typeof attemptInput.addEventListener === "function") {
     attemptInput.addEventListener("input", () => {
       handlers.onAttemptDraft?.({ value: attemptInput.value });
+      syncInputMeta();
     });
     attemptInput.addEventListener("keydown", (event) => {
       if (event.key === "Enter") {
@@ -3313,7 +3433,165 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
   // (anchor off) still preserve scroll position.
   let anchorLiveTurnPending = false;
 
+  // #15: the stage baseline recorded by the last FULL render — the fast-path
+  // compares against it to decide whether the turn can be patched in place
+  // (stage + existing log entries preserved) or needs a full rebuild.
+  let stageBaseline = null;
+
+  // A signature of every scene-tab-VISIBLE region the fast-path does NOT patch
+  // (sidebar, right rail, upgrade prompt, dialogue overlay, NPC modal, scene art,
+  // banners, structural flags). If this is byte-identical to the last full
+  // render, the only things that could have changed are the log / outcome strip /
+  // thinking indicator / input — exactly what the fast-path repaints — so
+  // patching is provably safe. Hidden tab panels are intentionally excluded: they
+  // aren't visible on the scene tab and are rebuilt on tab switch (a full render).
+  function stageSignature() {
+    const scene = state.scene || {};
+    const character = state.character || SOLO_SAMPLE_CHARACTER;
+    try {
+      return JSON.stringify({
+        tab: normalizeTab(state.activeTab),
+        skin: normalizeSkin(state.skin),
+        font: normalizeFontSet(state.fontSet),
+        menu: Boolean(state.menuOpen),
+        cog: state.cogNote || "",
+        guest: Boolean(state.isGuest),
+        banner: state.banner || "",
+        bannerKind: state.bannerKind || "",
+        death: Boolean(state.deathScreen),
+        victory: Boolean(state.victoryScreen),
+        concluded: Boolean(state.runConcluded),
+        loading: Boolean(state.loading),
+        error: state.error || "",
+        reloading: Boolean(state.sceneReloading),
+        dlg: Boolean(state.dialogueActive),
+        npc: Boolean(state.npcCreator && state.npcCreator.open),
+        art: [scene.locationImageUri || null, Boolean(scene.locationImageLocked)],
+        sidebar: renderSoloCharacterSidebar(character),
+        rail: renderSoloRightRail(state),
+        upgrade: renderSoloUpgradePrompt(scene),
+        overlay: renderSoloDialogueOverlay(state),
+        modal: renderNpcCreatorModal(state)
+      });
+    } catch {
+      return null;
+    }
+  }
+
+  function recordStageBaseline() {
+    const scene = state.scene || {};
+    const hasOpening =
+      (typeof scene.openingNarration === "string" && scene.openingNarration.trim()) ||
+      (Array.isArray(scene.openingBeats) && scene.openingBeats.length);
+    stageBaseline = {
+      sig: stageSignature(),
+      logCount: Array.isArray(state.narrationLog) ? state.narrationLog.length : 0,
+      // The log container shows the append-only narration log only when there's no
+      // opening set-piece to play AND we have accumulated entries.
+      showedNarrationLog: !hasOpening && Array.isArray(state.narrationLog) && state.narrationLog.length > 0
+    };
+  }
+
+  // #15: the turn fast-path. When only the log / outcome / thinking / input have
+  // changed since the last full render (everything else byte-identical), repaint
+  // just those in place — the scene art, the existing log entries, and the live
+  // <input> node are NEVER torn down. Returns false (→ full render) whenever any
+  // guard fails, so it can only ever be a safe optimization, never a regression.
+  function tryStagePatch() {
+    if (!stageBaseline || !stageBaseline.showedNarrationLog) {
+      return false;
+    }
+    if (typeof root.querySelector !== "function") {
+      return false;
+    }
+    if (normalizeTab(state.activeTab) !== "scene") {
+      return false;
+    }
+    if (state.loading || state.error || state.deathScreen || state.victoryScreen || state.runConcluded) {
+      return false;
+    }
+    const logEl = root.querySelector("[data-solo-log]");
+    const outcomeEl = root.querySelector("[data-solo-outcome]");
+    const thinkingEl = root.querySelector("[data-solo-dock-status]");
+    const inputField = root.querySelector("[data-solo-attempt-input]");
+    const submitBtn = root.querySelector("[data-solo-attempt-submit]");
+    if (!logEl || !outcomeEl || !thinkingEl || !inputField || !submitBtn) {
+      return false;
+    }
+    const sig = stageSignature();
+    if (sig == null || sig !== stageBaseline.sig) {
+      return false;
+    }
+    const entries = Array.isArray(state.narrationLog) ? state.narrationLog : [];
+    if (entries.length < stageBaseline.logCount) {
+      return false; // the log reset/shrank — let a full render re-seed it
+    }
+
+    // --- provably safe to patch in place from here ---
+    const scrollSnapshot = captureSoloScroll();
+    if (entries.length > stageBaseline.logCount) {
+      const fresh = entries.slice(stageBaseline.logCount);
+      if (typeof logEl.insertAdjacentHTML === "function") {
+        // Append ONLY the new entries — existing entry DOM is never rebuilt.
+        logEl.insertAdjacentHTML("beforeend", renderNarrationLog(fresh));
+      } else {
+        logEl.innerHTML = renderNarrationLog(entries);
+      }
+      stageBaseline.logCount = entries.length;
+    }
+    outcomeEl.innerHTML = renderSoloActionOutcome(state);
+    thinkingEl.innerHTML = renderSoloThinkingIndicator(state);
+
+    const busy = Boolean(state.busy);
+    if (busy) {
+      inputField.setAttribute("disabled", "");
+      submitBtn.setAttribute("disabled", "");
+    } else {
+      inputField.removeAttribute("disabled");
+      submitBtn.removeAttribute("disabled");
+    }
+    if (typeof submitBtn.textContent === "string" || submitBtn.textContent === undefined) {
+      submitBtn.textContent = busy ? "Thinking…" : "Attempt";
+    }
+    // Only push the draft into the field when the player isn't typing in it, so a
+    // background render (e.g. a settled turn clearing the draft) never clobbers a
+    // live caret. Resync the mode chip + counter to the value we set.
+    const active = typeof document !== "undefined" ? document.activeElement : null;
+    if (active !== inputField) {
+      const val = String(state.attemptDraft || "");
+      inputField.value = val;
+      const c = classifyInput(val);
+      const m = SOLO_INPUT_MODE_META[c.mode] || SOLO_INPUT_MODE_META.action;
+      const modeEl = root.querySelector("[data-solo-input-mode]");
+      if (modeEl) {
+        modeEl.textContent = m.label;
+        modeEl.className = `solo-input-mode solo-input-mode--${c.mode}`;
+      }
+      const countEl = root.querySelector("[data-solo-charcount]");
+      if (countEl) {
+        countEl.textContent = `${val.length}/${SOLO_INPUT_MAXLEN}`;
+      }
+    }
+
+    if (anchorLiveTurnPending) {
+      scrollLiveTurnIntoView();
+    } else {
+      restoreSoloScroll(scrollSnapshot);
+    }
+    return true;
+  }
+
+  // Dispatcher: try the in-place turn patch first (stage DOM survives); fall back
+  // to the full rebuild for structural changes, tab switches, and first mount.
   function render() {
+    if (tryStagePatch()) {
+      pendingExternalRender = false;
+      return;
+    }
+    fullRender();
+  }
+
+  function fullRender() {
     pendingExternalRender = false;
     // Keep the live text input alive across the innerHTML rebuild. The deferral
     // guard (externalRender) only covers TIMER renders; direct render() calls —
@@ -3374,6 +3652,9 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     } else {
       restoreSoloScroll(scrollSnapshot);
     }
+    // #15: snapshot the stage so the NEXT render can decide whether it's a
+    // patchable turn (only the log/outcome/input changed) or a full rebuild.
+    recordStageBaseline();
   }
 
   // Preserve/restore the scroll position of the in-scene scrolling container
@@ -4047,12 +4328,12 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     state.attemptDraft = String(value || "");
   }
 
-  function handleAttempt({ intent }) {
+  function handleAttempt({ intent, mode }) {
     if (!state.scene) {
       return;
     }
     return runAction("attempt", async () => {
-      const response = await postAction(createAttemptAction({ intent }));
+      const response = await postAction(createAttemptAction({ intent, mode }));
       state.attemptResult = response.attemptResult || response.latestAttemptResult || null;
       state.attemptDraft = "";
       state.searchResult = null;
@@ -4304,7 +4585,9 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       band: ar && typeof ar.band === "string" ? ar.band : null,
       outcomeLabel: ar && typeof ar.outcomeLabel === "string" ? ar.outcomeLabel : null,
       text,
-      speaker: soleSceneSpeaker(scene) || (state.talkResult && state.talkResult.speakerName) || null
+      // #20-full: attribute the line to whoever is actually speaking this turn
+      // (talkResult / VN speakerId), not just the lone-NPC ambient case.
+      speaker: resolveSceneSpeaker(scene, state.talkResult) || null
     });
     // Cap DOM growth on a very long session.
     if (state.narrationLog.length > 200) {

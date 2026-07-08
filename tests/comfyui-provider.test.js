@@ -73,16 +73,26 @@ function startStubComfyui({ failWorkflow = false } = {}) {
 }
 
 // ── 3-STYLE TOGGLE: the locked art style selects the workflow ────────────────
-test("each locked art style maps to its own checkpoint; unknown falls back to illustrated", () => {
+test("each locked art style maps to an installed checkpoint per the 2-model rig; unknown falls back to illustrated", () => {
   delete process.env.NOTDND_COMFYUI_CHECKPOINT;
   const byStyle = Object.fromEntries(
     ["illustrated", "anime", "cinematic"].map((s) => [s, comfyuiWorkflowForStyle(s, { prompt: "a ruined chapel" })])
   );
+  // Style keys stay distinct (routing is per-style)...
   assert.equal(byStyle.illustrated.styleKey, "illustrated");
   assert.equal(byStyle.anime.styleKey, "anime");
   assert.equal(byStyle.cinematic.styleKey, "cinematic");
-  const checkpoints = new Set(Object.values(byStyle).map((r) => r.checkpoint));
-  assert.equal(checkpoints.size, 3, "three styles → three distinct checkpoints");
+  // ...but on the local 8GB rig only two SDXL checkpoints are installed, so the
+  // three styles fold onto them: Juggernaut XI = illustrated + cinematic,
+  // Illustrious XL = anime (director-set map).
+  assert.equal(byStyle.illustrated.checkpoint, "Juggernaut-XI-byRunDiffusion.safetensors");
+  assert.equal(byStyle.cinematic.checkpoint, "Juggernaut-XI-byRunDiffusion.safetensors");
+  assert.equal(byStyle.anime.checkpoint, "Illustrious-XL-v2.0.safetensors");
+  assert.equal(
+    new Set(Object.values(byStyle).map((r) => r.checkpoint)).size,
+    2,
+    "three styles fold onto the two installed checkpoints"
+  );
   const fallback = comfyuiWorkflowForStyle("watercolor-nonsense", { prompt: "x" });
   assert.equal(fallback.styleKey, "illustrated", "unknown style falls back to illustrated");
 });

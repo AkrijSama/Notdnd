@@ -2031,6 +2031,44 @@ button:disabled {
   text-transform: uppercase;
   cursor: pointer;
 }
+/* #37/#38/#39: thin meta row under the input — live mode chip + char counter. */
+.solo-scene-input-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 0 2px;
+}
+.solo-input-mode {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 3px 9px;
+  border-radius: 5px;
+  border: 1px solid var(--border-strong, #3a2e22);
+  color: var(--text-2, #b0b3bb);
+  background: var(--inset, #070708);
+}
+.solo-input-mode--action { color: var(--text-2, #b0b3bb); border-color: var(--border-strong, #3a2e22); }
+.solo-input-mode--speech {
+  color: var(--accent-bright, #e7e9ee);
+  border-color: var(--accent, #c2c6cf);
+}
+.solo-input-mode--ooc {
+  color: var(--muted, #8b8e96);
+  border-style: dashed;
+  font-style: italic;
+}
+.solo-input-count {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  color: var(--muted, #8b8e96);
+}
+.solo-input-count.is-over { color: #d98a86; font-weight: 700; }
+
 .solo-scene-chips { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
 .solo-scene-chip {
   padding: 9px 16px;
