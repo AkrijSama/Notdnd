@@ -198,6 +198,37 @@ export function normalizeSoloAction(action) {
   return normalized;
 }
 
+// INPUT MODES (#37/#38) — route Action / Speech / OOC differently.
+//   action : the character DOES something (the default; the full attempt flow).
+//   speech : the character SPEAKS aloud, in-fiction — treated as dialogue.
+//   ooc    : an out-of-character note to the GM — the GM answers AS GM, no state
+//            change, never narrated in-fiction.
+// The client (#39 seam) already classifies and sends action.mode; the server
+// honors it but ALSO derives from the raw text (leading /ooc, a leading quote) so
+// an API/scripted client with no mode field is routed identically. The /ooc marker
+// is stripped from the question; speech keeps its quotes so the GM sees it spoken.
+const INPUT_MODES = new Set(["action", "speech", "ooc"]);
+
+export function classifyInputMode(action) {
+  const intent = isString(action?.intent) ? action.intent.trim() : "";
+  const declared = isString(action?.mode) ? action.mode.trim().toLowerCase() : null;
+  if (declared && INPUT_MODES.has(declared)) {
+    if (declared === "ooc") {
+      return { mode: "ooc", cleanIntent: intent.replace(/^\/ooc\b\s*/i, "").trim() };
+    }
+    return { mode: declared, cleanIntent: intent };
+  }
+  // Text fallback (no/invalid declared mode).
+  if (/^\/ooc\b/i.test(intent)) {
+    return { mode: "ooc", cleanIntent: intent.replace(/^\/ooc\b\s*/i, "").trim() };
+  }
+  // A leading straight/smart quote signals spoken dialogue.
+  if (/^["'‘’“”]/.test(intent)) {
+    return { mode: "speech", cleanIntent: intent };
+  }
+  return { mode: "action", cleanIntent: intent };
+}
+
 export function validateSoloAction(run, action) {
   const normalized = normalizeSoloAction(action);
   const errors = [];
@@ -661,6 +692,28 @@ export function resolveSoloAction(run, action, options = {}) {
     };
   }
 
+  // INPUT MODES (#37/#38). Classify Action / Speech / OOC before any turn machinery.
+  const inputMode = classifyInputMode(normalized);
+
+  // OOC — an out-of-character note to the GM. Meta, allowed at ANY time (even
+  // mid-combat, even at 0 HP): it spends NO turn, mutates NO state, and is NEVER
+  // narrated in-fiction. The resolver returns the question tagged; the request layer
+  // generates the GM's AS-GM reply. run:null signals "no state change" (same
+  // contract as a combat clarify), so nothing persists and initiative is untouched.
+  if (inputMode.mode === "ooc" && (normalized.type === "attempt" || normalized.type === "ooc")) {
+    return {
+      ok: true,
+      code: "OOC",
+      actionType: "ooc",
+      action: normalized,
+      run: null,
+      ooc: { question: inputMode.cleanIntent || normalized.intent || "" },
+      availableMoves: getAvailableMoves(run),
+      availableActions: getAvailableSoloActions(run),
+      errors: []
+    };
+  }
+
   // System/test lethality hooks (gated). Resolved before the normal branches so a
   // dying player can be acted on deterministically.
   if (TEST_HOOK_ACTION_TYPES.has(normalized.type)) {
@@ -1015,7 +1068,10 @@ export function resolveSoloAction(run, action, options = {}) {
     // HTTP and assert the server enforces it. Never honored in production. The
     // `testHook` field is otherwise ignored by validateAttemptAction (unknown
     // fields are tolerated), so it never reaches persisted state.
-    const attemptOptions = withScriptedAttemptOptions(normalized, options);
+    // Thread the input mode (#37/#38): a "speech" attempt is the character speaking
+    // aloud — the resolver stamps it on the result so the narration frames it as
+    // spoken dialogue rather than a physical action.
+    const attemptOptions = { ...withScriptedAttemptOptions(normalized, options), inputMode: inputMode.mode };
     const attempt = resolveAttemptAction(run, normalized, attemptOptions);
     if (!attempt.ok) {
       return {

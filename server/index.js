@@ -922,6 +922,12 @@ async function narrateActionWithGm(run, resolved, user) {
   // it explicitly — the GM is a real 5e DM who narrates EARNED consequences and
   // never rescues the player from them.
   message += buildConsequenceDirective(resolved);
+  // INPUT MODE (#37/#38): a SPEECH turn is the character speaking aloud in-fiction.
+  // Frame the beat as dialogue — the world and present NPCs respond to the SPOKEN
+  // WORDS — not as a physical action the character performed.
+  if (resolved.attemptResult?.inputMode === "speech") {
+    message += " The player's input was IN-CHARACTER SPEECH: their character SAID this aloud. Narrate how the scene and any present characters respond to the spoken words — treat it as dialogue, not a physical action, and let a present NPC answer in their own voice if it fits.";
+  }
   const ceiling = effectiveActionTimeoutMs();
   const t0 = Date.now();
   const { timedOut, value, error } = await withGmTimeout(
@@ -962,6 +968,39 @@ async function narrateActionWithGm(run, resolved, user) {
     return { narration: null, source: "template-empty", provider, model, latencyMs };
   }
   return { narration: narrative, source: "provider", provider, model, latencyMs };
+}
+
+// OOC (#37/#38) — the GM answers an out-of-character note AS THE GM (meta), never
+// in-fiction. A distinct system prompt from the in-fiction narrator: it answers
+// rules/recap/options questions plainly and is explicitly forbidden from narrating
+// story events, advancing the fiction, changing the world, or speaking as a
+// character. Bounded + non-fatal: any failure returns null and the caller shows a
+// gentle fallback. No state is touched anywhere in this path.
+async function narrateOocWithGm(run, question) {
+  if (!run?.campaignId || typeof question !== "string" || !question.trim()) {
+    return { reply: null };
+  }
+  const messages = [
+    {
+      role: "system",
+      content: [
+        "You are the Game Master of a solo tabletop RPG, replying to the player OUT OF CHARACTER.",
+        "The player has stepped outside the story to ask you a direct question or make a meta request (a rules clarification, a recap, what their options are, a tone note).",
+        "Answer briefly and helpfully AS THE GM, out of character.",
+        "Do NOT narrate story events. Do NOT advance the fiction. Do NOT change the game world or any state. Do NOT speak as any in-world character. Do NOT open with quotation marks as if a character is speaking.",
+        "Keep it to 1-3 plain sentences."
+      ].join(" ")
+    },
+    { role: "user", content: question.trim().slice(0, 800) }
+  ];
+  try {
+    const response = await generateNarrative(messages, run.campaignId, { maxResponseTokens: 220, temperature: 0.3 });
+    const raw = typeof response?.content === "string" ? response.content : (typeof response?.narrative === "string" ? response.narrative : "");
+    const reply = stripAiTells(String(raw).trim());
+    return { reply: reply || null, model: response?.model || null };
+  } catch {
+    return { reply: null };
+  }
 }
 
 // Classifies the answering model as cloud vs the local 8b fallback for the
@@ -1527,6 +1566,26 @@ async function handleApi(req, res) {
           validationErrors: resolved.errors,
           actionType: resolved.actionType
         });
+      }
+
+      // OOC (#37/#38) — an out-of-character note. The resolver committed NO state
+      // (resolved.run is null) and tagged the question; answer AS GM (meta) and
+      // return immediately, WITHOUT any in-fiction narration, timeline event, or
+      // turn cost. The run is echoed back unchanged.
+      if (resolved.code === "OOC") {
+        const oocOut = await narrateOocWithGm(run, resolved.ooc?.question || "");
+        const oocReply = oocOut.reply || "(Out of character) I didn't quite catch that — try rephrasing your note to me.";
+        writeJson(res, 200, {
+          ok: true,
+          ooc: true,
+          mode: "ooc",
+          oocReply,
+          run,
+          action: resolved.action,
+          availableMoves: resolved.availableMoves,
+          availableActions: resolved.availableActions
+        });
+        return true;
       }
 
       const responseRun = resolved.run ? saveSoloRun(resolved.run) : run;

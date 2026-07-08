@@ -1985,7 +1985,11 @@ export function resolveAttemptAction(run, action, options = {}) {
     // elapsed since a prior turn ([{id,name}]) — the narrator can acknowledge the
     // affliction lifting. Ticked at turn start (not end) so a condition INFLICTED
     // this turn is always present for the turn it lands in, never shed instantly.
-    conditionsShed: conditionsTick && Array.isArray(conditionsTick.shed) ? conditionsTick.shed : []
+    conditionsShed: conditionsTick && Array.isArray(conditionsTick.shed) ? conditionsTick.shed : [],
+    // INPUT MODE (#37/#38): "speech" when the player's input was in-character dialogue
+    // (the character speaking aloud), else "action". The narration layer reads this to
+    // frame the beat as spoken words rather than a physical action.
+    inputMode: isString(options.inputMode) ? options.inputMode : "action"
   };
 
   const memoryEffect = (providerOutput.proposedEffects || []).find((effect) => effect.type === "memory_fact" && isString(effect.text));
