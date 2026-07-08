@@ -134,6 +134,84 @@ export function classifyNarrationVn(narrationText, presentNpcs = []) {
   return deriveVnState({ vnMode: true, speakerId: named[0].npcId }, { knownNpcIds });
 }
 
+// #20-full — STRUCTURED SPEAKER ATTRIBUTION per dialogue line. classifyNarrationVn
+// resolves ONE VN speaker for a whole beat; a scene with two or more present NPCs
+// trading lines needs each quoted line attributed on its own so the client can put
+// the right nameplate on each. This parses the narration into its quoted spans and
+// attributes each to a present NPC (by an adjacent "X said" / "said X" tag, or the
+// sole present NPC when there's exactly one), to the player, or to "unknown" when
+// it can't be grounded — never guessing a name that isn't present. Pure; the SERVER
+// owns the attribution so the nameplates can't drift from committed state.
+const SPEECH_VERBS = "says?|said|asks?|asked|repl(?:y|ies|ied)|answers?|answered|whispers?|whispered|mutters?|muttered|growls?|growled|calls?|called|adds?|added|shouts?|shouted|murmurs?|murmured|snaps?|snapped|continues?|continued|offers?|offered|warns?|warned|hisses|barks?|declares?|declared";
+const QUOTED_SPAN_RE = /["“][^"“”]+["”]/g;
+const NAME_CAP = "([A-Z][a-z]+(?:\\s+[A-Z][a-z]+)?)";
+
+function matchPresentNpc(name, presentNpcs) {
+  const norm = String(name || "").trim().toLowerCase();
+  if (!norm) return null;
+  for (const npc of presentNpcs) {
+    const full = vnNpcName(npc).toLowerCase();
+    if (!full) continue;
+    if (full === norm || full.split(/\s+/)[0] === norm.split(/\s+/)[0]) {
+      return npc;
+    }
+  }
+  return null;
+}
+
+export function attributeSceneDialogue(narrationText, presentNpcs = [], options = {}) {
+  const text = typeof narrationText === "string" ? narrationText : "";
+  const npcs = Array.isArray(presentNpcs) ? presentNpcs.filter((n) => n && isNonEmptyString(n.npcId)) : [];
+  const playerName = isNonEmptyString(options.playerName) ? options.playerName.trim() : "";
+  if (!text.trim() || !hasQuotedSpeech(text)) {
+    return [];
+  }
+  const soleNpc = npcs.length === 1 ? npcs[0] : null;
+  const lines = [];
+  let m;
+  QUOTED_SPAN_RE.lastIndex = 0;
+  while ((m = QUOTED_SPAN_RE.exec(text)) !== null) {
+    const span = m[0];
+    const spoken = span.replace(/^["“]|["”]$/g, "").trim();
+    if (!spoken) continue;
+    // Look ~48 chars on each side of the quote for an attribution tag.
+    const before = text.slice(Math.max(0, m.index - 48), m.index);
+    const after = text.slice(m.index + span.length, m.index + span.length + 48);
+    let name = null;
+    let tag =
+      new RegExp(`${NAME_CAP}\\s+(?:${SPEECH_VERBS})\\b[^"“]*$`).exec(before) ||
+      new RegExp(`^[^"”]*\\b(?:${SPEECH_VERBS})\\s+${NAME_CAP}`).exec(after) ||
+      new RegExp(`^\\s*,?\\s*${NAME_CAP}\\s+(?:${SPEECH_VERBS})\\b`).exec(after);
+    if (tag) {
+      name = tag[1];
+    }
+    let speakerId = null;
+    let speakerName = null;
+    let kind = "unknown";
+    const matchedNpc = name ? matchPresentNpc(name, npcs) : null;
+    if (matchedNpc) {
+      speakerId = matchedNpc.npcId;
+      speakerName = vnNpcName(matchedNpc);
+      kind = "npc";
+    } else if (name && playerName && (name.toLowerCase() === playerName.toLowerCase() || playerName.toLowerCase().startsWith(name.toLowerCase()))) {
+      speakerName = playerName;
+      kind = "player";
+    } else if (!name && soleNpc) {
+      // No explicit tag but exactly one NPC is present — attribute to them.
+      speakerId = soleNpc.npcId;
+      speakerName = vnNpcName(soleNpc);
+      kind = "npc";
+    } else if (name) {
+      // A name was tagged but it isn't a present/known character — surface the name
+      // for the plate, but flag it unknown so the client can style it as ungrounded.
+      speakerName = name;
+      kind = "unknown";
+    }
+    lines.push({ text: spoken, speakerId, speakerName, kind });
+  }
+  return lines;
+}
+
 function plainText(value) {
   return String(value ?? "")
     .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "")

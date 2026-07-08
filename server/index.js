@@ -116,7 +116,7 @@ import { createWsHub } from "./realtime/wsHub.js";
 import { resolveSoloAction, testHooksEnabled } from "./solo/actions.js";
 import { buildAttemptContext, buildAttemptProviderInput, classifyIntentAuthority, isObservationQuery, isSafeConversation } from "./solo/attempt.js";
 import { interpretAttemptWithGm } from "./gm/attemptInterpreter.js";
-import { classifyNarrationVn, resolveGmNarration } from "./solo/gmProvider.js";
+import { attributeSceneDialogue, classifyNarrationVn, resolveGmNarration } from "./solo/gmProvider.js";
 import { buildGmRuntimeStatus } from "./solo/gmSmoke.js";
 import { enqueueDraftPortrait, enqueueImageJob, enqueueLocationImageJob, enqueuePlayerImageJob, enqueueVnBodyImageJob, getDraftPortrait, writeUploadedBasePortrait } from "./solo/imageWorker.js";
 import { enqueueIdentityJob, runIdentityJob } from "./solo/npcIdentity.js";
@@ -1604,6 +1604,9 @@ async function handleApi(req, res) {
       let searchResult = resolved.searchResult;
       let restResult = resolved.restResult;
       let useItemResult = resolved.useItemResult;
+      // #20-full: per-line speaker attribution for multi-NPC scenes (computed below
+      // once the live narration is known), so the client can nameplate each line.
+      let dialogueLines = [];
 
       // Generate the next scene's suggested actions in parallel with the GM
       // narration (overlapping its latency), so they're cached and ready by the
@@ -1643,6 +1646,15 @@ async function handleApi(req, res) {
         }
         updateSoloRunNarration(responseRun.runId, gmNarration);
         responseRun.narration = gmNarration;
+
+        // #20-full: attribute each quoted line to a present speaker so a multi-NPC
+        // scene gets the right nameplate per line (server-owned, grounded against
+        // present NPCs — never a guessed name). Empty for ambient/no-dialogue turns.
+        if (typeof gmNarration === "string" && gmNarration.trim()) {
+          dialogueLines = attributeSceneDialogue(gmNarration, presentNpcsForVn(responseRun), {
+            playerName: responseRun.player?.displayName
+          });
+        }
 
         // COMMITTED NPC ENTITIES (#27) — the coherence moat, NPC side. If the live
         // GM narrated a proper-noun character who spoke or acted (Grace, Doc Han,
@@ -1723,6 +1735,8 @@ async function handleApi(req, res) {
         restResult,
         useItemResult,
         attemptResult,
+        // #20-full: [{ text, speakerId, speakerName, kind }] per quoted line.
+        dialogueLines,
         gmNarration,
         entity: resolved.entity,
         details: resolved.details,
