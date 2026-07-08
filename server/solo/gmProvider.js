@@ -255,6 +255,7 @@ export function buildProviderPromptMessages(gmInput, options = {}) {
     edition: gmInput.edition,
     policyProfileId: gmInput.policyProfileId,
     location,
+    worldTime: gmInput.worldTime || null,
     visibleEntities: gmInput.visibleEntities || [],
     availableMoves: gmInput.availableMoves || [],
     availableActions: gmInput.availableActions || [],
@@ -288,9 +289,18 @@ export function buildProviderPromptMessages(gmInput, options = {}) {
     ? `A REAL development has just occurred in this scene (it is already committed to the game state): ${development.title} — ${development.brief} Keep it present and pressing in the narration, and keep the choice it poses in front of the player: ${development.decision} Do NOT invent any additional arrivals, changes, or events beyond this one.`
     : null;
 
+  // WORLD CLOCK (#14): the committed time-of-day is server-owned truth. Hold the
+  // GM to it so scene framing never drifts to a different hour (the night-at-07:00
+  // divergence the grader caught).
+  const wt = gmInput.worldTime && gmInput.worldTime.clock && gmInput.worldTime.phase ? gmInput.worldTime : null;
+  const clockNote = wt
+    ? `COMMITTED TIME: it is ${wt.clock} (${wt.phase}). Narrate light, sky, and shadow consistent with ${wt.phase}. Do NOT narrate a different time of day than the clock — no moonlight/nightfall in daylight, no daylight at night.`
+    : null;
+
   const system = [
     INKBORNE_GM_VOICE,
     "SOURCE OF TRUTH: only use the provided scene input as truth. If data is missing, keep it ambiguous instead of inventing.",
+    clockNote,
     "Mention the current location and visible entities naturally when relevant.",
     "Avoid final IP lore invention: do not invent or reference established franchise/IP lore.",
     "Strict constraints: do not mutate state, do not create durable canon, and do not invent persisted items, NPCs, quests, rewards, locations, relationships, inventory, hidden exits, or unavailable actions.",

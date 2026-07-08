@@ -219,6 +219,33 @@ test("buildProviderPromptMessages includes location entities actions and memory"
   assert.match(encoded, /relevantMemoryFacts/);
 });
 
+test("buildProviderPromptMessages pins the committed clock (#14) into the scene prompt", () => {
+  const messages = buildProviderPromptMessages({
+    runId: "run",
+    edition: "mainline",
+    policyProfileId: "mainline_default",
+    location: { name: "Start Location" },
+    worldTime: { day: 1, clock: "07:41", phase: "day" }
+  });
+  const system = messages[0].content;
+  const encoded = JSON.stringify(messages);
+  // the committed time-of-day is a hard constraint in the system prompt…
+  assert.match(system, /COMMITTED TIME: it is 07:41 \(day\)/);
+  assert.match(system, /Do NOT narrate a different time of day/i);
+  // …and it rides the scene data the model reads.
+  assert.match(encoded, /clock.{0,6}07:41/);
+});
+
+test("buildProviderPromptMessages omits the clock clause when no worldTime is present", () => {
+  const messages = buildProviderPromptMessages({
+    runId: "run",
+    edition: "mainline",
+    policyProfileId: "mainline_default",
+    location: { name: "Start Location" }
+  });
+  assert.doesNotMatch(messages[0].content, /COMMITTED TIME/);
+});
+
 test("buildProviderPromptMessages includes no-mutation and no-canon instructions", () => {
   const messages = buildProviderPromptMessages({
     runId: "run",

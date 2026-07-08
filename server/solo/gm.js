@@ -191,12 +191,23 @@ export function buildGmSceneInput(scenePayload, options = {}) {
       }
     : null;
 
+  // WORLD CLOCK (#14): the committed time-of-day, passed through so the scene
+  // prompt can hold the GM to the server-owned clock (never invent a time).
+  const worldTime = isPlainObject(scenePayload.worldTime)
+    ? {
+        day: scenePayload.worldTime.day,
+        clock: scenePayload.worldTime.clock,
+        phase: scenePayload.worldTime.phase
+      }
+    : null;
+
   return {
     ok: true,
     runId: scenePayload.runId,
     edition,
     policyProfileId: scenePayload.policyProfileId || policyProfile.policyProfileId,
     location: compactLocation(scenePayload.location || {}),
+    worldTime,
     visibleEntities,
     availableMoves: asArray(scenePayload.availableMoves)
       .filter((move) => allowedByPolicy(move, policyProfile))

@@ -826,6 +826,38 @@ function buildConsequenceDirective(resolved) {
   return parts.join("");
 }
 
+// WORLD CLOCK ENFORCEMENT (#14). The server owns a real minutes clock; every
+// action commits a duration and re-derives the time-of-day phase (worldClock.js).
+// The narration model, left unprompted, drifts — narrating "dusk"/"nightfall"/
+// moonlight while the committed clock still reads 07:xx (3/5 grading sessions).
+// This hands the GM the COMMITTED time-of-day as a hard constraint so the fiction
+// follows the clock instead of inventing its own. Reads the stamped clock/phase
+// off the updated run (present after ensureClock/advanceClock, and on every
+// reroute turn too), falling back to the attempt's committed timeAdvance. Empty
+// string when no clock is available (legacy run) so the message is unchanged.
+const CLOCK_PHASE_DESC = {
+  dawn: "early dawn — thin grey first light, the sun not yet risen",
+  day: "broad daylight — the sun is up",
+  dusk: "dusk — failing light, the sun low or just set",
+  night: "night — full dark"
+};
+function buildClockDirective(resolved) {
+  const time = resolved?.run?.world?.time || null;
+  const after = resolved?.attemptResult?.timeAdvance?.after || null;
+  const clock = (time && typeof time.clock === "string" && time.clock) || (after && typeof after.clock === "string" && after.clock) || null;
+  const phase = (time && typeof time.phase === "string" && time.phase) || (after && typeof after.phase === "string" && after.phase) || null;
+  if (!clock || !phase) {
+    return "";
+  }
+  const desc = CLOCK_PHASE_DESC[phase] || phase;
+  return (
+    ` COMMITTED TIME: it is ${clock} — ${desc}. This is the server-owned truth. Your narration MUST be consistent ` +
+    `with this time of day — describe light, sky, shadow, and lamps to match ${phase}. Do NOT narrate a different ` +
+    `time than the clock: no moonlight, stars, nightfall, torches-for-darkness, or "the hour grew late" while it is ` +
+    `dawn or day; no daylight, noon sun, or morning light while it is dusk or night. The fiction follows the clock.`
+  );
+}
+
 // Best-effort closing beat when the player has just died — mirrors the victory
 // narration, but for a permanent 5e death. Null on timeout/failure (the death
 // screen still renders).
@@ -922,6 +954,9 @@ async function narrateActionWithGm(run, resolved, user) {
   // it explicitly — the GM is a real 5e DM who narrates EARNED consequences and
   // never rescues the player from them.
   message += buildConsequenceDirective(resolved);
+  // WORLD CLOCK (#14): pin the narration to the committed time-of-day so prose
+  // can't drift to night while the clock reads morning.
+  message += buildClockDirective(resolved);
   // INPUT MODE (#37/#38): a SPEECH turn is the character speaking aloud in-fiction.
   // Frame the beat as dialogue — the world and present NPCs respond to the SPOKEN
   // WORDS — not as a physical action the character performed.
