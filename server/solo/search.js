@@ -219,6 +219,53 @@ export function detectSearchIntent(run, intent) {
   return { search: true };
 }
 
+// --- PASSIVE-OBSERVATION detection (narrate-into-void fix) --------------------
+// The 5/5-session hole: "wait by the door and watch the room for a long while",
+// "keep watch and observe the crowd", "survey the area" are no-stakes and today
+// fall THROUGH the search/take/move reroutes to a bare automatic-success attempt
+// that commits nothing — the GM narrates noticing things while discoveredDetails
+// never grows (narrate-into-void). These are passive PERCEPTION-of-the-SCENE beats
+// that detectSearchIntent's loot-search vocabulary (search/scour/rummage/"look for
+// X") deliberately misses. Recognizing them lets the caller route to the SAME
+// grounded reveal mechanic as search, so watching a scene reveals + COMMITS a real
+// placed feature (never minted); an exhausted scene honestly finds nothing.
+//
+// Two guards keep this tight so it does NOT swallow idle, non-perception beats
+// (which must stay on the attempt path so the momentum engine can escalate a
+// static scene — the "3 idle turns → the world moves" contract):
+//   1. a PERCEPTION verb (watch / observe / survey / scan / study / keep watch)…
+//   2. …AND a SCENE target (the room / area / surroundings / crowd / here …).
+// So "wait and listen to the wind" or "stand still and think" (no scene-directed
+// perception) stay idle attempts; only perceiving the PLACE reveals its features.
+// A perception DIRECTED at a present NPC ("watch Goran") is a social beat, so a
+// present NPC name suppresses it (left to the attempt path).
+const OBSERVE_PERCEPTION_RE =
+  /\b(?:watch|watches|watching|observ\w*|surveil\w*|survey|surveys|surveying|scan|scans|scanning|study|studies|studying|listen|listens|listening|peer|peers|peering|keep(?:ing)?\s+(?:watch|an\s+eye|a\s+lookout)|take[s]?\s+stock|taking\s+stock)\b/i;
+const OBSERVE_SCENE_TARGET_RE =
+  /\b(?:room|area|surroundings?|scene|crowd|people|patrons?|place|here|around|nearby|hall|chamber|passage|tavern|street|entrance|door|doorway|walls?|everyone|others?|what(?:'s| is)?\s+(?:around|here|happening|going on)|who(?:'s| is)?\s+(?:here|around|nearby))\b/i;
+
+/**
+ * Classifies a free-text intent as PASSIVE OBSERVATION of the current SCENE — a
+ * no-stakes perception beat that should reveal committed scene detail rather than
+ * narrate into the void. Requires a perception verb AND a scene target, so idle
+ * non-perception ("listen to the wind", "stand and think") is NOT swept in and
+ * stays on the attempt path (letting momentum escalate a static scene). Returns
+ * { observe: true } or null. A perception naming a present NPC returns null
+ * (social, not area observation). Pure; never throws.
+ * @param {object} run
+ * @param {string} intent
+ */
+export function detectObservationIntent(run, intent) {
+  const text = String(intent || "").toLowerCase();
+  if (!isString(text) || !OBSERVE_PERCEPTION_RE.test(text) || !OBSERVE_SCENE_TARGET_RE.test(text)) {
+    return null;
+  }
+  if (presentNpcNamesLc(run).some((name) => text.includes(name))) {
+    return null;
+  }
+  return { observe: true };
+}
+
 export function getSearchableDetails(run, options = {}) {
   if (!isPlainObject(run) || !isPlainObject(run.locations) || !isString(run.currentLocationId)) {
     return [];

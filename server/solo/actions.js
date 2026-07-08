@@ -11,6 +11,7 @@ import {
 import {
   resolveSearchAction,
   detectSearchIntent,
+  detectObservationIntent,
   validateSearchAction
 } from "./search.js";
 import {
@@ -1033,6 +1034,37 @@ export function resolveSoloAction(run, action, options = {}) {
         }, options);
       }
       // Search failed validation — fall through to the normal attempt path.
+    }
+    // OBSERVATION-INTENT COMMIT (narrate-into-void fix — the 5/5-session hole).
+    // A passive observation or wait ("wait by the door and watch the room", "keep
+    // watch", "observe the crowd") is no-stakes and today falls through to an
+    // automatic-success attempt that commits NOTHING: the GM narrates noticing
+    // things while discoveredDetails never grows. Route it to the SAME grounded
+    // reveal mechanic as search, so watching a scene actually reveals + COMMITS a
+    // placed feature (never minted — the search firewall) and the GM narrates the
+    // REAL thing observed. When the scene is exhausted the reveal honestly finds
+    // nothing new (found:false) — no phantom discovery, and (unlike the old
+    // automatic success) it pushes a `search` event, not a hollow success attempt,
+    // so nothing is narrated into the void. Only fires when it is NOT already an
+    // area-search (handled just above); a person-directed watch is suppressed by
+    // detectObservationIntent and falls through to the honest attempt path.
+    if (!interrogative && detectObservationIntent(run, normalized.intent) && !detectSearchIntent(run, normalized.intent)) {
+      const observeAction = { type: "search", actorId: normalized.actorId ?? "player", targetLocationId: run.currentLocationId };
+      const observed = resolveSearchAction(run, observeAction, options);
+      if (observed.ok) {
+        return finalizeQuestProgress(run, {
+          ok: true,
+          action: { ...observeAction, intent: normalized.intent, observedViaIntent: true },
+          run: observed.run,
+          event: observed.event,
+          memoryFact: observed.memoryFact,
+          searchResult: observed.searchResult,
+          availableMoves: getAvailableMoves(observed.run),
+          availableActions: getAvailableSoloActions(observed.run),
+          errors: []
+        }, options);
+      }
+      // Observation reveal failed validation — fall through to the attempt path.
     }
     // D.4 COMBAT ENTRY (phase0 §1.5 Change A). A clear attack verb aimed at a
     // PRESENT, resolvable NPC (never minted — the take/move discipline) starts a

@@ -623,8 +623,17 @@ export function gradeSession(turns = [], opts = {}) {
   // ---- DEPTH / TRACTION (all turns): did the world react on a signalled success? ----
   for (const t of list) {
     const ar = t.attemptResult || {};
+    // Only judge a turn that produced a FRESH attempt result this turn. A reroute
+    // turn (search / observe / move / take) commits via its own path and returns
+    // no attemptResult; scene.latestAttemptResult then still holds the PREVIOUS
+    // attempt (a `search` event does not overwrite the last `attempt` event), so
+    // reading ar.success there attributes a stale prior success to a reroute turn
+    // that legitimately committed nothing new — a false narrate-into-void. When the
+    // runner reports freshAttempt we honor it; older observations (no flag) keep the
+    // prior behavior. Reroute commits are judged by their own delta on the snapshot.
+    const freshAttempt = t.freshAttempt !== false;
     const succeeded = ar.success === true || String(ar.band || ar.outcome || "").toLowerCase().includes("success");
-    if (succeeded && t.sceneBefore && t.sceneAfter) {
+    if (freshAttempt && succeeded && t.sceneBefore && t.sceneAfter) {
       if (JSON.stringify(t.sceneBefore) === JSON.stringify(t.sceneAfter)) {
         pushFinding(findings, {
           axis: "depth", severity: "high", turns: t.n,

@@ -4,7 +4,9 @@ import { createDefaultSoloRun, validateSoloRun } from "../server/solo/schema.js"
 import {
   getSearchableDetails,
   resolveSearchAction,
-  validateSearchAction
+  validateSearchAction,
+  detectSearchIntent,
+  detectObservationIntent
 } from "../server/solo/search.js";
 
 const TEST_NOW = "2026-01-01T00:00:00.000Z";
@@ -42,6 +44,34 @@ function addSecondDetail(run) {
     policyProfileId: "mainline_default"
   });
 }
+
+test("detectObservationIntent recognizes scene-perception, not idle waiting or NPC-directed", () => {
+  const run = createDefaultSoloRun({ runId: "observe_detect" });
+  // the 5/5-session offender — perceiving the SCENE, which today narrates into the void
+  assert.deepEqual(detectObservationIntent(run, "wait by the door and watch the room for a long while"), { observe: true });
+  assert.deepEqual(detectObservationIntent(run, "keep watch and observe the crowd"), { observe: true });
+  assert.deepEqual(detectObservationIntent(run, "survey the area carefully"), { observe: true });
+  // IDLE non-perception (no scene target) must STAY an attempt so momentum can
+  // escalate a static scene — the "3 idle turns → the world moves" contract.
+  assert.equal(detectObservationIntent(run, "wait and listen to the wind"), null);
+  assert.equal(detectObservationIntent(run, "stand still and think about my next move"), null);
+  assert.equal(detectObservationIntent(run, "hum a quiet tune to myself"), null);
+  // a loot-search is handled by detectSearchIntent, not the observation path
+  assert.equal(detectObservationIntent(run, "rummage through the crates for anything useful"), null);
+  // a person-directed perception is a social beat, not area observation
+  const withNpc = clone(run);
+  withNpc.npcs = { npc_goran: { npcId: "npc_goran", displayName: "Goran", currentLocationId: run.currentLocationId, status: "present" } };
+  assert.equal(detectObservationIntent(withNpc, "watch Goran in the room"), null);
+});
+
+test("detectSearchIntent and detectObservationIntent partition the passive-intent space", () => {
+  const run = createDefaultSoloRun({ runId: "observe_partition" });
+  // "search the area" is a search, not an observation reroute (search wins)
+  assert.ok(detectSearchIntent(run, "search the area carefully for anything hidden"));
+  // "watch the room" is an observation, and NOT a loot-search
+  assert.equal(detectSearchIntent(run, "wait and watch the room for a while"), null);
+  assert.deepEqual(detectObservationIntent(run, "wait and watch the room for a while"), { observe: true });
+});
 
 test("validates search action", () => {
   const run = createDefaultSoloRun({ runId: "search_validate" });

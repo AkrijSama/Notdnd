@@ -128,6 +128,14 @@ async function main() {
       fallback,
       latencyMs: typeof served.latencyMs === "number" ? served.latencyMs : r.ms,
       attemptResult: r.json?.attemptResult || sc?.latestAttemptResult || {},
+      // Whether THIS turn produced a fresh attempt result. A reroute turn (search /
+      // observe / move / take) commits via its own path and returns no attemptResult;
+      // scene.latestAttemptResult then still holds the PREVIOUS attempt (stale). The
+      // depth void-check must not read that stale success against a reroute turn.
+      freshAttempt: Boolean(r.json?.attemptResult),
+      searchResult: r.json?.searchResult || null,
+      moved: r.json?.moved || null,
+      takeResult: r.json?.takeResult || null,
       scene: sc,
       sceneBefore: prevSnap,
       sceneAfter: snap,

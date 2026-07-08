@@ -116,6 +116,32 @@ test("gradeSession emits per-axis letter+numeric, structured findings, and model
   }
 });
 
+test("depth void-check ignores a stale attemptResult on a reroute turn (freshAttempt=false)", () => {
+  // A reroute turn (search/observe/move/take) returns no attemptResult; the scene's
+  // latestAttemptResult still holds the PRIOR attempt's success. The grader must not
+  // flag that reroute turn as narrate-into-void off the stale success.
+  const staleSuccess = { success: true, band: "success", outcomeLabel: "Success" };
+  const turns = [
+    { n: 1, intent: "force the door", narration: "You force it.", model: "deepseek/deepseek-v4-pro", fallback: false, latencyMs: 9000,
+      attemptResult: staleSuccess, freshAttempt: true, scene: scene([]), sceneBefore: { a: 1 }, sceneAfter: { a: 2 } },
+    // T2 is an observation reroute: no fresh attempt, snapshot unchanged, but the
+    // stale success from T1 rides on attemptResult. Must NOT be flagged.
+    { n: 2, intent: "wait and watch the room", narration: "You watch; nothing new stirs.", model: "deepseek/deepseek-v4-pro", fallback: false, latencyMs: 8000,
+      attemptResult: staleSuccess, freshAttempt: false, scene: scene([]), sceneBefore: { a: 2 }, sceneAfter: { a: 2 } }
+  ];
+  const g = gradeSession(turns);
+  assert.ok(!g.findings.some((f) => f.axis === "depth" && f.turns.includes(2)), "reroute turn (freshAttempt=false) not flagged void");
+});
+
+test("depth void-check STILL flags a fresh attempt success with no delta", () => {
+  const turns = [
+    { n: 1, intent: "force the door", narration: "The door gives way.", model: "deepseek/deepseek-v4-pro", fallback: false, latencyMs: 9000,
+      attemptResult: { success: true, band: "success" }, freshAttempt: true, scene: scene([]), sceneBefore: { a: 1 }, sceneAfter: { a: 1 } }
+  ];
+  const g = gradeSession(turns);
+  assert.ok(g.findings.some((f) => f.axis === "depth" && /NO state delta/.test(f.failure)), "fresh void still caught");
+});
+
 test("gradeSession EXCLUDES fallback turns from narration/coherence and marks them invalid", () => {
   const turns = [
     { n: 1, intent: "x", narration: "Garrick the phantom sneers.", model: "dolphin-llama3:8b", fallback: true, latencyMs: 3000, attemptResult: {}, scene: scene([]), sceneBefore: {}, sceneAfter: {} },
