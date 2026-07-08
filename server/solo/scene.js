@@ -611,6 +611,10 @@ export function buildCastRoster(run, policyProfile) {
         currentLocationId: npc.currentLocationId || null,
         present: npc.currentLocationId === run.currentLocationId,
         portraitUri: uriFor(npc.imageAssetId),
+        // #50: committed gender/pronouns so the client can reflect them and the
+        // portrait's subject is verifiable (the image worker grounds on these).
+        gender: isString(npc.gender) ? npc.gender : null,
+        pronouns: isString(npc.pronouns) ? npc.pronouns : null,
         expressionVariants
       };
     });

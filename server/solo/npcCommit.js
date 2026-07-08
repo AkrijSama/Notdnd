@@ -293,6 +293,31 @@ export function auditAndCommitNarratedNpcs(run, narrationText, knownNames = [], 
   return committed;
 }
 
+// #50: backfill gender/pronouns onto ALREADY-committed NPCs that carry none, from
+// how the live narration refers to them. A starting NPC (identity-minted, often
+// gender-neutral role) or any legacy cast member picks up the gender the TEXT uses
+// the first time the narration genders them — closing the write-female/render-male
+// mismatch for NPCs the commit/identity paths left ungendered. Returns names updated.
+export function backfillNpcGenderFromNarration(run, narrationText) {
+  if (!isPlainObject(run) || !isPlainObject(run.npcs)) {
+    return [];
+  }
+  const updated = [];
+  for (const npc of Object.values(run.npcs)) {
+    if (!isPlainObject(npc)) continue;
+    if (isString(npc.gender) && npc.gender.trim()) continue; // already grounded
+    const name = isString(npc.generatedName) && npc.generatedName.trim() ? npc.generatedName : npc.displayName;
+    if (!isString(name) || name.trim().length < 2) continue;
+    const g = inferNpcGenderFromNarration(name, narrationText);
+    if (g) {
+      npc.gender = g.gender;
+      if (!(isString(npc.pronouns) && npc.pronouns.trim())) npc.pronouns = g.pronouns;
+      updated.push(name.trim());
+    }
+  }
+  return updated;
+}
+
 // PHANTOM PLACE / LORE DETECTION (#41) — the moat, LORE side. The #27 detector
 // only catches people (they SPEAK or ACT); a GM-asserted PLACE or landmark ("the
 // Old Watchtower", "the Gilded Kingdoms Watch") is proper-noun canon the state

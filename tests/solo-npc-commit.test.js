@@ -10,7 +10,8 @@ import {
   auditAndCommitNarratedLore,
   detectInventedAgents,
   auditAndCommitInventedAgents,
-  inferNpcGenderFromNarration
+  inferNpcGenderFromNarration,
+  backfillNpcGenderFromNarration
 } from "../server/solo/npcCommit.js";
 import { evaluatePhantomEntities, evaluateGmNarration } from "../server/solo/gmEval.js";
 import { validateNpc, createDefaultSoloRun } from "../server/solo/schema.js";
@@ -100,6 +101,20 @@ test("auditAndCommitNarratedNpcs commits gender/pronouns so the portrait can mat
   assert.ok(mara, "Mara committed");
   assert.equal(mara.gender, "female");
   assert.equal(mara.pronouns, "she/her");
+});
+
+test("backfillNpcGenderFromNarration (#50) grounds an ungendered committed NPC from the text", () => {
+  const run = createDefaultSoloRun();
+  // a starting/identity NPC minted without gender
+  run.npcs = { npc_keeper: { npcId: "npc_keeper", displayName: "Esk", role: "tavern keeper", status: "present", currentLocationId: run.currentLocationId, memoryFactIds: [] } };
+  const updated = backfillNpcGenderFromNarration(run, "Esk wipes down the bar. She eyes you, her hand never far from the tap.");
+  assert.deepEqual(updated, ["Esk"]);
+  assert.equal(run.npcs.npc_keeper.gender, "female");
+  assert.equal(run.npcs.npc_keeper.pronouns, "she/her");
+  // idempotent — an already-gendered NPC is left alone (no overwrite)
+  const again = backfillNpcGenderFromNarration(run, "Esk grins. He leans in.");
+  assert.deepEqual(again, [], "does not overwrite a committed gender");
+  assert.equal(run.npcs.npc_keeper.gender, "female");
 });
 
 test("auditAndCommitInventedAgents promotes an un-named acting agent into cast", () => {

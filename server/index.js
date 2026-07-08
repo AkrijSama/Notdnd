@@ -121,7 +121,7 @@ import { buildGmRuntimeStatus } from "./solo/gmSmoke.js";
 import { enqueueDraftPortrait, enqueueImageJob, enqueueLocationImageJob, enqueuePlayerImageJob, enqueueVnBodyImageJob, getDraftPortrait, writeUploadedBasePortrait } from "./solo/imageWorker.js";
 import { enqueueIdentityJob, runIdentityJob } from "./solo/npcIdentity.js";
 import { buildNpcIntroDirective, buildSoloScenePayload, collectNpcsWithPendingIntro } from "./solo/scene.js";
-import { auditAndCommitNarratedNpcs, auditAndCommitNarratedLore, auditAndCommitInventedAgents } from "./solo/npcCommit.js";
+import { auditAndCommitNarratedNpcs, auditAndCommitNarratedLore, auditAndCommitInventedAgents, backfillNpcGenderFromNarration } from "./solo/npcCommit.js";
 import { refreshSceneSuggestions } from "./solo/suggestions.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -1797,7 +1797,11 @@ async function handleApi(req, res) {
             // instead of a phantom the next turn can contradict — the class that
             // scored a grading session F/0.
             const committedLore = auditAndCommitNarratedLore(freshForNpc, gmNarration, knownNames);
-            if (committedNpcs.length > 0 || committedAgents.length > 0 || committedLore.length > 0) {
+            // #50: backfill gender onto committed NPCs the narration genders but that
+            // were minted ungendered (starting/identity cast) — so their portrait
+            // matches the text (write-female/render-male fix).
+            const genderedNpcs = backfillNpcGenderFromNarration(freshForNpc, gmNarration);
+            if (committedNpcs.length > 0 || committedAgents.length > 0 || committedLore.length > 0 || genderedNpcs.length > 0) {
               saveSoloRun(freshForNpc);
               responseRun.npcs = freshForNpc.npcs;
               responseRun.memoryFacts = freshForNpc.memoryFacts;
