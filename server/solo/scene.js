@@ -146,6 +146,10 @@ function attemptHistoryPayload(run, policyProfile, limit = 5) {
       intent: event.payload?.intent || "",
       targetId: event.payload?.targetId || null,
       success: event.payload?.success === true,
+      // Three-state outcome (#28): the card/history label the three bands
+      // distinctly so a sub-DC roll never reads as a clean "Success".
+      band: event.payload?.band || null,
+      outcomeLabel: event.payload?.outcomeLabel || null,
       checkResult: event.payload?.checkResult || null,
       narration: event.payload?.narration || "",
       warnings: event.payload?.warnings || []

@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import { getVisibleEntities } from "./entities.js";
 import { getAvailableMoves } from "./movement.js";
-import { ABILITIES, SKILLS, SKILL_ABILITY, resolveAbilityCheck } from "./rules.js";
+import { ABILITIES, SKILLS, SKILL_ABILITY, resolveAbilityCheck, outcomeLabelForBand } from "./rules.js";
 import { abilityForBabelWord } from "./babelStats.js";
 import {
   createDefaultForbiddenPolicyProfile,
@@ -943,6 +943,10 @@ export function createAttemptTimelineEvent(run, action, attemptResult, memoryFac
       intent: action.intent,
       targetId: action.targetId || null,
       success: attemptResult.success,
+      // Three-state band + label so attempt HISTORY reads the same as the live
+      // card (#28) — a past sub-DC roll shows "Success at a cost", not "Success".
+      band: attemptResult.band || null,
+      outcomeLabel: attemptResult.outcomeLabel || null,
       checkResult: attemptResult.checkResult || null,
       narration: attemptResult.narration,
       warnings: attemptResult.warnings || [],
@@ -1859,6 +1863,11 @@ export function resolveAttemptAction(run, action, options = {}) {
     // win at a cost. The full roll breakdown (d20, mods, DC, margin) lives on
     // checkResult so the outcome banner can show it.
     band,
+    // Player-facing THREE-STATE label the outcome card must render (#28): a
+    // sub-DC roll is "Success at a cost", never a bare "Success". Derived from the
+    // SAME band the narration keys off, so label / roll math / prose can't diverge.
+    // `success` (below) stays the intent-achieved flag internal logic reads.
+    outcomeLabel: outcomeLabelForBand(band),
     summary: providerOutput.summary,
     checkResult,
     // Whether a d20 was rolled this turn. The client uses this to show the

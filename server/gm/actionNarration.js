@@ -317,9 +317,11 @@ export function buildActionGmMessage(run, resolved) {
     if (band === "success_at_cost") {
       return (
         `In the current scene, the player attempts: "${String(ar.intent || "an action")}". ` +
-        `The attempt SUCCEEDS AT A COST${rollText}: they get what they were after, but a real cost commits alongside it${costPhrase ? ` — ${costPhrase}` : ""}. ` +
-        `Narrate BOTH — the thing achieved AND the committed cost as an already-true fact (time lost, a resource spent, someone now aware, or a new complication). ` +
-        `Do NOT narrate a clean win, and do NOT invent a different cost than the one committed. Give them a specific new thing to act on next. ${suffix}`
+        `The attempt SUCCEEDS AT A COST${rollText}: the action ITSELF lands — they DO the thing they set out to do; the roll was a near miss, so a real cost commits alongside it${costPhrase ? ` — ${costPhrase}` : ""}. ` +
+        `CRITICAL: do NOT narrate them failing, falling, slipping back, losing their grip, being blocked, or otherwise NOT achieving the action — the intent IS achieved. If the intent has several parts, EVERY attempted part still lands. ` +
+        `They END in the achieved state: if they climbed somewhere they are THERE (not fallen), if they crossed they are ACROSS, if they opened something it is OPEN. The cost NEVER ejects them from what they achieved. ` +
+        `The cost is an ADDITIONAL complication layered on top (time lost, a resource spent, a hard-won position that is now precarious, someone now aware, a new pressure), never the undoing of what they did. ` +
+        `Narrate BOTH the thing achieved AND the committed cost as already-true fact. Do NOT narrate a clean, cost-free win, and do NOT invent a different cost than the one committed. Give them a specific new thing to act on next. ${suffix}`
       );
     }
     if (band === "failure") {

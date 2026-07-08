@@ -122,6 +122,25 @@ export function bandFromMargin(margin) {
   return RESOLUTION_BANDS.FAILURE;
 }
 
+// Player-facing outcome label for a resolution band — the THREE distinct states
+// the outcome card must show. THE MOAT FIX (#28): a sub-DC roll must never read
+// as a bare "Success". The middle band is its own honest label ("Success at a
+// cost"), paired with a roll under the DC and a committed cost — so the card, the
+// roll math, and the GM narration all key off the SAME band and cannot disagree.
+// A no-roll ("automatic") action has no pass/fail label (returns null).
+export function outcomeLabelForBand(band) {
+  switch (band) {
+    case RESOLUTION_BANDS.SUCCESS:
+      return "Success";
+    case RESOLUTION_BANDS.SUCCESS_AT_COST:
+      return "Success at a cost";
+    case RESOLUTION_BANDS.FAILURE:
+      return "Failure";
+    default:
+      return null;
+  }
+}
+
 export function resolveAbilityCheck(run, check, options = {}) {
   const validation = validateAbilityCheck(check);
   if (!validation.ok) {
