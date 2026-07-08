@@ -890,6 +890,50 @@ function buildCompoundDirective(resolved) {
   );
 }
 
+// TURN ENVELOPE for reroute actions (#45 engine-half). A free-text intent typed
+// into the attempt box may reroute server-side to search / observe / take / move /
+// rest — those return their own result shape (searchResult/takeResult/…) and NO
+// attemptResult. The client's turn log keys on attemptResult, so a rerouted turn
+// ("look around" → search) rendered NOTHING — the player's action vanished. This
+// synthesizes a uniform attempt-shaped turn record (player intent + the live
+// narration + a no-roll outcome + a resolvedVia tag) so EVERY committed player
+// action produces one renderable turn. Returns null when there's nothing to log.
+function synthesizeRerouteTurn(resolved, gmNarration) {
+  const action = resolved?.action || {};
+  const intent = typeof action.intent === "string" && action.intent.trim() ? action.intent.trim() : "";
+  if (!intent) {
+    return null;
+  }
+  let success = true;
+  let resolvedVia = action.type || "action";
+  if (resolved.searchResult) {
+    success = resolved.searchResult.found === true;
+    resolvedVia = action.observedViaIntent ? "observe" : "search";
+  } else if (resolved.takeResult) {
+    success = resolved.takeResult.taken === true;
+    resolvedVia = "take";
+  } else if (resolved.moved) {
+    resolvedVia = "move";
+  } else if (resolved.restResult) {
+    resolvedVia = "rest";
+  } else {
+    return null; // not a recognized reroute → nothing to synthesize
+  }
+  return {
+    intent,
+    success,
+    band: "automatic",
+    outcomeLabel: null,
+    needsCheck: false,
+    checkResult: null,
+    narration: typeof gmNarration === "string" ? gmNarration : "",
+    // Marks a turn the server resolved WITHOUT a d20 (a committed reroute), so the
+    // client can render it as a plain turn (no "vs DC" tag) — a real, logged beat.
+    resolvedVia,
+    synthesized: true
+  };
+}
+
 // Best-effort closing beat when the player has just died — mirrors the victory
 // narration, but for a permanent 5e death. Null on timeout/failure (the death
 // screen still renders).
@@ -1810,6 +1854,16 @@ async function handleApi(req, res) {
       let deathNarration = null;
       if (resolved.runDied || responseRun?.player?.status === "dead") {
         deathNarration = await narrateDeathWithGm(responseRun, resolved, user);
+      }
+
+      // #45 engine-half: a rerouted free-text turn (search/observe/take/move/rest)
+      // carries no attemptResult; synthesize a uniform turn envelope so the client
+      // logs EVERY player action as one renderable turn (never a vanished turn).
+      if ((!attemptResult || Object.keys(attemptResult).length === 0) && resolved.action?.type !== "attempt") {
+        const synthetic = synthesizeRerouteTurn(resolved, gmNarration);
+        if (synthetic) {
+          attemptResult = synthetic;
+        }
       }
 
       writeJson(res, 200, {
