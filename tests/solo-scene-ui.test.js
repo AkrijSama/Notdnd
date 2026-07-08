@@ -3,6 +3,8 @@ import test from "node:test";
 import { fetchSoloGmScene, fetchSoloScene, postSoloAction, requireRunId } from "../src/components/soloSceneApi.js";
 import {
   bindSoloSceneShell,
+  dispatchSoloClick,
+  dispatchSoloKeydown,
   createInspectAction,
   createMoveAction,
   createRestAction,
@@ -623,6 +625,10 @@ test("mountSoloSceneShell posts search action and shows result", async () => {
   };
   const root = {
     innerHTML: "",
+    _l: {},
+    addEventListener(name, handler) {
+      this._l[name] = handler;
+    },
     querySelectorAll(selector) {
       return selector === "[data-solo-action='search']" ? [searchButton] : [];
     }
@@ -662,7 +668,9 @@ test("mountSoloSceneShell posts search action and shows result", async () => {
 
   const mounted = mountSoloSceneShell(root, { apiClient, runId: "run_test" });
   await mounted.reload();
-  await searchButton.handler();
+  // #15-full: the click is delegated — fire it through the single root listener.
+  root._l.click({ target: clickTarget({ "[data-solo-action='search']": {} }) });
+  await new Promise((resolve) => setTimeout(resolve, 0));
 
   assert.deepEqual(calls, [["action", "run_test", { type: "search", actorId: "player" }]]);
   assert.match(root.innerHTML, /Detail found/);
@@ -681,6 +689,10 @@ test("mountSoloSceneShell posts talk action and shows dialogue result", async ()
   };
   const root = {
     innerHTML: "",
+    _l: {},
+    addEventListener(name, handler) {
+      this._l[name] = handler;
+    },
     querySelectorAll(selector) {
       return selector === "[data-solo-action='talk']" ? [talkButton] : [];
     }
@@ -714,7 +726,8 @@ test("mountSoloSceneShell posts talk action and shows dialogue result", async ()
 
   const mounted = mountSoloSceneShell(root, { apiClient, runId: "run_test" });
   await mounted.reload();
-  await talkButton.handler({ stopPropagation() {} });
+  root._l.click({ target: clickTarget({ "[data-solo-action='talk']": { "data-entity-id": "npc:placeholder_npc" } }) });
+  await new Promise((resolve) => setTimeout(resolve, 0));
 
   assert.deepEqual(calls, [["action", "run_test", { type: "talk", actorId: "player", targetEntityId: "npc:placeholder_npc" }]]);
   assert.match(root.innerHTML, /Dialogue/);
@@ -886,6 +899,10 @@ test("mountSoloSceneShell posts rest action and shows rest result", async () => 
   };
   const root = {
     innerHTML: "",
+    _l: {},
+    addEventListener(name, handler) {
+      this._l[name] = handler;
+    },
     querySelectorAll(selector) {
       return selector === "[data-solo-action='rest']" ? [restButton] : [];
     }
@@ -925,7 +942,8 @@ test("mountSoloSceneShell posts rest action and shows rest result", async () => 
 
   const mounted = mountSoloSceneShell(root, { apiClient, runId: "run_test" });
   await mounted.reload();
-  await restButton.handler();
+  root._l.click({ target: clickTarget({ "[data-solo-action='rest']": { "data-rest-type": "short" } }) });
+  await new Promise((resolve) => setTimeout(resolve, 0));
 
   assert.deepEqual(calls, [["action", "run_test", { type: "rest", actorId: "player", restType: "short" }]]);
   assert.match(root.innerHTML, /Short Rest/);
@@ -945,6 +963,10 @@ test("mountSoloSceneShell posts use_item action and shows item result", async ()
   };
   const root = {
     innerHTML: "",
+    _l: {},
+    addEventListener(name, handler) {
+      this._l[name] = handler;
+    },
     querySelectorAll(selector) {
       return selector === "[data-solo-action='use_item']" ? [useButton] : [];
     }
@@ -986,7 +1008,8 @@ test("mountSoloSceneShell posts use_item action and shows item result", async ()
 
   const mounted = mountSoloSceneShell(root, { apiClient, runId: "run_test" });
   await mounted.reload();
-  await useButton.handler();
+  root._l.click({ target: clickTarget({ "[data-solo-action='use_item']": { "data-item-id": "field_ration" } }) });
+  await new Promise((resolve) => setTimeout(resolve, 0));
 
   assert.deepEqual(calls, [["action", "run_test", {
     type: "use_item",
@@ -1079,175 +1102,136 @@ test("renderSoloSceneShell includes mobile-friendly layout markers", () => {
   assert.match(html, /solo-scene-side/);
 });
 
-test("bindSoloSceneShell lets inspectable entity cards trigger inspect", () => {
-  const events = {};
-  const fakeCard = {
-    getAttribute(name) {
-      if (name === "data-entity-id") {
-        return "npc:placeholder_npc";
+// #15-full: action handlers are now DELEGATED — dispatchSoloClick(target) walks
+// the target via closest(). A fake target matches a set of selectors and carries
+// per-selector attributes, so these tests exercise the real dispatch a browser
+// click would produce (target.closest(sel) → element.getAttribute(attr)).
+function clickTarget(matches = {}) {
+  return {
+    closest(selector) {
+      if (!(selector in matches)) {
+        return null;
       }
-      return null;
-    },
-    addEventListener(name, handler) {
-      events[name] = handler;
+      const attrs = matches[selector] || {};
+      return { getAttribute: (name) => (name in attrs ? attrs[name] : null) };
     }
   };
-  const root = {
-    querySelectorAll(selector) {
-      if (selector === ".solo-entity-card.inspectable") {
-        return [fakeCard];
-      }
-      return [];
-    }
-  };
+}
+
+test("dispatchSoloClick: inspectable entity card triggers inspect", () => {
   let inspected = null;
-  bindSoloSceneShell(root, {
-    onInspect(entity) {
-      inspected = entity;
-    }
-  });
-  events.click();
+  const handled = dispatchSoloClick(
+    clickTarget({ ".solo-entity-card.inspectable": { "data-entity-id": "npc:placeholder_npc" } }),
+    { onInspect: (e) => (inspected = e) }
+  );
+  assert.equal(handled, true);
   assert.deepEqual(inspected, { entityId: "npc:placeholder_npc" });
 });
 
-test("bindSoloSceneShell lets GM mode buttons request mode changes", () => {
+test("dispatchSoloClick: GM mode button requests the mode change", () => {
   const calls = [];
-  const buttons = [
-    {
-      addEventListener(_event, handler) {
-        this.handler = handler;
-      },
-      getAttribute(name) {
-        return name === "data-solo-gm-mode" ? "provider" : "";
-      }
-    },
-    {
-      addEventListener(_event, handler) {
-        this.handler = handler;
-      },
-      getAttribute(name) {
-        return name === "data-solo-gm-mode" ? "placeholder" : "";
-      }
-    }
-  ];
-  const root = {
-    querySelectorAll(selector) {
-      return selector === "[data-solo-gm-mode]" ? buttons : [];
-    }
-  };
-
-  bindSoloSceneShell(root, {
-    onGmMode(mode) {
-      calls.push(mode);
-    }
-  });
-  buttons[0].handler();
-  buttons[1].handler();
+  dispatchSoloClick(clickTarget({ "[data-solo-gm-mode]": { "data-solo-gm-mode": "provider" } }), { onGmMode: (m) => calls.push(m) });
+  dispatchSoloClick(clickTarget({ "[data-solo-gm-mode]": { "data-solo-gm-mode": "placeholder" } }), { onGmMode: (m) => calls.push(m) });
   assert.deepEqual(calls, [{ mode: "provider" }, { mode: "placeholder" }]);
 });
 
-test("bindSoloSceneShell lets Search Area trigger search action", () => {
-  const fakeButton = {
-    addEventListener(_event, handler) {
-      this.handler = handler;
-    }
-  };
-  const root = {
-    querySelectorAll(selector) {
-      return selector === "[data-solo-action='search']" ? [fakeButton] : [];
-    }
-  };
+test("dispatchSoloClick: Search Area triggers search", () => {
   let searched = false;
-  bindSoloSceneShell(root, {
-    onSearch() {
-      searched = true;
-    }
-  });
-
-  fakeButton.handler();
-
+  dispatchSoloClick(clickTarget({ "[data-solo-action='search']": {} }), { onSearch: () => (searched = true) });
   assert.equal(searched, true);
 });
 
-test("bindSoloSceneShell lets Talk trigger talk action", () => {
-  const fakeButton = {
-    addEventListener(_event, handler) {
-      this.handler = handler;
-    },
-    getAttribute(name) {
-      return name === "data-entity-id" ? "npc:placeholder_npc" : "";
-    }
-  };
-  const root = {
-    querySelectorAll(selector) {
-      return selector === "[data-solo-action='talk']" ? [fakeButton] : [];
-    }
-  };
+test("dispatchSoloClick: Talk triggers talk with entity + target", () => {
   let talked = null;
-  bindSoloSceneShell(root, {
-    onTalk(entity) {
-      talked = entity;
-    }
-  });
-
-  fakeButton.handler({ stopPropagation() {} });
-
-  assert.deepEqual(talked, {
-    entityId: "npc:placeholder_npc",
-    targetEntityId: "npc:placeholder_npc"
-  });
+  dispatchSoloClick(
+    clickTarget({ "[data-solo-action='talk']": { "data-entity-id": "npc:placeholder_npc" } }),
+    { onTalk: (e) => (talked = e) }
+  );
+  assert.deepEqual(talked, { entityId: "npc:placeholder_npc", targetEntityId: "npc:placeholder_npc" });
 });
 
-test("bindSoloSceneShell lets Rest trigger rest action", () => {
-  const fakeButton = {
-    addEventListener(_event, handler) {
-      this.handler = handler;
-    },
-    getAttribute(name) {
-      return name === "data-rest-type" ? "long" : "";
-    }
-  };
-  const root = {
-    querySelectorAll(selector) {
-      return selector === "[data-solo-action='rest']" ? [fakeButton] : [];
-    }
-  };
+test("dispatchSoloClick: Rest triggers rest with rest type", () => {
   let rested = null;
-  bindSoloSceneShell(root, {
-    onRest(action) {
-      rested = action;
-    }
-  });
-
-  fakeButton.handler();
-
+  dispatchSoloClick(clickTarget({ "[data-solo-action='rest']": { "data-rest-type": "long" } }), { onRest: (a) => (rested = a) });
   assert.deepEqual(rested, { restType: "long" });
 });
 
-test("bindSoloSceneShell lets Use trigger use item action", () => {
-  const fakeButton = {
-    addEventListener(_event, handler) {
-      this.handler = handler;
-    },
-    getAttribute(name) {
-      return name === "data-item-id" ? "field_ration" : "";
-    }
-  };
-  const root = {
-    querySelectorAll(selector) {
-      return selector === "[data-solo-action='use_item']" ? [fakeButton] : [];
-    }
-  };
+test("dispatchSoloClick: Use triggers use item", () => {
   let used = null;
-  bindSoloSceneShell(root, {
-    onUseItem(action) {
-      used = action;
-    }
-  });
-
-  fakeButton.handler();
-
+  dispatchSoloClick(clickTarget({ "[data-solo-action='use_item']": { "data-item-id": "field_ration" } }), { onUseItem: (a) => (used = a) });
   assert.deepEqual(used, { itemId: "field_ration" });
+});
+
+test("dispatchSoloClick: a Talk button INSIDE an inspectable card fires talk, NOT the card's inspect", () => {
+  // Both selectors match (the button sits inside the card). The more-specific
+  // action must win — this reproduces the old per-button stopPropagation.
+  let talked = null;
+  let inspected = null;
+  dispatchSoloClick(
+    clickTarget({
+      "[data-solo-action='talk']": { "data-entity-id": "npc:x" },
+      ".solo-entity-card.inspectable": { "data-entity-id": "npc:x" }
+    }),
+    { onTalk: (e) => (talked = e), onInspect: (e) => (inspected = e) }
+  );
+  assert.deepEqual(talked, { entityId: "npc:x", targetEntityId: "npc:x" });
+  assert.equal(inspected, null, "card inspect must NOT also fire");
+});
+
+test("dispatchSoloClick: move, tab, bring-back and cog dispatch correctly", () => {
+  let moved = null;
+  let tabbed = null;
+  let broughtBack = null;
+  let cog = null;
+  dispatchSoloClick(clickTarget({ "[data-solo-action='move']": { "data-location-id": "loc_b", "data-direction": "east" } }), { onMove: (m) => (moved = m) });
+  dispatchSoloClick(clickTarget({ "[data-solo-tab]": { "data-solo-tab": "journal" } }), { onTab: (t) => (tabbed = t) });
+  dispatchSoloClick(clickTarget({ "[data-solo-npc-bringback]": { "data-entity-id": "npc:y" } }), { onBringBack: (e) => (broughtBack = e) });
+  dispatchSoloClick(clickTarget({ "[data-solo-cog]": { "data-solo-cog": "settings" } }), { onCogPlaceholder: (v) => (cog = v) });
+  assert.deepEqual(moved, { locationId: "loc_b", direction: "east" });
+  assert.deepEqual(tabbed, { tab: "journal" });
+  assert.deepEqual(broughtBack, { entityId: "npc:y" });
+  assert.equal(cog, "settings");
+});
+
+test("dispatchSoloClick returns false for an unrelated target", () => {
+  assert.equal(dispatchSoloClick(clickTarget({ ".something-else": {} }), {}), false);
+});
+
+test("dispatchSoloKeydown: Enter on an inspectable card triggers inspect", () => {
+  let inspected = null;
+  let prevented = false;
+  const handled = dispatchSoloKeydown(
+    { key: "Enter", preventDefault: () => (prevented = true), target: clickTarget({ ".solo-entity-card.inspectable": { "data-entity-id": "npc:z" } }) },
+    { onInspect: (e) => (inspected = e) }
+  );
+  assert.equal(handled, true);
+  assert.equal(prevented, true);
+  assert.deepEqual(inspected, { entityId: "npc:z" });
+});
+
+test("bindSoloSceneShell binds ONE delegated click listener on the stable root", () => {
+  const listeners = {};
+  let addCount = 0;
+  const root = {
+    querySelectorAll() {
+      return [];
+    },
+    addEventListener(name, handler) {
+      addCount += 1;
+      listeners[name] = handler;
+    }
+  };
+  let searched = false;
+  bindSoloSceneShell(root, { onSearch: () => (searched = true) });
+  // Bound once for click, once for keydown — not per element.
+  assert.equal(addCount, 2);
+  assert.equal(typeof listeners.click, "function");
+  // A delegated click on a search button routes through the single listener.
+  listeners.click({ target: clickTarget({ "[data-solo-action='search']": {} }) });
+  assert.equal(searched, true);
+  // Re-binding on a subsequent full render does NOT add duplicate listeners.
+  bindSoloSceneShell(root, { onSearch: () => {} });
+  assert.equal(addCount, 2, "delegation is bound exactly once per root");
 });
 
 test("createMoveAction builds persisted move action shape", () => {

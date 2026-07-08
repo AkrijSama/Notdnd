@@ -2950,36 +2950,81 @@ export function renderSoloSceneShell(state = {}) {
   `;
 }
 
+// #15-full event delegation. One click / keydown dispatcher, walked from the
+// event target via closest(). PURE and exported so it's unit-testable without a
+// DOM, and — crucially — bound ONCE on the stable root (which is never replaced,
+// only its innerHTML), so every action handler survives an in-place turn patch
+// of the stage OR the rail with no rebind. Order matters: the most-specific
+// action (a Talk/Inspect button inside an inspectable card) is matched BEFORE the
+// card, reproducing the old per-button stopPropagation.
+export function dispatchSoloClick(target, handlers = {}) {
+  const closest = (sel) => (target && typeof target.closest === "function" ? target.closest(sel) : null);
+  let el;
+  if ((el = closest("[data-solo-action='move']"))) {
+    handlers.onMove?.({ locationId: el.getAttribute("data-location-id"), direction: el.getAttribute("data-direction") || null });
+    return true;
+  }
+  if ((el = closest("[data-solo-action='inspect']"))) { handlers.onInspect?.({ entityId: el.getAttribute("data-entity-id") }); return true; }
+  if ((el = closest("[data-solo-action='search']"))) { handlers.onSearch?.(); return true; }
+  if ((el = closest("[data-solo-action='talk']"))) {
+    handlers.onTalk?.({ entityId: el.getAttribute("data-entity-id"), targetEntityId: el.getAttribute("data-entity-id") });
+    return true;
+  }
+  if ((el = closest("[data-solo-action='rest']"))) { handlers.onRest?.({ restType: el.getAttribute("data-rest-type") || "short" }); return true; }
+  if ((el = closest("[data-solo-action='use_item']"))) { handlers.onUseItem?.({ itemId: el.getAttribute("data-item-id") }); return true; }
+  if ((el = closest("[data-solo-gm-mode]"))) { handlers.onGmMode?.({ mode: el.getAttribute("data-solo-gm-mode") }); return true; }
+  if ((el = closest("[data-solo-npc-bringback]"))) { handlers.onBringBack?.({ entityId: el.getAttribute("data-entity-id") }); return true; }
+  // Inspectable card AFTER the action buttons it may contain.
+  if ((el = closest(".solo-entity-card.inspectable"))) { handlers.onInspect?.({ entityId: el.getAttribute("data-entity-id") }); return true; }
+  if ((el = closest("[data-solo-tab]"))) { handlers.onTab?.({ tab: el.getAttribute("data-solo-tab") }); return true; }
+  if ((el = closest("[data-solo-skin]"))) { handlers.onSkin?.({ skin: el.getAttribute("data-solo-skin") }); return true; }
+  if ((el = closest("[data-solo-font]"))) { handlers.onFont?.({ fontSet: el.getAttribute("data-solo-font") }); return true; }
+  if ((el = closest("[data-solo-dialogue-end]"))) { handlers.onDialogueEnd?.(); return true; }
+  if ((el = closest("[data-solo-dialogue-reply-submit]"))) { handlers.onDialogueReply?.(); return true; }
+  if ((el = closest("[data-solo-dialogue-close]"))) { handlers.onDialogueClose?.(); return true; }
+  if ((el = closest("[data-scene-redo]"))) { handlers.onSceneRedo?.(); return true; }
+  if ((el = closest("[data-scene-save]"))) { handlers.onSceneSave?.(); return true; }
+  if ((el = closest("[data-solo-npc-close]"))) { handlers.onNpcClose?.(); return true; }
+  if ((el = closest("[data-solo-npc-submit]"))) { handlers.onNpcSubmit?.(); return true; }
+  if ((el = closest("[data-solo-action='reload-scene']"))) { handlers.onReload?.(); return true; }
+  if ((el = closest("[data-solo-banner-dismiss]"))) { handlers.onDismissBanner?.(); return true; }
+  if ((el = closest("[data-solo-home]"))) { handlers.onReturnHome?.(); return true; }
+  if ((el = closest("[data-solo-exit]"))) { handlers.onExit?.(); return true; }
+  if ((el = closest("[data-solo-guest-save]"))) { handlers.onGuestSave?.(); return true; }
+  if ((el = closest("[data-solo-menu-toggle]"))) { handlers.onMenuToggle?.(); return true; }
+  if ((el = closest("[data-solo-cog]"))) { handlers.onCogPlaceholder?.(el.getAttribute("data-solo-cog")); return true; }
+  return false;
+}
+
+// Delegated keydown: Enter/Space activates an inspectable entity card (a11y).
+export function dispatchSoloKeydown(event, handlers = {}) {
+  const key = event?.key;
+  if (key !== "Enter" && key !== " ") {
+    return false;
+  }
+  const target = event?.target;
+  const card = target && typeof target.closest === "function" ? target.closest(".solo-entity-card.inspectable") : null;
+  if (card) {
+    event.preventDefault?.();
+    handlers.onInspect?.({ entityId: card.getAttribute("data-entity-id") });
+    return true;
+  }
+  return false;
+}
+
 export function bindSoloSceneShell(root, handlers = {}) {
-  root.querySelectorAll("[data-solo-action='reload-scene']").forEach((button) => {
-    button.addEventListener("click", () => handlers.onReload?.());
-  });
-
-  root.querySelectorAll("[data-solo-banner-dismiss]").forEach((button) => {
-    button.addEventListener("click", () => handlers.onDismissBanner?.());
-  });
-
-  root.querySelectorAll("[data-solo-exit]").forEach((button) => {
-    button.addEventListener("click", () => handlers.onExit?.());
-  });
-
-  root.querySelectorAll("[data-solo-home]").forEach((button) => {
-    button.addEventListener("click", () => handlers.onReturnHome?.());
-  });
-
-  // Guest save: hand off to the home screen with the register panel open. The
-  // run is untouched — registering upgrades the guest in place, then the run is
-  // right there on the home screen to continue.
-  root.querySelectorAll("[data-solo-guest-save]").forEach((button) => {
-    button.addEventListener("click", () => handlers.onGuestSave?.());
-  });
-
-  root.querySelectorAll("[data-solo-menu-toggle]").forEach((button) => {
-    button.addEventListener("click", () => handlers.onMenuToggle?.());
-  });
-  root.querySelectorAll("[data-solo-cog]").forEach((button) => {
-    button.addEventListener("click", () => handlers.onCogPlaceholder?.(button.getAttribute("data-solo-cog")));
-  });
+  // Always publish the latest handlers so the once-bound delegated listener
+  // dispatches through the current closure set.
+  root.__soloHandlers = handlers;
+  // Bind the delegated click/keydown listeners exactly ONCE per root. The root
+  // element itself is never torn down (fullRender only replaces its innerHTML),
+  // so a single delegated listener survives every render AND every in-place
+  // patch — this is what lets a turn repaint the stage/rail without rebinding.
+  if (!root.__soloDelegated && typeof root.addEventListener === "function") {
+    root.__soloDelegated = true;
+    root.addEventListener("click", (event) => dispatchSoloClick(event?.target, root.__soloHandlers || {}));
+    root.addEventListener("keydown", (event) => dispatchSoloKeydown(event, root.__soloHandlers || {}));
+  }
 
   // ---- Battle map (Phase 2): select / drag / click-move / arrow keys / undo ----
   const parseCell = (value) => {
@@ -3059,96 +3104,6 @@ export function bindSoloSceneShell(root, handlers = {}) {
     });
   }
 
-  root.querySelectorAll("[data-solo-action='move']").forEach((button) => {
-    button.addEventListener("click", () => {
-      handlers.onMove?.({
-        locationId: button.getAttribute("data-location-id"),
-        direction: button.getAttribute("data-direction") || null
-      });
-    });
-  });
-
-  root.querySelectorAll("[data-solo-action='inspect']").forEach((button) => {
-    button.addEventListener("click", (event) => {
-      event.stopPropagation();
-      handlers.onInspect?.({
-        entityId: button.getAttribute("data-entity-id")
-      });
-    });
-  });
-
-  root.querySelectorAll("[data-solo-action='search']").forEach((button) => {
-    button.addEventListener("click", () => handlers.onSearch?.());
-  });
-
-  root.querySelectorAll("[data-solo-action='talk']").forEach((button) => {
-    button.addEventListener("click", (event) => {
-      event.stopPropagation();
-      return handlers.onTalk?.({
-        entityId: button.getAttribute("data-entity-id"),
-        targetEntityId: button.getAttribute("data-entity-id")
-      });
-    });
-  });
-
-  root.querySelectorAll("[data-solo-action='rest']").forEach((button) => {
-    button.addEventListener("click", () => {
-      return handlers.onRest?.({
-        restType: button.getAttribute("data-rest-type") || "short"
-      });
-    });
-  });
-
-  root.querySelectorAll("[data-solo-action='use_item']").forEach((button) => {
-    button.addEventListener("click", () => {
-      return handlers.onUseItem?.({
-        itemId: button.getAttribute("data-item-id")
-      });
-    });
-  });
-
-  root.querySelectorAll("[data-solo-gm-mode]").forEach((button) => {
-    button.addEventListener("click", () => {
-      handlers.onGmMode?.({
-        mode: button.getAttribute("data-solo-gm-mode")
-      });
-    });
-  });
-
-  root.querySelectorAll(".solo-entity-card.inspectable").forEach((card) => {
-    card.addEventListener("click", () => {
-      handlers.onInspect?.({
-        entityId: card.getAttribute("data-entity-id")
-      });
-    });
-    card.addEventListener("keydown", (event) => {
-      if (event.key === "Enter" || event.key === " ") {
-        event.preventDefault();
-        handlers.onInspect?.({
-          entityId: card.getAttribute("data-entity-id")
-        });
-      }
-    });
-  });
-
-  root.querySelectorAll("[data-solo-tab]").forEach((button) => {
-    button.addEventListener("click", () => {
-      handlers.onTab?.({ tab: button.getAttribute("data-solo-tab") });
-    });
-  });
-
-  root.querySelectorAll("[data-solo-skin]").forEach((button) => {
-    button.addEventListener("click", () => {
-      handlers.onSkin?.({ skin: button.getAttribute("data-solo-skin") });
-    });
-  });
-
-  root.querySelectorAll("[data-solo-font]").forEach((button) => {
-    button.addEventListener("click", () => {
-      handlers.onFont?.({ fontSet: button.getAttribute("data-solo-font") });
-    });
-  });
-
   // ---- Visual-novel dialogue overlay (typewriter + skip + close) ----
   // Only querySelectorAll is used (test mocks expose no querySelector); unknown
   // selectors return [] in the browser and in the lightweight mount test mocks.
@@ -3196,27 +3151,11 @@ export function bindSoloSceneShell(root, handlers = {}) {
       });
     });
   }
-  // Backdrop click softly closes the overlay (keeps the right-rail talk summary).
-  root.querySelectorAll("[data-solo-dialogue-close]").forEach((el) => {
-    el.addEventListener("click", () => handlers.onDialogueClose?.());
-  });
-  // Explicit "End conversation" exits the VN back to the ambient scene.
-  root.querySelectorAll("[data-solo-dialogue-end]").forEach((el) => {
-    el.addEventListener("click", (event) => {
-      event.stopPropagation?.();
-      handlers.onDialogueEnd?.();
-    });
-  });
-  // Player reply: typing updates the draft; Reply button / Enter advances the
-  // conversation through the existing talk pipeline (next beat).
+  // Dialogue close / end / reply-submit CLICKS are handled by the delegated
+  // dispatcher (dispatchSoloClick). Only the element-lifecycle bits stay here:
+  // the reply <input> (draft + Enter-to-send), which needs the live element.
   const dialogueReplyInput = root.querySelectorAll("[data-solo-dialogue-reply-input]")[0] || null;
   const submitDialogueReply = () => handlers.onDialogueReply?.();
-  root.querySelectorAll("[data-solo-dialogue-reply-submit]").forEach((el) => {
-    el.addEventListener("click", (event) => {
-      event.stopPropagation?.();
-      submitDialogueReply();
-    });
-  });
   if (dialogueReplyInput && typeof dialogueReplyInput.addEventListener === "function") {
     dialogueReplyInput.addEventListener("input", () => {
       handlers.onDialogueReplyDraft?.({ value: dialogueReplyInput.value });
@@ -3272,18 +3211,9 @@ export function bindSoloSceneShell(root, handlers = {}) {
   // ---- In-scene NPC creator modal + cast roster ----
   // #22: the "+ Bring someone in" entry point (data-solo-npc-create) was removed
   // from the solo build; its binding is gone too (it matched nothing — inert).
-  root.querySelectorAll("[data-scene-redo]").forEach((button) => {
-    button.addEventListener("click", () => handlers.onSceneRedo?.());
-  });
-  root.querySelectorAll("[data-scene-save]").forEach((button) => {
-    button.addEventListener("click", () => handlers.onSceneSave?.());
-  });
-  root.querySelectorAll("[data-solo-npc-close]").forEach((el) => {
-    el.addEventListener("click", () => handlers.onNpcClose?.());
-  });
-  root.querySelectorAll("[data-solo-npc-submit]").forEach((button) => {
-    button.addEventListener("click", () => handlers.onNpcSubmit?.());
-  });
+  // Scene redo/save + NPC modal close/submit CLICKS are delegated
+  // (dispatchSoloClick). The NPC modal's <input>/<select>/<file> fields below
+  // stay element-lifecycle — they read live element values on change/input.
   const npcFileInput = root.querySelectorAll("[data-solo-npc-file]")[0] || null;
   if (npcFileInput && typeof npcFileInput.addEventListener === "function") {
     npcFileInput.addEventListener("change", (event) => {
@@ -3306,11 +3236,7 @@ export function bindSoloSceneShell(root, handlers = {}) {
       el.addEventListener("input", () => handlers.onNpcField?.({ field, value: el.value }));
     }
   }
-  root.querySelectorAll("[data-solo-npc-bringback]").forEach((button) => {
-    button.addEventListener("click", () => {
-      handlers.onBringBack?.({ entityId: button.getAttribute("data-entity-id") });
-    });
-  });
+  // NPC "bring back" click is delegated (dispatchSoloClick).
 
   const attemptInput = root.querySelectorAll("[data-solo-attempt-input]")[0] || null;
   const submitAttempt = () => {
@@ -3539,7 +3465,11 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
         npc: Boolean(state.npcCreator && state.npcCreator.open),
         art: [scene.locationImageUri || null, Boolean(scene.locationImageLocked)],
         sidebar: renderSoloCharacterSidebar(character),
-        rail: renderSoloRightRail(state),
+        // #15-full: the rail (rolls / clock / cast / exits) is NO LONGER a
+        // full-render trigger — the turn fast-path repaints it in place (its
+        // handlers are delegated on root), so a within-location turn never
+        // rebuilds the stage DOM. A cross-location move still forces a full
+        // render via the `art` key above (the scene image changes).
         upgrade: renderSoloUpgradePrompt(scene),
         overlay: renderSoloDialogueOverlay(state),
         modal: renderNpcCreatorModal(state)
@@ -3612,6 +3542,16 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     }
     outcomeEl.innerHTML = renderSoloActionOutcome(state);
     thinkingEl.innerHTML = renderSoloThinkingIndicator(state);
+
+    // #15-full: repaint the right rail in place (rolls / clock / cast / exits).
+    // Because it's no longer in stageSignature, patch it unconditionally on every
+    // fast-path turn. Its action handlers are delegated on the stable root, so
+    // replacing the rail node needs NO rebind. Guarded so the lightweight test
+    // mocks (no querySelector / outerHTML) simply skip it.
+    const railEl = typeof root.querySelector === "function" ? root.querySelector(".solo-game-rail") : null;
+    if (railEl && typeof railEl === "object" && "outerHTML" in railEl) {
+      railEl.outerHTML = renderSoloRightRail(state);
+    }
 
     const busy = Boolean(state.busy);
     if (busy) {
