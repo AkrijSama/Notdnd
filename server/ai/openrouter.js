@@ -784,6 +784,21 @@ async function requestWithFallback(messages, preferredModel, options = {}) {
     return { ...res, providerLabel: "local", latencyMs: Date.now() - tf, local: true };
   }
 
+  // INTERPRETER FAST-LANE (latency #49, opt-in). The attempt interpreter is a
+  // SEQUENTIAL, roll-gating utility call (~8s on DeepSeek V4, measured) that runs
+  // before narration on every contested turn. Routing the whole utility tier to
+  // the FREE gemini lane 429-rate-limits (reverted, see below), but pointing JUST
+  // the interpreter at a fast RELIABLE model cuts that ~8s with no effect on the
+  // narration model or the chain. Opt-in: set NOTDND_INTERPRETER_MODEL to a fast
+  // model and pass { model, bypassChain:true } (attemptInterpreter does). A single
+  // direct attempt — on failure the interpreter catches and falls back to its
+  // heuristic classification, so this can only speed up, never break, a turn.
+  if (!mockModeEnabled() && options.bypassChain && typeof options.model === "string" && options.model.trim()) {
+    const t0 = Date.now();
+    const res = await requestOpenRouter(messages, options.model.trim(), options);
+    return { ...res, providerLabel: "openrouter", latencyMs: Date.now() - t0, local: false };
+  }
+
   // TESTING two-lane cloud chain (flagged, off by default). When active it REPLACES
   // the OpenRouter cloud portion with Gemini -> Groq, keeping local as last resort;
   // mock mode skips it so tests stay hermetic. Unset/off => the unchanged path below.

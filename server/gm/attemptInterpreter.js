@@ -57,6 +57,12 @@ const ALLOWED_OUTPUT_FIELDS = new Set([
 ]);
 
 const INTERPRETER_TIMEOUT_MS = 15000;
+// Opt-in interpreter fast-lane (#49). Unset => unchanged behavior (the interpreter
+// rides the configured utility tier / cloud chain, ~8s on DeepSeek V4). Set to a
+// fast RELIABLE model to bypass the chain for JUST the interpreter and cut that ~8s
+// off every contested turn — narration is untouched. Reliable ≠ the free gemini
+// tier (that 429s under per-turn interpreter volume); use a fast paid model.
+const INTERPRETER_MODEL = (process.env.NOTDND_INTERPRETER_MODEL || process.env.INKBORNE_INTERPRETER_MODEL || "").trim();
 const INTERPRETER_MAX_TOKENS = 500;
 
 function isString(value) {
@@ -275,6 +281,9 @@ export async function interpretAttemptWithGm({ providerInput, campaignId, editio
         actorUserId,
         temperature: 0.2,
         maxResponseTokens: INTERPRETER_MAX_TOKENS,
+        // #49 fast-lane: when NOTDND_INTERPRETER_MODEL is set, this single call
+        // goes direct to that model (bypassing the cloud chain); unset => unchanged.
+        ...(INTERPRETER_MODEL ? { model: INTERPRETER_MODEL, bypassChain: true } : {}),
         // Reasoning OFF — this is structured adjudication (resolve intent → DC /
         // ability / band / consequence), not open deliberation. On a reasoning GM
         // model, reasoning-ON silently ate the whole INTERPRETER_MAX_TOKENS budget
