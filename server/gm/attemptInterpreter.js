@@ -51,7 +51,9 @@ const ALLOWED_OUTPUT_FIELDS = new Set([
   "failureConsequence",
   // POSSESSION: flags an action that relies on a specific claimed item; the server
   // verifies it against real inventory (resolvePossessionClaim).
-  "requiredItem"
+  "requiredItem",
+  // WORLD CLOCK (#14): in-fiction minutes this action costs; the server bounds + commits it.
+  "durationMinutes"
 ]);
 
 const INTERPRETER_TIMEOUT_MS = 15000;
@@ -133,13 +135,19 @@ export function buildAttemptInterpreterMessages(providerInput) {
     `    "retryEffect": ${retryValues},  // for "objectState": "blocked" forecloses retrying it; "harder" raises the bar; "none" leaves it open`,
     '    "reason": string|null       // short justification, consistent with failureNarration',
     "  },",
-    '  "requiredItem": { "name": string, "specific": boolean } | null  // see POSSESSION below',
+    '  "requiredItem": { "name": string, "specific": boolean } | null,  // see POSSESSION below',
+    '  "durationMinutes": number|null  // how many in-fiction MINUTES this action takes (see TIME below)',
     "}",
     "",
     "POSSESSION — does this action RELY ON the player already carrying a SPECIFIC item?",
     '- If yes (e.g. "unlock it with the brass key I have", "poison his drink with the vial from my boot", "show the guard my writ of passage"), set requiredItem to { "name": "<the item, e.g. brass key>", "specific": true }. The SERVER checks whether the player truly holds it and fails the action if they do not — so you do NOT need to know their inventory; just NAME the claimed item.',
     '- If the action uses GENERIC or improvised gear the fiction plausibly provides (a rock, a stick, a torch from a rag, mud, rope), or does not depend on a specific carried item at all, set requiredItem: null.',
     "- When unsure, set requiredItem: null. Do NOT flag ordinary improvisation — only a SPECIFIC named item the player explicitly claims to be carrying.",
+    "",
+    "TIME — how many in-fiction MINUTES does this action take? Set durationMinutes with real discretion:",
+    "- A glance, a quick word, drawing a blade: 0-1. Picking a lock, climbing a wall, a short search: 5-15. Searching a whole room/wing, tending a wound, a tense negotiation: 20-60. Travel across a district, waiting out a patrol, a long ritual: 60-240.",
+    "- Judge the fiction, not the dice — a FAILED lock-pick still consumed the minutes spent trying. The server advances the world clock (day/night) by what you set, so be honest about long actions.",
+    "- Omit or null for a trivially instant action and the server picks a sane default. Never exceed a few hours for a single action.",
     "",
     "THREE BANDS — the server maps the roll to one of three outcomes and commits state for EVERY one, so there is never a 'nothing happens' turn:",
     "  • SUCCESS (meet/beat DC): the player gets what they wanted, clean.",

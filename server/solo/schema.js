@@ -585,6 +585,12 @@ export function validateWorldState(world) {
     validateNumber(world.time.day, "time.day", errors);
     validateNumber(world.time.tick, "time.tick", errors);
     validateOptionalTimestamp(world.time.lastAdvancedAt, "time.lastAdvancedAt", errors);
+    // WORLD CLOCK (#14) — real minutes clock (all optional so legacy { day, tick }
+    // runs stay valid; ensureClock() backfills them on first advance).
+    validateOptionalNumber(world.time.minutes, "time.minutes", errors);
+    validateOptionalNumber(world.time.minuteOfDay, "time.minuteOfDay", errors);
+    validateOptionalString(world.time.clock, "time.clock", errors);
+    validateOptionalString(world.time.phase, "time.phase", errors);
   }
 
   validateObject(world.flags, "flags", errors);
@@ -1488,7 +1494,12 @@ export function createDefaultSoloRun(options = {}) {
       name: "Placeholder World",
       time: {
         day: 1,
-        tick: 0
+        tick: 0,
+        // WORLD CLOCK (#14): a new run starts at 07:00 on day 1 (mid-morning).
+        minutes: 7 * 60,
+        minuteOfDay: 7 * 60,
+        clock: "07:00",
+        phase: "day"
       },
       flags: {},
       tags: []

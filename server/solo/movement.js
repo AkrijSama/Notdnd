@@ -5,6 +5,10 @@ import {
   validateEntityAgainstPolicy,
   validateSoloRun
 } from "./schema.js";
+import { advanceClock } from "./worldClock.js";
+
+// WORLD CLOCK (#14): in-fiction minutes a single location move costs.
+const TRAVEL_MINUTES = 10;
 
 function result(errors) {
   return {
@@ -390,6 +394,10 @@ export function resolveMovementAction(run, action, options = {}) {
   if (updatedRun.world?.time && typeof updatedRun.world.time.tick === "number") {
     updatedRun.world.time.tick += 1;
   }
+  // WORLD CLOCK (#14): travel between locations advances real time. A single move
+  // is a district-scale hop; ~10 in-fiction minutes keeps day/night honest without
+  // burning hours per step. (The legacy tick bump above is left for any reader of it.)
+  advanceClock(updatedRun, TRAVEL_MINUTES, { now, fallback: TRAVEL_MINUTES });
 
   // Reaching new ground breaks a failure-loop: clear the consecutive-failure
   // streak (see attempt.js / actionNarration.js escalation) — you made progress.

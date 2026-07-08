@@ -5,8 +5,12 @@ import {
   validateEntityAgainstPolicy,
   validateSoloRun
 } from "./schema.js";
+import { advanceClock } from "./worldClock.js";
 
 const REST_TYPES = new Set(["short", "long"]);
+// WORLD CLOCK (#14): rest's legacy `timeAdvanced` is in HOURS (short=1, long=8);
+// convert to real minutes so a long rest actually rolls the day into night/morning.
+const REST_HOUR_MINUTES = 60;
 
 function result(errors) {
   return {
@@ -236,6 +240,10 @@ export function resolveRestAction(run, action, options = {}) {
     updatedRun.world.time.tick += timeAdvanced;
     updatedRun.world.time.lastAdvancedAt = now;
   }
+  // WORLD CLOCK (#14): advance the real minutes clock by the rest's hours so the
+  // day/night phase moves (a long rest passes 8h; short passes 1h). Bounded by the
+  // per-advance cap in advanceClock, so a long rest lands as a large-but-sane jump.
+  advanceClock(updatedRun, timeAdvanced * REST_HOUR_MINUTES, { now, fallback: timeAdvanced * REST_HOUR_MINUTES });
 
   const resources = updatedRun.player?.resources || {};
   if (restType === "short") {

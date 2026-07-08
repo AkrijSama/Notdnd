@@ -13,6 +13,7 @@ import {
 import { getUsableInventoryItems } from "./useItem.js";
 import { POLICY_VIOLATION_NARRATION, screenPlayerIntent } from "./safety.js";
 import { applyDamage, isIncapacitated } from "./death.js";
+import { advanceClock, sanitizeDurationMinutes, DEFAULT_OBSERVE_MINUTES, DEFAULT_ACTION_MINUTES, DEFAULT_CHECK_MINUTES } from "./worldClock.js";
 
 const PROVIDER_OUTPUT_FIELDS = new Set([
   "summary",
@@ -35,7 +36,12 @@ const PROVIDER_OUTPUT_FIELDS = new Set([
   // POSSESSION CLAIM: when an action RELIES ON a specific item the player claims
   // to carry, the interpreter flags it here ({ name, specific }); the SERVER then
   // verifies possession against real inventory. See resolvePossessionClaim.
-  "requiredItem"
+  "requiredItem",
+  // WORLD CLOCK (#14): how many in-fiction MINUTES this action costs. The GM's
+  // narrative discretion (a glance is a minute, forcing a lock is ten, searching a
+  // wing is an hour); the SERVER sanity-bounds it (0..MAX_ACTION_MINUTES) and
+  // commits it to world.time. Optional — omission falls back to a band-derived default.
+  "durationMinutes"
 ]);
 const ALLOWED_EFFECT_TYPES = new Set(["timeline_event", "memory_fact", "narration", "damage"]);
 
@@ -716,6 +722,13 @@ export function validateAttemptProviderOutput(output, options = {}) {
   if (output.needsCheck !== undefined && output.needsCheck !== null && typeof output.needsCheck !== "boolean") {
     push(errors, "needsCheck", "Expected boolean");
   }
+  // World clock (#14): a proposed duration must be a NUMBER, but the server clamps
+  // the magnitude (sanitizeDurationMinutes) rather than rejecting — an out-of-band
+  // value must NOT discard the whole proposal (its failureConsequence, DC, etc.).
+  // Only a non-numeric type is a hard error so a stray string can't slip through.
+  if (output.durationMinutes !== undefined && output.durationMinutes !== null && !isNumber(output.durationMinutes)) {
+    push(errors, "durationMinutes", "Expected number");
+  }
   // Edge/Burden are the Ch3 canonical circumstance fields; advantage/disadvantage
   // are accepted as legacy wire aliases (identical mechanics).
   for (const key of ["advantage", "disadvantage", "edge", "burden"]) {
@@ -847,6 +860,10 @@ export function sanitizeAttemptProviderOutput(output, options = {}) {
     burden: output?.burden === true || output?.disadvantage === true,
     successNarration: sanitizeText(output?.successNarration),
     failureNarration: sanitizeText(output?.failureNarration),
+    // World clock (#14): keep the GM's proposed duration when it gave a number
+    // (clamped to the sane band); null means "omitted" so the resolver derives a
+    // band-appropriate default at commit time. The server always owns the clock.
+    durationMinutes: isNumber(output?.durationMinutes) ? sanitizeDurationMinutes(output.durationMinutes) : null,
     proposedEffects: Array.isArray(output?.proposedEffects)
       ? output.proposedEffects.map((effect) => ({
           type: effect.type,
@@ -1873,6 +1890,17 @@ export function resolveAttemptAction(run, action, options = {}) {
   const failStreak = band === "failure" ? priorFailStreak + 1 : 0;
   updatedRun.flags.failStreak = failStreak;
 
+  // WORLD CLOCK (#14). Commit the in-fiction time this action cost. The GM proposes
+  // durationMinutes (its narrative discretion); the server sanity-bounds it and
+  // advances world.time, re-deriving day / time-of-day / phase. When the GM omitted
+  // a duration we fall back to a band-appropriate default (a glance is a minute, a
+  // contested attempt several). Gated/unpossessed actions returned earlier, so the
+  // world never spends time on an action it refused to let happen.
+  const timeFallback = needsCheck
+    ? DEFAULT_CHECK_MINUTES
+    : (isObservationQuery(context.intent) ? DEFAULT_OBSERVE_MINUTES : DEFAULT_ACTION_MINUTES);
+  const timeAdvance = advanceClock(updatedRun, providerOutput.durationMinutes, { now, fallback: timeFallback });
+
   // A foreclosed (blocked) retry narrates the closed door, not a fresh attempt —
   // grounding the prose in the object's persisted degraded state. Otherwise the
   // provider's success/failure line stands (with the intent-aware safety net).
@@ -1920,7 +1948,11 @@ export function resolveAttemptAction(run, action, options = {}) {
     consequence: consequence || null,
     // True when this attempt hit a retry penalty (blocked auto-fail, or a harder
     // re-roll) on a GM-degraded object — the client can surface "no use retrying".
-    foreclosed
+    foreclosed,
+    // WORLD CLOCK (#14): the committed time advance for this action { minutes,
+    // before/after {day,clock,phase}, dayRolled, phaseChanged }. The narrator and
+    // status window read the AFTER clock; nothing downstream re-computes time.
+    timeAdvance: timeAdvance || null
   };
 
   const memoryEffect = (providerOutput.proposedEffects || []).find((effect) => effect.type === "memory_fact" && isString(effect.text));

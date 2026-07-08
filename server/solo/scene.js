@@ -2,6 +2,7 @@ import { providerSupportsReference, resolveImageProvider } from "../ai/providers
 import { getAvailableSoloActions } from "./actions.js";
 import { MILESTONE_MAX, RANK_LADDER, tierForMilestone, displayLevelFor, rankForPlayer } from "./progression.js";
 import { babelStatBlock } from "./babelStats.js";
+import { deriveClock } from "./worldClock.js";
 import { getVisibleEntities, validateVisibleEntity } from "./entities.js";
 import { generatePlaceholderGmNarration, validateGmSceneOutput } from "./gm.js";
 import { getAvailableMoves } from "./movement.js";
@@ -749,6 +750,14 @@ export function buildPlayerPayload(run) {
     resources: { hp: hpGauge, mp: mpGauge },
     inventory: playerInventoryArray(run),
     conditions: Array.isArray(player.conditions) ? player.conditions : [],
+    // WORLD CLOCK (#14): derived day / time-of-day / phase from the committed
+    // world.time.minutes, so the STATUS WINDOW reads one truth (never recomputed
+    // client-side). { day, clock:"HH:MM", phase, isNight, isDark, minuteOfDay }.
+    worldTime: (() => {
+      const minutes = run?.world?.time?.minutes;
+      const c = deriveClock(typeof minutes === "number" ? minutes : (typeof run?.world?.time?.day === "number" ? (run.world.time.day - 1) * 1440 + 7 * 60 : 7 * 60));
+      return { day: c.day, clock: c.hhmm, phase: c.phase, isNight: c.isNight, isDark: c.isDark, minuteOfDay: c.minuteOfDay };
+    })(),
     // Death state (STEP 0.5): 5e death-save tally, defaulted for legacy runs.
     deathSaves: {
       successes: typeof player.deathSaves?.successes === "number" ? player.deathSaves.successes : 0,
