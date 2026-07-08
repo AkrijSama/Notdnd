@@ -2438,6 +2438,19 @@ button:disabled {
   padding-top: 46px;
 }
 .solo-rail-block { padding: 18px 20px; border-bottom: 1px solid var(--border, #202024); }
+/* #40 world-clock indicator: sun/moon icon (phase-tinted) + time + phase/day. */
+.solo-rail-clock { padding-top: 12px; padding-bottom: 12px; }
+.solo-clock { display: flex; align-items: center; gap: 12px; }
+.solo-clock-icon { width: 30px; height: 30px; flex: none; }
+.solo-clock-icon circle, .solo-clock-icon path { fill: currentColor; }
+.solo-clock-icon line { stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.solo-clock-day { color: #e6b45a; }
+.solo-clock-dawn { color: #e0894c; }
+.solo-clock-dusk { color: #b877c2; }
+.solo-clock-night { color: #86a0da; }
+.solo-clock-text { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; }
+.solo-clock-time { font-family: var(--font-body, Georgia, serif); font-size: 1.5rem; color: var(--text, #d9dbe0); }
+.solo-clock-phase { font-size: 0.8rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-label, #8a7c68); }
 .solo-condition {
   display: flex;
   align-items: center;

@@ -2359,6 +2359,54 @@ export function renderSoloPresenceMap(scene = {}) {
   return `<div class="solo-presence">${head}<div class="solo-presence-grid ${terrainClass}" style="grid-template-columns:repeat(${width},1fr);grid-template-rows:repeat(${height},1fr);" role="img" aria-label="Presence map of ${escapeHtml(locationName)}">${ground.join("")}${featureCells}${cells}</div>${legendBlock}</div>`;
 }
 
+// #40 — surface the committed world clock (#14). The server derives
+// scene.player.worldTime { day, clock:"HH:MM", phase, isNight, isDark } from the
+// one committed truth; the client only READS it (never recomputes). A Caves-of-
+// Qud-style sun/moon icon + time + phase/day, styled per phase in CSS.
+const CLOCK_PHASE_META = {
+  dawn: { label: "Dawn", cls: "solo-clock-dawn" },
+  day: { label: "Day", cls: "solo-clock-day" },
+  dusk: { label: "Dusk", cls: "solo-clock-dusk" },
+  night: { label: "Night", cls: "solo-clock-night" }
+};
+
+// Sun for dawn/day/dusk (tinted per phase in CSS), crescent moon for night.
+function clockPhaseIcon(phase) {
+  if (phase === "night") {
+    return `<svg class="solo-clock-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 14.5A8 8 0 0 1 9.5 4a0.5 0.5 0 0 0-0.7-0.6 9 9 0 1 0 11.8 11.8 0.5 0.5 0 0 0-0.6-0.7z"/></svg>`;
+  }
+  const rays = [
+    [12, 1, 12, 4], [12, 20, 12, 23], [1, 12, 4, 12], [20, 12, 23, 12],
+    [4.2, 4.2, 6.3, 6.3], [17.7, 17.7, 19.8, 19.8], [4.2, 19.8, 6.3, 17.7], [17.7, 6.3, 19.8, 4.2]
+  ]
+    .map(([x1, y1, x2, y2]) => `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`)
+    .join("");
+  return `<svg class="solo-clock-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="4.5"/><g class="solo-clock-rays">${rays}</g></svg>`;
+}
+
+export function renderSoloClock(scene = {}) {
+  const wt = (scene.player && typeof scene.player.worldTime === "object" && scene.player.worldTime)
+    || (typeof scene.worldTime === "object" && scene.worldTime)
+    || null;
+  if (!wt) {
+    return "";
+  }
+  const phase = typeof wt.phase === "string" && CLOCK_PHASE_META[wt.phase] ? wt.phase : "day";
+  const meta = CLOCK_PHASE_META[phase];
+  const clock = typeof wt.clock === "string" && wt.clock ? wt.clock : "—";
+  const day = Number.isFinite(wt.day) ? wt.day : null;
+  const dayPart = day ? ` · Day ${escapeHtml(day)}` : "";
+  const aria = `Time ${clock}, ${meta.label}${day ? `, day ${day}` : ""}`;
+  return `
+    <div class="solo-clock ${meta.cls}" role="group" aria-label="${escapeHtml(aria)}" data-solo-clock>
+      ${clockPhaseIcon(phase)}
+      <div class="solo-clock-text">
+        <span class="solo-clock-time">${escapeHtml(clock)}</span>
+        <span class="solo-clock-phase">${escapeHtml(meta.label)}${dayPart}</span>
+      </div>
+    </div>`;
+}
+
 export function renderSoloRightRail(state = {}) {
   const scene = state.scene || {};
   // Prefer the full server-side cast roster (all run.npcs with portrait URIs);
@@ -2436,6 +2484,10 @@ export function renderSoloRightRail(state = {}) {
 
   return `
     <aside class="solo-game-rail solo-scene-side">
+      ${(() => {
+        const clock = renderSoloClock(scene);
+        return clock ? `<div class="solo-rail-block solo-rail-clock">${clock}</div>` : "";
+      })()}
       <div class="solo-rail-block solo-rail-presence">
         ${renderSoloPresenceMap(scene)}
       </div>
