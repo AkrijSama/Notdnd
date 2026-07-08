@@ -228,12 +228,52 @@ export function renderGmStatusPanel(gmStatus = null, selectedMode = "placeholder
 // World-entry opening: the AI-generated GM welcome, shown prominently at the top
 // of the scene the first time the player enters (server gates scene.openingNarration
 // to the opening moment). Styled as GM voice, distinct from the location copy.
-// Quoted speech inside narration prose gets a distinct color (#19). We have no
-// structured speaker for in-prose speech (only the talk/VN path carries a name),
-// so this is a render-time pass: split each paragraph on quoted runs (straight
-// OR curly quotes), escape every segment, and wrap the quoted ones in
-// .solo-dialogue. Escaping happens per-segment so the wrapper markup is the only
-// HTML we introduce — the quote text itself is still escaped.
+// #24 EM-DASH HARD STRIP (render-side, guaranteed 0% at display). The prompt-level
+// ban leaks ~1 in 3 turns, so this mechanically removes em-dashes (—), en-dashes
+// (–), horizontal bars (―), and double-hyphens (--) from ALL narration before it
+// is shown, replacing the clause break with a comma so the prose still reads. This
+// is deterministic: nothing dash-shaped survives to the screen regardless of model
+// or path. (Applies to authored beats too — a normalized beat still reads cleanly,
+// and the guarantee is literal 0% on screen.)
+function stripDashes(text) {
+  return String(text || "")
+    .replace(/\s*[—–―]+\s*/g, ", ") // em / en / bar (with surrounding space)
+    .replace(/\s+--+\s+/g, ", ")                    // " -- " double-hyphen as clause break
+    .replace(/--+/g, ", ")                          // any remaining double-hyphen
+    .replace(/\s+,/g, ",")                          // tidy " ," -> ","
+    .replace(/,\s*,+/g, ",")                         // collapse ",," -> ","
+    .replace(/,(?=[A-Za-z])/g, ", ")                // space after a comma ONLY before a letter
+                                                     // (never before a closing quote, digit, or punctuation)
+    .replace(/,\s*([.!?;:])/g, "$1")                 // ", ." -> "." when a real terminator follows
+    .trim();
+}
+
+// #23 Is a quoted run actually SPOKEN DIALOGUE (vs. a sign/label/emphasis)? The
+// old detector styled EVERY quoted run, so board notices ("LICENSED CLEANSING.")
+// and emphasized words ("clean") were miscolored as speech. Spoken dialogue is:
+// not ALL-CAPS (that's signage), and either a full utterance (3+ words) or a short
+// line that ends on real sentence punctuation ("Run!"). Emphasis (a short quoted
+// fragment with no terminal punctuation) and all-caps labels are excluded.
+function isSpokenDialogue(quotedRun) {
+  const core = String(quotedRun || "").replace(/^[“"]/, "").replace(/[”"]$/, "").trim();
+  const letters = core.replace(/[^A-Za-z]/g, "");
+  if (letters.length < 2) {
+    return false; // "..." / "!" / a stray mark
+  }
+  if (core === core.toUpperCase()) {
+    return false; // ALL-CAPS -> a sign/notice/label, not speech
+  }
+  const words = core.split(/\s+/).filter(Boolean).length;
+  const hasTerminal = /[.!?]["”]?$/.test(core) || /[.!?]/.test(core);
+  return words >= 3 || hasTerminal;
+}
+
+// Quoted SPOKEN dialogue inside narration prose gets a distinct color (#19),
+// gated by isSpokenDialogue (#23) so signs/emphasis are left as plain prose. We
+// have no structured speaker for in-prose speech (only the talk/VN path carries a
+// name), so this is a render-time pass: split each paragraph on quoted runs
+// (straight OR curly), escape every segment, wrap only genuine speech in
+// .solo-dialogue. Escaping is per-segment so the wrapper markup is the only HTML.
 const DIALOGUE_RE = /(“[^”]*”|"[^"]*")/g;
 function paragraphInnerHtml(text) {
   const raw = String(text || "");
@@ -244,8 +284,8 @@ function paragraphInnerHtml(text) {
     .split(DIALOGUE_RE)
     .filter((seg) => seg !== "" && seg !== undefined)
     .map((seg) => {
-      const isQuote = /^“[\s\S]*”$/.test(seg) || (/^"[\s\S]*"$/.test(seg) && seg.length >= 2);
-      return isQuote
+      const looksQuoted = /^“[\s\S]*”$/.test(seg) || (/^"[\s\S]*"$/.test(seg) && seg.length >= 2);
+      return looksQuoted && isSpokenDialogue(seg)
         ? `<span class="solo-dialogue">${escapeHtml(seg)}</span>`
         : escapeHtml(seg);
     })
@@ -253,15 +293,16 @@ function paragraphInnerHtml(text) {
 }
 
 // Split a narration string into spaced <p> paragraphs on blank lines, with
-// quoted dialogue colored. The ONE narration renderer — every prose surface
-// (opening, ambient location copy, per-turn GM narration) routes through this so
-// treatment is consistent (#12/#18/#19): real paragraph breaks, real spacing.
+// em-dashes stripped (#24) and quoted dialogue colored (#19/#23). The ONE
+// narration renderer — every prose surface (opening, ambient location copy,
+// per-turn GM narration) routes through this so treatment is consistent
+// (#12/#18/#19/#23/#24): real paragraph breaks, real spacing, zero dashes.
 function beatToParas(beat) {
   const paras = String(beat || "")
     .split(/\n{2,}/)
-    .map((part) => part.trim())
+    .map((part) => stripDashes(part))
     .filter(Boolean);
-  return (paras.length ? paras : [String(beat || "")]).map((part) => `<p>${paragraphInnerHtml(part)}</p>`).join("");
+  return (paras.length ? paras : [stripDashes(beat)]).map((part) => `<p>${paragraphInnerHtml(part)}</p>`).join("");
 }
 
 export function renderSoloSceneOpening(openingNarration = "", openingBeats = null) {
@@ -380,6 +421,56 @@ export function renderLocationPanel(location = {}, gmNarration = null, gmStatus 
       </div>
     </section>
   `;
+}
+
+// #25 APPEND-ONLY NARRATION LOG. Renders the accumulated turn history (oldest at
+// top, newest at bottom) so the player can scroll back through the story. Each
+// entry shows an optional "You: <intent>" header + roll/DC, then the turn's prose
+// (dashes stripped, dialogue colored via beatToParas). #20: when a turn's prose
+// contains dialogue AND a single speaker is known for it (a lone present NPC, or
+// the VOICE), a speaker nameplate is shown on the entry — full per-line
+// attribution in a crowded scene needs the GM to tag speakers (server-side).
+export function renderNarrationLog(entries = []) {
+  const list = Array.isArray(entries) ? entries.filter((e) => e && String(e.text || "").trim()) : [];
+  if (!list.length) {
+    return `<div class="solo-narration-empty">Your story begins…</div>`;
+  }
+  return list
+    .map((entry) => {
+      const cr = entry.checkResult || null;
+      const hasRoll = cr && cr.total != null;
+      const rollTag = hasRoll
+        ? `<span class="solo-log-roll ${entry.success === false ? "miss" : "hit"}">${escapeHtml(cr.total)}${cr.dc != null ? ` vs DC ${escapeHtml(cr.dc)}` : ""}</span>`
+        : "";
+      const header =
+        entry.intent && String(entry.intent).trim()
+          ? `<div class="solo-log-action"><span class="solo-log-you">You</span> ${escapeHtml(entry.intent)}${rollTag}</div>`
+          : "";
+      const hasDialogue = /[“"][^”"]+[”"]/.test(String(entry.text));
+      const nameplate =
+        entry.speaker && hasDialogue
+          ? `<div class="solo-log-speaker">${escapeHtml(entry.speaker)}</div>`
+          : "";
+      return `<article class="solo-log-entry">${header}${nameplate}<div class="solo-log-prose">${beatToParas(entry.text)}</div></article>`;
+    })
+    .join("");
+}
+
+// #20: the sole named NPC present in a scene, if exactly one — used to attribute
+// ambient dialogue to a speaker. Returns null for 0 or 2+ NPCs (ambiguous:
+// dialogue gets color only, no nameplate). Reads the same visibleEntities/cast
+// the renderer already has; introduces no new state.
+export function soleSceneSpeaker(scene = {}) {
+  const cast = Array.isArray(scene.cast) ? scene.cast : [];
+  const fromCast = cast
+    .map((c) => (c && (c.displayName || c.name)) || null)
+    .filter(Boolean);
+  if (fromCast.length === 1) {
+    return fromCast[0];
+  }
+  const ents = Array.isArray(scene.visibleEntities) ? scene.visibleEntities : [];
+  const npcs = ents.filter((e) => e && e.entityType === "npc" && (e.displayName || e.name));
+  return npcs.length === 1 ? npcs[0].displayName || npcs[0].name : null;
 }
 
 export function renderMovementPanel(scene = {}) {
@@ -1591,18 +1682,15 @@ export function renderSoloSceneInputBar(state = {}) {
   // double-submit) and surface the wait in the button label.
   const busy = Boolean(state.busy);
 
-  // #16: both chrome rows around the input are gone — the top AI-hook
-  // "Suggested" chips (scene.suggestedActions) and the bottom verb row
-  // (scene.availableActions). The free-text input is the whole interface: type
-  // what you do. The "bring someone in" tool + its confirmation stay.
+  // #16: the top "Suggested" AI-hook chips and the bottom verb row are gone.
+  // #22: the orphaned "+ Bring someone in" tool (a multiplayer stub) is removed
+  // from the solo build. The free-text input is the whole interface: type what
+  // you do. The NPC-creator confirmation line still renders if one is pending.
   return `
     <div class="solo-scene-input">
       <div class="solo-scene-input-row">
         <input type="text" class="solo-scene-field" data-solo-attempt-input placeholder="What do you do?" value="${escapeHtml(state.attemptDraft || "")}" ${busy ? "disabled" : ""} />
         <button type="button" class="solo-attempt-submit" data-solo-attempt-submit ${busy ? "disabled" : ""}>${busy ? "Thinking…" : "Attempt"}</button>
-      </div>
-      <div class="solo-scene-tools">
-        <button type="button" class="solo-bring-in" data-solo-npc-create>＋ Bring someone in</button>
       </div>
       ${confirmation ? `<div class="solo-npc-confirm" role="status">${escapeHtml(confirmation)}</div>` : ""}
     </div>
@@ -2586,25 +2674,37 @@ export function renderSoloSceneShell(state = {}) {
               "scene",
               `
                 <div class="solo-scene-layout" style="grid-template-columns: minmax(0, 1fr);">
-                  <div class="solo-scene-center">
-                    ${renderSoloUpgradePrompt(scene)}
-                    ${(typeof scene.openingNarration === "string" && scene.openingNarration.trim()) || (Array.isArray(scene.openingBeats) && scene.openingBeats.length) ? renderSoloSceneOpening(scene.openingNarration, scene.openingBeats) : ""}
-                    ${renderSoloSceneArt(scene.locationImageUri, { locked: scene.locationImageLocked })}
-                    ${renderSoloActionOutcome(state)}
-                    ${renderLocationPanel(
-                      location,
-                      scene.gmNarration,
-                      scene.gmStatus,
-                      selectedGmMode,
-                      debug,
-                      { suppressGm: typeof scene.openingNarration === "string" && Boolean(scene.openingNarration.trim()) }
-                    )}
-                    ${
-                      state.gmThinking || state.sceneReloading
-                        ? `<div class="solo-thinking" role="status">${state.gmThinking ? "The GM is thinking…" : "Loading scene…"}</div>`
-                        : ""
-                    }
-                    ${renderSoloSceneInputBar(state)}
+                  <div class="solo-scene-center solo-scene-zones">
+                    <!-- #25 ZONE 1 — PINNED STAGE: location art + the check-result
+                         strip. Never scrolls; the persistent visual anchor and the
+                         future home of the VN sprite/dialogue layer. -->
+                    <div class="solo-stage" data-solo-stage>
+                      ${renderSoloUpgradePrompt(scene)}
+                      ${renderSoloSceneArt(scene.locationImageUri, { locked: scene.locationImageLocked })}
+                      ${renderSoloActionOutcome(state)}
+                    </div>
+                    <!-- #25 ZONE 2 — SCROLLABLE NARRATION LOG: turn-by-turn prose
+                         accumulates as readable history (independent scroll). On the
+                         opening moment the paced VOICE set-piece plays; every turn
+                         after appends to the log (the opening persists as entry #1). -->
+                    <div class="solo-narration-log" data-solo-log>
+                      ${
+                        (typeof scene.openingNarration === "string" && scene.openingNarration.trim()) || (Array.isArray(scene.openingBeats) && scene.openingBeats.length)
+                          ? renderSoloSceneOpening(scene.openingNarration, scene.openingBeats)
+                          : Array.isArray(state.narrationLog) && state.narrationLog.length
+                            ? renderNarrationLog(state.narrationLog)
+                            : renderLocationPanel(location, scene.gmNarration, scene.gmStatus, selectedGmMode, debug, {})
+                      }
+                    </div>
+                    <!-- #25 ZONE 3 — INPUT DOCK: pinned at the bottom. -->
+                    <div class="solo-input-dock">
+                      ${
+                        state.gmThinking || state.sceneReloading
+                          ? `<div class="solo-thinking" role="status">${state.gmThinking ? "The GM is thinking…" : "Loading scene…"}</div>`
+                          : ""
+                      }
+                      ${renderSoloSceneInputBar(state)}
+                    </div>
                   </div>
                 </div>
               `
@@ -3119,6 +3219,12 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     restResult: null,
     useItemResult: null,
     attemptResult: null,
+    // #25 APPEND-ONLY NARRATION LOG. Every turn's prose accumulates here as
+    // readable history the player can scroll back through, instead of being
+    // discarded when state.scene is replaced each turn. Entries:
+    // { id, intent, checkResult, text, speaker }. Client-owned; survives the
+    // per-turn scene refresh (the scene payload only carries the CURRENT turn).
+    narrationLog: [],
     attemptDraft: "",
     busy: null,
     banner: "",
@@ -4116,6 +4222,47 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     arm();
   }
 
+  // #25: fold the just-loaded turn's prose into the append-only narration log so
+  // history accumulates instead of being discarded when state.scene is replaced.
+  // Called once per completed loadScene. Deduped against the previous entry so an
+  // unchanged ambient description does not spam the log; a roll/intent is attached
+  // ONLY when this turn was an attempt (guards against a stale prior roll leaking
+  // onto a move/search turn), mirroring renderSoloActionOutcome's staleness guard.
+  function logNarration() {
+    const scene = state.scene || {};
+    const gmBody = String(scene.gmNarration?.narration?.body || "").trim();
+    const opening =
+      typeof scene.openingNarration === "string" && scene.openingNarration.trim()
+        ? scene.openingNarration.trim()
+        : Array.isArray(scene.openingBeats)
+          ? scene.openingBeats.filter(Boolean).join("\n\n")
+          : "";
+    const isFirst = state.narrationLog.length === 0;
+    const text = gmBody || (isFirst ? opening : "") || String(scene.location?.description || "").trim();
+    if (!text) {
+      return;
+    }
+    const last = state.narrationLog[state.narrationLog.length - 1];
+    if (last && last.text === text) {
+      return;
+    }
+    const timeline = Array.isArray(scene.recentTimeline) ? scene.recentTimeline : [];
+    const lastEv = timeline.length ? timeline[timeline.length - 1] : null;
+    const ar = lastEv && lastEv.type === "attempt" ? scene.latestAttemptResult || state.attemptResult : null;
+    state.narrationLog.push({
+      id: `n${state.narrationLog.length + 1}`,
+      intent: ar && ar.intent ? String(ar.intent) : "",
+      checkResult: ar && ar.checkResult ? ar.checkResult : null,
+      success: ar ? ar.success : undefined,
+      text,
+      speaker: soleSceneSpeaker(scene) || (state.talkResult && state.talkResult.speakerName) || null
+    });
+    // Cap DOM growth on a very long session.
+    if (state.narrationLog.length > 200) {
+      state.narrationLog.splice(0, state.narrationLog.length - 200);
+    }
+  }
+
   async function loadScene() {
     // First load (no scene yet) takes over the shell with the full-screen
     // loader/error. A reload after an action keeps the current scene on screen
@@ -4201,6 +4348,9 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       // Main quest completed via a live action (reload / re-entry into a won run):
       // conclude as a victory. No-op when already concluded, dead, or won above.
       await maybeConcludeVictory();
+      // Accumulate this turn's prose into the append-only log BEFORE the
+      // per-turn result panels are cleared (talkResult speaker is read here).
+      logNarration();
       state.detail = null;
       state.searchResult = null;
       state.talkResult = null;

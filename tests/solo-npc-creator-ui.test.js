@@ -121,10 +121,13 @@ test("renderNpcCreatorModal reflects imagine mode, loading, and error", () => {
   assert.match(errored, /Too big/);
 });
 
-test("input bar shows the bring-in trigger and confirmation", () => {
+test("input bar has NO bring-in trigger (#22 removed) but still shows confirmation", () => {
   const bar = renderSoloSceneInputBar({});
-  assert.match(bar, /data-solo-npc-create/);
-  assert.match(bar, /Bring someone in/);
+  // #22: the orphaned "+ Bring someone in" multiplayer stub is gone from the
+  // solo input bar. The free-text input is the whole interface.
+  assert.ok(!/data-solo-npc-create/.test(bar), "bring-in trigger removed");
+  assert.ok(!/Bring someone in/.test(bar), "bring-in label removed");
+  assert.match(bar, /data-solo-attempt-input/); // the input itself stays
 
   const withConfirm = renderSoloSceneInputBar({ npcCreatorConfirmation: "Brynn is entering the story…" });
   assert.match(withConfirm, /Brynn is entering the story/);

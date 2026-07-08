@@ -607,7 +607,10 @@ test("mountSoloSceneShell keeps fallback if GM narration request fails", async (
 
   const mounted = mountSoloSceneShell(root, { apiClient, runId: "run_test" });
   await mounted.reload();
-  assert.match(root.innerHTML, /Future GM Narration/);
+  // #25: the scene narration now renders through the append-only log (seeded from
+  // the location description when GM narration is unavailable), so a failed GM
+  // fetch still shows the scene prose and never the error screen.
+  assert.match(root.innerHTML, /Neutral placeholder description/);
   assert.doesNotMatch(root.innerHTML, /Solo Scene Unavailable/);
 });
 

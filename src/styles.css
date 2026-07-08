@@ -2498,6 +2498,98 @@ button:disabled {
   min-height: 0;
   border-right: 1px solid var(--border, #202024);
 }
+
+/* =========================================================================
+   #25 THREE-ZONE SCENE: a PINNED STAGE (location art + check strip) that stays
+   on screen, a SCROLLABLE NARRATION LOG that accumulates turn history, and a
+   PINNED INPUT DOCK. Implemented with position:sticky so the stage/dock stay
+   fixed to the top/bottom of the existing scroll container while the narration
+   scrolls between them — robust across the desktop (scene-tab-panel scroller)
+   and mobile (document scroll) height models without a fragile nested-flex
+   scroll chain. The stage is the future home of the VN sprite/dialogue layer.
+   ========================================================================= */
+.solo-scene-zones {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.solo-stage {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  flex: none;
+  /* Opaque so scrolled narration never bleeds under the pinned art. */
+  background: var(--bg, #050506);
+  padding: 2px 4px 10px;
+  margin: 0;
+  border-bottom: 1px solid var(--border, #202024);
+}
+.solo-narration-log {
+  flex: 1 1 auto;
+  min-height: 140px;
+  padding: 16px 6px 10px;
+}
+.solo-input-dock {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  flex: none;
+  background: var(--bg, #050506);
+  padding: 8px 0 2px;
+  border-top: 1px solid var(--border, #202024);
+}
+
+/* Append-only narration log entries. Oldest at top, newest at bottom; each turn
+   is a spaced block with an optional "You <intent>" header + roll and, when a
+   single speaker is known, a nameplate (#20). */
+.solo-log-entry { margin: 0 0 26px; }
+.solo-log-entry:last-child { margin-bottom: 6px; }
+.solo-log-action {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+  font-size: 14px;
+  color: var(--text-2, #b0b3bb);
+}
+.solo-log-you {
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--accent, #c2c6cf);
+}
+.solo-log-roll {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 2px 9px;
+  border-radius: 6px;
+  border: 1px solid var(--border-strong, #34343b);
+}
+.solo-log-roll.hit { color: var(--good, #86b06a); }
+.solo-log-roll.miss { color: var(--accent-2, #9498a1); }
+.solo-log-speaker {
+  font-family: var(--font-display, Georgia, serif);
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--accent-bright, #e7e9ee);
+  margin-bottom: 4px;
+}
+.solo-scene-center .solo-log-prose p {
+  font-size: clamp(1.35rem, 1.1vw + 1rem, 1.85rem);
+  line-height: 1.6;
+  margin: 0 0 1.05em;
+}
+.solo-scene-center .solo-log-prose p:last-child { margin-bottom: 0; }
+.solo-narration-empty {
+  color: var(--muted, #8b8e96);
+  font-style: italic;
+  padding: 24px 6px;
+  font-size: 1.05rem;
+}
 /* World-entry opening narration: prominent GM voice at the top of the scene,
    visually distinct from the location copy. Uses solo skin vars (defined on
    .solo-game-shell) with literal fallbacks — no phantom vars. */
