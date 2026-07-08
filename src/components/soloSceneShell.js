@@ -463,6 +463,18 @@ export function renderLocationPanel(location = {}, gmNarration = null, gmStatus 
 // contains dialogue AND a single speaker is known for it (a lone present NPC, or
 // the VOICE), a speaker nameplate is shown on the entry — full per-line
 // attribution in a crowded scene needs the GM to tag speakers (server-side).
+// #45/#46: label for a non-attempt turn's action header, derived from the
+// committed timeline event type when it carries no title of its own.
+const TURN_ACTION_LABELS = Object.freeze({
+  move: "Move on",
+  search: "Search the area",
+  talk: "Speak",
+  inspect: "Look closer",
+  rest: "Rest",
+  use_item: "Use an item",
+  ooc: "(out of character)"
+});
+
 export function renderNarrationLog(entries = []) {
   const list = Array.isArray(entries) ? entries.filter((e) => e && String(e.text || "").trim()) : [];
   if (!list.length) {
@@ -478,10 +490,13 @@ export function renderNarrationLog(entries = []) {
       const rollTag = hasRoll
         ? `<span class="solo-log-roll band-${b.key}"><span class="solo-log-roll-glyph" aria-hidden="true">${b.glyph}</span>${escapeHtml(cr.total)}${cr.dc != null ? ` / ${escapeHtml(cr.dc)}` : ""}</span>`
         : "";
-      const header =
-        entry.intent && String(entry.intent).trim()
-          ? `<div class="solo-log-action"><span class="solo-log-you">You</span> ${escapeHtml(entry.intent)}${rollTag}</div>`
-          : "";
+      // #44/#46: the player-action line is the ANCHOR of a turn unit — a prominent
+      // "YOU" badge + the intent in heavier weight + the (band-coded) roll. Present
+      // on every action turn; absent only on the opening (no player action).
+      const intent = entry.intent && String(entry.intent).trim();
+      const header = intent
+        ? `<header class="solo-log-action"><span class="solo-log-you">You</span><span class="solo-log-intent">${escapeHtml(intent)}</span>${rollTag}</header>`
+        : "";
       const hasDialogue = /[“"][^”"]+[”"]/.test(String(entry.text));
       // #20-full: prefer the server's grounded per-line speakers — a multi-NPC beat
       // shows a plate for each distinct NPC who spoke. Player/unknown lines get no
@@ -501,7 +516,11 @@ export function renderNarrationLog(entries = []) {
         : entry.speaker && hasDialogue
           ? `<div class="solo-log-speaker">${escapeHtml(entry.speaker)}</div>`
           : "";
-      return `<article class="solo-log-entry">${header}${nameplate}<div class="solo-log-prose">${beatToParas(entry.text)}</div></article>`;
+      // #46/#47: each turn is a delineated UNIT — the `has-action` class carries a
+      // divider + the action anchor; opening/ambient entries (no header) read as
+      // continuous prose without a false turn boundary.
+      const unitClass = header ? "solo-log-entry has-action" : "solo-log-entry";
+      return `<article class="${unitClass}">${header}${nameplate}<div class="solo-log-prose">${beatToParas(entry.text)}</div></article>`;
     })
     .join("");
 }
@@ -1311,6 +1330,20 @@ export function normalizeTab(tab) {
   return SOLO_TABS.some((entry) => entry.id === tab) ? tab : "scene";
 }
 
+// #48: narration text-size multiplier, clamped to a sane readable band and
+// quantized to 0.1 steps. Non-numeric / out-of-range falls back to 1.0.
+export const SOLO_LOG_SCALE_MIN = 0.8;
+export const SOLO_LOG_SCALE_MAX = 1.6;
+export const SOLO_LOG_SCALE_STEP = 0.1;
+export function normalizeLogScale(scale) {
+  const n = Number(scale);
+  if (!Number.isFinite(n)) {
+    return 1;
+  }
+  const clamped = Math.min(SOLO_LOG_SCALE_MAX, Math.max(SOLO_LOG_SCALE_MIN, n));
+  return Math.round(clamped * 10) / 10;
+}
+
 // Build the inline custom-property string applied to the shell root.
 export function soloThemeVarString(skin = "ashen", fontSet = "tome") {
   const vars = { ...SOLO_SKINS[normalizeSkin(skin)], ...SOLO_FONTS[normalizeFontSet(fontSet)] };
@@ -1830,6 +1863,13 @@ export function renderSoloSceneInputBar(state = {}) {
       <div class="solo-scene-input-meta">
         <span class="solo-input-mode solo-input-mode--${cls.mode}" data-solo-input-mode title="${escapeHtml(meta.hint)}">${escapeHtml(meta.label)}</span>
         <span class="solo-input-count${over ? " is-over" : ""}" data-solo-charcount>${count}/${SOLO_INPUT_MAXLEN}</span>
+        <!-- #48: narration text-size control. Scales the log prose (and player
+             action intent) via --solo-log-scale without touching the bounded
+             scroll / pinned stage. Persisted; delegated via data-solo-logfont. -->
+        <span class="solo-log-fontsize" role="group" aria-label="Narration text size">
+          <button type="button" class="solo-fontsize-btn" data-solo-logfont="down" title="Smaller narration text" aria-label="Smaller narration text">A−</button>
+          <button type="button" class="solo-fontsize-btn" data-solo-logfont="up" title="Larger narration text" aria-label="Larger narration text">A+</button>
+        </span>
       </div>
       ${confirmation ? `<div class="solo-npc-confirm" role="status">${escapeHtml(confirmation)}</div>` : ""}
     </div>
@@ -2799,6 +2839,7 @@ export function renderSoloSceneShell(state = {}) {
   const activeTab = normalizeTab(state.activeTab);
   const skin = normalizeSkin(state.skin);
   const fontSet = normalizeFontSet(state.fontSet);
+  const logScale = normalizeLogScale(state.logScale);
   // C.25: the world's OWN name is the breadcrumb root (run.world.name via the
   // scene payload), not a hardcoded region. location/character region remain as
   // deep fallbacks for legacy payloads that predate the world field.
@@ -2817,7 +2858,7 @@ export function renderSoloSceneShell(state = {}) {
       data-solo-busy="${state.busy ? "true" : ""}"
       data-solo-skin="${skin}"
       data-solo-font="${fontSet}"
-      style="${soloThemeVarString(skin, fontSet)}"
+      style="${soloThemeVarString(skin, fontSet)};--solo-log-scale:${logScale};"
     >
       <div class="solo-settings ${state.menuOpen ? "open" : ""}">
         <button type="button" class="solo-settings-btn" data-solo-menu-toggle aria-haspopup="true" aria-expanded="${state.menuOpen ? "true" : "false"}" aria-label="Menu" title="Menu">⚙</button>
@@ -2983,6 +3024,7 @@ export function dispatchSoloClick(target, handlers = {}) {
   // later handler (the exit-button regression, db4149c). Match buttons only.
   if ((el = closest("button[data-solo-skin]"))) { handlers.onSkin?.({ skin: el.getAttribute("data-solo-skin") }); return true; }
   if ((el = closest("button[data-solo-font]"))) { handlers.onFont?.({ fontSet: el.getAttribute("data-solo-font") }); return true; }
+  if ((el = closest("[data-solo-logfont]"))) { handlers.onLogFontScale?.({ dir: el.getAttribute("data-solo-logfont") }); return true; }
   if ((el = closest("[data-solo-dialogue-end]"))) { handlers.onDialogueEnd?.(); return true; }
   if ((el = closest("[data-solo-dialogue-reply-submit]"))) { handlers.onDialogueReply?.(); return true; }
   if ((el = closest("[data-solo-dialogue-close]"))) { handlers.onDialogueClose?.(); return true; }
@@ -3306,6 +3348,7 @@ export function bindSoloSceneShell(root, handlers = {}) {
 
 export const SOLO_SKIN_STORAGE_KEY = "notdnd.solo.skin";
 export const SOLO_FONT_STORAGE_KEY = "notdnd.solo.fontSet";
+export const SOLO_LOG_SCALE_STORAGE_KEY = "notdnd.solo.logScale";
 
 export function readSoloThemePref(key, fallback) {
   try {
@@ -3416,6 +3459,8 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     sceneArtBusy: null,
     skin: normalizeSkin(readSoloThemePref(SOLO_SKIN_STORAGE_KEY, "ashen")),
     fontSet: normalizeFontSet(readSoloThemePref(SOLO_FONT_STORAGE_KEY, "tome")),
+    // #48: persisted narration text-size multiplier (see normalizeLogScale).
+    logScale: normalizeLogScale(readSoloThemePref(SOLO_LOG_SCALE_STORAGE_KEY, "1")),
     // Guest play: when the player has no real account, the shell offers a
     // persistent "save your adventure" affordance. Registering upgrades the
     // guest identity in place server-side, so the run is never lost.
@@ -3641,6 +3686,7 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       onTab: handleTab,
       onSkin: handleSkin,
       onFont: handleFont,
+      onLogFontScale: handleLogFontScale,
       onAttempt: handleAttempt,
       onAttemptDraft: handleAttemptDraft,
       onDialogueClose: handleDialogueClose,
@@ -4339,6 +4385,19 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     render();
   }
 
+  // #48: step the narration text size. Persist, and set --solo-log-scale directly
+  // on the shell section (the closest ancestor that carries the var, so it beats
+  // the section's own inline value) for INSTANT resize — no re-render, so the
+  // bounded scroll position and the pinned stage are untouched.
+  function handleLogFontScale({ dir } = {}) {
+    const step = dir === "down" ? -SOLO_LOG_SCALE_STEP : SOLO_LOG_SCALE_STEP;
+    state.logScale = normalizeLogScale((state.logScale || 1) + step);
+    writeSoloThemePref(SOLO_LOG_SCALE_STORAGE_KEY, String(state.logScale));
+    const shell = typeof root.querySelector === "function" ? root.querySelector(".solo-scene-shell") : null;
+    const target = shell && shell.style ? shell : root;
+    target.style?.setProperty?.("--solo-log-scale", String(state.logScale));
+  }
+
   function handleAttemptDraft({ value }) {
     state.attemptDraft = String(value || "");
   }
@@ -4594,9 +4653,17 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     const timeline = Array.isArray(scene.recentTimeline) ? scene.recentTimeline : [];
     const lastEv = timeline.length ? timeline[timeline.length - 1] : null;
     const ar = lastEv && lastEv.type === "attempt" ? scene.latestAttemptResult || state.attemptResult : null;
+    // #45/#46: give EVERY turn (not just rolled attempts) a player-action header
+    // so the log reads as delineated turn units. Attempts use their intent; other
+    // action types derive a label from the committed timeline event (title, else a
+    // type map). The opening (isFirst) has no player action → no header.
+    let turnIntent = ar && ar.intent ? String(ar.intent).trim() : "";
+    if (!turnIntent && !isFirst && lastEv && lastEv.type && lastEv.type !== "attempt") {
+      turnIntent = String(lastEv.title || TURN_ACTION_LABELS[lastEv.type] || "").trim();
+    }
     state.narrationLog.push({
       id: `n${state.narrationLog.length + 1}`,
-      intent: ar && ar.intent ? String(ar.intent) : "",
+      intent: turnIntent,
       checkResult: ar && ar.checkResult ? ar.checkResult : null,
       success: ar ? ar.success : undefined,
       // #33: carry the resolver band/label so the log roll tag is band-coded too.
