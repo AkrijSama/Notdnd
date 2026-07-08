@@ -208,6 +208,31 @@ export function isObservationQuery(intent) {
   return OBSERVATION_QUERY_RE.test(t);
 }
 
+// COMPOUND ACTION (#6, resolver blindspot Class A). "Pick the lock AND slip past
+// the guard" is TWO distinct physical actions but resolves on ONE roll — so the
+// prose can narrate BOTH parts landing regardless of the single committed outcome
+// (a failure that still reads "you pick it and slip past"). Detecting a compound
+// lets the narration path constrain the prose to the ONE resolved band. Heuristic:
+// a coordinator (and / then / comma) joining TWO distinct physical action verbs.
+// Conservative by design — it must not fire on a single action with an incidental
+// "and" ("search the door and its frame" = one search; "look around and take
+// stock" = observation), so it counts DISTINCT action verbs, not conjunctions.
+const COMPOUND_ACTION_VERB_RE =
+  /\b(pick|unlock|open|force|pry|climb|slip|sneak|creep|grab|snatch|steal|cut|sever|break|smash|jump|leap|vault|swing|throw|hurl|strike|stab|slash|shoot|fire|dodge|duck|hide|dash|sprint|cross|slide|disarm|knock|shove|push|pull|tie|bind|light|douse|plant|cast|free|release|lift|drag|haul|pocket|loot|douse|kick|block|parry|lunge|tackle|bar|wedge|hoist|scale|leap)\b/gi;
+export function isCompoundIntent(intent) {
+  const t = String(intent || "").toLowerCase();
+  if (!t.trim()) {
+    return false;
+  }
+  if (!/\b(?:and|then)\b|,/.test(t)) {
+    return false; // no coordinator → not compound
+  }
+  const matches = t.match(COMPOUND_ACTION_VERB_RE) || [];
+  // Distinct verbs (so "pull and pull" isn't a compound); ≥2 → two real actions.
+  const distinct = new Set(matches.map((v) => v.toLowerCase()));
+  return distinct.size >= 2;
+}
+
 // SAFE CONVERSATION (Ch3 Law 1, Tier 0) — plain speaking with someone who isn't
 // set against you: greeting, asking, answering, banter, small talk, thanking.
 // This is automatic-tier and NEVER a failable roll ("speaking to a non-hostile

@@ -9,8 +9,23 @@ import {
   buildAttemptProviderInput,
   resolveAttemptAction,
   validateAttemptAction,
-  validateAttemptProviderOutput
+  validateAttemptProviderOutput,
+  isCompoundIntent
 } from "../server/solo/attempt.js";
+
+test("isCompoundIntent (#6) flags two distinct action verbs joined, not a single action", () => {
+  // the classic Class-A compound: two physical actions, one roll
+  assert.equal(isCompoundIntent("pick the lock and slip past the guard"), true);
+  assert.equal(isCompoundIntent("climb the wall then grab the ledge"), true);
+  assert.equal(isCompoundIntent("disarm him and strike"), true);
+  // single actions with an incidental 'and' are NOT compound
+  assert.equal(isCompoundIntent("search the door and its frame"), false);
+  assert.equal(isCompoundIntent("look around and take stock"), false);
+  assert.equal(isCompoundIntent("force the door open"), false);
+  // a repeated verb is one action, not two
+  assert.equal(isCompoundIntent("push and push against the door"), false);
+  assert.equal(isCompoundIntent(""), false);
+});
 
 // Forces a failed ability check: roll 1 against an impossible DC.
 function failingAttempt(run, overrides = {}) {

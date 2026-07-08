@@ -114,7 +114,7 @@ import { fetchHomebrewUrl } from "./homebrew/urlImport.js";
 import { validateCustomItem, normalizeContentForBuild, CUSTOM_CONTENT_TYPES } from "./homebrew/customContent.js";
 import { createWsHub } from "./realtime/wsHub.js";
 import { resolveSoloAction, testHooksEnabled } from "./solo/actions.js";
-import { buildAttemptContext, buildAttemptProviderInput, classifyIntentAuthority, isObservationQuery, isSafeConversation } from "./solo/attempt.js";
+import { buildAttemptContext, buildAttemptProviderInput, classifyIntentAuthority, isObservationQuery, isSafeConversation, isCompoundIntent } from "./solo/attempt.js";
 import { interpretAttemptWithGm } from "./gm/attemptInterpreter.js";
 import { attributeSceneDialogue, classifyNarrationVn, resolveGmNarration } from "./solo/gmProvider.js";
 import { buildGmRuntimeStatus } from "./solo/gmSmoke.js";
@@ -858,6 +858,38 @@ function buildClockDirective(resolved) {
   );
 }
 
+// COMPOUND ACTION (#6, resolver blindspot Class A). A multi-part intent ("pick the
+// lock AND slip past the guard") is resolved on ONE roll, so the prose is free to
+// narrate BOTH parts landing even on a failure/at-cost. We do not decompose (one
+// roll stands); instead we CONSTRAIN the narration to the single committed band, so
+// every part is bound to that one outcome. Only added when the intent is compound
+// AND a roll actually resolved it (skipped for gated/no-roll turns).
+function buildCompoundDirective(resolved) {
+  const ar = resolved?.attemptResult;
+  if (!ar || ar.gated === true || !isCompoundIntent(ar.intent)) {
+    return "";
+  }
+  const band = String(ar.band || (ar.success ? "success" : "failure")).toLowerCase();
+  if (band.includes("cost")) {
+    return (
+      " MULTI-PART ACTION: the player attempted several things in one action; it resolved as ONE outcome — success at a cost. " +
+      "The primary aim lands, but do NOT narrate every part cleanly succeeding — the committed cost falls on one of the parts " +
+      "(a later step is only half-done, noticed, or complicated). Bind all parts to this single result; resolve none of them independently."
+    );
+  }
+  if (band.includes("fail")) {
+    return (
+      " MULTI-PART ACTION: the player attempted several things in one action; it resolved as ONE outcome — a FAILURE. " +
+      "Do NOT narrate the later parts succeeding — the action did not get that far. Narrate the attempt breaking down at the first part; " +
+      "the subsequent parts never happen. Bind all parts to this single failed result."
+    );
+  }
+  return (
+    " MULTI-PART ACTION: the player attempted several things in one action; it resolved as ONE clean success — narrate every part " +
+    "landing together as the single committed outcome, and resolve none of them as a separate, differently-graded result."
+  );
+}
+
 // Best-effort closing beat when the player has just died — mirrors the victory
 // narration, but for a permanent 5e death. Null on timeout/failure (the death
 // screen still renders).
@@ -957,6 +989,9 @@ async function narrateActionWithGm(run, resolved, user) {
   // WORLD CLOCK (#14): pin the narration to the committed time-of-day so prose
   // can't drift to night while the clock reads morning.
   message += buildClockDirective(resolved);
+  // COMPOUND ACTION (#6): a multi-part intent resolved on ONE roll — constrain the
+  // prose to that single committed outcome so it can't narrate every part landing.
+  message += buildCompoundDirective(resolved);
   // INPUT MODE (#37/#38): a SPEECH turn is the character speaking aloud in-fiction.
   // Frame the beat as dialogue — the world and present NPCs respond to the SPOKEN
   // WORDS — not as a physical action the character performed.
