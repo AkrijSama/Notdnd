@@ -7,7 +7,9 @@ import {
   auditAndCommitNarratedNpcs,
   detectPhantomLoreNames,
   commitNarratedLoreFact,
-  auditAndCommitNarratedLore
+  auditAndCommitNarratedLore,
+  detectInventedAgents,
+  auditAndCommitInventedAgents
 } from "../server/solo/npcCommit.js";
 import { evaluatePhantomEntities, evaluateGmNarration } from "../server/solo/gmEval.js";
 import { validateNpc, createDefaultSoloRun } from "../server/solo/schema.js";
@@ -67,6 +69,27 @@ test("detectPhantomNpcNames catches POSSESSIVE-name-as-present, not place/object
   // place/object possessives must NOT be mistaken for people
   const noise = detectPhantomNpcNames("The tavern's door groans and the hearth's glow dims.", []);
   assert.ok(!noise.includes("Tavern") && !noise.includes("Hearth"), "place/object possessives ignored");
+});
+
+test("detectInventedAgents flags a generic actor with agency (B2), respects cast + negation", () => {
+  // the exact 2/5-session offenders
+  assert.ok(detectInventedAgents("Only the creature's unblinking gaze demands an answer.").includes("Creature"));
+  assert.ok(detectInventedAgents('"I\'ll not be ordered about by some gutter scavenger," he hisses.').includes("Scavenger"));
+  // a concrete acting agent is committed even when other cast exists…
+  assert.ok(detectInventedAgents("A wolf lunges from the dark.", { hasCast: true }).includes("Wolf"));
+  // …but a PARAPHRASE noun (figure/stranger) is vouched by existing cast, not invented
+  assert.deepEqual(detectInventedAgents("The figure steps forward.", { hasCast: true }), []);
+  // an already-committed token is not re-flagged
+  assert.deepEqual(detectInventedAgents("The scavenger nods.", { knownAgentTokens: new Set(["scavenger"]) }), []);
+  // honest ABSENCE is not an invention
+  assert.deepEqual(detectInventedAgents("No creature stirs in the dark."), []);
+});
+
+test("auditAndCommitInventedAgents promotes an un-named acting agent into cast", () => {
+  const run = createDefaultSoloRun();
+  const committed = auditAndCommitInventedAgents(run, "The creature snarls and lunges at you.", [run.player?.displayName], { idFactory: seq() });
+  assert.deepEqual(committed, ["Creature"]);
+  assert.ok(Object.values(run.npcs).some((n) => n.displayName === "Creature"));
 });
 
 test("a place-suffix name is NOT mis-committed as an NPC (routes to lore)", () => {

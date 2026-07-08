@@ -341,6 +341,89 @@ export function commitNarratedLoreFact(run, name, options = {}) {
   return fact;
 }
 
+// INVENTED GENERIC AGENT DETECTION (B2) — the moat, un-named-actor side. Beyond
+// proper-noun people (#27), a model invents GENERIC actors: "the creature's gaze
+// demands an answer", "some gutter scavenger hisses". These have agency (they act
+// / speak) but no committed entity behind them (2/5 grading sessions). Commit-or-
+// strip → we COMMIT: promote the acting generic agent into a real cast member, so
+// it persists and the next turn can't contradict it (same doctrine as #27).
+//
+// A generic PARAPHRASE noun (figure/stranger/voice/someone) is a legitimate stand-
+// in for an EXISTING committed cast member ("a figure steps forward" = the watcher),
+// so it is only an invention when the scene has NO cast; a concrete noun
+// (creature/wolf/scavenger) is committed whenever its token isn't already cast.
+const AGENT_NOUNS = [
+  "creature", "scavenger", "drone", "guard", "soldier", "sentry", "warden", "watcher",
+  "merchant", "thief", "hunter", "raider", "bandit", "assailant", "attacker", "rider",
+  "beast", "wolf", "hound", "robot", "android", "automaton", "enemy", "foe", "figure", "stranger"
+];
+const AGENT_PARAPHRASE_NOUNS = new Set(["figure", "stranger", "voice", "someone", "somebody"]);
+const AGENT_AGENCY_VERB_RE = new RegExp(
+  "\\b(?:answers?|answered|replies|replied|responds?|responded|speaks?|spoke|says?|said|whispers?|calls?|called|shouts?|mutters?|growls?|hisses|" +
+    "steps?|stepped|moves?|moved|emerges?|emerged|appears?|appeared|approaches|approached|arrives?|arrived|lunges?|lunged|attacks?|attacked|strikes?|struck|" +
+    "watches|watched|turns?|turned|hovers?|slides?|crawls?|leaps?|circles?|stalks?|follows?|followed|blocks?|blocked|grabs?|grabbed|reaches|beckons?|nods?|stares?|demands?|demanded)\\b",
+  "i"
+);
+
+/**
+ * Pure. Scan narration for GENERIC animate agents acting/speaking with no committed
+ * cast to vouch them. `knownAgentTokens` is the lowercased token set the committed
+ * state vouches as actors (cast/entity name words); `hasCast` is whether the run
+ * has any committed NPC. Returns distinct capitalized agent display names to commit.
+ */
+export function detectInventedAgents(text, { knownAgentTokens = new Set(), hasCast = false } = {}) {
+  const source = String(text || "");
+  if (!source.trim()) {
+    return [];
+  }
+  const found = new Map();
+  const sentences = source.split(/(?<=[.!?])\s+/).filter((s) => s.trim().length > 0);
+  for (const sentence of sentences) {
+    // Never treat the player's own body/voice as an agent.
+    const lower = sentence.toLowerCase().replace(/\b(?:your|my)\s+(?:own\s+)?\w+/g, " ");
+    if (!AGENT_AGENCY_VERB_RE.test(sentence)) continue;
+    for (const noun of AGENT_NOUNS) {
+      if (knownAgentTokens.has(noun)) continue;
+      if (AGENT_PARAPHRASE_NOUNS.has(noun) && hasCast) continue; // paraphrase of existing cast
+      const nounRe = new RegExp(`\\b${noun}s?\\b`, "i");
+      const negatedRe = new RegExp(`\\b(?:no|not a|nor a|neither|without a|no other)\\s+(?:\\w+\\s+)?${noun}s?\\b`, "i");
+      if (nounRe.test(lower) && !negatedRe.test(lower)) {
+        const display = noun.charAt(0).toUpperCase() + noun.slice(1);
+        if (!found.has(noun)) found.set(noun, display);
+      }
+    }
+  }
+  return [...found.values()];
+}
+
+// LIVE moat-closer (B2). Commit every generic agent the GM gave agency to but did
+// not ground, as a real cast member, so it persists instead of being a phantom the
+// next turn contradicts. Returns the display names committed. `knownNames` is the
+// committed/visible/location set + player.
+export function auditAndCommitInventedAgents(run, narrationText, knownNames = [], options = {}) {
+  const hasCast = isPlainObject(run?.npcs) && Object.values(run.npcs).some((n) => isPlainObject(n) && n.status !== "gone");
+  const knownAgentTokens = new Set();
+  const committedNames = isPlainObject(run?.npcs)
+    ? Object.values(run.npcs).map((npc) => (isPlainObject(npc) ? npc.displayName : null)).filter(Boolean)
+    : [];
+  for (const name of [...knownNames, ...committedNames]) {
+    for (const tok of String(name || "").toLowerCase().split(/[\s-]+/)) {
+      const clean = tok.replace(/[^a-z']/g, "");
+      if (clean.length >= 3) knownAgentTokens.add(clean);
+    }
+  }
+  const agents = detectInventedAgents(narrationText, { knownAgentTokens, hasCast });
+  const before = isPlainObject(run?.npcs) ? new Set(Object.keys(run.npcs)) : new Set();
+  const committed = [];
+  for (const displayName of agents) {
+    const npc = commitNarratedNpc(run, { displayName, role: "figure", tags: ["unnamed"] }, options);
+    if (npc && !before.has(npc.npcId)) {
+      committed.push(npc.displayName);
+    }
+  }
+  return committed;
+}
+
 // LIVE moat-closer (#41). Commit every phantom PLACE/landmark the GM asserted as
 // canonical lore, so the reference persists as truth. Returns the names committed.
 // `knownNames` is the committed/visible/location set + player.
