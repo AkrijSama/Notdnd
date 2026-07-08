@@ -121,6 +121,7 @@ import { buildGmRuntimeStatus } from "./solo/gmSmoke.js";
 import { enqueueDraftPortrait, enqueueImageJob, enqueueLocationImageJob, enqueuePlayerImageJob, enqueueVnBodyImageJob, getDraftPortrait, writeUploadedBasePortrait } from "./solo/imageWorker.js";
 import { enqueueIdentityJob, runIdentityJob } from "./solo/npcIdentity.js";
 import { buildNpcIntroDirective, buildSoloScenePayload, collectNpcsWithPendingIntro } from "./solo/scene.js";
+import { auditAndCommitNarratedNpcs } from "./solo/npcCommit.js";
 import { refreshSceneSuggestions } from "./solo/suggestions.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -1583,6 +1584,30 @@ async function handleApi(req, res) {
         }
         updateSoloRunNarration(responseRun.runId, gmNarration);
         responseRun.narration = gmNarration;
+
+        // COMMITTED NPC ENTITIES (#27) — the coherence moat, NPC side. If the live
+        // GM narrated a proper-noun character who spoke or acted (Grace, Doc Han,
+        // a pursuer) with NO committed record, promote them into a real run.npcs
+        // entity now, so the next turn's state holds them instead of the model
+        // re-inventing or contradicting them. Read-modify-write on a fresh snapshot
+        // (same discipline as the VN block below) so no interleaving image-worker
+        // write is clobbered; skipped entirely when nothing phantom was named.
+        if (typeof gmNarration === "string" && gmNarration.trim()) {
+          const knownNames = [
+            responseRun.player?.displayName,
+            responseRun.locations?.[responseRun.currentLocationId]?.name,
+            ...Object.values(responseRun.npcs || {}).map((npc) => npc?.displayName)
+          ].filter(Boolean);
+          const freshForNpc = getSoloRun(responseRun.runId);
+          if (freshForNpc) {
+            const committedNpcs = auditAndCommitNarratedNpcs(freshForNpc, gmNarration, knownNames);
+            if (committedNpcs.length > 0) {
+              saveSoloRun(freshForNpc);
+              responseRun.npcs = freshForNpc.npcs;
+              logTurnEvent(responseRun.runId, `#27 committed ${committedNpcs.length} narrated NPC(s): ${committedNpcs.join(", ")}`);
+            }
+          }
+        }
 
         // Automatic ambient->direct VN trigger. The manual talk path already set
         // run.vn for talk actions (at resolveSoloAction time), so only classify

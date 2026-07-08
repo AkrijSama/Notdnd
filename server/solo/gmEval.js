@@ -3,6 +3,7 @@ import {
   createDefaultMainlinePolicyProfile,
   validateEntityAgainstPolicy
 } from "./schema.js";
+import { detectPhantomNpcNames } from "./npcCommit.js";
 
 function plain(value) {
   return String(value ?? "");
@@ -119,6 +120,35 @@ export function evaluateGrounding(scenePayload, gmOutput, options = {}) {
   return completeResult(checks);
 }
 
+// PHANTOM ENTITIES (#27) — extend the auditor to catch narrated durable NPCs with
+// no committed record. A proper-noun character that SPEAKS or ACTS in the narration
+// ("Grace nods", "a man named Doc Han") but is not among the committed/visible
+// entities is a phantom: the fiction asserts a person the state doesn't hold, which
+// is exactly how the model drifts out of coherence. The known-name set is the
+// visible entity display names + the player + location-name tokens; anything else
+// that acts is flagged (best-effort — this WARNS so the live layer can commit or
+// re-ground it, it does not gate the turn).
+export function evaluatePhantomEntities(scenePayload, gmOutput, options = {}) {
+  const checks = [];
+  const text = narrationText(gmOutput);
+  const known = [
+    ...visibleEntityNames(scenePayload),
+    plain(scenePayload?.player?.displayName),
+    ...plain(scenePayload?.location?.name).split(/\s+/)
+  ].filter(Boolean);
+  const phantoms = detectPhantomNpcNames(text, known);
+  addCheck(
+    checks,
+    "no_phantom_npcs",
+    phantoms.length === 0,
+    phantoms.length ? `Narrated character(s) with no committed entity: ${phantoms.join(", ")}.` : "No phantom characters."
+  );
+  const result = completeResult(checks);
+  // Surface the offending names so a caller can commit them (commitNarratedNpc).
+  result.phantomNpcNames = phantoms;
+  return result;
+}
+
 export function evaluatePolicySafety(scenePayload, gmOutput, options = {}) {
   const checks = [];
   const text = lower(narrationText(gmOutput));
@@ -200,10 +230,12 @@ export function evaluateStyle(gmOutput, options = {}) {
 }
 
 export function evaluateGmNarration(scenePayload, gmOutput, options = {}) {
+  const phantomGroup = evaluatePhantomEntities(scenePayload, gmOutput, options);
   const groups = [
     evaluateGrounding(scenePayload, gmOutput, options),
     evaluatePolicySafety(scenePayload, gmOutput, options),
     evaluateMutationSafety(gmOutput, options),
+    phantomGroup,
     evaluateStyle(gmOutput, options)
   ];
   const checks = groups.flatMap((group) => group.checks);
@@ -213,6 +245,9 @@ export function evaluateGmNarration(scenePayload, gmOutput, options = {}) {
     ok: groups.every((group) => group.ok),
     score,
     checks,
-    warnings: checks.filter((check) => !check.ok).map((check) => check.id)
+    warnings: checks.filter((check) => !check.ok).map((check) => check.id),
+    // #27: the specific phantom character names the narration asserted without a
+    // committed record — the live layer reads this to commit or re-ground them.
+    phantomNpcNames: phantomGroup.phantomNpcNames || []
   };
 }
