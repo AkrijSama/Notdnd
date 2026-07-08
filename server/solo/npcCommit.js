@@ -91,6 +91,11 @@ export function commitNarratedNpc(run, spec, options = {}) {
   if (isString(spec.appearance)) npc.appearance = spec.appearance.trim();
   if (isString(spec.personality)) npc.personality = spec.personality.trim();
   if (isString(spec.introInstructions)) npc.introInstructions = spec.introInstructions.trim();
+  // #50: committed gender + pronouns so the portrait matches the written character
+  // (imageWorker.groundNpcPortrait consumes these). Inferred from narration on the
+  // commit path; a re-mention keeps the first-committed value (identity stable).
+  if (isString(spec.gender)) npc.gender = spec.gender.trim();
+  if (isString(spec.pronouns)) npc.pronouns = spec.pronouns.trim();
 
   const validation = validateNpc(npc);
   if (!validation.ok) {
@@ -153,6 +158,40 @@ const POSSESSIVE_STOPLIST = new Set([
 
 function normalizeName(name) {
   return String(name || "").trim().toLowerCase();
+}
+
+// #50: infer a committed NPC's gender + pronouns from how the narration refers to
+// them, so the portrait prompt (imageWorker.groundNpcPortrait) matches the written
+// character (the Mara-written-female-rendered-male bug). Scans a window AFTER the
+// name for the first gendered pronoun, then the whole narration as a fallback when
+// the name is the sole gendered subject. Returns { gender, pronouns } or null when
+// the text gives no signal (portrait then falls back to its neutral default).
+export function inferNpcGenderFromNarration(name, text) {
+  const source = String(text || "");
+  const clean = String(name || "").trim();
+  if (!source.trim() || clean.length < 2) {
+    return null;
+  }
+  const decide = (windowText) => {
+    const w = String(windowText || "").toLowerCase();
+    const female = (w.match(/\b(she|her|hers|herself)\b/g) || []).length;
+    const male = (w.match(/\b(he|him|his|himself)\b/g) || []).length;
+    const nb = (w.match(/\b(they|them|their|theirs|themself|themselves)\b/g) || []).length;
+    if (female > male && female >= nb) return { gender: "female", pronouns: "she/her" };
+    if (male > female && male >= nb) return { gender: "male", pronouns: "he/him" };
+    if (nb > 0 && nb >= female && nb >= male) return { gender: "non-binary", pronouns: "they/them" };
+    return null;
+  };
+  // First: the ~160-char window right after the FIRST mention of the name — the
+  // pronoun that immediately follows the introduction is the strongest signal.
+  const escaped = clean.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const m = new RegExp(`\\b${escaped}(?:['’]s)?\\b`, "i").exec(source);
+  if (m) {
+    const near = decide(source.slice(m.index, m.index + 160));
+    if (near) return near;
+  }
+  // Fallback: the whole narration (works when the NPC is the only gendered subject).
+  return decide(source);
 }
 
 // Place/landmark suffix words (kept in sync with PLACE_SUFFIX below). A proper
@@ -241,7 +280,10 @@ export function auditAndCommitNarratedNpcs(run, narrationText, knownNames = [], 
   const before = isPlainObject(run?.npcs) ? new Set(Object.keys(run.npcs)) : new Set();
   const committed = [];
   for (const displayName of phantoms) {
-    const npc = commitNarratedNpc(run, { displayName, role: "figure" }, options);
+    // #50: infer gender/pronouns from how THIS narration referred to the character,
+    // so the committed entity carries it and the portrait matches the text.
+    const g = inferNpcGenderFromNarration(displayName, narrationText);
+    const npc = commitNarratedNpc(run, { displayName, role: "figure", ...(g || {}) }, options);
     // Only count NPCs that were NEWLY created — commitNarratedNpc returns the
     // existing record on a re-mention, which must not read as a fresh commit.
     if (npc && !before.has(npc.npcId)) {

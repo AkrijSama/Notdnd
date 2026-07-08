@@ -764,6 +764,10 @@ export function validateNpc(npc) {
   validateOptionalString(npc.generatedName, "generatedName", errors);
   validateOptionalString(npc.appearance, "appearance", errors);
   validateOptionalString(npc.personality, "personality", errors);
+  // #50: committed gender + pronouns so the portrait prompt matches the text
+  // (imageWorker.groundNpcPortrait reads these). Nullable — legacy NPCs stay valid.
+  validateOptionalString(npc.gender, "gender", errors);
+  validateOptionalString(npc.pronouns, "pronouns", errors);
   validateOptionalString(npc.portraitPrompt, "portraitPrompt", errors);
   validateOptionalNumber(npc.identitySeed, "identitySeed", errors);
   // Origin + memory-graph bridge (all nullable — existing NPCs stay valid).

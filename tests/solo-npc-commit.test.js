@@ -9,7 +9,8 @@ import {
   commitNarratedLoreFact,
   auditAndCommitNarratedLore,
   detectInventedAgents,
-  auditAndCommitInventedAgents
+  auditAndCommitInventedAgents,
+  inferNpcGenderFromNarration
 } from "../server/solo/npcCommit.js";
 import { evaluatePhantomEntities, evaluateGmNarration } from "../server/solo/gmEval.js";
 import { validateNpc, createDefaultSoloRun } from "../server/solo/schema.js";
@@ -83,6 +84,22 @@ test("detectInventedAgents flags a generic actor with agency (B2), respects cast
   assert.deepEqual(detectInventedAgents("The scavenger nods.", { knownAgentTokens: new Set(["scavenger"]) }), []);
   // honest ABSENCE is not an invention
   assert.deepEqual(detectInventedAgents("No creature stirs in the dark."), []);
+});
+
+test("inferNpcGenderFromNarration (#50) reads the pronouns the narration uses", () => {
+  assert.deepEqual(inferNpcGenderFromNarration("Mara", "Mara wipes the bar. She eyes you, her hand near a knife."), { gender: "female", pronouns: "she/her" });
+  assert.deepEqual(inferNpcGenderFromNarration("Goran", "Goran hunches lower. He mutters into his drink."), { gender: "male", pronouns: "he/him" });
+  assert.deepEqual(inferNpcGenderFromNarration("Ash", "Ash nods. They keep their hood up, watching."), { gender: "non-binary", pronouns: "they/them" });
+  assert.equal(inferNpcGenderFromNarration("Mara", "The door creaks in the wind."), null, "no signal -> null");
+});
+
+test("auditAndCommitNarratedNpcs commits gender/pronouns so the portrait can match (#50)", () => {
+  const run = createDefaultSoloRun();
+  auditAndCommitNarratedNpcs(run, 'Mara nods and sets down a mug. She eyes you, her hand near a knife.', [run.player?.displayName], { idFactory: seq() });
+  const mara = Object.values(run.npcs).find((n) => n.displayName === "Mara");
+  assert.ok(mara, "Mara committed");
+  assert.equal(mara.gender, "female");
+  assert.equal(mara.pronouns, "she/her");
 });
 
 test("auditAndCommitInventedAgents promotes an un-named acting agent into cast", () => {
