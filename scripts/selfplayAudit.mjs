@@ -336,3 +336,442 @@ export function auditInventedAgents(prose, scene) {
 
   return { checked: true, inventions };
 }
+
+// ===========================================================================
+// LETTER-GRADE SESSION SCORER (autoplay grade harness)
+// ===========================================================================
+// A grading LAYER on top of the existing selfplay drive + auditors. It consumes
+// per-turn observations the runner collects (narration, attemptResult, scene
+// before/after, model attribution) and emits, against the SAME five axes as the
+// manual walkthrough grade (docs/design/grade-improvement-roadmap.md):
+//   NARRATION, COHERENCE, DEPTH/TRACTION, MECHANICAL, PACING
+// letter + numeric per axis, plus machine-actionable findings and a
+// deepseek-vs-fallback turn count. Detection reuses this module's auditors
+// (auditProseAgainstState = phantom NPC/lore #27/#41, auditInventedAgents =
+// invented agents/dialogue/state-tag leaks) and adds the resolver-sweep gap
+// classes. Pure — no engine or network — so it is unit-testable and the runner
+// stays thin.
+
+// The representative GM. A turn NOT served by this is a fallback (local 8b /
+// gemini) and is EXCLUDED from the narration + coherence grades — fallback prose
+// is not representative of the product.
+export const REAL_GM_RE = /deepseek/i;
+export function isRealGmModel(model) {
+  return REAL_GM_RE.test(String(model || ""));
+}
+
+// Numeric → letter on the standard scale.
+export function letterFor(numeric) {
+  if (numeric == null) return "N/A";
+  const n = Number(numeric);
+  if (!Number.isFinite(n)) return "N/A";
+  if (n >= 93) return "A";
+  if (n >= 90) return "A-";
+  if (n >= 87) return "B+";
+  if (n >= 83) return "B";
+  if (n >= 80) return "B-";
+  if (n >= 77) return "C+";
+  if (n >= 73) return "C";
+  if (n >= 70) return "C-";
+  if (n >= 67) return "D+";
+  if (n >= 63) return "D";
+  if (n >= 60) return "D-";
+  return "F";
+}
+
+// Severity → deduction points. Every deduction is a finding, so an axis grade is
+// always traceable to the specific failures that produced it.
+export const SEVERITY_WEIGHT = Object.freeze({ critical: 22, high: 13, medium: 7, low: 3 });
+const SEVERITY_RANK = { critical: 0, high: 1, medium: 2, low: 3 };
+const AXIS_BASE = 95; // a clean session with zero findings scores A.
+
+const NARRATION_STOPWORDS = new Set([
+  "the", "a", "an", "and", "but", "or", "you", "your", "with", "into", "onto",
+  "from", "that", "this", "there", "here", "then", "over", "under", "around",
+  "through", "against", "toward", "before", "after", "above", "below", "like",
+  "still", "even", "just", "some", "more", "than", "them", "they", "have", "has",
+  "was", "were", "been", "will", "would", "could", "their", "what", "when", "where"
+]);
+
+function contentWords(text) {
+  return String(text || "")
+    .toLowerCase()
+    .replace(/[^a-z\s]/g, " ")
+    .split(/\s+/)
+    .filter((w) => w.length >= 4 && !NARRATION_STOPWORDS.has(w));
+}
+
+// RECYCLED-LOOP narration (the T3–T9 "disorients you" dead-loop). The pathology
+// is the model RECYCLING WHOLE NARRATIONS near-verbatim on repeated same-action
+// failure — not merely sharing setting nouns (a stone tavern is legitimately
+// described with "stone" every turn; that is consistency, not a loop). So the
+// signal is WHOLE-NARRATION SIMILARITY: cluster turns whose content-word sets
+// overlap past `threshold` (Jaccard); a cluster of >= minTurns is a recycled
+// loop. Returns ONE { phrase, turns } per cluster (phrase = the shared words),
+// so a loop is a single finding, not one per word. WARN-grade.
+function jaccard(a, b) {
+  if (!a.size || !b.size) return 0;
+  let inter = 0;
+  for (const x of a) if (b.has(x)) inter += 1;
+  return inter / (a.size + b.size - inter);
+}
+export function detectRecycledLoop(narrationsByTurn, { minTurns = 3, threshold = 0.5 } = {}) {
+  const items = narrationsByTurn
+    .map(({ n, narration }) => ({ n, set: new Set(contentWords(narration)) }))
+    .filter((it) => it.set.size >= 4); // too-short narrations can't be judged similar
+  const loops = [];
+  const used = new Set();
+  for (let i = 0; i < items.length; i += 1) {
+    if (used.has(items[i].n)) continue;
+    const cluster = [items[i]];
+    for (let j = 0; j < items.length; j += 1) {
+      if (i === j || used.has(items[j].n)) continue;
+      if (jaccard(items[i].set, items[j].set) >= threshold) cluster.push(items[j]);
+    }
+    if (cluster.length >= minTurns) {
+      let shared = null;
+      for (const c of cluster) {
+        shared = shared ? new Set([...shared].filter((x) => c.set.has(x))) : new Set(c.set);
+      }
+      const turns = cluster.map((c) => c.n).sort((a, b) => a - b);
+      turns.forEach((t) => used.add(t));
+      loops.push({ phrase: [...(shared || [])].slice(0, 6).join(" ") || "(recycled prose)", turns });
+    }
+  }
+  return loops.sort((a, b) => b.turns.length - a.turns.length);
+}
+
+// BAND / LABEL / NARRATION desync (#28): the resolved outcome band must agree
+// with the roll-vs-DC and with the human label. A sub-DC roll that reads as a
+// win, or a label that contradicts the band, is a desync.
+export function detectBandDesync(attemptResult) {
+  const ar = attemptResult || {};
+  const cr = ar.checkResult || null;
+  const band = String(ar.band || ar.outcome || "").toLowerCase();
+  const label = String(ar.outcomeLabel || "").toLowerCase();
+  if (!cr || typeof cr.total !== "number" || typeof cr.dc !== "number") return null;
+  const belowDc = cr.total < cr.dc;
+  // A clean win band on a sub-DC roll (unless it is the explicit at-a-cost band).
+  const bandSaysWin = band === "success" && !band.includes("cost");
+  if (belowDc && bandSaysWin) {
+    return { detail: `roll ${cr.total} < DC ${cr.dc} but band="${ar.band || ar.outcome}"`, total: cr.total, dc: cr.dc };
+  }
+  // A label that says plain "success" while the band is a failure/at-a-cost.
+  if (label && label.includes("success") && !label.includes("cost") && (band.includes("fail") || band.includes("cost"))) {
+    return { detail: `band="${ar.band || ar.outcome}" but label="${ar.outcomeLabel}"`, total: cr.total, dc: cr.dc };
+  }
+  return null;
+}
+
+const NIGHT_WORDS = /\b(?:night|nightfall|midnight|dusk|sundown|sunset|evening|moonlight|starlight|after dark|darkness falls)\b/i;
+const DAY_WORDS = /\b(?:dawn|sunrise|daybreak|morning|midday|noon|afternoon|daylight|sunlight)\b/i;
+const ELAPSED_WORDS = /\b(?:hours? (?:pass|passed|later|have passed)|by nightfall|long (?:since )?(?:passed|gone)|days? (?:pass|passed|later))\b/i;
+
+// CLOCK DIVERGENCE (#14): narrated time-of-day / elapsed time that contradicts
+// the committed world clock. WARN-grade heuristic.
+export function detectClockDivergence(narration, worldTime) {
+  const wt = worldTime || {};
+  const text = String(narration || "");
+  const min = typeof wt.minuteOfDay === "number" ? wt.minuteOfDay : null;
+  const isNight = wt.isNight === true;
+  const clock = wt.clock || (min != null ? `${Math.floor(min / 60)}:${String(min % 60).padStart(2, "0")}` : "?");
+  // Narration says night, committed clock says day (daytime minutes, not night).
+  if (NIGHT_WORDS.test(text) && min != null && isNight === false && min >= 6 * 60 && min < 17 * 60) {
+    return { detail: `narration reads night ("${(text.match(NIGHT_WORDS) || [])[0]}") but committed clock=${clock} (day)` };
+  }
+  // Narration says dawn/morning, committed clock says night.
+  if (DAY_WORDS.test(text) && isNight === true) {
+    return { detail: `narration reads day ("${(text.match(DAY_WORDS) || [])[0]}") but committed clock=${clock} (night)` };
+  }
+  // Narration asserts significant elapsed time — flag when the clock never moved
+  // (caller passes worldTime with `advanced:false` to signal a static clock).
+  if (ELAPSED_WORDS.test(text) && wt.advanced === false) {
+    return { detail: `narration asserts elapsed time ("${(text.match(ELAPSED_WORDS) || [])[0]}") but the committed clock did not advance` };
+  }
+  return null;
+}
+
+// CONDITIONS WITHOUT SHED (#26): a debuff count that only ever grows across the
+// session and reaches a stack is the "4 debuffs stacked forever, no clearing"
+// class. conditionCounts is the active-condition count per turn, in order.
+export function detectConditionsWithoutShed(conditionCounts, { stackAt = 3 } = {}) {
+  const counts = (conditionCounts || []).filter((c) => typeof c === "number");
+  if (counts.length < 2) return null;
+  const peak = Math.max(...counts);
+  let everDropped = false;
+  for (let i = 1; i < counts.length; i += 1) {
+    if (counts[i] < counts[i - 1]) everDropped = true;
+  }
+  if (peak >= stackAt && !everDropped) {
+    return { detail: `${peak} conditions stacked and never shed across ${counts.length} turns`, peak };
+  }
+  return null;
+}
+
+function pushFinding(findings, f) {
+  findings.push({
+    axis: f.axis,
+    severity: f.severity,
+    turns: Array.isArray(f.turns) ? f.turns : f.turns != null ? [f.turns] : [],
+    failure: f.failure,
+    rootCause: f.rootCause,
+    fixTarget: f.fixTarget
+  });
+}
+
+/**
+ * Grade a session. `turns` is an array of per-turn observations:
+ *   { n, intent, narration, model, latencyMs, fallback,
+ *     attemptResult, scene, sceneBefore, sceneAfter, worldTime, conditionCount }
+ * Returns { axes:{narration,coherence,depth,mechanical,pacing}, findings[],
+ *           integrity:{total,real,fallback,excludedTurns,valid}, meta }.
+ * NARRATION + COHERENCE are computed on REAL-GM turns only; a session that is
+ * mostly fallback marks those two axes invalid.
+ */
+export function gradeSession(turns = [], opts = {}) {
+  const isReal = opts.isRealGmModel || isRealGmModel;
+  const list = Array.isArray(turns) ? turns : [];
+  const realTurns = list.filter((t) => isReal(t.model) && !t.fallback);
+  const fallbackTurns = list.filter((t) => !isReal(t.model) || t.fallback);
+  const integrity = {
+    total: list.length,
+    real: realTurns.length,
+    fallback: fallbackTurns.length,
+    excludedTurns: fallbackTurns.map((t) => t.n),
+    // Narration/coherence need a real-GM majority to be a valid product grade.
+    valid: list.length > 0 && realTurns.length / list.length >= 0.5
+  };
+
+  const findings = [];
+
+  // ---- COHERENCE (real turns): phantom NPC/lore, invented agents, band-desync,
+  // clock divergence ----
+  for (const t of realTurns) {
+    const scene = t.scene || {};
+    const phantomRes = auditProseAgainstState(t.narration, scene);
+    for (const p of phantomRes.phantoms) {
+      pushFinding(findings, {
+        axis: "coherence", severity: "critical", turns: t.n,
+        failure: `T${t.n}: narration names "${p.name}" — no committed entity/fact vouches it ("${p.sentence}")`,
+        rootCause: "GM invented a proper-noun NPC/lore fact not committed to state (#27 phantom NPC / #41 phantom lore)",
+        fixTarget: "server/solo/npcCommit.js phantom auditor (promote-or-strip) + GM-prompt name/lore discipline"
+      });
+    }
+    const inv = auditInventedAgents(t.narration, scene);
+    for (const iv of inv.inventions) {
+      const sev = iv.kind === "state_tag" ? "high" : "high";
+      pushFinding(findings, {
+        axis: iv.kind === "state_tag" ? "narration" : "coherence", severity: sev, turns: t.n,
+        failure: `T${t.n}: invented ${iv.kind} "${iv.detail}" with no committed backing ("${iv.sentence}")`,
+        rootCause: iv.kind === "state_tag"
+          ? "pseudo-state tag leaked into prose (interpreter output not stripped)"
+          : "GM narrated an actor/speaker with no committed entity (B2 uncommitted social/agency)",
+        fixTarget: iv.kind === "state_tag"
+          ? "server/gm/actionNarration.js voice/strip pass"
+          : "server/solo/npcCommit.js commit-or-strip + GM-prompt actor discipline"
+      });
+    }
+    const desync = detectBandDesync(t.attemptResult);
+    if (desync) {
+      pushFinding(findings, {
+        axis: "coherence", severity: "high", turns: t.n,
+        failure: `T${t.n}: band/label desync — ${desync.detail}`,
+        rootCause: "resolved outcome band disagrees with roll-vs-DC or human label (#28 band/label/narration desync)",
+        fixTarget: "server/solo/attempt.js outcome/band/outcomeLabel derivation"
+      });
+    }
+    const clockDiv = detectClockDivergence(t.narration, t.worldTime);
+    if (clockDiv) {
+      pushFinding(findings, {
+        axis: "coherence", severity: "medium", turns: t.n,
+        failure: `T${t.n}: clock divergence — ${clockDiv.detail}`,
+        rootCause: "GM narrates a time the committed world clock (#14) does not reflect",
+        fixTarget: "server/solo/worldClock.js durationMinutes commit + GM-prompt clock-awareness clause"
+      });
+    }
+  }
+
+  // ---- NARRATION (real turns): AI-tells, recycled-loop, thin fallback prose ----
+  for (const t of realTurns) {
+    const emdashes = (String(t.narration || "").match(/[—–―]|--/g) || []).length;
+    if (emdashes > 0) {
+      pushFinding(findings, {
+        axis: "narration", severity: "low", turns: t.n,
+        failure: `T${t.n}: ${emdashes} em-dash AI-tell(s) leaked into narration`,
+        rootCause: "narration bypassed the em-dash strip (likely the fallback/template path)",
+        fixTarget: "server/gm/voice.js stripAiTells + composeAttemptNarration voice pass"
+      });
+    }
+  }
+  const loops = detectRecycledLoop(realTurns.map((t) => ({ n: t.n, narration: t.narration })));
+  for (const loop of loops.slice(0, 4)) {
+    pushFinding(findings, {
+      axis: "narration", severity: "high", turns: loop.turns,
+      failure: `T${loop.turns.join("/")}: recycled imagery "${loop.phrase}" across ${loop.turns.length} turns`,
+      rootCause: "failure-escalation not firing — repeated same-action outcomes recycle identical prose instead of escalating/opening options",
+      fixTarget: "run.flags.failStreak escalation (server/solo/attempt.js) + GM-prompt anti-repeat/escalation clause"
+    });
+    // A recycled loop is also a DEPTH problem (on-rails / dead-loop).
+    pushFinding(findings, {
+      axis: "depth", severity: "high", turns: loop.turns,
+      failure: `T${loop.turns.join("/")}: dead-loop — same outcome recycled, world not opening new options`,
+      rootCause: "no escalation/branch on repeated failure; the world does not react to being stuck",
+      fixTarget: "failure-escalation design (open new options on repeat) + run.flags.failStreak"
+    });
+  }
+
+  // ---- DEPTH / TRACTION (all turns): did the world react on a signalled success? ----
+  for (const t of list) {
+    const ar = t.attemptResult || {};
+    const succeeded = ar.success === true || String(ar.band || ar.outcome || "").toLowerCase().includes("success");
+    if (succeeded && t.sceneBefore && t.sceneAfter) {
+      if (JSON.stringify(t.sceneBefore) === JSON.stringify(t.sceneAfter)) {
+        pushFinding(findings, {
+          axis: "depth", severity: "high", turns: t.n,
+          failure: `T${t.n}: signalled success committed NO state delta (narrate-into-void)`,
+          rootCause: "a turn the engine calls a success changed no committed surface (loc/discovery/inv/quest/xp/objects/cast)",
+          fixTarget: "server/solo/actions.js detect→route→commit for this intent class"
+        });
+      }
+    }
+  }
+
+  // ---- MECHANICAL (all turns): checks resolve, clock/conditions fire ----
+  for (const t of list) {
+    const ar = t.attemptResult || {};
+    if (ar.needsCheck === true && !ar.checkResult) {
+      pushFinding(findings, {
+        axis: "mechanical", severity: "high", turns: t.n,
+        failure: `T${t.n}: needsCheck=true but no checkResult rolled`,
+        rootCause: "a check was flagged required but the resolver did not roll it",
+        fixTarget: "server/solo/attempt.js check-resolution path"
+      });
+    }
+    const desync = detectBandDesync(ar);
+    if (desync) {
+      pushFinding(findings, {
+        axis: "mechanical", severity: "medium", turns: t.n,
+        failure: `T${t.n}: roll/band math desync — ${desync.detail}`,
+        rootCause: "band derivation disagrees with the rolled total vs DC (#28)",
+        fixTarget: "server/solo/attempt.js band derivation"
+      });
+    }
+  }
+  const shed = detectConditionsWithoutShed(list.map((t) => t.conditionCount));
+  if (shed) {
+    pushFinding(findings, {
+      axis: "mechanical", severity: "medium", turns: list.map((t) => t.n),
+      failure: `conditions-without-shed: ${shed.detail}`,
+      rootCause: "conditions apply but the shed/expiry mechanism (#26) never clears them against the clock",
+      fixTarget: "server/solo/conditions.js tick/shed against world clock"
+    });
+  }
+
+  // ---- PACING (all turns): latency, fallback frequency, dead-loops ----
+  for (const t of list) {
+    const ms = typeof t.latencyMs === "number" ? t.latencyMs : null;
+    if (ms != null && ms >= 30000) {
+      pushFinding(findings, {
+        axis: "pacing", severity: "high", turns: t.n,
+        failure: `T${t.n}: turn latency ${(ms / 1000).toFixed(1)}s (>=30s)`,
+        rootCause: "slow cloud turn; may trip the timeout→gemini fallback and stalls the read",
+        fixTarget: "NOTDND_GM_CLOUD_TIMEOUT_MS + per-turn call fan-out (server/solo/gmProvider.js)"
+      });
+    } else if (ms != null && ms >= 20000) {
+      pushFinding(findings, {
+        axis: "pacing", severity: "medium", turns: t.n,
+        failure: `T${t.n}: turn latency ${(ms / 1000).toFixed(1)}s (>=20s)`,
+        rootCause: "borderline-slow cloud turn",
+        fixTarget: "NOTDND_GM_CLOUD_TIMEOUT_MS + per-turn fan-out"
+      });
+    }
+  }
+  if (integrity.fallback > 0) {
+    pushFinding(findings, {
+      axis: "pacing", severity: "high", turns: integrity.excludedTurns,
+      failure: `${integrity.fallback}/${integrity.total} turns fell to a fallback model (excluded from narration/coherence)`,
+      rootCause: "cloud GM unavailable/timed-out on these turns; fallback prose is not representative",
+      fixTarget: "cloud availability/timeout (NOTDND_GM_CLOUD_TIMEOUT_MS) + provider chain (server/ai/openrouter.js)"
+    });
+  }
+
+  // ---- Axis scores from the findings ----
+  const axisNumeric = (axis, gradeableTurns) => {
+    if (gradeableTurns === 0) return null;
+    const deduction = findings
+      .filter((f) => f.axis === axis)
+      .reduce((sum, f) => sum + (SEVERITY_WEIGHT[f.severity] || 0), 0);
+    return Math.max(0, Math.min(100, AXIS_BASE - deduction));
+  };
+  const mk = (axis, gradeable, invalidNote) => {
+    const numeric = axisNumeric(axis, gradeable);
+    return {
+      numeric,
+      letter: numeric == null ? "N/A" : letterFor(numeric),
+      gradeableTurns: gradeable,
+      ...(invalidNote ? { invalid: true, note: invalidNote } : {})
+    };
+  };
+  const narrCohInvalid = integrity.valid ? null : `only ${integrity.real}/${integrity.total} turns were real-deepseek — grade computed on a fallback-heavy session is NOT a valid product grade`;
+
+  const axes = {
+    narration: mk("narration", realTurns.length, narrCohInvalid),
+    coherence: mk("coherence", realTurns.length, narrCohInvalid),
+    depth: mk("depth", list.length),
+    mechanical: mk("mechanical", list.length),
+    pacing: mk("pacing", list.length)
+  };
+
+  // Rank findings: severity, then turn count (broader = worse).
+  findings.sort((a, b) => (SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity]) || (b.turns.length - a.turns.length));
+
+  return { axes, findings, integrity, meta: opts.meta || {} };
+}
+
+// Render a graded session to the machine-actionable markdown report written to
+// docs/grades/auto-grade-<timestamp>.md.
+export function renderGradeReport(graded, meta = {}) {
+  const { axes, findings, integrity } = graded;
+  const axisRow = (name, key) => {
+    const a = axes[key] || {};
+    const num = a.numeric == null ? "—" : a.numeric;
+    return `| ${name} | **${a.letter}** | ${num} | ${a.gradeableTurns} |${a.invalid ? " ⚠️ INVALID" : ""}`;
+  };
+  const sevBadge = { critical: "🟥 CRITICAL", high: "🟧 HIGH", medium: "🟨 MEDIUM", low: "⬜ LOW" };
+  const lines = [];
+  lines.push(`# Auto-Grade — ${meta.timestamp || "session"}`);
+  lines.push("");
+  lines.push(`> Autoplay letter-grade of run \`${meta.runId || "?"}\` — ${integrity.total} turns, drive: \`${meta.drive || "free-text autoplay"}\`, tip \`${meta.sha || "?"}\`.`);
+  lines.push(`> Scored against the manual walkthrough rubric (docs/design/grade-improvement-roadmap.md).`);
+  lines.push("");
+  lines.push("## Model integrity");
+  lines.push("");
+  lines.push(`- **Real deepseek turns:** ${integrity.real}/${integrity.total}`);
+  lines.push(`- **Fallback turns (excluded from narration/coherence):** ${integrity.fallback}${integrity.excludedTurns.length ? ` (T${integrity.excludedTurns.join(", T")})` : ""}`);
+  lines.push(`- **Grade validity:** ${integrity.valid ? "✅ real-GM majority — narration/coherence grades are representative" : "❌ FALLBACK-HEAVY — narration/coherence grades are NOT a valid product grade"}`);
+  lines.push("");
+  lines.push("## Grades");
+  lines.push("");
+  lines.push("| Axis | Grade | Numeric | Gradeable turns | |");
+  lines.push("|---|---|---|---|---|");
+  lines.push(axisRow("Narration", "narration"));
+  lines.push(axisRow("Coherence", "coherence"));
+  lines.push(axisRow("Depth / Traction", "depth"));
+  lines.push(axisRow("Mechanical", "mechanical"));
+  lines.push(axisRow("Pacing", "pacing"));
+  lines.push("");
+  lines.push(`## Machine-actionable findings (${findings.length}, ranked by severity)`);
+  lines.push("");
+  if (findings.length === 0) {
+    lines.push("_No deductions — clean session._");
+  }
+  findings.forEach((f, i) => {
+    lines.push(`### ${i + 1}. ${sevBadge[f.severity] || f.severity} · ${f.axis} · T${f.turns.join("/") || "—"}`);
+    lines.push("");
+    lines.push(`- **Observed:** ${f.failure}`);
+    lines.push(`- **Root-cause hypothesis:** ${f.rootCause}`);
+    lines.push(`- **Fix-target:** \`${f.fixTarget}\``);
+    lines.push("");
+  });
+  return lines.join("\n");
+}
