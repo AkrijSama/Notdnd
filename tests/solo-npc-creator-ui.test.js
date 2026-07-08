@@ -5,7 +5,8 @@ import {
   renderNpcCreatorModal,
   renderSoloDialogueOverlay,
   renderSoloRightRail,
-  renderSoloSceneInputBar
+  renderSoloSceneInputBar,
+  renderSoloSceneShell
 } from "../src/components/soloSceneShell.js";
 
 test("characterFromScenePlayer maps run.player into the sidebar shape", () => {
@@ -79,6 +80,39 @@ test("VN overlay falls back to the base portrait when the variant is missing", (
 test("VN overlay shows the placeholder only when neither variant nor base exists", () => {
   const html = renderSoloDialogueOverlay(dialogueState({ expressionVariants: {} }, []));
   assert.match(html, /Portrait incoming/);
+});
+
+// #49: the VN layer is now IN-STAGE (sprite + textbox), not a floating modal.
+test("#49 VN layer renders an in-stage sprite + textbox, NOT a dimming modal", () => {
+  const html = renderSoloDialogueOverlay(dialogueState({}, [{ npcId: "vex", portraitUri: "/v/base.png" }]));
+  assert.match(html, /class="solo-vn-sprite"/, "NPC renders as an in-stage sprite");
+  assert.match(html, /class="solo-vn-box"/, "dialogue is a stage textbox");
+  assert.doesNotMatch(html, /solo-vn-overlay|solo-vn-backdrop/, "no full-screen modal / dimming backdrop");
+  assert.doesNotMatch(html, /aria-modal/, "not a modal dialog");
+});
+
+test("#49 VN layer preserves the typewriter / reply / end hooks", () => {
+  const html = renderSoloDialogueOverlay(dialogueState({ line: "Well met." }, []));
+  assert.match(html, /data-solo-dialogue-panel/, "panel hook (skip-typewriter) present");
+  assert.match(html, /data-solo-dialogue-text[^>]*data-fulltext="Well met\."/, "typewriter target + fulltext");
+  assert.match(html, /data-solo-dialogue-reply-input/, "reply input hook");
+  assert.match(html, /data-solo-dialogue-reply-submit/, "reply submit hook");
+  assert.match(html, /data-solo-dialogue-end/, "end hook");
+});
+
+test("#49 VN layer is empty when no conversation is active", () => {
+  assert.equal(renderSoloDialogueOverlay({ dialogueActive: false }), "");
+  assert.equal(renderSoloDialogueOverlay({ dialogueActive: true, talkResult: null }), "");
+});
+
+test("#49 the pinned stage gets vn-active and hosts the layer during dialogue", () => {
+  const html = renderSoloSceneShell({
+    scene: { runId: "run_x", location: { name: "Tavern" }, cast: [{ npcId: "vex", portraitUri: "/v/base.png" }] },
+    dialogueActive: true,
+    talkResult: { npcId: "vex", speakerName: "Vex", line: "Well met.", expression: "neutral", expressionVariants: {} }
+  });
+  assert.match(html, /solo-stage vn-active/, "stage flagged vn-active");
+  assert.match(html, /class="solo-vn-box"/, "VN textbox is inside the shell/stage");
 });
 
 test("renderNpcCreatorModal is empty when closed", () => {

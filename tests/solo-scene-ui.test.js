@@ -855,9 +855,9 @@ test("mountSoloSceneShell auto-opens VN for a freeform speaker with the NPC's ow
   const talkCall = calls.find((action) => action.type === "talk");
   assert.ok(talkCall, "a talk action was posted for the freeform speaker");
   assert.equal(talkCall.targetEntityId, "npc:placeholder_npc");
-  // The overlay opens showing the NPC's NAME (not the generic "NPC")...
-  assert.match(root.innerHTML, /data-solo-dialogue-overlay/);
-  assert.match(root.innerHTML, /solo-vn-speaker">Placeholder NPC</);
+  // The in-stage VN textbox (#49) opens showing the NPC's NAME (not "NPC")...
+  assert.match(root.innerHTML, /solo-vn-box/);
+  assert.match(root.innerHTML, /solo-vn-box-speaker">Placeholder NPC</);
   // ...speaking the NPC's OWN beat line, never the GM opening narration.
   assert.match(root.innerHTML, /data-fulltext="The keeper sizes you up/);
   assert.doesNotMatch(root.innerHTML, /data-fulltext="You are Akrij/);

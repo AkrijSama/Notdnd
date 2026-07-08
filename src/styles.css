@@ -2598,7 +2598,104 @@ button:disabled {
   padding: 2px 4px 8px;
   margin: 0;
   border-bottom: 1px solid var(--border, #202024);
+  /* #49: positioning context + clip for the in-stage VN sprite / textbox. */
+  position: relative;
+  overflow: hidden;
 }
+/* #49 VN LAYER — the NPC renders as a sprite anchored to the right of the stage,
+   with a classic textbox banded across the stage bottom, over the location art.
+   No backdrop: the narration log stays fully visible behind the stage. */
+.solo-vn-sprite {
+  position: absolute;
+  right: 10px;
+  bottom: 0;
+  top: 8px;
+  z-index: 2;
+  display: flex;
+  align-items: flex-end;
+  pointer-events: none;
+  filter: drop-shadow(0 6px 18px rgba(0, 0, 0, 0.55));
+  animation: soloVnSpriteIn 0.32s ease both;
+}
+.solo-vn-sprite .solo-vn-portrait-img {
+  height: 100%;
+  width: auto;
+  max-width: 46%;
+  object-fit: contain;
+  object-position: bottom;
+  border-radius: 8px 8px 0 0;
+}
+.solo-vn-sprite .solo-vn-portrait-placeholder {
+  align-self: center;
+  padding: 10px 16px;
+  border-radius: 8px;
+  background: rgba(10, 10, 12, 0.72);
+  color: var(--text-2, #b0b3bb);
+  text-align: center;
+}
+@keyframes soloVnSpriteIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .solo-vn-sprite { animation: none; } }
+.solo-vn-box {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 3;
+  padding: 8px 14px 10px;
+  background: linear-gradient(180deg, rgba(6, 7, 8, 0.35), rgba(6, 7, 8, 0.92) 42%);
+  border-top: 1px solid var(--border-strong, #34343b);
+  backdrop-filter: blur(2px);
+}
+.solo-vn-box-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 3px; }
+.solo-vn-box-speaker {
+  font-family: var(--font-display, Georgia, serif);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--accent-bright, #e7e9ee);
+}
+.solo-vn-box-end {
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 5px;
+  border: 1px solid var(--border-strong, #34343b);
+  background: var(--inset, #070708);
+  color: var(--text-2, #b0b3bb);
+  cursor: pointer;
+  flex: none;
+}
+.solo-vn-box-end:hover { color: var(--text, #e7e9ee); border-color: var(--accent, #c2c6cf); }
+.solo-vn-box-text {
+  font-family: var(--font-body, Georgia, serif);
+  font-size: calc(1.05rem * var(--solo-log-scale, 1));
+  line-height: 1.5;
+  color: var(--text, #e7e9ee);
+  min-height: 1.5em;
+  margin-bottom: 8px;
+}
+.solo-vn-box-reply { display: flex; gap: 8px; }
+.solo-vn-box-reply-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 7px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border-strong, #34343b);
+  background: rgba(3, 3, 4, 0.85);
+  color: var(--text, #e7e9ee);
+  font-size: 14px;
+}
+.solo-vn-box-reply-input:focus { outline: none; border-color: var(--accent, #c2c6cf); }
+.solo-vn-box-reply-submit {
+  flex: none;
+  padding: 7px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--accent, #c2c6cf);
+  background: var(--accent, #c2c6cf);
+  color: var(--bg, #050506);
+  font-weight: 700;
+  cursor: pointer;
+}
+.solo-vn-box-reply-submit:disabled { opacity: 0.6; cursor: default; }
 /* #34 step 5 + #31: the pinned stage art is a CONSISTENT-height banner. Dropping
    the aspect-ratio:3/2 lock (which swung the banner from letterbox on a narrow
    column to over-tall on a wide one) for a fixed clamped height + object-fit:cover

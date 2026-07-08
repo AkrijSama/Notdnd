@@ -2601,55 +2601,41 @@ export function renderSoloDialogueOverlay(state = {}) {
         <small>Portrait incoming…</small>
       </div>`;
 
-  // Conversation scrollback: the prior exchanges (player + NPC), so the overlay
-  // reads as a sustained conversation. The last NPC entry is the current line,
-  // which is revealed by the typewriter below — so it's excluded from the
-  // scrollback to avoid showing it twice. A few exchanges are kept for context.
-  const history = Array.isArray(state.dialogueHistory) ? state.dialogueHistory : [];
-  const scrollback = history.slice(0, -1).slice(-4);
-  const historyHtml = scrollback.length
-    ? `<div class="solo-vn-history">${scrollback
-        .map(
-          (entry) =>
-            `<div class="solo-vn-exchange solo-vn-exchange-${escapeHtml(entry.role || "npc")}">${
-              entry.speaker ? `<span class="solo-vn-exchange-who">${escapeHtml(entry.speaker)}</span>` : ""
-            }<span class="solo-vn-exchange-text">${escapeHtml(entry.text || "")}</span></div>`
-        )
-        .join("")}</div>`
-    : "";
+  // The conversation scrollback now lives in the persistent narration log (each
+  // beat is a logged turn with speaker attribution), so the in-stage textbox shows
+  // only the CURRENT line — no duplicate history panel inside the VN box.
 
-  // `key` on the portrait forces a fresh element (and thus replays the fade)
-  // whenever the expression changes between consecutive lines.
+  // #49: the VN presentation lives IN the pinned stage — NOT a floating modal that
+  // dims the narration. The NPC renders as a sprite anchored to one side of the
+  // stage; the line + reply sit in a classic VN textbox banded across the stage
+  // bottom, over the location art. The narration log stays fully visible behind
+  // it (no backdrop). `data-portrait-key` forces a fresh <img> (replays the fade)
+  // when the expression changes; the data-solo-dialogue-* hooks are unchanged so
+  // the typewriter / reply / end bindings in bindSoloSceneShell keep working.
   return `
-    <div class="solo-vn-overlay" data-solo-dialogue-overlay role="dialog" aria-modal="true" aria-label="Dialogue with ${escapeHtml(speaker)}">
-      <div class="solo-vn-backdrop" data-solo-dialogue-close></div>
-      <div class="solo-vn-panel" data-solo-dialogue-panel>
-        <div class="solo-vn-portrait" data-expression="${escapeHtml(expression)}" data-portrait-key="${escapeHtml(portraitUri || expression)}">
-          ${portraitInner}
-        </div>
-        <div class="solo-vn-body">
-          ${historyHtml}
-          <div class="solo-vn-speaker">${escapeHtml(speaker)}</div>
-          <div
-            class="solo-vn-text ${typed ? "is-complete" : ""}"
-            data-solo-dialogue-text
-            data-typed="${typed ? "true" : "false"}"
-            data-fulltext="${escapeHtml(line)}"
-          >${typed ? escapeHtml(line) : ""}</div>
-          <div class="solo-vn-reply">
-            <input
-              type="text"
-              class="solo-vn-reply-input"
-              data-solo-dialogue-reply-input
-              placeholder="Say something — or describe what you do…"
-              value="${escapeHtml(replyDraft)}"
-            />
-            <button type="button" class="solo-vn-reply-submit" data-solo-dialogue-reply-submit ${busy ? "disabled" : ""}>${busy ? "…" : "Reply ›"}</button>
-          </div>
-          <div class="solo-vn-controls">
-            <button type="button" class="solo-vn-end" data-solo-dialogue-end>End conversation</button>
-          </div>
-        </div>
+    <div class="solo-vn-sprite" data-expression="${escapeHtml(expression)}" data-portrait-key="${escapeHtml(portraitUri || expression)}" aria-hidden="true">
+      ${portraitInner}
+    </div>
+    <div class="solo-vn-box" data-solo-dialogue-panel role="group" aria-label="Dialogue with ${escapeHtml(speaker)}">
+      <div class="solo-vn-box-head">
+        <span class="solo-vn-box-speaker">${escapeHtml(speaker)}</span>
+        <button type="button" class="solo-vn-box-end" data-solo-dialogue-end aria-label="End conversation" title="End conversation">End ✕</button>
+      </div>
+      <div
+        class="solo-vn-box-text ${typed ? "is-complete" : ""}"
+        data-solo-dialogue-text
+        data-typed="${typed ? "true" : "false"}"
+        data-fulltext="${escapeHtml(line)}"
+      >${typed ? escapeHtml(line) : ""}</div>
+      <div class="solo-vn-box-reply">
+        <input
+          type="text"
+          class="solo-vn-box-reply-input"
+          data-solo-dialogue-reply-input
+          placeholder="Say something — or describe what you do…"
+          value="${escapeHtml(replyDraft)}"
+        />
+        <button type="button" class="solo-vn-box-reply-submit" data-solo-dialogue-reply-submit ${busy ? "disabled" : ""}>${busy ? "…" : "Reply ›"}</button>
       </div>
     </div>
   `;
@@ -2913,12 +2899,17 @@ export function renderSoloSceneShell(state = {}) {
                     <!-- #25 ZONE 1 — PINNED STAGE: location art + the check-result
                          strip. Never scrolls; the persistent visual anchor and the
                          future home of the VN sprite/dialogue layer. -->
-                    <div class="solo-stage" data-solo-stage>
+                    <div class="solo-stage${state.dialogueActive && state.talkResult ? " vn-active" : ""}" data-solo-stage>
                       ${renderSoloUpgradePrompt(scene)}
                       ${renderSoloSceneArt(scene.locationImageUri, { locked: scene.locationImageLocked })}
                       <!-- #15: stable wrapper so the turn fast-path can repaint the
                            outcome strip in place without rebuilding the stage. -->
                       <div data-solo-outcome>${renderSoloActionOutcome(state)}</div>
+                      <!-- #49 VN LAYER: NPC sprite + in-flow dialogue textbox render
+                           IN the pinned stage (not a modal), over the location art;
+                           the narration log stays visible behind. Empty when no
+                           conversation is active. -->
+                      ${renderSoloDialogueOverlay(state)}
                     </div>
                     <!-- #25 ZONE 2 — SCROLLABLE NARRATION LOG: turn-by-turn prose
                          accumulates as readable history (independent scroll). On the
@@ -2985,7 +2976,8 @@ export function renderSoloSceneShell(state = {}) {
         ${renderSoloRightRail(state)}
       </div>
       </div>
-      ${renderSoloDialogueOverlay(state)}
+      <!-- #49: the VN dialogue layer moved INTO the pinned stage (above); it is no
+           longer a full-screen modal appended here. -->
       ${renderNpcCreatorModal(state)}
     </section>
   `;
