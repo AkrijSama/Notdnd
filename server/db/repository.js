@@ -1291,6 +1291,15 @@ export function updateNpcIdentity(runId, npcId, identity = {}) {
   if (typeof identity.portraitPrompt === "string") {
     npc.portraitPrompt = identity.portraitPrompt;
   }
+  // #50: gender + pronouns feed the portrait prompt (groundNpcPortrait). Only set
+  // when not ALREADY committed — a value inferred from the narration on commit
+  // (npcCommit.inferNpcGenderFromNarration) is authoritative over a later guess.
+  if (typeof identity.gender === "string" && identity.gender.trim() && !(typeof npc.gender === "string" && npc.gender.trim())) {
+    npc.gender = identity.gender.trim();
+  }
+  if (typeof identity.pronouns === "string" && identity.pronouns.trim() && !(typeof npc.pronouns === "string" && npc.pronouns.trim())) {
+    npc.pronouns = identity.pronouns.trim();
+  }
   if (Number.isFinite(Number(identity.identitySeed))) {
     npc.identitySeed = Number(identity.identitySeed);
   }

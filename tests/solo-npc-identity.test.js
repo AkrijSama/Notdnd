@@ -53,6 +53,18 @@ test("generateNpcIdentity returns complete, non-null identity offline", async ()
   assert.equal(typeof identity.identitySeed, "number");
 });
 
+test("#50 generateNpcIdentity carries gender + pronouns and reflects them in the portrait prompt", async () => {
+  // user-provided gender is authoritative and drives pronouns + the portrait word
+  const female = await generateNpcIdentity({ role: "Tavern Keeper", worldSeed: "seed_g", npcIndex: 0, existing: { gender: "female", appearance: "a weathered keeper with tied-back hair" } });
+  assert.equal(female.gender, "female");
+  assert.equal(female.pronouns, "she/her");
+  assert.match(female.portraitPrompt, /a woman/);
+  // gender inferred from the appearance text when not supplied
+  const male = await generateNpcIdentity({ role: "Guard", worldSeed: "seed_g", npcIndex: 1, existing: { appearance: "a broad-shouldered man with a scarred jaw, his eyes wary" } });
+  assert.equal(male.gender, "male");
+  assert.match(male.portraitPrompt, /a man/);
+});
+
 test("generateNpcIdentity is deterministic per (worldSeed, npcIndex)", async () => {
   const a = await generateNpcIdentity({ role: "Tavern Keeper", worldSeed: "seed_x", npcIndex: 0 });
   const b = await generateNpcIdentity({ role: "Tavern Keeper", worldSeed: "seed_x", npcIndex: 0 });

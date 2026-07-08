@@ -73,11 +73,37 @@ function buildIdentityPrompt(role, identitySeed) {
     `Role: ${role}.`,
     `Variation key: ${identitySeed} (use it to vary the result; do not output it).`,
     `Return ONLY compact JSON with exactly these keys and no prose:`,
-    `{"generatedName": string, "appearance": string, "personality": string}`,
+    `{"generatedName": string, "gender": string, "appearance": string, "personality": string}`,
     `- generatedName: a single evocative first name, no title.`,
-    `- appearance: one sentence of physical description suitable for a portrait.`,
+    `- gender: exactly one of "male", "female", or "non-binary".`,
+    `- appearance: one sentence of physical description suitable for a portrait, consistent with the gender.`,
     `- personality: one sentence of behavioral traits for the game master.`
   ].join("\n");
+}
+
+// #50: normalize a free-form gender string, and infer gender from descriptive text
+// (pronouns / gendered nouns) when the model omits it — so the committed entity
+// always carries a gender the portrait path can ground on.
+function normalizeGender(value) {
+  const s = String(value || "").trim().toLowerCase();
+  if (/\b(female|woman|girl|she|her)\b/.test(s)) return "female";
+  if (/\b(male|man|boy|he|him)\b/.test(s)) return "male";
+  if (/non-?binary|enby|androgynous|\bthey\b|\bthem\b/.test(s)) return "non-binary";
+  return "";
+}
+function inferGenderFromText(text) {
+  const s = String(text || "").toLowerCase();
+  const f = (s.match(/\b(she|her|hers|woman|female|girl|lady|matron|mother|sister|daughter)\b/g) || []).length;
+  const m = (s.match(/\b(he|him|his|man|male|boy|fellow|father|brother|son)\b/g) || []).length;
+  if (f > m) return "female";
+  if (m > f) return "male";
+  return "";
+}
+function pronounsForGender(gender) {
+  if (gender === "female") return "she/her";
+  if (gender === "male") return "he/him";
+  if (gender === "non-binary") return "they/them";
+  return "";
 }
 
 function parseIdentity(raw) {
@@ -105,8 +131,12 @@ function pick(list, seed, offset = 0) {
   return list[(seed + offset) % list.length];
 }
 
-function assemblePortraitPrompt(name, role, appearance) {
-  return `portrait of ${name}, a ${String(role).toLowerCase()}, ${appearance}, dark fantasy, detailed`;
+function assemblePortraitPrompt(name, role, appearance, gender = "") {
+  // #50: name the gender FIRST so the base model renders the right figure (the
+  // Mara-rendered-male bug) instead of defaulting to a male portrait.
+  const genderWord =
+    gender === "female" ? "a woman, " : gender === "male" ? "a man, " : gender === "non-binary" ? "an androgynous person, " : "";
+  return `portrait of ${name}, ${genderWord}a ${String(role).toLowerCase()}, ${appearance}, dark fantasy, detailed`;
 }
 
 // Builds a complete, non-null identity. User-provided fields (`existing`) are
@@ -129,12 +159,19 @@ function synthesizeIdentity(parsed, role, identitySeed, existing = {}) {
     : isString(parsed?.personality)
       ? parsed.personality.trim()
       : pick(FALLBACK_TRAITS, identitySeed, 3);
+  // #50: gender — user-set wins, then the model's, then inferred from the final
+  // name + appearance; pronouns derive from it. Empty only when nothing signals it.
+  const gender =
+    normalizeGender(existing.gender) ||
+    normalizeGender(parsed?.gender) ||
+    inferGenderFromText(`${appearance} ${generatedName}`);
+  const pronouns = isString(existing.pronouns) ? existing.pronouns.trim() : pronounsForGender(gender);
   // A user-set portraitPrompt wins; otherwise (re)assemble from the final
-  // name + appearance so a hybrid NPC's prompt reflects user-provided fields.
+  // name + gender + appearance so the portrait matches the committed character.
   const portraitPrompt = isString(existing.portraitPrompt)
     ? existing.portraitPrompt.trim()
-    : assemblePortraitPrompt(generatedName, safeRole, appearance);
-  return { generatedName, appearance, personality, portraitPrompt };
+    : assemblePortraitPrompt(generatedName, safeRole, appearance, gender);
+  return { generatedName, gender, pronouns, appearance, personality, portraitPrompt };
 }
 
 /**
