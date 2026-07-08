@@ -20,12 +20,26 @@ let shuttingDown = false;
 // EADDRINUSE before deciding whether to respawn.
 let stderrTail = "";
 
+// GPU-freeze guard (2026-07-08): the cloud->local GM fallback drops a slow turn
+// onto the local inkborne-gm:8b, which ollama loads (~6GB) into the 8GB GPU and
+// keeps VRAM-resident for minutes — a live freeze trigger independent of ComfyUI.
+// Default the fallback OFF for supervised launches so a slow turn fallback-TAGS
+// but never touches the GPU. An operator can still opt back in by exporting
+// INKBORNE_GM_LOCAL_FALLBACK=true explicitly before `npm start`.
+function childEnv() {
+  const env = { ...process.env };
+  if (env.INKBORNE_GM_LOCAL_FALLBACK === undefined && env.NOTDND_GM_LOCAL_FALLBACK === undefined) {
+    env.INKBORNE_GM_LOCAL_FALLBACK = "false";
+  }
+  return env;
+}
+
 function start() {
   stderrTail = "";
   // stdout inherited (the [SERVER]/[DB] startup logs reach the terminal
   // directly); stderr piped so we can scan it for EADDRINUSE — while still
   // passing it through to the terminal so the operator sees errors unchanged.
-  child = spawn(process.execPath, ["server/index.js"], { stdio: ["inherit", "inherit", "pipe"] });
+  child = spawn(process.execPath, ["server/index.js"], { stdio: ["inherit", "inherit", "pipe"], env: childEnv() });
   child.stderr.on("data", (chunk) => {
     process.stderr.write(chunk);
     stderrTail = (stderrTail + chunk.toString("utf8")).slice(-500);
