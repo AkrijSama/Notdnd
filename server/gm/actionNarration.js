@@ -325,10 +325,20 @@ export function buildActionGmMessage(run, resolved) {
       );
     }
     if (band === "failure") {
+      // FAILURE-ESCALATION (#loop): a sustained stall at the same goal must CHANGE
+      // the world, not recycle the same obstacle. The server tracks consecutive
+      // failures (ar.failStreak); at the threshold the narrator is forced to spring
+      // something new. Fixes the run_b06da13d dead-loop (7 turns of recycled "you
+      // go in circles" prose that made the director disengage).
+      const streak = Number.isFinite(ar?.failStreak) ? ar.failStreak : 0;
+      const escalation = streak >= 3
+        ? `ESCALATION: this is failure ${streak} in a row at the same goal. Do NOT recycle the same obstacle, the same imagery, or any "you are turned around / go in circles / disoriented again" beat. The situation MUST change NOW: spring exactly ONE concrete NEW thing that redirects the scene, a fresh complication, a NEW path or option that opens, or a hook or arrival that forces a different decision. The player must come away with something DIFFERENT to try, never the same wall. `
+        : "";
       return (
         `In the current scene, the player attempts: "${String(ar.intent || "an action")}". ` +
-        `The attempt FAILS and the situation CHANGES${rollText}${costPhrase ? ` — ${costPhrase}` : ""}. ` +
-        `Narrate the failure moving the world: they do NOT get what they wanted, and the scene is now different — usually harder along the path they tried, often with a new pressure. ` +
+        `The attempt FAILS and the situation CHANGES${rollText}${costPhrase ? `, ${costPhrase}` : ""}. ` +
+        escalation +
+        `Narrate the failure moving the world: they do NOT get what they wanted, and the scene is now different, usually harder along the path they tried, often with a new pressure. ` +
         `Never "nothing happens, try again"; narrate the committed consequence as already true, do not invent a different one. Give them a specific new thing to act on next. ${suffix}`
       );
     }

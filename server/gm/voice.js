@@ -16,3 +16,25 @@ export const INKBORNE_GM_VOICE = [
   // player character with he/him — never fall back to they/them by default.
   "Refer to the player character using he/him pronouns unless the player's chosen pronouns are explicitly stated in the provided context; never default to they/them."
 ].join("\n");
+
+// Post-process enforcement of the punctuation rule above. The prompt ASKS the
+// model to avoid em/en-dashes, but a model occasionally slips one (leaked em-dashes
+// showed on 4/15 turns of run_b06da13d), and the deterministic fallback templates
+// (composeAttemptNarration + friends) were never subject to the rule at all. This
+// strips the AI-tell dashes from ANY finished prose — live GM output OR fallback —
+// so the player never sees one. A spaced/unspaced em/en-dash or double-hyphen
+// becomes a comma (the clause break it was standing in for); a line left starting
+// with a comma has it dropped; doubled punctuation/space is collapsed. Pure and
+// idempotent — safe to run on every narration surface.
+export function stripAiTells(text) {
+  if (typeof text !== "string" || !text) {
+    return text;
+  }
+  return text
+    .replace(/ *-- */g, ", ")
+    .replace(/ *[—–] */g, ", ")
+    .replace(/(^|\n)[ \t]*,[ \t]*/g, "$1")
+    .replace(/,[ \t]*([,.;:!?])/g, "$1")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+}

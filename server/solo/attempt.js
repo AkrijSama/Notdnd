@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { getVisibleEntities } from "./entities.js";
 import { getAvailableMoves } from "./movement.js";
 import { ABILITIES, SKILLS, SKILL_ABILITY, resolveAbilityCheck, outcomeLabelForBand } from "./rules.js";
+import { stripAiTells } from "../gm/voice.js";
 import { abilityForBabelWord } from "./babelStats.js";
 import {
   createDefaultForbiddenPolicyProfile,
@@ -443,29 +444,48 @@ function intentPhrase(intent) {
 //      actually happened to state, the same source the live GM directive uses),
 //   4. else a neutral intent-aware safety line.
 // Pure; never throws.
+// Lowercases a spliced clause's leading letter so "…, but The rope frays" reads
+// "…, but the rope frays" — the committed reason text is often a full sentence
+// starting with a capital, which looked wrong after a mid-sentence conjunction.
+// Left alone when the first word is an acronym (all-caps) or a plainly proper noun.
+function spliceLower(text) {
+  const t = isString(text) ? text.trim() : "";
+  if (!t) {
+    return t;
+  }
+  const first = t.split(/\s+/)[0];
+  if (first.length > 1 && first === first.toUpperCase()) {
+    return t; // acronym / signage-caps — leave it
+  }
+  return t.charAt(0).toLowerCase() + t.slice(1);
+}
+
 export function composeAttemptNarration({ blockNarration, baseNarration, success, band, phrase, consequence } = {}) {
   if (isString(blockNarration)) {
-    return blockNarration;
+    return stripAiTells(blockNarration);
   }
   const safePhrase = isString(phrase) ? phrase : "act";
   const reason = consequence && isString(consequence.reason) ? consequence.reason.trim().replace(/[.!?]+$/, "") : "";
   // Success at a cost (Ch3 middle band): you get what you wanted AND a real cost
   // commits alongside it. Even when the provider supplied a clean success line,
   // the fallback must name the committed cost so the middle band never reads as
-  // a plain win. (The live GM narration replaces this on the normal path.)
+  // a plain win. Comma-splice (not an em-dash: #17 AI-tell) + lowercased reason.
+  // (The live GM narration replaces this on the normal path.)
   if (band === "success_at_cost") {
     const base = isString(baseNarration) ? baseNarration.trim().replace(/[.!?]+$/, "") : `You ${safePhrase}`;
-    return reason ? `${base} — but ${reason}.` : `${base} — but it costs you.`;
+    return stripAiTells(reason ? `${base}, but ${spliceLower(reason)}.` : `${base}, but it costs you.`);
   }
   if (isString(baseNarration)) {
-    return baseNarration;
+    return stripAiTells(baseNarration);
   }
   if (success) {
-    return `You ${safePhrase}.`;
+    return stripAiTells(`You ${safePhrase}.`);
   }
-  return reason
-    ? `You try to ${safePhrase}, but ${reason}.`
-    : `You try to ${safePhrase}, but it doesn't come together this time.`;
+  return stripAiTells(
+    reason
+      ? `You try to ${safePhrase}, but ${spliceLower(reason)}.`
+      : `You try to ${safePhrase}, but it doesn't come together this time.`
+  );
 }
 
 function defaultProviderOutput(input) {
@@ -1838,6 +1858,21 @@ export function resolveAttemptAction(run, action, options = {}) {
     band = "automatic";
   }
 
+  // FAILURE-ESCALATION STREAK. Track consecutive FAILURE-band turns so the
+  // narrator can ESCALATE the situation instead of recycling the same obstacle.
+  // run_b06da13d dead-looped for ~7 turns of near-identical "you go in circles"
+  // prose with no new option and the director disengaged. The streak increments
+  // only on the failure band and resets on any other outcome (success / success-
+  // at-a-cost / automatic = progress was made); a committed MOVE also resets it
+  // (see movement.js), so reaching new ground clears the loop. The narrator reads
+  // this to change the world on a sustained stall (actionNarration.js).
+  if (!isPlainObject(updatedRun.flags)) {
+    updatedRun.flags = {};
+  }
+  const priorFailStreak = Number.isFinite(updatedRun.flags.failStreak) ? updatedRun.flags.failStreak : 0;
+  const failStreak = band === "failure" ? priorFailStreak + 1 : 0;
+  updatedRun.flags.failStreak = failStreak;
+
   // A foreclosed (blocked) retry narrates the closed door, not a fresh attempt —
   // grounding the prose in the object's persisted degraded state. Otherwise the
   // provider's success/failure line stands (with the intent-aware safety net).
@@ -1868,6 +1903,9 @@ export function resolveAttemptAction(run, action, options = {}) {
     // SAME band the narration keys off, so label / roll math / prose can't diverge.
     // `success` (below) stays the intent-achieved flag internal logic reads.
     outcomeLabel: outcomeLabelForBand(band),
+    // Consecutive-failure count (incl. this turn) — the narrator escalates the
+    // world instead of recycling the same obstacle once this crosses the threshold.
+    failStreak,
     summary: providerOutput.summary,
     checkResult,
     // Whether a d20 was rolled this turn. The client uses this to show the

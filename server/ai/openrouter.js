@@ -64,7 +64,15 @@ function gmLocalTimeoutMs() {
 }
 function gmCloudTimeoutMs() {
   const v = Number(process.env.NOTDND_GM_CLOUD_TIMEOUT_MS || process.env.INKBORNE_GM_CLOUD_TIMEOUT_MS);
-  return Number.isFinite(v) && v > 0 ? v : 25000;
+  // 35s (was 25s): deepseek-v4-pro legitimately takes 15-30s on a full narrative
+  // turn, so a 25s ceiling ABORTED still-working calls mid-quality and dropped
+  // them to the gemini fallback (2 of 16 turns in run_b06da13d). The tighter
+  // window bought little there — those turns were already ~30s once the abort +
+  // gemini retry is counted — while costing prose quality. 35s lets a slow-but-
+  // -working deepseek turn finish on the premium model, while still bounding a
+  // genuinely hung call. The interpreter no longer rides this window (it moved to
+  // the fast lane), so this gates the narration call only. Tunable via env.
+  return Number.isFinite(v) && v > 0 ? v : 35000;
 }
 
 function resolveModelTiers() {
@@ -600,12 +608,18 @@ async function requestOpenRouter(messages, model, options = {}) {
   if (Number.isFinite(Number(options.maxResponseTokens))) {
     body.max_tokens = Math.max(1, Number(options.maxResponseTokens));
   }
+  // OpenRouter-SPECIFIC body fields (`reasoning`, provider-routing `extraBody`)
+  // are rejected with a 400 by strict OpenAI-compatible endpoints like Gemini's
+  // (generativelanguage/.../openai) — which silently cost the utility fast-lane a
+  // wasted attempt before it fell back to deepseek. Only send them to the actual
+  // OpenRouter base; other lanes (gemini, groq) get the plain OpenAI-schema body.
+  const isOpenRouterBase = String(LLM_BASE_URL || "").includes("openrouter.ai");
   // Reasoning control (OpenRouter `reasoning` field). Mechanical utility calls
   // (fact extraction, etc.) do NOT need a reasoning model's hidden deliberation —
   // and on a reasoning model an uncapped or tightly-capped call spends the whole
   // token budget on reasoning, leaving ZERO content (empty JSON → dropped write).
   // Passing `{ enabled: false }` turns reasoning off so the budget goes to output.
-  if (options.reasoning && typeof options.reasoning === "object") {
+  if (isOpenRouterBase && options.reasoning && typeof options.reasoning === "object") {
     body.reasoning = options.reasoning;
   }
   if (Array.isArray(options.stopSequences) && options.stopSequences.length > 0) {
@@ -613,7 +627,7 @@ async function requestOpenRouter(messages, model, options = {}) {
   }
   // Lane-scoped extra body fields (e.g. the paid OpenRouter lane's provider
   // routing preference). Additive only — never overrides the core fields above.
-  if (provider?.extraBody && typeof provider.extraBody === "object") {
+  if (isOpenRouterBase && provider?.extraBody && typeof provider.extraBody === "object") {
     for (const [extraKey, extraValue] of Object.entries(provider.extraBody)) {
       if (!(extraKey in body)) {
         body[extraKey] = extraValue;
@@ -776,6 +790,12 @@ async function requestWithFallback(messages, preferredModel, options = {}) {
   if (!mockModeEnabled()) {
     const chain = resolveCloudChain();
     if (chain) {
+      // NOTE: routing the utility tier (interpreter/suggestions) to the fast
+      // gemini lane FIRST was tried and reverted — the free gemini tier 429-rate-
+      // limits under per-turn interpreter volume (16/17 calls failed in testing),
+      // so it added a wasted attempt AND burned the gemini quota the NARRATION
+      // fallback needs. The reliable interpreter-latency win is to SKIP the
+      // interpreter for no-check actions instead (see buildLiveAttemptOptions).
       return await requestViaCloudChain(messages, chain, options);
     }
   }

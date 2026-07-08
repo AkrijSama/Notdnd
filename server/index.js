@@ -104,6 +104,7 @@ import {
 } from "./gm/memoryStore.js";
 import { buildSessionSystemPrompt, runGmPipeline } from "./gm/prompting.js";
 import { buildActionGmMessage } from "./gm/actionNarration.js";
+import { stripAiTells } from "./gm/voice.js";
 import { getProfile } from "./gm/promptProfiles.js";
 import { applyPreset, getPresets } from "./gm/stylePresets.js";
 import { buildStylePromptBlock, getStyleConfig, updateStyleConfig, validateStyleUpdate } from "./gm/styleConfig.js";
@@ -113,7 +114,7 @@ import { fetchHomebrewUrl } from "./homebrew/urlImport.js";
 import { validateCustomItem, normalizeContentForBuild, CUSTOM_CONTENT_TYPES } from "./homebrew/customContent.js";
 import { createWsHub } from "./realtime/wsHub.js";
 import { resolveSoloAction, testHooksEnabled } from "./solo/actions.js";
-import { buildAttemptContext, buildAttemptProviderInput, classifyIntentAuthority } from "./solo/attempt.js";
+import { buildAttemptContext, buildAttemptProviderInput, classifyIntentAuthority, isObservationQuery, isSafeConversation } from "./solo/attempt.js";
 import { interpretAttemptWithGm } from "./gm/attemptInterpreter.js";
 import { classifyNarrationVn, resolveGmNarration } from "./solo/gmProvider.js";
 import { buildGmRuntimeStatus } from "./solo/gmSmoke.js";
@@ -948,7 +949,11 @@ async function narrateActionWithGm(run, resolved, user) {
     logTurnEvent(run.runId, `GM narration FAILED after ${latencyMs}ms (${String(error?.message || error).slice(0, 140)}) — using deterministic template.`);
     return { narration: null, source: "template-error", latencyMs };
   }
-  const narrative = value && typeof value.narrative === "string" ? value.narrative.trim() : "";
+  // Belt-and-suspenders AI-tell strip: the prompt bans em/en-dashes, but a model
+  // still slips one occasionally (leaked on 4/15 turns of run_b06da13d). Strip the
+  // finished LIVE prose too so the player never sees a dash-tell on screen — the
+  // same sanitizer the fallback templates use.
+  const narrative = value && typeof value.narrative === "string" ? stripAiTells(value.narrative.trim()) : "";
   const model = value?.meta?.model || "unknown";
   const provider = gmProviderForModel(model);
   if (!narrative) {
@@ -1112,6 +1117,16 @@ async function buildLiveAttemptOptions(run, action, user) {
   // is never skipped — only the wasted interpretation is. Legitimate intents fall
   // through to interpret → possession-check → roll → failure-consequence as before.
   if (typeof action.intent === "string" && action.intent.trim() && classifyIntentAuthority(action.intent).verdict === "impossible") {
+    return {};
+  }
+  // LATENCY: skip the interpreter for actions the deterministic classifier ALREADY
+  // resolves as no-check — passive OBSERVATION ("look around", "who's here") and
+  // SAFE CONVERSATION (talking to a non-hostile). attemptNeedsCheck OVERRIDES the
+  // provider to false for both (Ch3 Law 1), so the interpreter's proposal is
+  // discarded anyway — running it only spends a serial ~6-15s deepseek call before
+  // an outcome that was never in doubt. This is the reliable per-turn latency win
+  // (the fast-lane interpreter routing was reverted — free gemini 429s under load).
+  if (typeof action.intent === "string" && (isObservationQuery(action.intent) || isSafeConversation(action.intent))) {
     return {};
   }
   try {

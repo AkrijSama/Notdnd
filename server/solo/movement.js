@@ -391,6 +391,12 @@ export function resolveMovementAction(run, action, options = {}) {
     updatedRun.world.time.tick += 1;
   }
 
+  // Reaching new ground breaks a failure-loop: clear the consecutive-failure
+  // streak (see attempt.js / actionNarration.js escalation) — you made progress.
+  if (isPlainObject(updatedRun.flags)) {
+    updatedRun.flags.failStreak = 0;
+  }
+
   updatedRun.memoryFacts = [...updatedRun.memoryFacts, memoryFact];
   updatedRun.timeline = [...updatedRun.timeline, timelineEvent];
 
