@@ -1197,6 +1197,75 @@ test("dispatchSoloClick returns false for an unrelated target", () => {
   assert.equal(dispatchSoloClick(clickTarget({ ".something-else": {} }), {}), false);
 });
 
+// REGRESSION (db4149c): the root <section> carries data-solo-skin / data-solo-font
+// as theme-state markers, so a bare [data-solo-skin] closest() from ANY descendant
+// button matches the section and — being checked before exit/home/menu/cog —
+// swallowed those clicks (the "leave campaign does nothing" bug). The skin/font
+// checks must be scoped to the actual picker BUTTONS.
+function exitButtonInsideThemedSection() {
+  const exitBtn = { tag: "button", getAttribute: (n) => (n === "data-solo-exit" ? "" : null) };
+  const section = { tag: "section", getAttribute: (n) => (n === "data-solo-skin" ? "ember" : n === "data-solo-font" ? "serif" : null) };
+  return {
+    closest(sel) {
+      if (sel === "[data-solo-exit]") return exitBtn;
+      if (sel === "[data-solo-skin]" || sel === "[data-solo-font]") return section; // ancestor markers
+      if (sel === "button[data-solo-skin]" || sel === "button[data-solo-font]") return null; // scoped: not the section
+      return null;
+    }
+  };
+}
+
+test("Leave/exit inside the themed root section fires onExit, NOT onSkin (db4149c regression)", () => {
+  let exited = false;
+  let skinned = null;
+  dispatchSoloClick(exitButtonInsideThemedSection(), { onExit: () => (exited = true), onSkin: (s) => (skinned = s) });
+  assert.equal(exited, true, "exit must fire");
+  assert.equal(skinned, null, "the section's theme marker must NOT be treated as a skin-button click");
+});
+
+test("a real skin/font picker BUTTON still dispatches (scoped selector matches the button)", () => {
+  let skin = null;
+  let font = null;
+  dispatchSoloClick(
+    { closest: (sel) => (sel === "button[data-solo-skin]" ? { getAttribute: () => "ember" } : null) },
+    { onSkin: (s) => (skin = s) }
+  );
+  dispatchSoloClick(
+    { closest: (sel) => (sel === "button[data-solo-font]" ? { getAttribute: () => "serif" } : null) },
+    { onFont: (f) => (font = f) }
+  );
+  assert.deepEqual(skin, { skin: "ember" });
+  assert.deepEqual(font, { fontSet: "serif" });
+});
+
+test("every control shadowed by the old bug now fires (home/menu/cog/dialogue/scene/npc/banner/guest-save)", () => {
+  // Each of these is checked AFTER skin/font in dispatch order; with the section
+  // no longer matching, each must reach its own handler.
+  const cases = [
+    ["[data-solo-home]", "onReturnHome"],
+    ["[data-solo-menu-toggle]", "onMenuToggle"],
+    ["[data-solo-guest-save]", "onGuestSave"],
+    ["[data-solo-banner-dismiss]", "onDismissBanner"],
+    ["[data-solo-dialogue-close]", "onDialogueClose"],
+    ["[data-scene-save]", "onSceneSave"],
+    ["[data-solo-npc-submit]", "onNpcSubmit"]
+  ];
+  for (const [selector, handlerName] of cases) {
+    let fired = false;
+    // The themed section is an ancestor (bare skin/font match) but the control
+    // itself matches its own selector.
+    const target = {
+      closest(sel) {
+        if (sel === selector) return { getAttribute: () => "" };
+        if (sel === "[data-solo-skin]" || sel === "[data-solo-font]") return { getAttribute: () => "x" };
+        return null;
+      }
+    };
+    dispatchSoloClick(target, { [handlerName]: () => (fired = true) });
+    assert.equal(fired, true, `${selector} → ${handlerName} must fire`);
+  }
+});
+
 test("dispatchSoloKeydown: Enter on an inspectable card triggers inspect", () => {
   let inspected = null;
   let prevented = false;

@@ -2977,8 +2977,12 @@ export function dispatchSoloClick(target, handlers = {}) {
   // Inspectable card AFTER the action buttons it may contain.
   if ((el = closest(".solo-entity-card.inspectable"))) { handlers.onInspect?.({ entityId: el.getAttribute("data-entity-id") }); return true; }
   if ((el = closest("[data-solo-tab]"))) { handlers.onTab?.({ tab: el.getAttribute("data-solo-tab") }); return true; }
-  if ((el = closest("[data-solo-skin]"))) { handlers.onSkin?.({ skin: el.getAttribute("data-solo-skin") }); return true; }
-  if ((el = closest("[data-solo-font]"))) { handlers.onFont?.({ fontSet: el.getAttribute("data-solo-font") }); return true; }
+  // NOTE: the ROOT <section> also carries data-solo-skin / data-solo-font as
+  // theme-state markers, so these MUST be scoped to the actual picker BUTTONS —
+  // a bare [data-solo-skin] closest() walks up to the section and swallows every
+  // later handler (the exit-button regression, db4149c). Match buttons only.
+  if ((el = closest("button[data-solo-skin]"))) { handlers.onSkin?.({ skin: el.getAttribute("data-solo-skin") }); return true; }
+  if ((el = closest("button[data-solo-font]"))) { handlers.onFont?.({ fontSet: el.getAttribute("data-solo-font") }); return true; }
   if ((el = closest("[data-solo-dialogue-end]"))) { handlers.onDialogueEnd?.(); return true; }
   if ((el = closest("[data-solo-dialogue-reply-submit]"))) { handlers.onDialogueReply?.(); return true; }
   if ((el = closest("[data-solo-dialogue-close]"))) { handlers.onDialogueClose?.(); return true; }
