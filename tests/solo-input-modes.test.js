@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   classifyInput,
   createAttemptAction,
+  renderNarrationLog,
   renderSoloSceneInputBar,
   renderSoloSceneShell,
   renderSoloThinkingIndicator,
@@ -133,6 +134,48 @@ test("#15: the scene stage exposes the stable patch anchors", () => {
   assert.match(html, /data-solo-outcome/, "outcome-strip wrapper (in-place repaint)");
   assert.match(html, /data-solo-dock-status/, "thinking-indicator wrapper (in-place toggle)");
   assert.match(html, /data-solo-attempt-input/, "the persistent input node");
+});
+
+// ---- #20-full CROSS-WIRE: server dialogueLines -> client nameplates ----
+
+test("renderNarrationLog nameplates each grounded NPC from the server's dialogueLines", () => {
+  const html = renderNarrationLog([
+    {
+      id: "n1",
+      text: '“We should go,” said Mira. “Not yet,” Hob answered.',
+      dialogueLines: [
+        { text: "We should go", speakerId: "mira", speakerName: "Mira", kind: "npc" },
+        { text: "Not yet", speakerId: "hob", speakerName: "Hob", kind: "npc" }
+      ]
+    }
+  ]);
+  assert.match(html, /solo-log-speakers/, "multi-speaker plate row");
+  assert.match(html, /Mira/);
+  assert.match(html, /Hob/);
+});
+
+test("renderNarrationLog ignores player/unknown lines and never invents a name", () => {
+  const html = renderNarrationLog([
+    {
+      id: "n1",
+      text: '“Hello?” you call. “...” someone whispers.',
+      speaker: null,
+      dialogueLines: [
+        { text: "Hello?", speakerId: null, speakerName: "Vesh", kind: "player" },
+        { text: "...", speakerId: null, speakerName: "a voice", kind: "unknown" }
+      ]
+    }
+  ]);
+  assert.doesNotMatch(html, /solo-log-speakers/, "no NPC plate for player/unknown-only lines");
+  assert.doesNotMatch(html, /a voice/, "an ungrounded name is never shown as a plate");
+});
+
+test("renderNarrationLog falls back to single-speaker attribution when dialogueLines is empty", () => {
+  const html = renderNarrationLog([
+    { id: "n1", text: '“Welcome,” she says.', speaker: "The Hermit", dialogueLines: [] }
+  ]);
+  assert.match(html, /solo-log-speaker/);
+  assert.match(html, /The Hermit/);
 });
 
 test("#15: the thinking indicator is empty when idle, present while working", () => {

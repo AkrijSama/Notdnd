@@ -483,8 +483,22 @@ export function renderNarrationLog(entries = []) {
           ? `<div class="solo-log-action"><span class="solo-log-you">You</span> ${escapeHtml(entry.intent)}${rollTag}</div>`
           : "";
       const hasDialogue = /[“"][^”"]+[”"]/.test(String(entry.text));
-      const nameplate =
-        entry.speaker && hasDialogue
+      // #20-full: prefer the server's grounded per-line speakers — a multi-NPC beat
+      // shows a plate for each distinct NPC who spoke. Player/unknown lines get no
+      // plate (the "You" header covers the player; an ungrounded name is never
+      // invented). Falls back to the single-speaker attribution when absent.
+      const npcSpeakers = [
+        ...new Set(
+          (Array.isArray(entry.dialogueLines) ? entry.dialogueLines : [])
+            .filter((l) => l && l.kind === "npc" && l.speakerName)
+            .map((l) => l.speakerName)
+        )
+      ];
+      const nameplate = npcSpeakers.length
+        ? `<div class="solo-log-speakers">${npcSpeakers
+            .map((n) => `<span class="solo-log-speaker">${escapeHtml(n)}</span>`)
+            .join("")}</div>`
+        : entry.speaker && hasDialogue
           ? `<div class="solo-log-speaker">${escapeHtml(entry.speaker)}</div>`
           : "";
       return `<article class="solo-log-entry">${header}${nameplate}<div class="solo-log-prose">${beatToParas(entry.text)}</div></article>`;
@@ -3370,6 +3384,11 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     restResult: null,
     useItemResult: null,
     attemptResult: null,
+    // #20-full: per-line speaker attribution from the LAST action response
+    // ([{ text, speakerId, speakerName, kind }], server-grounded). Consumed by
+    // logNarration into the log entry, then cleared with the other per-turn
+    // results. Empty for ambient / no-dialogue turns.
+    dialogueLines: [],
     // #25 APPEND-ONLY NARRATION LOG. Every turn's prose accumulates here as
     // readable history the player can scroll back through, instead of being
     // discarded when state.scene is replaced each turn. Entries:
@@ -4335,6 +4354,9 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     return runAction("attempt", async () => {
       const response = await postAction(createAttemptAction({ intent, mode }));
       state.attemptResult = response.attemptResult || response.latestAttemptResult || null;
+      // #20-full: capture the server's per-line speaker attribution for this turn
+      // so logNarration can nameplate each grounded NPC line (cross-wire to #20).
+      state.dialogueLines = Array.isArray(response.dialogueLines) ? response.dialogueLines : [];
       state.attemptDraft = "";
       state.searchResult = null;
       state.talkResult = null;
@@ -4587,7 +4609,10 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       text,
       // #20-full: attribute the line to whoever is actually speaking this turn
       // (talkResult / VN speakerId), not just the lone-NPC ambient case.
-      speaker: resolveSceneSpeaker(scene, state.talkResult) || null
+      speaker: resolveSceneSpeaker(scene, state.talkResult) || null,
+      // #20-full: the server's per-line attribution (grounded NPC speakers), so a
+      // multi-NPC beat nameplates each line — falls back to `speaker` when empty.
+      dialogueLines: Array.isArray(state.dialogueLines) ? state.dialogueLines : []
     });
     // Cap DOM growth on a very long session.
     if (state.narrationLog.length > 200) {
@@ -4686,6 +4711,7 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       state.detail = null;
       state.searchResult = null;
       state.talkResult = null;
+      state.dialogueLines = [];
       state.dialogueActive = false;
       state.restResult = null;
       state.useItemResult = null;

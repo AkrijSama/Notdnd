@@ -2685,6 +2685,14 @@ button:disabled {
   color: var(--accent-bright, #e7e9ee);
   margin-bottom: 4px;
 }
+/* #20-full: a multi-NPC beat lists each grounded speaker as its own plate. */
+.solo-log-speakers { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-bottom: 4px; }
+.solo-log-speakers .solo-log-speaker { margin-bottom: 0; }
+.solo-log-speakers .solo-log-speaker:not(:last-child)::after {
+  content: "·";
+  margin-left: 14px;
+  color: var(--muted, #8b8e96);
+}
 .solo-scene-center .solo-log-prose p {
   font-size: clamp(1.35rem, 1.1vw + 1rem, 1.85rem);
   line-height: 1.6;
