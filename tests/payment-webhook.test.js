@@ -105,9 +105,10 @@ test("PAID GATE E2E: a signed subscription_created upgrades free→adventurer an
   // unlimited on both metered dimensions. (canGenerateImage reads tier from the
   // live repository via getUserTier, so we assert the tier→limit mapping here and
   // the persisted tier flip below — together that is the end-to-end gate.)
-  assert.deepEqual(TIER_LIMITS.free, { images: 10, sessions: 10 });
+  assert.deepEqual(TIER_LIMITS.free, { images: 10, sessions: 10, turns: Infinity });
   assert.equal(TIER_LIMITS.adventurer.images, Infinity);
   assert.equal(TIER_LIMITS.adventurer.sessions, Infinity);
+  assert.equal(TIER_LIMITS.adventurer.turns, Infinity);
 
   const handler = createLemonSqueezyWebhookHandler({ ...repo, env: ENV });
   const body = webhook({ event: "subscription_created" });

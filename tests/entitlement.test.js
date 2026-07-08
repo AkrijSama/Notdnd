@@ -13,21 +13,25 @@ const {
   initializeDatabase,
   resetDatabase,
   registerUser,
+  createGuestUser,
   getUserTier,
   setUserTier,
   getDailyUsage,
   incrementImageCount,
   incrementSessionCount,
+  incrementTurnCount,
   USER_TIERS
 } = await import("../server/db/repository.js");
 
 const {
   canGenerateImage,
   canStartSession,
+  canTakeGmTurn,
   entitlementSummary,
   requestHasByokKey,
   FREE_DAILY_IMAGE_LIMIT,
-  FREE_DAILY_SESSION_LIMIT
+  FREE_DAILY_SESSION_LIMIT,
+  GUEST_DAILY_TURN_LIMIT
 } = await import("../server/auth/entitlements.js");
 
 let userSeq = 0;
@@ -44,6 +48,40 @@ function freshUser() {
   });
   return user;
 }
+
+test("entitlement: guest GM-turn cap (#67)", async (t) => {
+  await t.test("an account is never turn-capped (turns unlimited)", () => {
+    const user = freshUser();
+    const gate = canTakeGmTurn(user);
+    assert.equal(gate.allowed, true);
+    assert.equal(gate.unlimited, true);
+  });
+
+  await t.test("a guest is capped at GUEST_DAILY_TURN_LIMIT and blocked past it", () => {
+    initializeDatabase();
+    resetDatabase();
+    const guest = createGuestUser();
+    const g = guest.user || guest;
+    assert.equal(canTakeGmTurn(g).allowed, true, "guest can take a turn initially");
+    assert.equal(canTakeGmTurn(g).limit, GUEST_DAILY_TURN_LIMIT);
+    for (let i = 0; i < GUEST_DAILY_TURN_LIMIT; i += 1) {
+      incrementTurnCount(g.id);
+    }
+    const capped = canTakeGmTurn(g);
+    assert.equal(capped.allowed, false, "guest blocked at the cap");
+    assert.equal(capped.remaining, 0);
+    assert.equal(entitlementSummary(g).turnCapReached, true);
+  });
+
+  await t.test("BYOK bypasses the guest turn cap", () => {
+    initializeDatabase();
+    resetDatabase();
+    const guest = createGuestUser();
+    const g = guest.user || guest;
+    for (let i = 0; i < GUEST_DAILY_TURN_LIMIT + 5; i += 1) incrementTurnCount(g.id);
+    assert.equal(canTakeGmTurn(g, { byok: true }).allowed, true);
+  });
+});
 
 test("entitlement: tier schema + repository", async (t) => {
   await t.test("new users default to the free tier", () => {

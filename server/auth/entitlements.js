@@ -21,17 +21,30 @@ import { getDailyUsage, getUserTier } from "../db/repository.js";
 export const FREE_DAILY_IMAGE_LIMIT = 10;
 export const FREE_DAILY_SESSION_LIMIT = 10;
 
+// GUEST GM-TURN CAP (pre-launch spend guard). Every guest GM turn is a paid cloud
+// call, so an anonymous session must not be able to drive unlimited spend. Guests
+// get a bounded daily turn budget (a taste across their few sessions), then a soft
+// register nudge. Accounts (free/paid) are NOT turn-metered — the existing policy
+// meters them on images (95% of cost) + sessions. Env-tunable; never auto-tops-up.
+export const GUEST_DAILY_TURN_LIMIT = Math.max(
+  1,
+  Number(process.env.NOTDND_GUEST_TURN_LIMIT || process.env.INKBORNE_GUEST_TURN_LIMIT || 40)
+);
+
 // Per-tier daily limits. Paid tiers are effectively unlimited (Infinity) — the
 // flat subscription is the meter, never per-action billing.
 export const TIER_LIMITS = Object.freeze({
-  free: { images: FREE_DAILY_IMAGE_LIMIT, sessions: FREE_DAILY_SESSION_LIMIT },
-  adventurer: { images: Infinity, sessions: Infinity },
-  premium: { images: Infinity, sessions: Infinity },
+  // turns: Infinity for accounts — the flat subscription / image-metered free tier
+  // is the meter, never per-turn billing. Only GUESTS are turn-capped.
+  free: { images: FREE_DAILY_IMAGE_LIMIT, sessions: FREE_DAILY_SESSION_LIMIT, turns: Infinity },
+  adventurer: { images: Infinity, sessions: Infinity, turns: Infinity },
+  premium: { images: Infinity, sessions: Infinity, turns: Infinity },
   // Guests (no account) get a taste, not a pipeline: enough images for one
-  // session's art and a few runs, then the register nudge does its work.
-  // "guest" is a POLICY overlay keyed off user.isGuest — the persisted tier on
-  // a guest record stays "free", so upgrading to a real account changes nothing.
-  guest: { images: 6, sessions: 3 }
+  // session's art, a few runs, and a bounded GM-turn budget (paid-spend guard),
+  // then the register nudge does its work. "guest" is a POLICY overlay keyed off
+  // user.isGuest — the persisted tier on a guest record stays "free", so upgrading
+  // to a real account changes nothing.
+  guest: { images: 6, sessions: 3, turns: GUEST_DAILY_TURN_LIMIT }
 });
 
 // BYOK (bring-your-own-key): a user supplying their own inference key is paying
@@ -117,6 +130,29 @@ export function canStartSession(user, { byok = false } = {}) {
   return { allowed: remaining > 0, byok: false, unlimited: false, tier, limit, used, remaining };
 }
 
+/**
+ * Can this user take another GM turn right now? Only guests are metered (accounts
+ * are turns:Infinity). BYOK bypasses (they pay their own inference). Same shape as
+ * canGenerateImage/canStartSession so the route can soft-gate a guest at the cap
+ * WITHOUT firing the paid GM call. Never throws.
+ * @param {object|null} user sanitized user ({ id, tier, isGuest })
+ * @param {{ byok?: boolean }} [opts]
+ * @returns {{ allowed: boolean, byok: boolean, unlimited: boolean, tier: string, limit: number, used: number, remaining: number }}
+ */
+export function canTakeGmTurn(user, { byok = false } = {}) {
+  const { id, tier } = resolveUser(user);
+  const limit = limitsForTier(tier).turns ?? Infinity;
+  const unlimited = limit === Infinity;
+
+  if (byok || unlimited) {
+    return { allowed: true, byok: Boolean(byok), unlimited, tier, limit, used: 0, remaining: Infinity };
+  }
+
+  const used = id ? getDailyUsage(id).turns : 0;
+  const remaining = Math.max(0, limit - used);
+  return { allowed: remaining > 0, byok: false, unlimited: false, tier, limit, used, remaining };
+}
+
 // JSON-safe remaining value (Infinity does not survive JSON.stringify → null).
 function jsonRemaining(remaining) {
   return remaining === Infinity ? null : remaining;
@@ -133,18 +169,22 @@ function jsonRemaining(remaining) {
 export function entitlementSummary(user, { byok = false } = {}) {
   const image = canGenerateImage(user, { byok });
   const session = canStartSession(user, { byok });
+  const turn = canTakeGmTurn(user, { byok });
   return {
     tier: image.tier,
     byok: Boolean(byok),
     unlimited: image.unlimited,
     image: { limit: jsonRemaining(image.limit), used: image.used, remaining: jsonRemaining(image.remaining) },
     session: { limit: jsonRemaining(session.limit), used: session.used, remaining: jsonRemaining(session.remaining) },
+    turn: { limit: jsonRemaining(turn.limit), used: turn.used, remaining: jsonRemaining(turn.remaining) },
     // Convenience fields the soft-prompt reads directly.
     imageQuotaRemaining: jsonRemaining(image.remaining),
-    sessionLimitReached: !session.allowed
+    sessionLimitReached: !session.allowed,
+    // Only ever true for a guest at the cap — the client shows the register nudge.
+    turnCapReached: !turn.allowed
   };
 }
 
 // Re-export the repository counters so the rest of the server imports all
 // entitlement surface from one module.
-export { incrementImageCount, incrementSessionCount } from "../db/repository.js";
+export { incrementImageCount, incrementSessionCount, incrementTurnCount } from "../db/repository.js";

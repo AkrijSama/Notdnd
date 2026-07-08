@@ -89,8 +89,10 @@ import {
 import {
   canGenerateImage,
   canStartSession,
+  canTakeGmTurn,
   entitlementSummary,
   incrementSessionCount,
+  incrementTurnCount,
   requestHasByokKey
 } from "./auth/entitlements.js";
 import {
@@ -1665,6 +1667,25 @@ async function handleApi(req, res) {
         });
       }
       assertSoloRunAccess(user, run);
+      // GUEST GM-TURN CAP (#67, pre-launch spend guard). Every guest GM turn is a
+      // paid cloud call; a guest at their daily turn budget is soft-stopped HERE —
+      // before the interpreter or narration fire — so anonymous sessions cannot
+      // drive unlimited spend. Accounts are unlimited (turns:Infinity); BYOK
+      // bypasses (they pay their own inference). No auto-top-up: the response is a
+      // register nudge, never a silent charge. State is untouched (no turn taken).
+      const turnByok = requestHasByokKey(req);
+      const turnGate = canTakeGmTurn(user, { byok: turnByok });
+      if (!turnGate.allowed) {
+        writeJson(res, 200, {
+          ok: true,
+          status: "turn_cap_reached",
+          turnCapReached: true,
+          message: "You've reached the free guest play limit. Create a free account to keep going — your adventure is saved.",
+          entitlement: entitlementSummary(user, { byok: turnByok }),
+          run
+        });
+        return true;
+      }
       const payload = await readJsonBody(req);
       const action = payload.action || payload;
       // LIVE attempt interpreter: for a real freeform attempt, adjudicate the
@@ -1680,6 +1701,11 @@ async function handleApi(req, res) {
           validationErrors: resolved.errors,
           actionType: resolved.actionType
         });
+      }
+      // #67: count this turn against the guest cap (only guests are metered, so
+      // this is a no-op write for accounts — gated to avoid needless disk writes).
+      if (!turnGate.unlimited && user?.id) {
+        incrementTurnCount(user.id);
       }
 
       // OOC (#37/#38) — an out-of-character note. The resolver committed NO state

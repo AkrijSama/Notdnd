@@ -1827,7 +1827,7 @@ function currentDailyUsage(userId, { persist = false } = {}) {
   }
   let record = db.dailyUsageByUser[key];
   if (!record || typeof record !== "object" || record.date !== today) {
-    record = { date: today, images: 0, sessions: 0 };
+    record = { date: today, images: 0, sessions: 0, turns: 0 };
     if (persist) {
       db.dailyUsageByUser[key] = record;
     }
@@ -1844,7 +1844,7 @@ function currentDailyUsage(userId, { persist = false } = {}) {
 export function getDailyUsage(userId) {
   ensureDb();
   const record = currentDailyUsage(userId);
-  return { date: record.date, images: Number(record.images) || 0, sessions: Number(record.sessions) || 0 };
+  return { date: record.date, images: Number(record.images) || 0, sessions: Number(record.sessions) || 0, turns: Number(record.turns) || 0 };
 }
 
 /**
@@ -1884,6 +1884,26 @@ export function incrementSessionCount(userId) {
   record.sessions = (Number(record.sessions) || 0) + 1;
   writeToDisk();
   return record.sessions;
+}
+
+/**
+ * Increments today's GM-turn count for a user and persists it. Called when a paid
+ * GM turn actually fires, so a guest turn cap (entitlements.canTakeGmTurn) can
+ * bound anonymous paid spend. Returns the new daily turn count.
+ * @param {string} userId
+ * @returns {number}
+ */
+export function incrementTurnCount(userId) {
+  ensureDb();
+  const key = String(userId || "");
+  if (!key) {
+    return 0;
+  }
+  const record = currentDailyUsage(userId, { persist: true });
+  db.dailyUsageByUser[key] = record;
+  record.turns = (Number(record.turns) || 0) + 1;
+  writeToDisk();
+  return record.turns;
 }
 
 export function getCampaignRole(campaignId, context = {}) {
