@@ -1006,3 +1006,47 @@ test("solo scene API helpers call auth-aware client methods", async () => {
 test("requireRunId rejects missing run id", () => {
   assert.throws(() => requireRunId(""), /Solo run id is required/);
 });
+
+// ---- VN typewriter: throttle-immune wall-clock reveal + click-to-complete ----
+function typewriterEl(fulltext) {
+  const el = {
+    textContent: "unset",
+    classes: [],
+    listeners: {},
+    getAttribute(k) {
+      return { "data-fulltext": fulltext, "data-typed": "false" }[k] ?? null;
+    },
+    classList: { add(c) { el.classes.push(c); } },
+    addEventListener(name, fn) { el.listeners[name] = fn; }
+  };
+  return el;
+}
+function typewriterRoot(el) {
+  return {
+    querySelectorAll(sel) { return sel === "[data-solo-dialogue-text]" ? [el] : []; },
+    addEventListener() {}
+  };
+}
+
+test("VN typewriter: click on the textbox instantly reveals the full line", () => {
+  const el = typewriterEl("Well met, wanderer. The road was long.");
+  let typed = false;
+  bindSoloSceneShell(typewriterRoot(el), { onDialogueTyped: () => (typed = true) });
+  assert.notEqual(el.textContent, "Well met, wanderer. The road was long.", "reveal starts partial");
+  el.listeners.click(); // tap-to-complete — standard VN convention
+  assert.equal(el.textContent, "Well met, wanderer. The road was long.");
+  assert.ok(el.classes.includes("is-complete"));
+  assert.ok(typed, "completion callback fired");
+});
+
+test("VN typewriter: reveal position derives from wall-clock, not tick counts", async () => {
+  const el = typewriterEl("Hi.");
+  let typed = false;
+  bindSoloSceneShell(typewriterRoot(el), { onDialogueTyped: () => (typed = true) });
+  // 3 chars at ~30ms/char = ~90ms. Wait well past it: even if the interval fires
+  // late/rarely (a throttled tab), the wall-clock delta owes ALL characters and
+  // the reveal completes rather than stranding mid-sentence.
+  await new Promise((r) => setTimeout(r, 400));
+  assert.equal(el.textContent, "Hi.");
+  assert.ok(typed, "reveal completed from elapsed time alone");
+});

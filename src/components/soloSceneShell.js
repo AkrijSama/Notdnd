@@ -2713,37 +2713,69 @@ export function bindSoloSceneShell(root, handlers = {}) {
     root.addEventListener("keydown", (event) => dispatchSoloKeydown(event, root.__soloHandlers || {}));
   }
 
-  // ---- Visual-novel dialogue overlay (typewriter + skip + close) ----
+  // ---- Visual-novel typewriter (shared: dialogue box + victory card) ----
+  // THROTTLE-IMMUNE by design: the reveal position derives from a WALL-CLOCK
+  // delta sampled on an animation-frame loop — never from raw setInterval tick
+  // counts. A backgrounded tab throttles/freezes timers and rAF, which used to
+  // strand the reveal mid-sentence (reading as TRUNCATED text); with the clock
+  // delta, the elapsed time keeps counting while hidden and the owed characters
+  // appear the moment the tab is visible again. Any click/tap on the textbox
+  // completes the reveal instantly (standard VN convention).
+  const VN_CHAR_MS = 30;
+  function bindTypewriter(el, { onDone } = {}) {
+    const fullText = el.getAttribute("data-fulltext") || "";
+    const alreadyTyped = el.getAttribute("data-typed") === "true";
+    let done = alreadyTyped;
+    let raf = null;
+    let fallbackTimer = null;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      if (raf !== null && typeof cancelAnimationFrame === "function") cancelAnimationFrame(raf);
+      if (fallbackTimer && typeof clearInterval === "function") clearInterval(fallbackTimer);
+      raf = null;
+      fallbackTimer = null;
+      el.textContent = fullText;
+      el.classList?.add("is-complete");
+      onDone?.();
+    };
+    if (!alreadyTyped && fullText) {
+      el.textContent = "";
+      const t0 = Date.now();
+      const step = () => {
+        if (done) return;
+        const chars = Math.min(fullText.length, Math.floor((Date.now() - t0) / VN_CHAR_MS) + 1);
+        el.textContent = fullText.slice(0, chars);
+        if (chars >= fullText.length) {
+          finish();
+          return;
+        }
+        if (typeof requestAnimationFrame === "function") raf = requestAnimationFrame(step);
+      };
+      if (typeof requestAnimationFrame === "function") {
+        raf = requestAnimationFrame(step);
+      } else if (typeof setInterval === "function") {
+        // No rAF (test mocks / odd embeds): same wall-clock math on an interval.
+        fallbackTimer = setInterval(step, VN_CHAR_MS);
+      } else {
+        finish();
+      }
+      // Tap-to-complete directly on the textbox — works even if the surrounding
+      // panel's delegated click is intercepted by other chrome.
+      if (typeof el.addEventListener === "function") {
+        el.addEventListener("click", finish);
+      }
+    }
+    return { finish, isDone: () => done };
+  }
+
   // Only querySelectorAll is used (test mocks expose no querySelector); unknown
   // selectors return [] in the browser and in the lightweight mount test mocks.
   const dialogueTextEl = root.querySelectorAll("[data-solo-dialogue-text]")[0] || null;
   if (dialogueTextEl && typeof dialogueTextEl.getAttribute === "function") {
-    const fullText = dialogueTextEl.getAttribute("data-fulltext") || "";
-    const alreadyTyped = dialogueTextEl.getAttribute("data-typed") === "true";
-    let timer = null;
-    const finish = () => {
-      if (timer && typeof clearInterval === "function") {
-        clearInterval(timer);
-      }
-      timer = null;
-      dialogueTextEl.textContent = fullText;
-      dialogueTextEl.classList?.add("is-complete");
-      handlers.onDialogueTyped?.();
-    };
-    if (!alreadyTyped && typeof setInterval === "function") {
-      // ~30ms per character typewriter reveal.
-      dialogueTextEl.textContent = "";
-      let i = 0;
-      timer = setInterval(() => {
-        i += 1;
-        dialogueTextEl.textContent = fullText.slice(0, i);
-        if (i >= fullText.length) {
-          finish();
-        }
-      }, 30);
-    }
-    // Click on the panel skips the typewriter — except the reply controls
-    // (input / submit / end), which have their own behavior.
+    const tw = bindTypewriter(dialogueTextEl, { onDone: () => handlers.onDialogueTyped?.() });
+    // Click anywhere on the panel also completes the reveal — except the reply
+    // controls (input / submit / end), which have their own behavior.
     root.querySelectorAll("[data-solo-dialogue-panel]").forEach((panel) => {
       panel.addEventListener("click", (event) => {
         const target = event?.target;
@@ -2754,8 +2786,8 @@ export function bindSoloSceneShell(root, handlers = {}) {
         ) {
           return;
         }
-        if (timer) {
-          finish();
+        if (!tw.isDone()) {
+          tw.finish();
         }
       });
     });
@@ -2777,41 +2809,19 @@ export function bindSoloSceneShell(root, handlers = {}) {
     });
   }
 
-  // ---- Victory-screen narration typewriter (same treatment as dialogue) ----
+  // ---- Victory-screen narration typewriter (same shared treatment) ----
   const victoryTextEl = root.querySelectorAll("[data-solo-victory-text]")[0] || null;
   if (victoryTextEl && typeof victoryTextEl.getAttribute === "function") {
-    const fullText = victoryTextEl.getAttribute("data-fulltext") || "";
-    const alreadyTyped = victoryTextEl.getAttribute("data-typed") === "true";
-    let timer = null;
-    const finish = () => {
-      if (timer && typeof clearInterval === "function") {
-        clearInterval(timer);
-      }
-      timer = null;
-      victoryTextEl.textContent = fullText;
-      victoryTextEl.classList?.add("is-complete");
-      handlers.onVictoryTyped?.();
-    };
-    if (!alreadyTyped && fullText && typeof setInterval === "function") {
-      victoryTextEl.textContent = "";
-      let i = 0;
-      timer = setInterval(() => {
-        i += 1;
-        victoryTextEl.textContent = fullText.slice(0, i);
-        if (i >= fullText.length) {
-          finish();
-        }
-      }, 30);
-    }
-    // Click the card (except the home button) skips the typewriter.
+    const tw = bindTypewriter(victoryTextEl, { onDone: () => handlers.onVictoryTyped?.() });
+    // Click the card (except the home button) completes the reveal.
     root.querySelectorAll("[data-solo-victory]").forEach((card) => {
       card.addEventListener("click", (event) => {
         const target = event?.target;
         if (target && typeof target.closest === "function" && target.closest("[data-solo-home]")) {
           return;
         }
-        if (timer) {
-          finish();
+        if (!tw.isDone()) {
+          tw.finish();
         }
       });
     });
