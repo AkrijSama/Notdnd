@@ -144,20 +144,36 @@ export function extractProperNouns(prose) {
   const re = /(^|[\s"'(—–-])([A-Z][a-z']+(?:\s+(?:of|the|and)\s+[A-Z][a-z']+|\s+[A-Z][a-z']+)*)/g;
   let match;
   while ((match = re.exec(text)) !== null) {
-    const candidate = match[2].trim();
-    const tokens = candidate.split(/\s+/);
+    let candidate = match[2].trim();
+    let tokens = candidate.split(/\s+/);
+    // Strip a leading pronoun+apostrophe CONTRACTION ("I'll", "We'll", "He's",
+    // "She'd", "You're", "They'll", "It's", "That's"…) and a lone "I". The capital
+    // pronoun (sentence/quote start, or the word itself) otherwise reads as a
+    // proper noun and false-flags a phantom NPC — the false CRITICAL on "I'll".
+    // A real name GLUED after it ("He's Garrick") is preserved by dropping only the
+    // contraction token; a genuine apostrophe-name ("O'Brien", "D'Ana") has a
+    // non-pronoun stem and is kept.
+    let strippedContraction = false;
+    while (
+      tokens.length > 0 &&
+      (tokens[0].toLowerCase() === "i" ||
+        /^(?:i|we|you|he|she|it|they|who|that|there|here|what|let)['’](?:ll|d|s|m|ve|re)?$/i.test(tokens[0]))
+    ) {
+      tokens.shift();
+      strippedContraction = true;
+    }
+    if (tokens.length === 0) continue;
+    if (strippedContraction) candidate = tokens.join(" ");
     const firstLower = tokens[0].toLowerCase();
     if (PROSE_STOPWORDS.has(firstLower)) continue;
-    // Capitalized first-person contractions ("I'll", "I'm", "I've", "I'd") and a
-    // lone "I" are not names — the capital-I (sentence/quote start OR the pronoun
-    // itself) otherwise reads as a proper noun and false-flags a phantom.
-    if (tokens.length === 1 && /^i(?:['’]|$)/.test(firstLower)) continue;
     // Sentence-initial single tokens are ambiguous (sentence starts capitalize
     // anything) — but phantom NPC names LOVE that position ("Garrick eyes you
     // warily", "Ilse's eyes narrowed"). Allow the sentence-initial case only on
     // the name-like patterns: a possessive, or a following speech/gesture verb.
+    // Skipped when we stripped a contraction (the surviving name's position no
+    // longer starts at match.index, and it is already name-like enough to keep).
     const before = text.slice(0, match.index + match[1].length);
-    const sentenceInitial = /(^|[.!?]\s*|["'“]\s*)$/.test(before);
+    const sentenceInitial = !strippedContraction && /(^|[.!?]\s*|["'“]\s*)$/.test(before);
     if (tokens.length === 1 && sentenceInitial) {
       const rest = text.slice(match.index + match[1].length + candidate.length);
       const nameLike =

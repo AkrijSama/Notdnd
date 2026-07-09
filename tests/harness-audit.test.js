@@ -61,6 +61,21 @@ test("proper-noun extraction: names yes, sentence-initial furniture no", () => {
   assert.ok(!nouns.includes("You"), "sentence furniture excluded");
 });
 
+test("proper-noun extraction: pronoun contractions never flag as names, real names still do", () => {
+  // The false CRITICAL this fixes: "I'll" (and its family) read as an uncommitted NPC.
+  for (const contraction of ["I'll", "We'll", "He's", "She'd", "You're", "They'll", "It's", "That's", "I'd", "I'm", "We've"]) {
+    const nouns = extractProperNouns(`"${contraction} not be dragged into your troubles," the voice says.`);
+    assert.ok(
+      !nouns.some((n) => n.toLowerCase().startsWith(contraction.split("'")[0].toLowerCase() + "'")),
+      `contraction ${contraction} must NOT flag — got ${JSON.stringify(nouns)}`
+    );
+  }
+  // a real uncommitted name MUST still flag
+  assert.ok(extractProperNouns("Vexara steps out of the shadows.").includes("Vexara"), "real name Vexara flags");
+  // a name glued after a contraction ("He's Garrick") is preserved, not lost
+  assert.ok(extractProperNouns("He's Garrick, the smith.").includes("Garrick"), "name after a contraction survives");
+});
+
 test("phantom audit: state-vouched names pass, invented names flagged", () => {
   const sceneStub = {
     location: { name: "Ashfall Reach Crossing" },
