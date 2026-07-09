@@ -330,11 +330,58 @@ function paragraphInnerHtml(text) {
 // narration renderer — every prose surface (opening, ambient location copy,
 // per-turn GM narration) routes through this so treatment is consistent
 // (#12/#18/#19/#23/#24): real paragraph breaks, real spacing, zero dashes.
+// Spacing pass: the GM frequently emits a single block with NO blank lines, which
+// rendered as one giant <p> — the "wall of text". Chunk any long paragraph at
+// sentence boundaries into readable visual paragraphs (~2-3 sentences each).
+// Quote-aware: never splits inside quoted dialogue (an unbalanced-quote chunk is
+// merged forward), so #19/#23 dialogue coloring still sees whole quotes.
+const SENTENCE_BOUNDARY_RE = /(?<=[.!?][”"’']?)\s+/;
+const PARA_CHUNK_THRESHOLD = 360; // chars — below this a paragraph renders as-is
+const PARA_CHUNK_TARGET = 280; // chars — start a new visual paragraph past this
+
+function quotesUnbalanced(text) {
+  const straight = ((text.match(/"/g) || []).length) % 2 === 1;
+  const open = (text.match(/“/g) || []).length;
+  const close = (text.match(/”/g) || []).length;
+  return straight || open !== close;
+}
+
+function chunkLongParagraph(text) {
+  const t = String(text || "").trim();
+  if (t.length <= PARA_CHUNK_THRESHOLD) {
+    return [t];
+  }
+  const sentences = t.split(SENTENCE_BOUNDARY_RE).filter(Boolean);
+  if (sentences.length < 3) {
+    return [t];
+  }
+  const chunks = [];
+  let current = "";
+  for (const sentence of sentences) {
+    if (current && current.length >= PARA_CHUNK_TARGET && !quotesUnbalanced(current)) {
+      chunks.push(current);
+      current = sentence;
+    } else {
+      current = current ? `${current} ${sentence}` : sentence;
+    }
+  }
+  if (current) {
+    // A trailing unbalanced/short remainder folds into the previous chunk.
+    if (chunks.length && (quotesUnbalanced(current) || current.length < 60)) {
+      chunks[chunks.length - 1] += ` ${current}`;
+    } else {
+      chunks.push(current);
+    }
+  }
+  return chunks.length ? chunks : [t];
+}
+
 function beatToParas(beat) {
   const paras = String(beat || "")
     .split(/\n{2,}/)
     .map((part) => stripDashes(part))
-    .filter(Boolean);
+    .filter(Boolean)
+    .flatMap((part) => chunkLongParagraph(part));
   return (paras.length ? paras : [stripDashes(beat)]).map((part) => `<p>${paragraphInnerHtml(part)}</p>`).join("");
 }
 
@@ -488,7 +535,7 @@ export function renderNarrationLog(entries = []) {
       // stage strip so the three outcomes read identically wherever they appear.
       const b = outcomeBandInfo(entry);
       const rollTag = hasRoll
-        ? `<span class="solo-log-roll band-${b.key}"><span class="solo-log-roll-glyph" aria-hidden="true">${b.glyph}</span>${escapeHtml(cr.total)}${cr.dc != null ? ` / ${escapeHtml(cr.dc)}` : ""}</span>`
+        ? `<span class="solo-log-roll band-${b.key}"><span class="solo-log-roll-glyph" aria-hidden="true">${b.glyph}</span>Rolled ${escapeHtml(cr.total)}${cr.dc != null ? ` · DC ${escapeHtml(cr.dc)}` : ""}</span>`
         : "";
       // #44/#46: the player-action line is the ANCHOR of a turn unit — a prominent
       // "YOU" badge + the intent in heavier weight + the (band-coded) roll. Present
@@ -789,8 +836,11 @@ export function renderSoloActionOutcome(state = {}) {
   const b = outcomeBandInfo(outcome);
   const hasTotal = cr && cr.total !== undefined && cr.total !== null;
   const hasDc = cr && cr.dc !== undefined && cr.dc !== null;
+  // #5 readability: label the numbers — bare "2/12" was unreadable. Verified
+  // semantics: cr.total is the roll total, cr.dc the difficulty (matches the
+  // right rail's "vs DC" framing and the resolver's checkResult contract).
   const roll = hasTotal
-    ? `<span class="solo-outcome-roll">${escapeHtml(cr.total)}${hasDc ? `<span class="solo-outcome-dc"> / ${escapeHtml(cr.dc)}</span>` : ""}</span>`
+    ? `<span class="solo-outcome-roll">Rolled ${escapeHtml(cr.total)}${hasDc ? `<span class="solo-outcome-dc"> · DC ${escapeHtml(cr.dc)}</span>` : ""}</span>`
     : "";
   const intent = String(outcome.intent || "").trim();
   // #32: one thin row. Band glyph + label + roll on the left; the attempted

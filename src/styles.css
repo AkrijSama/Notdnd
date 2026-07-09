@@ -1491,10 +1491,11 @@ button:disabled {
   min-height: 100vh;
   box-sizing: border-box;
   /* Full-bleed: break out of #app's 1400px max-width so the shell fills the
-     whole viewport on wide / ultrawide monitors. */
+     whole viewport on wide / ultrawide monitors. Top padding is 0 so the scene
+     stage reaches the viewport top (owner spec: full-bleed completion). */
   width: 100vw;
   margin-left: calc(50% - 50vw);
-  padding: 16px clamp(16px, 2.4vw, 56px) 18px;
+  padding: 0 clamp(16px, 2.4vw, 56px) 18px;
   background: var(--bg, #1c1510);
   color: var(--text, #d9dbe0);
   font-family: var(--font-body, Georgia, "Times New Roman", serif);
@@ -1924,6 +1925,14 @@ button:disabled {
   z-index: 4;
   display: flex;
   gap: 8px;
+}
+/* Item 6 — VN textbox clip: during a conversation the VN textbox owns the stage
+   bottom, and the Redo/Save cluster (z-4) sat on top of its right edge, occluding
+   dialogue text. Anchor the cluster to the stage TOP-right while vn-active — the
+   VN overlay itself does not move, and no text is ever under the buttons. */
+.solo-stage.vn-active .solo-scene-art-controls {
+  bottom: auto;
+  top: 12px;
 }
 .solo-scene-art-btn {
   appearance: none;
@@ -2546,7 +2555,8 @@ button:disabled {
 .solo-stage {
   flex: none;
   background: var(--bg, #050506);
-  padding: 2px 4px 8px;
+  /* Full-bleed to the viewport top: no top padding above the art. */
+  padding: 0 4px 8px;
   margin: 0;
   border-bottom: 1px solid var(--border, #202024);
   /* #49: positioning context + clip for the in-stage VN sprite / textbox. */
@@ -2647,14 +2657,13 @@ button:disabled {
   cursor: pointer;
 }
 .solo-vn-box-reply-submit:disabled { opacity: 0.6; cursor: default; }
-/* #34 step 5 + #31: the pinned stage art is a CONSISTENT-height banner. Dropping
-   the aspect-ratio:3/2 lock (which swung the banner from letterbox on a narrow
-   column to over-tall on a wide one) for a fixed clamped height + object-fit:cover
-   on the img (already set) means the image never distorts and the log always has
-   readable room below it. Capped lower than the old clamp(240px,34vh,420px). */
+/* Full-bleed completion (owner spec): the stage claims ~35vh — fb48ed9 removed
+   the chrome but the art banner stayed short and the log oversized. Clamped so
+   a small window still leaves the log readable room; object-fit:cover on the
+   img (already set) means the image never distorts. */
 .solo-stage .solo-scene-art {
   aspect-ratio: auto;
-  height: clamp(170px, 24vh, 300px);
+  height: clamp(220px, 35vh, 560px);
   min-height: 0;
   max-height: none;
 }
@@ -2664,7 +2673,23 @@ button:disabled {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
-  padding: 16px 8px 14px;
+  padding: 18px 24px 16px;
+}
+/* Owner spec (ultrawide readability): narration reads in a measured column —
+   max ~75ch, centered in the center column. Applies to every direct child the
+   log can host (turn entries, the paced opening, the location card, the empty
+   state); the reclaimed width becomes breathing margin. */
+.solo-narration-log > * {
+  max-width: 75ch;
+  margin-left: auto;
+  margin-right: auto;
+}
+/* The input dock shares the same measure so the type-here line sits under the
+   text column rather than stretching the full ultrawide width. */
+.solo-input-dock .solo-scene-input {
+  max-width: 75ch;
+  margin-left: auto;
+  margin-right: auto;
 }
 /* #30: the input dock gets more vertical room (was 8px/2px) so the field and
    its submit sit comfortably, not cramped against the log border. */
@@ -2722,9 +2747,12 @@ button:disabled {
    reads my-action → what-happened → my-action, not an undifferentiated wall. A
    turn that has a player action gets a top divider + breathing room; the opening
    / ambient prose (no action header) flows without a false turn boundary. */
-.solo-log-entry { margin: 0 0 22px; }
-.solo-log-entry:last-child { margin-bottom: 8px; }
-.solo-log-entry.has-action { margin-top: 28px; padding-top: 22px; border-top: 1px solid var(--border, #202024); }
+/* Spacing pass (owner spec): real rhythm between turns. Horizontal margins stay
+   auto so entries center in the 75ch column (this rule is later in the file than
+   .solo-narration-log > * — shorthand zeros would override the centering). */
+.solo-log-entry { margin: 0 auto 34px; }
+.solo-log-entry:last-child { margin-bottom: 10px; }
+.solo-log-entry.has-action { margin-top: 42px; padding-top: 26px; border-top: 1px solid var(--border, #202024); }
 .solo-log-entry.has-action:first-child { margin-top: 0; padding-top: 0; border-top: none; }
 /* #44: the player-action line is the prominent ANCHOR of the turn — a filled YOU
    badge + the intent in heavier weight + the band-coded roll, on an inset bar with
@@ -2755,7 +2783,9 @@ button:disabled {
   font-family: var(--font-body, Georgia, serif);
   font-size: calc(1rem * var(--solo-log-scale, 1));
   font-weight: 600;
-  color: var(--text, #e7e9ee);
+  /* Item 4: mechanics register — the accent voice, distinct from muted ambient
+     prose and bright dialogue. */
+  color: var(--accent, #c2c6cf);
 }
 .solo-log-roll {
   margin-left: auto;
@@ -2795,8 +2825,11 @@ button:disabled {
    the multiplier is the reader's preference. #46: generous paragraph rhythm. */
 .solo-scene-center .solo-log-prose p {
   font-size: calc(clamp(1.35rem, 1.1vw + 1rem, 1.85rem) * var(--solo-log-scale, 1));
-  line-height: 1.62;
-  margin: 0 0 1.05em;
+  line-height: 1.72;
+  margin: 0 0 1.35em;
+  /* Ambient description is the QUIET register (item 4): slightly muted so spoken
+     dialogue (bright) and mechanics (accent) read as distinct voices. */
+  color: var(--text-2, #b0b3bb);
 }
 .solo-scene-center .solo-log-prose p:last-child { margin-bottom: 0; }
 .solo-narration-empty {
@@ -2890,9 +2923,21 @@ button:disabled {
 }
 /* #19: quoted dialogue inside any narration reads in a distinct BRIGHT SILVER,
    set off from the softer prose grey, so speech pops without a nameplate. */
+/* Item 4 — three distinct text registers, all from the skin palette:
+   1. DIALOGUE (this rule): bright + italic + a faint accent-tinted highlight, so
+      speech pops even in the monochrome ashen skin where accent-bright alone is
+      nearly the same as body text (hue-carrying skins get a colored tint too).
+   2. AMBIENT description: muted body prose (--text-2, set on .solo-log-prose p).
+   3. ACTION/MECHANICS: accent — the YOU anchor bar, intent, and band-coded roll
+      badges (.solo-log-action / .solo-log-roll / outcome strip). */
 .solo-dialogue {
   color: var(--accent-bright, #e7e9ee);
   font-style: italic;
+  background: color-mix(in srgb, var(--accent, #c2c6cf) 9%, transparent);
+  border-radius: 4px;
+  padding: 0 3px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
 }
 /* Location copy sits at its NATURAL height so it always reads at full size — it
    must never collapse into a scrolling sliver. The input bar still pins to the

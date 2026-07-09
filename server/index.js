@@ -32,6 +32,7 @@ import { createAiJobProcessor } from "./ai/processor.js";
 import { generateNarrative, generateRaw, getCampaignUsage, getModelTiers, resolveCloudChain, resolveGmModel, runWithBatteryContext } from "./ai/openrouter.js";
 import { getBuildInfo, getGmServe, getImageServe, debugPanelDefault } from "./runtimeStatus.js";
 import { appendTurnLog, logTurnEvent } from "./logging/sessionLog.js";
+import { startTurnTiming, getLastTurnTiming, getRecentTurnTimings } from "./logging/turnTiming.js";
 import { generateWithProvider, listAiProviders, pollinationsEditConfigured, resolveImageProvider } from "./ai/providers.js";
 import { detectImageExt, parseMultipartFile, readJsonBody, readRawBody, serveStatic, writeJson, writeText } from "./api/http.js";
 import { handleQuickstartBuildPayload, handleQuickstartParsePayload } from "./api/quickstartRoutes.js";
@@ -1400,6 +1401,13 @@ async function handleApi(req, res) {
         configuredProvider: resolveImageProvider(),
         served: getImageServe()
       },
+      // Item 7: per-turn latency stage breakdown (interpreter/commit/gm/auditor/
+      // renderReady) — last turn + a short ring of recent turns, so a slow outlier
+      // stays visible. Collected by logging/turnTiming.js (runtimeStatus untouched).
+      turnTiming: {
+        last: getLastTurnTiming(),
+        recent: getRecentTurnTimings()
+      },
       cloudChain,
       nodeEnv: build.nodeEnv,
       debugDefault: debugPanelDefault()
@@ -1688,11 +1696,15 @@ async function handleApi(req, res) {
       }
       const payload = await readJsonBody(req);
       const action = payload.action || payload;
+      // Item 7: per-turn latency stage breakdown (interpreter/commit/gm/auditor/
+      // renderReady) — logged to the run log + surfaced in /api/debug/status.
+      const timing = startTurnTiming(run.runId, action?.type || "attempt");
       // LIVE attempt interpreter: for a real freeform attempt, adjudicate the
       // mechanics (incl. structured failureConsequence) via the GM first, then
       // pass it into the engine so per-case consequences + retry-foreclosure
       // actually fire in live play. No-op for non-attempt / test-hook actions.
       const attemptOptions = await buildLiveAttemptOptions(run, action, user);
+      timing.mark("interpreter");
       const resolved = resolveSoloAction(run, action, attemptOptions);
       if (!resolved.ok) {
         throw Object.assign(new Error("Solo action could not be resolved."), {
@@ -1729,6 +1741,7 @@ async function handleApi(req, res) {
       }
 
       const responseRun = resolved.run ? saveSoloRun(resolved.run) : run;
+      timing.mark("commit");
 
       // Quest win condition: completing the main quest ends the run in victory.
       // The flipped quest status was just persisted via saveSoloRun above.
@@ -1755,6 +1768,7 @@ async function handleApi(req, res) {
         narrateActionWithGm(responseRun, resolved, user),
         refreshSceneSuggestions(responseRun, setSoloRunSuggestions)
       ]);
+      timing.mark("gm");
       const gmNarration = gmResult?.narration || null;
       // PER-TURN SESSION TRANSCRIPT (data/logs/runs/<runId>.log) — the full causal
       // chain of this turn, including every formerly-silent fallback, so the owner
@@ -1865,6 +1879,8 @@ async function handleApi(req, res) {
         }
       }
 
+      timing.mark("auditor");
+
       // Expression-variant generation removed: every NPC now reuses its single
       // cached BASE portrait for all expressions (one image per character, stable
       // recognizable face within a run). The client falls back to the base when no
@@ -1896,6 +1912,9 @@ async function handleApi(req, res) {
         }
       }
 
+      timing.mark("renderReady");
+      const turnTiming = timing.finish();
+
       writeJson(res, 200, {
         ok: true,
         run: responseRun,
@@ -1907,6 +1926,9 @@ async function handleApi(req, res) {
         restResult,
         useItemResult,
         attemptResult,
+        // Item 7: this turn's stage latency breakdown (also in the run log +
+        // /api/debug/status), so a slow turn is attributable client-side too.
+        turnTiming,
         // #20-full: [{ text, speakerId, speakerName, kind }] per quoted line.
         dialogueLines,
         gmNarration,
