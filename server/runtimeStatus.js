@@ -42,11 +42,12 @@ const RUNTIME_CHURN_RE = /^(?:server\/db\/waitlist\.json|data\/)/;
 export function isTrackedSourceDirty(porcelain) {
   return String(porcelain || "")
     .split("\n")
-    .filter((line) => line.trim().length > 0)
+    .map((line) => line.trim()) // column-agnostic: gitValue trims output, which
+    .filter((line) => line.length > 0) // eats the first line's leading status space
     .some((line) => {
-      const status = line.slice(0, 2);
-      if (status === "??") return false; // untracked never counts
-      const rest = line.slice(3).trim();
+      if (line.startsWith("??")) return false; // untracked never counts
+      // "<status> <path>" — status is the first token ("M", "MM", "R", …).
+      const rest = line.replace(/^\S{1,2}\s+/, "");
       // renames read "old -> new" — judge the destination path.
       const file = rest.includes(" -> ") ? rest.split(" -> ").pop() : rest;
       return !RUNTIME_CHURN_RE.test(file);

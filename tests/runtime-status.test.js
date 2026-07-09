@@ -22,6 +22,10 @@ test("isTrackedSourceDirty: untracked + runtime churn never dirty; tracked sourc
   // empty/blank — clean
   assert.equal(isTrackedSourceDirty(""), false);
   assert.equal(isTrackedSourceDirty(null), false);
+  // REGRESSION: gitValue trims the porcelain, eating the FIRST line's leading
+  // status space (" M x" -> "M x") — parsing must be column-agnostic.
+  assert.equal(isTrackedSourceDirty("M server/db/waitlist.json"), false);
+  assert.equal(isTrackedSourceDirty("M server/index.js"), true);
 });
 
 test("getBuildInfo: returns a real sha/branch and a stable startedAt", () => {
