@@ -14,6 +14,7 @@ import { getUsableInventoryItems } from "./useItem.js";
 import { POLICY_VIOLATION_NARRATION, screenPlayerIntent } from "./safety.js";
 import { applyDamage, isIncapacitated } from "./death.js";
 import { advanceClock, ensureClock, sanitizeDurationMinutes, DEFAULT_OBSERVE_MINUTES, DEFAULT_ACTION_MINUTES, DEFAULT_CHECK_MINUTES } from "./worldClock.js";
+import { commitSocialDisposition } from "./relationships.js";
 import { applyCondition, tickConditions } from "./conditions.js";
 
 const PROVIDER_OUTPUT_FIELDS = new Set([
@@ -1943,6 +1944,16 @@ export function resolveAttemptAction(run, action, options = {}) {
   const failStreak = band === "failure" ? priorFailStreak + 1 : 0;
   updatedRun.flags.failStreak = failStreak;
 
+  // SOCIAL DISPOSITION (B2). A social attempt (persuade / charm / intimidate /
+  // deceive) against a present NPC commits a bounded meter delta on the player→NPC
+  // relationship, so a social WIN persists disposition (trust/affection/fear)
+  // instead of narrating rapport into the void — the romance / non-combat
+  // prerequisite. Server owns the numbers; the narrator reads the change. Null
+  // (no commit) when the intent isn't social or no present NPC grounds it.
+  const dispositionChange = SOCIAL_INTENT_RE.test(String(context.intent || ""))
+    ? commitSocialDisposition(updatedRun, { intent: context.intent, targetId: context.targetId, band, success }, options)
+    : null;
+
   // WORLD CLOCK (#14). Commit the in-fiction time this action cost. The GM proposes
   // durationMinutes (its narrative discretion); the server sanity-bounds it and
   // advances world.time, re-deriving day / time-of-day / phase. When the GM omitted
@@ -2014,7 +2025,11 @@ export function resolveAttemptAction(run, action, options = {}) {
     // INPUT MODE (#37/#38): "speech" when the player's input was in-character dialogue
     // (the character speaking aloud), else "action". The narration layer reads this to
     // frame the beat as spoken words rather than a physical action.
-    inputMode: isString(options.inputMode) ? options.inputMode : "action"
+    inputMode: isString(options.inputMode) ? options.inputMode : "action",
+    // SOCIAL DISPOSITION (B2): the committed meter change against a present NPC on a
+    // social attempt ({ targetNpcId, targetName, meter, delta, before, after }), or
+    // null. The narrator acknowledges the shift; nothing downstream re-decides it.
+    dispositionChange: dispositionChange || null
   };
 
   const memoryEffect = (providerOutput.proposedEffects || []).find((effect) => effect.type === "memory_fact" && isString(effect.text));
