@@ -381,6 +381,10 @@ export async function createOnboardingCampaign(userId, characterInfo = {}) {
     npc.portraitPrompt = identity.portraitPrompt;
     npc.identitySeed = identity.identitySeed;
     npc.displayName = identity.generatedName;
+    // #50: carry the generated gender/pronouns so the starting NPC's portrait
+    // matches the written character (else the base model defaults male).
+    if (typeof identity.gender === "string" && identity.gender.trim()) npc.gender = identity.gender.trim();
+    if (typeof identity.pronouns === "string" && identity.pronouns.trim()) npc.pronouns = identity.pronouns.trim();
     // Bridge the NPC into the campaign memory graph (synchronous write).
     const docId = writeNpcMemoryDoc(campaignId, npc);
     if (docId) {
@@ -694,6 +698,10 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
     npc.portraitPrompt = identity.portraitPrompt;
     npc.identitySeed = identity.identitySeed;
     npc.displayName = identity.generatedName;
+    // #50: carry the generated gender/pronouns so the starting NPC's portrait
+    // matches the written character (else the base model defaults male).
+    if (typeof identity.gender === "string" && identity.gender.trim()) npc.gender = identity.gender.trim();
+    if (typeof identity.pronouns === "string" && identity.pronouns.trim()) npc.pronouns = identity.pronouns.trim();
     const docId = writeNpcMemoryDoc(campaignId, npc);
     if (docId) {
       npc.memoryDocId = docId;
