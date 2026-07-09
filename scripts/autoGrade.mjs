@@ -15,12 +15,36 @@
 // MODEL INTEGRITY: after each turn the runner reads /api/debug/status → gm.served
 // (the model that ACTUALLY served the last turn) and tags fallback turns; the
 // grader excludes them from the narration/coherence axes.
-import { writeFileSync, mkdirSync } from "node:fs";
+import { writeFileSync, mkdirSync, readdirSync, existsSync, realpathSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { gradeSession, renderGradeReport, isRealGmModel } from "./selfplayAudit.mjs";
 
 const BASE = process.env.BASE || "http://127.0.0.1:4173";
 const TURNS = Math.max(1, Number(process.env.TURNS || 4));
 const FETCH_TIMEOUT_MS = Number(process.env.FETCH_TIMEOUT_MS || 90000);
+
+// Where graded reports are written + discovered. ONE source of truth so writer and
+// reader can never drift on the directory or the filename shape.
+const GRADES_DIR = "docs/grades";
+// Reports are named `auto-grade-<timestamp>.md` (see outPath below) — hyphenated,
+// flat under docs/grades. A previous globstar attempt (`docs/**/autograde*.md`)
+// found ZERO: Node's fs has no globstar, and the name is `auto-grade`, not
+// `autograde`. Match the REAL shape with a plain readdir + prefix/suffix filter.
+const GRADE_FILE_RE = /^auto-grade-.*\.md$/;
+
+/**
+ * Discover the existing graded reports under docs/grades. Returns sorted absolute-
+ * within-repo paths. Empty (never throws) when the directory is absent.
+ */
+export function discoverGradeReports(dir = GRADES_DIR) {
+  if (!existsSync(dir)) {
+    return [];
+  }
+  return readdirSync(dir)
+    .filter((name) => GRADE_FILE_RE.test(name))
+    .sort()
+    .map((name) => `${dir}/${name}`);
+}
 
 async function call(path, { method = "GET", token, body } = {}) {
   const ctrl = new AbortController();
@@ -152,8 +176,8 @@ async function main() {
   const graded = gradeSession(turns, { meta: { runId, sha, drive: "free-text autoplay" } });
   const report = renderGradeReport(graded, { timestamp, runId, sha, drive: "free-text autoplay" });
 
-  mkdirSync("docs/grades", { recursive: true });
-  const outPath = `docs/grades/auto-grade-${timestamp}.md`;
+  mkdirSync(GRADES_DIR, { recursive: true });
+  const outPath = `${GRADES_DIR}/auto-grade-${timestamp}.md`;
   writeFileSync(outPath, report + "\n");
 
   console.log("\n=== GRADES ===");
@@ -166,4 +190,18 @@ async function main() {
   return graded.integrity.valid ? 0 : 0; // grading always exits 0; validity is reported in-band
 }
 
-main().then((n) => process.exit(n)).catch((err) => { console.error("[auto-grade] ERROR:", err?.stack || err?.message || err); process.exit(2); });
+// Only run the CLI when invoked DIRECTLY (`node scripts/autoGrade.mjs`), never on
+// import — so tests can import discoverGradeReports without firing a grading run.
+const invokedDirectly = Boolean(process.argv[1]) && fileURLToPath(import.meta.url) === realpathSync(process.argv[1]);
+if (invokedDirectly) {
+  if (process.argv.includes("--list")) {
+    // `--list`: discover + print existing graded reports (no server call), using
+    // the corrected pattern — confirms discovery matches the real files.
+    const reports = discoverGradeReports();
+    console.log(`[auto-grade] ${reports.length} report(s) in ${GRADES_DIR}:`);
+    for (const p of reports) console.log(`  ${p}`);
+    process.exit(0);
+  } else {
+    main().then((n) => process.exit(n)).catch((err) => { console.error("[auto-grade] ERROR:", err?.stack || err?.message || err); process.exit(2); });
+  }
+}

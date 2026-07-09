@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 import {
   letterFor,
@@ -10,6 +13,19 @@ import {
   gradeSession,
   renderGradeReport
 } from "../scripts/selfplayAudit.mjs";
+import { discoverGradeReports } from "../scripts/autoGrade.mjs";
+
+test("discoverGradeReports matches auto-grade-*.md (corrected pattern), not autograde* / globstar", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "grades-"));
+  fs.writeFileSync(path.join(dir, "auto-grade-2026-07-09T00-00-00.md"), "x");
+  fs.writeFileSync(path.join(dir, "auto-grade-AGGREGATE-2026-07-08.md"), "x");
+  fs.writeFileSync(path.join(dir, "autograde-nohyphen.md"), "x"); // the OLD broken shape — must NOT match
+  fs.writeFileSync(path.join(dir, "notes.md"), "x"); // unrelated md — must NOT match
+  const found = discoverGradeReports(dir).map((p) => path.basename(p));
+  assert.deepEqual(found.sort(), ["auto-grade-2026-07-09T00-00-00.md", "auto-grade-AGGREGATE-2026-07-08.md"]);
+  assert.ok(!found.includes("autograde-nohyphen.md"), "hyphen-less name is not matched");
+  assert.deepEqual(discoverGradeReports(path.join(dir, "does-not-exist")), [], "absent dir -> [] (never throws)");
+});
 
 // ---- letter scale + model matcher ----
 test("letterFor maps numerics to the standard scale", () => {
