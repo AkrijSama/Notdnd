@@ -148,6 +148,10 @@ export function extractProperNouns(prose) {
     const tokens = candidate.split(/\s+/);
     const firstLower = tokens[0].toLowerCase();
     if (PROSE_STOPWORDS.has(firstLower)) continue;
+    // Capitalized first-person contractions ("I'll", "I'm", "I've", "I'd") and a
+    // lone "I" are not names — the capital-I (sentence/quote start OR the pronoun
+    // itself) otherwise reads as a proper noun and false-flags a phantom.
+    if (tokens.length === 1 && /^i(?:['’]|$)/.test(firstLower)) continue;
     // Sentence-initial single tokens are ambiguous (sentence starts capitalize
     // anything) — but phantom NPC names LOVE that position ("Garrick eyes you
     // warily", "Ilse's eyes narrowed"). Allow the sentence-initial case only on
