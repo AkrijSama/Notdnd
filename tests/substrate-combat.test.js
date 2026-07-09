@@ -116,6 +116,22 @@ test("the_shipment loads clean: 3 threads, cast, quests, start bound", () => {
   assert.ok(run.quests.quest_courier);
 });
 
+test("#51 babel: no objective is asserted cold; the bounty is an ACCEPTABLE offer", () => {
+  const run = armedFighterRun(T(0));
+  loadScenarioIntoRun(run, loadScenarioFile("babel"), {});
+  assert.equal(validateSoloRun(run).ok, true);
+  // No auto-active main quest — nothing shown cold at the start.
+  const mains = Object.values(run.quests).filter((q) => q && q.isMain && q.status === "active");
+  assert.equal(mains.length, 0, "no cold main objective at start");
+  // The board bounty rides the barkeep as an ACCEPTABLE offer (offerText surfaces
+  // it; .quest lets resolveQuestAccept instantiate it on acceptance).
+  const saw = run.npcs.npc_barkeep;
+  assert.ok(saw && saw.questOffer, "barkeep carries the offer");
+  assert.equal(typeof saw.questOffer.offerText, "string");
+  assert.ok(saw.questOffer.quest && typeof saw.questOffer.quest.questId === "string", "offer is acceptable (has a quest)");
+  assert.equal(saw.questOffer.quest.isMain, true, "accepting a delivery bounty becomes the tracked main");
+});
+
 // ── the junction (the gradeable loop, deterministic) ──────────────────────────
 test("JUNCTION: thread escalates → enters combat → resolves → advances the thread", () => {
   const run = armedFighterRun(T(0));

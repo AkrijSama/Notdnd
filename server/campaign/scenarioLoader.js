@@ -255,7 +255,34 @@ export function loadScenarioIntoRun(run, scenario, options = {}) {
       }))
     };
     if (c.questOffer && scenario.questOffers?.[c.questOffer]) {
-      run.npcs[c.npcId].questOffer = scenario.questOffers[c.questOffer];
+      const offer = scenario.questOffers[c.questOffer];
+      // #51: a scenario offer must carry an acceptable `quest` payload — the accept
+      // flow (resolveQuestAccept) instantiates offer.quest, so without it the board
+      // bounty could never be taken. Auto-build it from the offer (unless the
+      // scenario supplied one) so the objective ARRIVES DIEGETICALLY on acceptance
+      // (reach the board → accept → tracked) instead of being asserted cold.
+      run.npcs[c.npcId].questOffer = {
+        ...offer,
+        // The line the GM voices when work comes up (buildOpenJobOffers surfaces
+        // only offers with an offerText) — so the bounty is presented in-fiction at
+        // the board, not asserted as a pre-owned objective.
+        offerText: (typeof offer.offerText === "string" && offer.offerText.trim()) ? offer.offerText : (offer.summary || offer.title || "There's work on the board."),
+        quest: (offer.quest && typeof offer.quest === "object" && !Array.isArray(offer.quest))
+          ? offer.quest
+          : {
+              questId: `quest_${c.questOffer}`,
+              status: "active",
+              stage: 0,
+              title: offer.title || "Job",
+              description: offer.summary || offer.title || "",
+              objective: offer.summary || offer.title || "",
+              relatedEntityIds: [],
+              memoryFactIds: [],
+              authoredBy: "scenario",
+              isMain: offer.kind === "delivery",
+              flags: {}
+            }
+      };
     }
   }
 

@@ -107,13 +107,7 @@
       "kind": "delivery"
     }
   },
-  "quests": {
-    "quest_clearance": {
-      "title": "The fringe cull",
-      "summary": "Put down the corrupted beast working the edge of EZ-44 for the board bounty.",
-      "kind": "delivery"
-    }
-  },
+  "quests": {},
   "fronts": [
     {
       "frontId": "front_salvage",

@@ -49,7 +49,7 @@ function clone(value) {
 
 // Explicit acceptance phrasings.
 const ACCEPT_VERB_RE =
-  /\b(?:i accept|i'?ll do it|i will do it|i'?ll take (?:it|the (?:job|task|work|delivery|offer|contract|gig))|i'?ll take this on|count me in|i'?m in|it'?s a deal|we have a deal|you have a deal|deal|agreed|consider it done|i'?ll help|i'?ll run it|i'?ll carry it|i'?ll deliver it|i accept the (?:job|task|offer|work)|let'?s do it|you can count on me)\b/i;
+  /\b(?:i accept|i'?ll do it|i will do it|i'?ll take (?:it|(?:the |this )?(?:\w+ )?(?:job|task|work|delivery|offer|contract|gig|bounty|cull|hunt|commission|contract))|i'?ll take this on|count me in|i'?m in|it'?s a deal|we have a deal|you have a deal|deal|agreed|consider it done|i'?ll help|i'?ll run it|i'?ll carry it|i'?ll deliver it|i accept the (?:job|task|offer|work|bounty|cull|hunt|commission)|let'?s do it|you can count on me)\b/i;
 // A short standalone affirmative — only trusted BECAUSE a pending offer gates it.
 const AFFIRMATIVE_RE = /^\s*(?:yes|yeah|yep|yup|sure|ok(?:ay)?|fine|alright|aye|absolutely|of course|very well|as you say)\b/i;
 
