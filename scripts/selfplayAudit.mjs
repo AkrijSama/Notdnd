@@ -642,7 +642,11 @@ export function gradeSession(turns = [], opts = {}) {
     // prior behavior. Reroute commits are judged by their own delta on the snapshot.
     const freshAttempt = t.freshAttempt !== false;
     const succeeded = ar.success === true || String(ar.band || ar.outcome || "").toLowerCase().includes("success");
-    if (freshAttempt && succeeded && t.sceneBefore && t.sceneAfter) {
+    // A committed SOCIAL disposition change (B2) is a real delta the snapshot
+    // (loc/discovery/inv/quest/xp/cast) does not carry — a persuade/charm success
+    // that moved a relationship meter is NOT narrate-into-void.
+    const committedDisposition = ar.dispositionChange && (ar.dispositionChange.delta || ar.dispositionChange.suspicionDelta);
+    if (freshAttempt && succeeded && !committedDisposition && t.sceneBefore && t.sceneAfter) {
       if (JSON.stringify(t.sceneBefore) === JSON.stringify(t.sceneAfter)) {
         pushFinding(findings, {
           axis: "depth", severity: "high", turns: t.n,

@@ -133,6 +133,16 @@ test("depth void-check ignores a stale attemptResult on a reroute turn (freshAtt
   assert.ok(!g.findings.some((f) => f.axis === "depth" && f.turns.includes(2)), "reroute turn (freshAttempt=false) not flagged void");
 });
 
+test("depth void-check exempts a social success that committed a disposition delta (B2)", () => {
+  const turns = [
+    { n: 1, intent: "persuade the barkeep to trust me", narration: "She softens, a little.", model: "deepseek/deepseek-v4-pro", fallback: false, latencyMs: 9000,
+      attemptResult: { success: true, band: "success", dispositionChange: { targetNpcId: "npc_x", meter: "trust", delta: 3, before: 0, after: 3 } },
+      freshAttempt: true, scene: scene([]), sceneBefore: { a: 1 }, sceneAfter: { a: 1 } }
+  ];
+  const g = gradeSession(turns);
+  assert.ok(!g.findings.some((f) => f.axis === "depth" && f.turns.includes(1)), "committed disposition is a real delta, not void");
+});
+
 test("depth void-check STILL flags a fresh attempt success with no delta", () => {
   const turns = [
     { n: 1, intent: "force the door", narration: "The door gives way.", model: "deepseek/deepseek-v4-pro", fallback: false, latencyMs: 9000,
