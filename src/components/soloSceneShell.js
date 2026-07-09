@@ -678,86 +678,7 @@ export function renderEntityPanel(scene = {}, selectedEntityId = "") {
   `;
 }
 
-export function renderSceneActionBar(scene = {}) {
-  const actions = Array.isArray(scene.availableActions) ? scene.availableActions : [];
-  return `
-    <section class="module-card solo-panel">
-      <div class="module-header">
-        <h3>Action Bar</h3>
-        <span class="small">Server actions</span>
-      </div>
-      <div class="solo-action-bar">
-        ${
-          actions.length
-            ? actions
-                .map((action) => {
-                  const implemented =
-                    action.type === "move" ||
-                    action.type === "inspect" ||
-                    action.type === "search" ||
-                    action.type === "talk" ||
-                    action.type === "rest" ||
-                    action.type === "use_item" ||
-                    action.type === "attempt";
-                  const enabled = action.enabled !== false && implemented;
-                  return `
-                    <button
-                      class="ghost solo-action-button"
-                      data-solo-action="${escapeHtml(action.type || "")}"
-                      data-location-id="${escapeHtml(action.toLocationId || "")}"
-                      data-entity-id="${escapeHtml(action.entityId || action.targetEntityId || "")}"
-                      data-rest-type="${escapeHtml(action.restType || "")}"
-                      data-item-id="${escapeHtml(action.itemId || "")}"
-                      ${enabled ? "" : "disabled"}
-                      title="${escapeHtml(enabled ? labelForAction(action) : action.reason || "Action not implemented yet.")}"
-                    >
-                      <span>${escapeHtml(labelForAction(action))}</span>
-                      ${enabled ? "" : `<small>${escapeHtml(action.reason || "Action not implemented yet.")}</small>`}
-                    </button>
-                  `;
-                })
-                .join("")
-            : renderEmpty("No actions available.")
-        }
-      </div>
-    </section>
-  `;
-}
 
-export function renderInventoryPanel(scene = {}) {
-  const items = Array.isArray(scene.playerInventory) ? scene.playerInventory : [];
-  return `
-    <section class="module-card solo-panel solo-inventory-panel">
-      <div class="module-header">
-        <h3>Inventory</h3>
-        <span class="small">${items.length} usable</span>
-      </div>
-      ${
-        items.length
-          ? `<div class="solo-compact-list">${items
-              .map((item) => `
-                <div class="solo-compact-row solo-inventory-row">
-                  <div>
-                    <strong>${escapeHtml(item.name || item.itemId || "Item")}</strong>
-                    <span>${escapeHtml(item.description || "Usable item.")}</span>
-                    <div class="small">Quantity: ${escapeHtml(item.quantity ?? 0)}${item.consumable ? " / Consumable" : ""}</div>
-                  </div>
-                  <button
-                    class="ghost"
-                    data-solo-action="use_item"
-                    data-item-id="${escapeHtml(item.itemId || "")}"
-                    ${item.usable ? "" : "disabled"}
-                  >
-                    Use
-                  </button>
-                </div>
-              `)
-              .join("")}</div>`
-          : renderEmpty("No usable items available yet.")
-      }
-    </section>
-  `;
-}
 
 export function renderSearchResultPanel(searchResult = null, discoveredDetails = []) {
   const details = Array.isArray(discoveredDetails) ? discoveredDetails : [];
@@ -913,159 +834,8 @@ export function renderTalkResultPanel(talkResult = null) {
   `;
 }
 
-export function renderRestResultPanel(restResult = null) {
-  return `
-    <section class="module-card solo-panel solo-rest-panel">
-      <div class="module-header">
-        <h3>Rest</h3>
-        <span class="small">Server result</span>
-      </div>
-      ${
-        restResult
-          ? `
-            <div class="solo-rest-result ${restResult.allowed ? "found" : "empty"}">
-              <strong>${escapeHtml(restResult.allowed ? `${titleCase(restResult.restType || "short")} Rest` : "Rest denied")}</strong>
-              <p>${escapeHtml(restResult.summary || "You cannot rest here right now.")}</p>
-              <div class="small">Time advanced: ${escapeHtml(restResult.timeAdvanced ?? 0)} tick(s) / Safety: ${escapeHtml(restResult.safety || "unknown")}</div>
-              ${
-                Array.isArray(restResult.resourcesRecovered) && restResult.resourcesRecovered.length
-                  ? `<div class="solo-sheet-section">
-                      <h5>Recovered Resources</h5>
-                      ${renderCompactList(restResult.resourcesRecovered, "No resources recovered.", (resource) => `
-                        <div class="solo-compact-row">
-                          <strong>${escapeHtml(typeLabel(resource.resourceId || "resource"))}</strong>
-                          <span>${escapeHtml(resource.before)} -> ${escapeHtml(resource.after)} (+${escapeHtml(resource.amount)})</span>
-                        </div>
-                      `)}
-                    </div>`
-                  : renderEmpty("No resources recovered.")
-              }
-              ${
-                Array.isArray(restResult.warningCodes) && restResult.warningCodes.length
-                  ? `<div class="solo-tag-row">${restResult.warningCodes
-                      .map((warning) => `<span class="tag">${escapeHtml(warning)}</span>`)
-                      .join("")}</div>`
-                  : ""
-              }
-            </div>
-          `
-          : renderEmpty("Rest here to advance time and recover simple resources.")
-      }
-    </section>
-  `;
-}
 
-export function renderUseItemResultPanel(useItemResult = null) {
-  return `
-    <section class="module-card solo-panel solo-use-item-panel">
-      <div class="module-header">
-        <h3>Use Item</h3>
-        <span class="small">Server result</span>
-      </div>
-      ${
-        useItemResult
-          ? `
-            <div class="solo-use-item-result ${useItemResult.used ? "found" : "empty"}">
-              <strong>${escapeHtml(useItemResult.used ? useItemResult.itemName || "Item used" : "Item use denied")}</strong>
-              <p>${escapeHtml(useItemResult.summary || "That item cannot be used right now.")}</p>
-              <div class="small">
-                Effect: ${escapeHtml(typeLabel(useItemResult.effectType || "none"))}
-                ${Number.isFinite(useItemResult.quantityRemaining) ? ` / Quantity remaining: ${escapeHtml(useItemResult.quantityRemaining)}` : ""}
-              </div>
-              ${
-                Array.isArray(useItemResult.resourcesRecovered) && useItemResult.resourcesRecovered.length
-                  ? `<div class="solo-sheet-section">
-                      <h5>Recovered Resources</h5>
-                      ${renderCompactList(useItemResult.resourcesRecovered, "No resources recovered.", (resource) => `
-                        <div class="solo-compact-row">
-                          <strong>${escapeHtml(typeLabel(resource.resourceId || "resource"))}</strong>
-                          <span>${escapeHtml(resource.before)} -> ${escapeHtml(resource.after)} (+${escapeHtml(resource.amount)})</span>
-                        </div>
-                      `)}
-                    </div>`
-                  : ""
-              }
-              ${
-                useItemResult.revealedNote
-                  ? `<div class="solo-sheet-section">
-                      <h5>Revealed Note</h5>
-                      <p>${escapeHtml(useItemResult.revealedNote)}</p>
-                    </div>`
-                  : ""
-              }
-              ${
-                Array.isArray(useItemResult.warningCodes) && useItemResult.warningCodes.length
-                  ? `<div class="solo-tag-row">${useItemResult.warningCodes
-                      .map((warning) => `<span class="tag">${escapeHtml(warning)}</span>`)
-                      .join("")}</div>`
-                  : ""
-              }
-            </div>
-          `
-          : renderEmpty("Use a usable inventory item to apply a predefined effect.")
-      }
-    </section>
-  `;
-}
 
-export function renderAttemptPanel(scene = {}, attemptResult = null) {
-  const entities = Array.isArray(scene.visibleEntities) ? scene.visibleEntities.filter((entity) => entity.entityId) : [];
-  const history = Array.isArray(scene.attemptHistory) ? scene.attemptHistory : [];
-  return `
-    <section class="module-card solo-panel solo-attempt-panel">
-      <div class="module-header">
-        <h3>Attempt</h3>
-        <span class="small">Freeform server action</span>
-      </div>
-      <form class="solo-attempt-form" data-solo-attempt-form>
-        <label class="field">
-          <span class="small">What do you attempt?</span>
-          <textarea name="intent" rows="3" placeholder="Describe your intent..." required></textarea>
-        </label>
-        <label class="field">
-          <span class="small">Optional target</span>
-          <select name="targetId">
-            <option value="">No specific target</option>
-            ${entities
-              .map((entity) => `<option value="${escapeHtml(entity.entityId)}">${escapeHtml(entity.displayName || entity.entityId)}</option>`)
-              .join("")}
-          </select>
-        </label>
-        <button class="ghost" type="submit" data-solo-action="attempt">Attempt</button>
-      </form>
-      ${
-        attemptResult
-          ? `
-            <div class="solo-attempt-result ${attemptResult.success ? "found" : "empty"}">
-              <strong>${escapeHtml(attemptResult.success ? "Attempt succeeded" : "Attempt failed")}</strong>
-              <p>${escapeHtml(attemptResult.narration || attemptResult.summary || "The attempt resolves without further effect.")}</p>
-              <div class="small">Intent: ${escapeHtml(attemptResult.intent || "")}</div>
-              ${renderCheckResult(attemptResult.checkResult)}
-              ${
-                Array.isArray(attemptResult.warnings) && attemptResult.warnings.length
-                  ? `<div class="solo-tag-row">${attemptResult.warnings.map((warning) => `<span class="tag">${escapeHtml(warning)}</span>`).join("")}</div>`
-                  : ""
-              }
-            </div>
-          `
-          : renderEmpty("Type a custom intent. The server validates and adjudicates the result.")
-      }
-      ${
-        history.length
-          ? `<div class="solo-sheet-section">
-              <h5>Recent Attempts</h5>
-              ${renderCompactList(history.slice(-3), "No recent attempts.", (entry) => `
-                <div class="solo-compact-row">
-                  <strong>${escapeHtml(entry.success ? "Success" : "Failure")}</strong>
-                  <span>${escapeHtml(entry.intent || entry.summary || "")}</span>
-                </div>
-              `)}
-            </div>`
-          : ""
-      }
-    </section>
-  `;
-}
 
 export function renderEntityDetailPanel(detail = null) {
   if (!detail) {
@@ -1158,83 +928,8 @@ export function renderEntityDetailPanel(detail = null) {
 // quest (the main quest if active, else the first active quest), its one-line
 // objective, and a stage indicator past stage 0. Falls back to a neutral empty
 // state when nothing is active (e.g. after the main quest is completed).
-export function renderQuestPanel(scene = {}) {
-  const quests = scene.quests || {};
-  const main = quests.mainQuest && quests.mainQuest.status === "active" ? quests.mainQuest : null;
-  const active =
-    main ||
-    (Array.isArray(quests.activeQuests) ? quests.activeQuests.find((quest) => quest && quest.status === "active") : null) ||
-    null;
-  return `
-    <section class="module-card solo-panel solo-quest-panel">
-      <div class="module-header">
-        <h3>Objective</h3>
-        <span class="small">Your quest</span>
-      </div>
-      ${
-        active
-          ? `<div class="solo-quest-active">
-               <strong class="solo-quest-title">${escapeHtml(active.title || "Untitled Quest")}</strong>
-               <div class="small solo-quest-objective">${escapeHtml(active.objective || "")}</div>
-               ${Number(active.stage) > 0 ? `<div class="small solo-quest-stage">Stage ${escapeHtml(active.stage)}</div>` : ""}
-             </div>`
-          : renderEmpty("No active quest.")
-      }
-    </section>
-  `;
-}
 
-export function renderSceneTimelinePanel(scene = {}) {
-  const events = Array.isArray(scene.recentTimeline) ? scene.recentTimeline : [];
-  return `
-    <section class="module-card solo-panel">
-      <div class="module-header">
-        <h3>Recent Timeline</h3>
-        <span class="small">Run events</span>
-      </div>
-      ${
-        events.length
-          ? `<ul class="list solo-timeline-list">${events
-              .map(
-                (event) => `
-                  <li class="list-item">
-                    <strong>${escapeHtml(event.title || event.type || "Event")}</strong>
-                    <div class="small">${escapeHtml(event.summary || "")}</div>
-                  </li>
-                `
-              )
-              .join("")}</ul>`
-          : renderEmpty("No recent events yet.")
-      }
-    </section>
-  `;
-}
 
-export function renderSceneMemoryPanel(scene = {}) {
-  const facts = Array.isArray(scene.relevantMemoryFacts) ? scene.relevantMemoryFacts : [];
-  return `
-    <section class="module-card solo-panel">
-      <div class="module-header">
-        <h3>Relevant Memory</h3>
-        <span class="small">Server facts</span>
-      </div>
-      ${
-        facts.length
-          ? `<ul class="list solo-memory-list">${facts
-              .map(
-                (fact) => `
-                  <li class="list-item">
-                    <strong>${escapeHtml(fact.type || "fact")}</strong>
-                    <div class="small">${escapeHtml(fact.text || "")}</div>
-                  </li>
-                `
-              )
-              .join("")}</ul>`
-          : renderEmpty("No linked memories yet.")
-      }
-    </section>
-  `;
-}
 
 // ---------------------------------------------------------------------------
 // Themed game-screen chrome (skins, fonts, character sidebar, tabs, right rail)
@@ -1309,14 +1004,6 @@ const SOLO_SKIN_SWATCHES = {
 const SOLO_SKIN_LABELS = { ashen: "Black Grimoire", dragon: "Dragonscale", lava: "Molten Forge", wood: "Wildwood" };
 const SOLO_FONT_LABELS = { tome: "Tome", court: "Court", iron: "Iron" };
 
-export const SOLO_TABS = [
-  { id: "scene", label: "Scene" },
-  { id: "actions", label: "Actions" },
-  { id: "character", label: "Character" },
-  { id: "inventory", label: "Inventory" },
-  { id: "map", label: "Map" },
-  { id: "journal", label: "Journal" }
-];
 
 export function normalizeSkin(skin) {
   return Object.prototype.hasOwnProperty.call(SOLO_SKINS, skin) ? skin : "ashen";
@@ -1326,9 +1013,6 @@ export function normalizeFontSet(fontSet) {
   return Object.prototype.hasOwnProperty.call(SOLO_FONTS, fontSet) ? fontSet : "tome";
 }
 
-export function normalizeTab(tab) {
-  return SOLO_TABS.some((entry) => entry.id === tab) ? tab : "scene";
-}
 
 // #48: narration text-size multiplier, clamped to a sane readable band and
 // quantized to 0.1 steps. Non-numeric / out-of-range falls back to 1.0.
@@ -1812,17 +1496,6 @@ export function renderSoloCharacterSidebar(character = SOLO_SAMPLE_CHARACTER) {
   `;
 }
 
-export function renderSoloGameTabs(activeTab = "scene") {
-  const active = normalizeTab(activeTab);
-  return `
-    <div class="solo-game-tabs" role="tablist">
-      ${SOLO_TABS.map(
-        (tab) =>
-          `<button type="button" role="tab" class="solo-game-tab ${tab.id === active ? "active" : ""}" data-solo-tab="${tab.id}" aria-selected="${tab.id === active}">${escapeHtml(tab.label)}</button>`
-      ).join("")}
-    </div>
-  `;
-}
 
 // #15: the "GM is thinking / Loading scene" strip, extracted so the turn
 // fast-path can repaint just this node (inside data-solo-thinking) in place.
@@ -2822,20 +2495,9 @@ export function renderSoloSceneShell(state = {}) {
   // GM provider/fallback status panel is debug-only (hidden from beta players).
   const debug = state.debug === true;
   const character = state.character || SOLO_SAMPLE_CHARACTER;
-  const activeTab = normalizeTab(state.activeTab);
   const skin = normalizeSkin(state.skin);
   const fontSet = normalizeFontSet(state.fontSet);
   const logScale = normalizeLogScale(state.logScale);
-  // C.25: the world's OWN name is the breadcrumb root (run.world.name via the
-  // scene payload), not a hardcoded region. location/character region remain as
-  // deep fallbacks for legacy payloads that predate the world field.
-  const region = scene.world?.name || location.region || character.region || "Uncharted";
-  const title = location.name || "Current Scene";
-
-  // Each tab panel is always present in the markup and toggled with `hidden`,
-  // so screen-reader/test access to every panel's content is preserved.
-  const panel = (id, body) =>
-    `<div class="solo-tab-panel" data-solo-tabpanel="${id}" ${id === activeTab ? "" : "hidden"}>${body}</div>`;
 
   return `
     <section
@@ -2870,18 +2532,9 @@ export function renderSoloSceneShell(state = {}) {
       <div class="solo-game-frame solo-scene-grid">
         ${renderSoloCharacterSidebar(character)}
         <main class="solo-game-main solo-scene-main">
-          <div class="solo-game-header">
-            <div class="solo-breadcrumb">${escapeHtml(region)} <span>›</span> ${escapeHtml(title)}</div>
-            <div class="solo-game-title">${escapeHtml(title)}</div>
-            ${
-              scene.quests?.mainQuest && scene.quests.mainQuest.status === "active" && scene.quests.mainQuest.objective
-                ? `<div class="small solo-game-objective">Objective: ${escapeHtml(scene.quests.mainQuest.objective)}</div>`
-                : ""
-            }
-            <!-- #29: tabs relocated here (top, in-header) off the wasted full-width
-                 bottom row, as a compact strip integrated with the scene chrome. -->
-            ${renderSoloGameTabs(activeTab)}
-          </div>
+          <!-- Fable: all non-functional chrome above the scene (breadcrumb, title,
+               objective, and the entire tab bar + its placeholder panels) removed.
+               The scene renders full-bleed to the top of the viewport. -->
           <div class="solo-game-content">
             ${
               state.banner
@@ -2891,86 +2544,35 @@ export function renderSoloSceneShell(state = {}) {
                   </div>`
                 : ""
             }
-            ${panel(
-              "scene",
-              `
-                <div class="solo-scene-layout" style="grid-template-columns: minmax(0, 1fr);">
-                  <div class="solo-scene-center solo-scene-zones">
-                    <!-- #25 ZONE 1 — PINNED STAGE: location art + the check-result
-                         strip. Never scrolls; the persistent visual anchor and the
-                         future home of the VN sprite/dialogue layer. -->
-                    <div class="solo-stage${state.dialogueActive && state.talkResult ? " vn-active" : ""}" data-solo-stage>
-                      ${renderSoloUpgradePrompt(scene)}
-                      ${renderSoloSceneArt(scene.locationImageUri, { locked: scene.locationImageLocked })}
-                      <!-- #15: stable wrapper so the turn fast-path can repaint the
-                           outcome strip in place without rebuilding the stage. -->
-                      <div data-solo-outcome>${renderSoloActionOutcome(state)}</div>
-                      <!-- #49 VN LAYER: NPC sprite + in-flow dialogue textbox render
-                           IN the pinned stage (not a modal), over the location art;
-                           the narration log stays visible behind. Empty when no
-                           conversation is active. -->
-                      ${renderSoloDialogueOverlay(state)}
-                    </div>
-                    <!-- #25 ZONE 2 — SCROLLABLE NARRATION LOG: turn-by-turn prose
-                         accumulates as readable history (independent scroll). On the
-                         opening moment the paced VOICE set-piece plays; every turn
-                         after appends to the log (the opening persists as entry #1). -->
-                    <div class="solo-narration-log" data-solo-log>
-                      ${
-                        (typeof scene.openingNarration === "string" && scene.openingNarration.trim()) || (Array.isArray(scene.openingBeats) && scene.openingBeats.length)
-                          ? renderSoloSceneOpening(scene.openingNarration, scene.openingBeats)
-                          : Array.isArray(state.narrationLog) && state.narrationLog.length
-                            ? renderNarrationLog(state.narrationLog)
-                            : renderLocationPanel(location, scene.gmNarration, scene.gmStatus, selectedGmMode, debug, {})
-                      }
-                    </div>
-                    <!-- #25 ZONE 3 — INPUT DOCK: pinned at the bottom. -->
-                    <div class="solo-input-dock">
-                      <!-- #15: stable wrapper so the fast-path can toggle the
-                           thinking indicator without rebuilding the dock/input. -->
-                      <div data-solo-dock-status>${renderSoloThinkingIndicator(state)}</div>
-                      ${renderSoloSceneInputBar(state)}
-                    </div>
-                  </div>
+            <!-- SCENE — the only view. Three-zone layout (#25/#34): pinned stage
+                 (art + outcome + #49 VN layer), scrollable narration log, input
+                 dock. No tab wrapper — the non-SCENE tabs and their panels are gone. -->
+            <div class="solo-scene-layout" style="grid-template-columns: minmax(0, 1fr);">
+              <div class="solo-scene-center solo-scene-zones">
+                <!-- ZONE 1 — PINNED STAGE -->
+                <div class="solo-stage${state.dialogueActive && state.talkResult ? " vn-active" : ""}" data-solo-stage>
+                  ${renderSoloUpgradePrompt(scene)}
+                  ${renderSoloSceneArt(scene.locationImageUri, { locked: scene.locationImageLocked })}
+                  <div data-solo-outcome>${renderSoloActionOutcome(state)}</div>
+                  ${renderSoloDialogueOverlay(state)}
                 </div>
-              `
-            )}
-            ${panel(
-              "actions",
-              `
-                ${renderSceneActionBar(scene)}
-                ${renderRestResultPanel(state.restResult)}
-                ${renderAttemptPanel(scene, state.attemptResult)}
-              `
-            )}
-            ${panel("character", renderSoloCharacterSheet(character))}
-            ${panel(
-              "inventory",
-              `
-                ${renderInventoryPanel(scene)}
-                ${renderUseItemResultPanel(state.useItemResult)}
-              `
-            )}
-            ${panel(
-              "map",
-              `
-                <div class="solo-map-view">
-                  ${renderSoloMapTab(scene, state.battleMap)}
-                  <aside class="solo-map-aside">
-                    ${renderSoloAreaMap(scene)}
-                    ${renderMovementPanel(scene)}
-                  </aside>
+                <!-- ZONE 2 — SCROLLABLE NARRATION LOG -->
+                <div class="solo-narration-log" data-solo-log>
+                  ${
+                    (typeof scene.openingNarration === "string" && scene.openingNarration.trim()) || (Array.isArray(scene.openingBeats) && scene.openingBeats.length)
+                      ? renderSoloSceneOpening(scene.openingNarration, scene.openingBeats)
+                      : Array.isArray(state.narrationLog) && state.narrationLog.length
+                        ? renderNarrationLog(state.narrationLog)
+                        : renderLocationPanel(location, scene.gmNarration, scene.gmStatus, selectedGmMode, debug, {})
+                  }
                 </div>
-              `
-            )}
-            ${panel(
-              "journal",
-              `
-                ${renderQuestPanel(scene)}
-                ${renderSceneTimelinePanel(scene)}
-                ${renderSceneMemoryPanel(scene)}
-              `
-            )}
+                <!-- ZONE 3 — INPUT DOCK -->
+                <div class="solo-input-dock">
+                  <div data-solo-dock-status>${renderSoloThinkingIndicator(state)}</div>
+                  ${renderSoloSceneInputBar(state)}
+                </div>
+              </div>
+            </div>
           </div>
         </main>
         ${renderSoloRightRail(state)}
@@ -2998,18 +2600,15 @@ export function dispatchSoloClick(target, handlers = {}) {
     return true;
   }
   if ((el = closest("[data-solo-action='inspect']"))) { handlers.onInspect?.({ entityId: el.getAttribute("data-entity-id") }); return true; }
-  if ((el = closest("[data-solo-action='search']"))) { handlers.onSearch?.(); return true; }
   if ((el = closest("[data-solo-action='talk']"))) {
     handlers.onTalk?.({ entityId: el.getAttribute("data-entity-id"), targetEntityId: el.getAttribute("data-entity-id") });
     return true;
   }
-  if ((el = closest("[data-solo-action='rest']"))) { handlers.onRest?.({ restType: el.getAttribute("data-rest-type") || "short" }); return true; }
   if ((el = closest("[data-solo-action='use_item']"))) { handlers.onUseItem?.({ itemId: el.getAttribute("data-item-id") }); return true; }
   if ((el = closest("[data-solo-gm-mode]"))) { handlers.onGmMode?.({ mode: el.getAttribute("data-solo-gm-mode") }); return true; }
   if ((el = closest("[data-solo-npc-bringback]"))) { handlers.onBringBack?.({ entityId: el.getAttribute("data-entity-id") }); return true; }
   // Inspectable card AFTER the action buttons it may contain.
   if ((el = closest(".solo-entity-card.inspectable"))) { handlers.onInspect?.({ entityId: el.getAttribute("data-entity-id") }); return true; }
-  if ((el = closest("[data-solo-tab]"))) { handlers.onTab?.({ tab: el.getAttribute("data-solo-tab") }); return true; }
   // NOTE: the ROOT <section> also carries data-solo-skin / data-solo-font as
   // theme-state markers, so these MUST be scoped to the actual picker BUTTONS —
   // a bare [data-solo-skin] closest() walks up to the section and swallows every
@@ -3062,84 +2661,6 @@ export function bindSoloSceneShell(root, handlers = {}) {
     root.__soloDelegated = true;
     root.addEventListener("click", (event) => dispatchSoloClick(event?.target, root.__soloHandlers || {}));
     root.addEventListener("keydown", (event) => dispatchSoloKeydown(event, root.__soloHandlers || {}));
-  }
-
-  // ---- Battle map (Phase 2): select / drag / click-move / arrow keys / undo ----
-  const parseCell = (value) => {
-    const [x, y] = String(value || "").split(",").map((n) => Number(n));
-    return { x, y };
-  };
-  const ARROW_DELTAS = {
-    ArrowUp: [0, -1],
-    ArrowDown: [0, 1],
-    ArrowLeft: [-1, 0],
-    ArrowRight: [1, 0]
-  };
-  // One delegated listener set on the map container instead of per-token /
-  // per-cell handlers. Two reasons:
-  //   1. Tokens + cells are rebuilt on every render(); a single container
-  //      listener covers freshly-rendered children via event.target.closest().
-  //   2. The drag bug: dragstart used to call onMapSelectToken -> render(),
-  //      which rebuilt the DOM and destroyed the very node being dragged, so the
-  //      browser cancelled the drag. dragstart now routes through onMapDragStart,
-  //      which selects WITHOUT re-rendering; drop performs the move (and renders)
-  //      once the drag has completed.
-  const closestMatch = (node, selector) =>
-    node && typeof node.closest === "function" ? node.closest(selector) : null;
-  const mapEl = root.querySelectorAll("[data-solo-map]")[0] || null;
-  if (mapEl && typeof mapEl.addEventListener === "function") {
-    mapEl.addEventListener("click", (event) => {
-      const target = event?.target;
-      if (closestMatch(target, "[data-map-undo]")) {
-        handlers.onMapUndo?.();
-        return;
-      }
-      const tokenEl = closestMatch(target, "[data-token-id]");
-      if (tokenEl) {
-        event.stopPropagation?.();
-        handlers.onMapSelectToken?.(tokenEl.getAttribute("data-token-id"));
-        return;
-      }
-      const cellEl = closestMatch(target, "[data-cell]");
-      if (cellEl) {
-        const { x, y } = parseCell(cellEl.getAttribute("data-cell"));
-        handlers.onMapMoveTo?.(x, y);
-      }
-    });
-    mapEl.addEventListener("dragstart", (event) => {
-      const tokenEl = closestMatch(event?.target, "[data-token-id]");
-      if (!tokenEl) {
-        return;
-      }
-      const tokenId = tokenEl.getAttribute("data-token-id");
-      if (event?.dataTransfer && typeof event.dataTransfer.setData === "function") {
-        event.dataTransfer.setData("text/plain", tokenId);
-      }
-      // Select for the drag WITHOUT a re-render so the dragged node survives.
-      handlers.onMapDragStart?.(tokenId);
-    });
-    mapEl.addEventListener("dragover", (event) => {
-      if (closestMatch(event?.target, "[data-cell]")) {
-        event.preventDefault?.();
-      }
-    });
-    mapEl.addEventListener("drop", (event) => {
-      const cellEl = closestMatch(event?.target, "[data-cell]");
-      if (!cellEl) {
-        return;
-      }
-      event.preventDefault?.();
-      const { x, y } = parseCell(cellEl.getAttribute("data-cell"));
-      handlers.onMapMoveTo?.(x, y);
-    });
-    mapEl.addEventListener("keydown", (event) => {
-      const delta = ARROW_DELTAS[event?.key];
-      if (!delta) {
-        return;
-      }
-      event.preventDefault?.();
-      handlers.onMapArrow?.(delta[0], delta[1]);
-    });
   }
 
   // ---- Visual-novel dialogue overlay (typewriter + skip + close) ----
@@ -3444,7 +2965,6 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     dialogueReplyDraft: "",
     dialogueTargetEntityId: null,
     gmMode: "placeholder",
-    activeTab: "scene",
     npcCreator: freshNpcCreatorState(),
     npcCreatorConfirmation: "",
     // Guards re-entry while a Redo/Save location-image request is in flight.
@@ -3488,7 +3008,6 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     const character = state.character || SOLO_SAMPLE_CHARACTER;
     try {
       return JSON.stringify({
-        tab: normalizeTab(state.activeTab),
         skin: normalizeSkin(state.skin),
         font: normalizeFontSet(state.fontSet),
         menu: Boolean(state.menuOpen),
@@ -3544,9 +3063,6 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       return false;
     }
     if (typeof root.querySelector !== "function") {
-      return false;
-    }
-    if (normalizeTab(state.activeTab) !== "scene") {
       return false;
     }
     if (state.loading || state.error || state.deathScreen || state.victoryScreen || state.runConcluded) {
@@ -3663,19 +3179,11 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       onDismissBanner: handleDismissBanner,
       onMenuToggle: handleMenuToggle,
       onCogPlaceholder: handleCogPlaceholder,
-      onMapSelectToken: handleMapSelectToken,
-      onMapDragStart: handleMapDragStart,
-      onMapMoveTo: handleMapMoveTo,
-      onMapArrow: handleMapArrow,
-      onMapUndo: handleMapUndo,
       onMove: handleMove,
       onInspect: handleInspect,
-      onSearch: handleSearch,
       onTalk: handleTalk,
-      onRest: handleRest,
       onUseItem: handleUseItem,
       onGmMode: handleGmMode,
-      onTab: handleTab,
       onSkin: handleSkin,
       onFont: handleFont,
       onLogFontScale: handleLogFontScale,
@@ -4177,77 +3685,6 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     state.battleMap.revealed = [...merged];
   }
 
-  function handleMapSelectToken(tokenId) {
-    ensureBattlePositions();
-    state.battleMap.selectedTokenId = tokenId || null;
-    state.battleMap.movedTiles = 0; // new activation
-    render();
-  }
-
-  // Selection at the start of a drag: identical to a click-select but WITHOUT a
-  // re-render. Rebuilding the DOM during dragstart removes the node being
-  // dragged and the browser aborts the drag — the root cause of "tokens are not
-  // draggable". The legal-move highlight simply appears on drop (which renders).
-  function handleMapDragStart(tokenId) {
-    ensureBattlePositions();
-    state.battleMap.selectedTokenId = tokenId || null;
-    state.battleMap.movedTiles = 0;
-    // Intentionally no render() here.
-  }
-
-  function handleMapMoveTo(x, y) {
-    const selectedId = state.battleMap.selectedTokenId;
-    if (!selectedId) {
-      return;
-    }
-    ensureBattlePositions();
-    const { tokens, positionsById } = resolveBattleTokens(state.scene || {}, state.battleMap);
-    const token = tokens.find((entry) => entry.id === selectedId);
-    if (!token) {
-      return;
-    }
-    const grid = { width: SOLO_MAP_WIDTH, height: SOLO_MAP_HEIGHT, positions: positionsById, tokenId: selectedId };
-    const budget = Math.max(0, tilesForSpeed(token.speed) - state.battleMap.movedTiles);
-    if (!isLegalMove(grid, budget, x, y)) {
-      return; // illegal (too far / occupied / out of bounds) — ignore
-    }
-    const cost = moveCost(grid, x, y);
-    const from = positionsById[selectedId];
-    state.battleMap.history.push({ tokenId: selectedId, from: { ...from }, to: { x, y }, cost });
-    state.battleMap.positions = { ...positionsById, [selectedId]: { x, y } };
-    state.battleMap.movedTiles += cost;
-    accumulateReveal(); // auto-reveal fog around the moved token
-    persistBattleMap();
-    render();
-  }
-
-  function handleMapArrow(dx, dy) {
-    const selectedId = state.battleMap.selectedTokenId;
-    if (!selectedId) {
-      return;
-    }
-    ensureBattlePositions();
-    const current = state.battleMap.positions[selectedId];
-    if (!current) {
-      return;
-    }
-    handleMapMoveTo(current.x + dx, current.y + dy); // single step; legality enforced inside
-  }
-
-  function handleMapUndo() {
-    const history = state.battleMap.history;
-    if (!history || history.length === 0) {
-      return;
-    }
-    const last = history.pop();
-    state.battleMap.positions = { ...state.battleMap.positions, [last.tokenId]: { ...last.from } };
-    if (last.tokenId === state.battleMap.selectedTokenId) {
-      state.battleMap.movedTiles = Math.max(0, state.battleMap.movedTiles - (last.cost || 0));
-    }
-    persistBattleMap();
-    render();
-  }
-
   function handleCogPlaceholder(label) {
     state.cogNote = `${label} — coming soon`;
     render();
@@ -4358,11 +3795,6 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     // Victory narration typewriter finished/skipped; mark complete so any later
     // re-render shows the full closing line rather than restarting the reveal.
     state.victoryTyped = true;
-  }
-
-  function handleTab({ tab }) {
-    state.activeTab = normalizeTab(tab);
-    render();
   }
 
   function handleSkin({ skin }) {
@@ -4825,18 +4257,6 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     };
   }
 
-  function handleSearch() {
-    return runAction("search", async () => {
-      const response = await postAction(createSearchAction());
-      state.searchResult = response.searchResult || null;
-      state.talkResult = null;
-      state.dialogueActive = false;
-      state.restResult = null;
-      state.useItemResult = null;
-      await refreshSceneAfterAction();
-    });
-  }
-
   function handleTalk(entity) {
     return runAction("talk", async () => {
       const response = await postAction(createTalkAction(entity));
@@ -4969,18 +4389,6 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     state.dialogueHistory = [];
     state.dialogueTargetEntityId = null;
     render();
-  }
-
-  function handleRest(action) {
-    return runAction("rest", async () => {
-      const response = await postAction(createRestAction(action));
-      state.restResult = response.restResult || null;
-      state.searchResult = null;
-      state.talkResult = null;
-      state.dialogueActive = false;
-      state.useItemResult = null;
-      await refreshSceneAfterAction();
-    });
   }
 
   function handleUseItem(item) {

@@ -182,41 +182,8 @@ test("renderSoloSceneShell renders available moves", () => {
   assert.match(html, /data-location-id="second_location"/);
 });
 
-test("renderSoloSceneShell renders available actions and disables unimplemented actions", () => {
-  const scene = {
-    ...sampleScene(),
-    availableActions: [
-      ...sampleScene().availableActions,
-      {
-        type: "interact",
-        label: "Interact",
-        enabled: false,
-        reason: "Not implemented yet"
-      }
-    ]
-  };
-  const html = renderSoloSceneShell({ scene });
-  assert.match(html, /Move to Second Location/);
-  assert.match(html, /Search area/);
-  assert.match(html, /Talk to Placeholder NPC/);
-  assert.match(html, /data-solo-action="talk"/);
-  assert.match(html, /Short Rest/);
-  assert.match(html, /data-solo-action="rest"/);
-  assert.match(html, /Use Field Ration/);
-  assert.match(html, /data-solo-action="use_item"/);
-  assert.match(html, /data-solo-action="search"/);
-  assert.match(html, /Not implemented yet/);
-  assert.match(html, /disabled/);
-});
-
-test("renderSoloSceneShell renders inventory panel", () => {
-  const html = renderSoloSceneShell({ scene: sampleScene() });
-
-  assert.match(html, /Inventory/);
-  assert.match(html, /Field Ration/);
-  assert.match(html, /Quantity: 1/);
-  assert.match(html, /data-item-id="field_ration"/);
-});
+// Fable: the actions-bar and inventory-panel tests removed with their tabs
+// (nuke-chrome-fullbleed-scene). Rail result panels below remain covered.
 
 test("renderSoloSceneShell renders search result and discovered details", () => {
   const html = renderSoloSceneShell({
@@ -310,135 +277,6 @@ test("renderSoloSceneShell renders neutral fallback talk result", () => {
   assert.match(html, /TALK_CHECK_FAILED/);
 });
 
-test("renderSoloSceneShell renders rest result with recovered resources", () => {
-  const html = renderSoloSceneShell({
-    scene: sampleScene(),
-    restResult: {
-      locationId: "start_location",
-      restType: "short",
-      allowed: true,
-      safety: "safe",
-      timeAdvanced: 1,
-      resourcesRecovered: [
-        {
-          resourceId: "stamina",
-          before: 3,
-          after: 5,
-          amount: 2
-        }
-      ],
-      summary: "You take a moment to recover.",
-      warningCodes: []
-    }
-  });
-
-  assert.match(html, /Rest/);
-  assert.match(html, /Short Rest/);
-  assert.match(html, /Time advanced: 1 tick/);
-  assert.match(html, /stamina/);
-  assert.match(html, /3 -> 5/);
-  assert.doesNotMatch(html, /"restResult"/);
-});
-
-test("renderSoloSceneShell renders denied rest result", () => {
-  const html = renderSoloSceneShell({
-    scene: sampleScene(),
-    restResult: {
-      locationId: "start_location",
-      restType: "short",
-      allowed: false,
-      safety: "unsafe",
-      timeAdvanced: 0,
-      resourcesRecovered: [],
-      summary: "You cannot rest here right now.",
-      warningCodes: ["REST_NOT_ALLOWED"]
-    }
-  });
-
-  assert.match(html, /Rest denied/);
-  assert.match(html, /You cannot rest here right now/);
-  assert.match(html, /REST_NOT_ALLOWED/);
-});
-
-test("renderSoloSceneShell renders use item recovered resource result", () => {
-  const html = renderSoloSceneShell({
-    scene: sampleScene(),
-    useItemResult: {
-      itemId: "field_ration",
-      itemName: "Field Ration",
-      effectType: "recover_resource",
-      used: true,
-      consumed: true,
-      quantityRemaining: 0,
-      resourcesRecovered: [
-        {
-          resourceId: "stamina",
-          before: 3,
-          after: 4,
-          amount: 1
-        }
-      ],
-      summary: "You use the field ration and recover a little stamina.",
-      revealedNote: null,
-      warningCodes: []
-    }
-  });
-
-  assert.match(html, /Use Item/);
-  assert.match(html, /Field Ration/);
-  assert.match(html, /Quantity remaining: 0/);
-  assert.match(html, /Recovered Resources/);
-  assert.match(html, /3 -> 4/);
-  assert.doesNotMatch(html, /"useItemResult"/);
-});
-
-test("renderSoloSceneShell renders use item revealed note result", () => {
-  const html = renderSoloSceneShell({
-    scene: sampleScene(),
-    useItemResult: {
-      itemId: "plain_note",
-      itemName: "Plain Note",
-      effectType: "reveal_note",
-      used: true,
-      consumed: false,
-      quantityRemaining: 1,
-      resourcesRecovered: [],
-      summary: "You read the plain note.",
-      revealedNote: "The note contains a simple reminder to stay aware of the surroundings.",
-      warningCodes: []
-    }
-  });
-
-  assert.match(html, /Revealed Note/);
-  assert.match(html, /simple reminder/);
-});
-
-test("renderSoloSceneShell renders denied item use", () => {
-  const html = renderSoloSceneShell({
-    scene: sampleScene(),
-    useItemResult: {
-      itemId: "field_ration",
-      itemName: null,
-      effectType: null,
-      used: false,
-      consumed: false,
-      quantityRemaining: null,
-      resourcesRecovered: [],
-      summary: "You cannot use that item here.",
-      revealedNote: null,
-      warningCodes: ["ITEM_BLOCKED_BY_POLICY"]
-    }
-  });
-
-  assert.match(html, /Item use denied/);
-  assert.match(html, /ITEM_BLOCKED_BY_POLICY/);
-});
-
-test("renderSoloSceneShell renders timeline and memory panels", () => {
-  const html = renderSoloSceneShell({ scene: sampleScene() });
-  assert.match(html, /Run Created/);
-  assert.match(html, /The run began at the starting location/);
-});
 
 test("renderSoloSceneShell renders GM narration when present", () => {
   const scene = {
@@ -614,67 +452,6 @@ test("mountSoloSceneShell keeps fallback if GM narration request fails", async (
   // fetch still shows the scene prose and never the error screen.
   assert.match(root.innerHTML, /Neutral placeholder description/);
   assert.doesNotMatch(root.innerHTML, /Solo Scene Unavailable/);
-});
-
-test("mountSoloSceneShell posts search action and shows result", async () => {
-  const searchButton = {
-    handler: null,
-    addEventListener(_event, handler) {
-      this.handler = handler;
-    }
-  };
-  const root = {
-    innerHTML: "",
-    _l: {},
-    addEventListener(name, handler) {
-      this._l[name] = handler;
-    },
-    querySelectorAll(selector) {
-      return selector === "[data-solo-action='search']" ? [searchButton] : [];
-    }
-  };
-  const calls = [];
-  const discoveredScene = {
-    ...sampleScene(),
-    discoveredDetails: [
-      {
-        detailId: "detail_scuffed_mark",
-        label: "Scuffed Mark",
-        description: "A scuffed mark is visible near the edge of the path."
-      }
-    ]
-  };
-  const apiClient = {
-    async fetchSoloScene() {
-      return calls.some((call) => call[0] === "action") ? discoveredScene : sampleScene();
-    },
-    async fetchSoloGmScene() {
-      return { ok: true, gmNarration: null, gmStatus: null };
-    },
-    async postSoloAction(runId, action) {
-      calls.push(["action", runId, action]);
-      return {
-        ok: true,
-        searchResult: {
-          locationId: "start_location",
-          found: true,
-          summary: "A scuffed mark is visible near the edge of the path.",
-          revealedDetailIds: ["detail_scuffed_mark"],
-          warningCodes: []
-        }
-      };
-    }
-  };
-
-  const mounted = mountSoloSceneShell(root, { apiClient, runId: "run_test" });
-  await mounted.reload();
-  // #15-full: the click is delegated — fire it through the single root listener.
-  root._l.click({ target: clickTarget({ "[data-solo-action='search']": {} }) });
-  await new Promise((resolve) => setTimeout(resolve, 0));
-
-  assert.deepEqual(calls, [["action", "run_test", { type: "search", actorId: "player" }]]);
-  assert.match(root.innerHTML, /Detail found/);
-  assert.match(root.innerHTML, /Scuffed Mark/);
 });
 
 test("mountSoloSceneShell posts talk action and shows dialogue result", async () => {
@@ -887,142 +664,6 @@ test("VN reply input stays typeable while busy; only the submit button is gated"
   assert.match(html, /data-solo-dialogue-reply-submit disabled/);
 });
 
-test("mountSoloSceneShell posts rest action and shows rest result", async () => {
-  const restButton = {
-    handler: null,
-    addEventListener(_event, handler) {
-      this.handler = handler;
-    },
-    getAttribute(name) {
-      return name === "data-rest-type" ? "short" : "";
-    }
-  };
-  const root = {
-    innerHTML: "",
-    _l: {},
-    addEventListener(name, handler) {
-      this._l[name] = handler;
-    },
-    querySelectorAll(selector) {
-      return selector === "[data-solo-action='rest']" ? [restButton] : [];
-    }
-  };
-  const calls = [];
-  const apiClient = {
-    async fetchSoloScene() {
-      return sampleScene();
-    },
-    async fetchSoloGmScene() {
-      return { ok: true, gmNarration: null, gmStatus: null };
-    },
-    async postSoloAction(runId, action) {
-      calls.push(["action", runId, action]);
-      return {
-        ok: true,
-        restResult: {
-          locationId: "start_location",
-          restType: "short",
-          allowed: true,
-          safety: "safe",
-          timeAdvanced: 1,
-          resourcesRecovered: [
-            {
-              resourceId: "stamina",
-              before: 3,
-              after: 5,
-              amount: 2
-            }
-          ],
-          summary: "You take a moment to recover.",
-          warningCodes: []
-        }
-      };
-    }
-  };
-
-  const mounted = mountSoloSceneShell(root, { apiClient, runId: "run_test" });
-  await mounted.reload();
-  root._l.click({ target: clickTarget({ "[data-solo-action='rest']": { "data-rest-type": "short" } }) });
-  await new Promise((resolve) => setTimeout(resolve, 0));
-
-  assert.deepEqual(calls, [["action", "run_test", { type: "rest", actorId: "player", restType: "short" }]]);
-  assert.match(root.innerHTML, /Short Rest/);
-  assert.match(root.innerHTML, /You take a moment to recover/);
-  assert.match(root.innerHTML, /stamina/);
-});
-
-test("mountSoloSceneShell posts use_item action and shows item result", async () => {
-  const useButton = {
-    handler: null,
-    addEventListener(_event, handler) {
-      this.handler = handler;
-    },
-    getAttribute(name) {
-      return name === "data-item-id" ? "field_ration" : "";
-    }
-  };
-  const root = {
-    innerHTML: "",
-    _l: {},
-    addEventListener(name, handler) {
-      this._l[name] = handler;
-    },
-    querySelectorAll(selector) {
-      return selector === "[data-solo-action='use_item']" ? [useButton] : [];
-    }
-  };
-  const calls = [];
-  const apiClient = {
-    async fetchSoloScene() {
-      return sampleScene();
-    },
-    async fetchSoloGmScene() {
-      return { ok: true, gmNarration: null, gmStatus: null };
-    },
-    async postSoloAction(runId, action) {
-      calls.push(["action", runId, action]);
-      return {
-        ok: true,
-        useItemResult: {
-          itemId: "field_ration",
-          itemName: "Field Ration",
-          effectType: "recover_resource",
-          used: true,
-          consumed: true,
-          quantityRemaining: 0,
-          resourcesRecovered: [
-            {
-              resourceId: "stamina",
-              before: 3,
-              after: 4,
-              amount: 1
-            }
-          ],
-          summary: "You use the field ration and recover a little stamina.",
-          revealedNote: null,
-          warningCodes: []
-        }
-      };
-    }
-  };
-
-  const mounted = mountSoloSceneShell(root, { apiClient, runId: "run_test" });
-  await mounted.reload();
-  root._l.click({ target: clickTarget({ "[data-solo-action='use_item']": { "data-item-id": "field_ration" } }) });
-  await new Promise((resolve) => setTimeout(resolve, 0));
-
-  assert.deepEqual(calls, [["action", "run_test", {
-    type: "use_item",
-    actorId: "player",
-    itemId: "field_ration",
-    targetEntityId: null,
-    targetLocationId: null
-  }]]);
-  assert.match(root.innerHTML, /Use Item/);
-  assert.match(root.innerHTML, /Field Ration/);
-  assert.match(root.innerHTML, /Quantity remaining: 0/);
-});
-
 test("renderSoloSceneShell renders inspect details", () => {
   const html = renderSoloSceneShell({
     scene: sampleScene(),
@@ -1051,7 +692,6 @@ test("renderSoloSceneShell renders inspect details", () => {
   assert.match(html, /Relationships/);
   assert.match(html, /Linked Memories/);
   assert.match(html, /Met in this scene/);
-  assert.match(html, /selected/);
 });
 
 test("renderSoloSceneShell renders loading state", () => {
@@ -1082,17 +722,6 @@ test("renderEntityDetailPanel handles missing memories and relationships gracefu
   assert.match(html, /No linked memories yet/);
   assert.match(html, /No image assigned/);
   assert.doesNotMatch(html, /"entityId"/);
-});
-
-test("renderSoloSceneShell handles empty timeline and memory panels", () => {
-  const scene = {
-    ...sampleScene(),
-    recentTimeline: [],
-    relevantMemoryFacts: []
-  };
-  const html = renderSoloSceneShell({ scene });
-  assert.match(html, /No recent events yet/);
-  assert.match(html, /No linked memories yet/);
 });
 
 test("renderSoloSceneShell includes mobile-friendly layout markers", () => {
@@ -1135,12 +764,6 @@ test("dispatchSoloClick: GM mode button requests the mode change", () => {
   assert.deepEqual(calls, [{ mode: "provider" }, { mode: "placeholder" }]);
 });
 
-test("dispatchSoloClick: Search Area triggers search", () => {
-  let searched = false;
-  dispatchSoloClick(clickTarget({ "[data-solo-action='search']": {} }), { onSearch: () => (searched = true) });
-  assert.equal(searched, true);
-});
-
 test("dispatchSoloClick: Talk triggers talk with entity + target", () => {
   let talked = null;
   dispatchSoloClick(
@@ -1148,12 +771,6 @@ test("dispatchSoloClick: Talk triggers talk with entity + target", () => {
     { onTalk: (e) => (talked = e) }
   );
   assert.deepEqual(talked, { entityId: "npc:placeholder_npc", targetEntityId: "npc:placeholder_npc" });
-});
-
-test("dispatchSoloClick: Rest triggers rest with rest type", () => {
-  let rested = null;
-  dispatchSoloClick(clickTarget({ "[data-solo-action='rest']": { "data-rest-type": "long" } }), { onRest: (a) => (rested = a) });
-  assert.deepEqual(rested, { restType: "long" });
 });
 
 test("dispatchSoloClick: Use triggers use item", () => {
@@ -1178,17 +795,15 @@ test("dispatchSoloClick: a Talk button INSIDE an inspectable card fires talk, NO
   assert.equal(inspected, null, "card inspect must NOT also fire");
 });
 
-test("dispatchSoloClick: move, tab, bring-back and cog dispatch correctly", () => {
+test("dispatchSoloClick: move, bring-back and cog dispatch correctly", () => {
+  // tab bar removed (nuke-chrome-fullbleed-scene) — no onTab.
   let moved = null;
-  let tabbed = null;
   let broughtBack = null;
   let cog = null;
   dispatchSoloClick(clickTarget({ "[data-solo-action='move']": { "data-location-id": "loc_b", "data-direction": "east" } }), { onMove: (m) => (moved = m) });
-  dispatchSoloClick(clickTarget({ "[data-solo-tab]": { "data-solo-tab": "journal" } }), { onTab: (t) => (tabbed = t) });
   dispatchSoloClick(clickTarget({ "[data-solo-npc-bringback]": { "data-entity-id": "npc:y" } }), { onBringBack: (e) => (broughtBack = e) });
   dispatchSoloClick(clickTarget({ "[data-solo-cog]": { "data-solo-cog": "settings" } }), { onCogPlaceholder: (v) => (cog = v) });
   assert.deepEqual(moved, { locationId: "loc_b", direction: "east" });
-  assert.deepEqual(tabbed, { tab: "journal" });
   assert.deepEqual(broughtBack, { entityId: "npc:y" });
   assert.equal(cog, "settings");
 });
@@ -1290,16 +905,16 @@ test("bindSoloSceneShell binds ONE delegated click listener on the stable root",
       listeners[name] = handler;
     }
   };
-  let searched = false;
-  bindSoloSceneShell(root, { onSearch: () => (searched = true) });
+  let inspected = null;
+  bindSoloSceneShell(root, { onInspect: (e) => (inspected = e) });
   // Bound once for click, once for keydown — not per element.
   assert.equal(addCount, 2);
   assert.equal(typeof listeners.click, "function");
-  // A delegated click on a search button routes through the single listener.
-  listeners.click({ target: clickTarget({ "[data-solo-action='search']": {} }) });
-  assert.equal(searched, true);
+  // A delegated click on an inspect button routes through the single listener.
+  listeners.click({ target: clickTarget({ "[data-solo-action='inspect']": { "data-entity-id": "npc:x" } }) });
+  assert.deepEqual(inspected, { entityId: "npc:x" });
   // Re-binding on a subsequent full render does NOT add duplicate listeners.
-  bindSoloSceneShell(root, { onSearch: () => {} });
+  bindSoloSceneShell(root, { onInspect: () => {} });
   assert.equal(addCount, 2, "delegation is bound exactly once per root");
 });
 

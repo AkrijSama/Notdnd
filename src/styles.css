@@ -1172,11 +1172,6 @@ button.alt:hover {
   color: var(--accent, #c2c6cf);
   letter-spacing: 0.04em;
 }
-.solo-game-objective {
-  margin-top: 4px;
-  color: var(--accent, #c2c6cf);
-  letter-spacing: 0.02em;
-}
 
 button:disabled {
   cursor: not-allowed;
@@ -1838,61 +1833,19 @@ button:disabled {
   flex-direction: column;
   background: var(--bg, #1c1510);
 }
-.solo-game-header {
-  padding: 20px 28px 0;
-  border-bottom: 1px solid var(--border, #202024);
-  background: var(--card, #101013);
-}
-.solo-breadcrumb {
-  font-size: 11px;
-  color: var(--text-label, #8a7c68);
-  margin-bottom: 6px;
-}
-.solo-breadcrumb span { color: var(--text-faint, #5a4f40); }
-.solo-game-title {
-  font-family: var(--font-display, Georgia, serif);
-  font-size: 28px;
-  color: var(--text-bright, #f1f2f5);
-  line-height: 1.1;
-  margin-bottom: 14px;
-}
-/* Full-width bottom tab bar spanning all three columns (designer spec). The
-   bar is a sibling of .solo-game-frame inside .solo-game-layout, pinned to the
-   bottom of the game frame. */
-/* #29: compact IN-HEADER tab strip (relocated from the wasted full-width bottom
-   row). A slim segmented control under the title, not a reserved bottom bar. */
-.solo-game-tabs {
-  display: flex;
-  gap: 2px;
-  margin-top: 10px;
-  padding: 3px;
-  border-radius: 8px;
-  border: 1px solid var(--border, #202024);
-  background: var(--inset, #070708);
-}
-.solo-game-tab {
+/* Fable nuke-chrome-fullbleed-scene: the header (breadcrumb/title/objective) and
+   the tab bar are gone. The scene renders full-bleed to the top of .solo-game-main
+   — no header padding, no tab strip. .solo-game-content is now the bounded flex
+   column that hosts the scene directly (the removed scene tab-panel used to be
+   this container): the pinned stage + input dock don't scroll, the narration log
+   is the single internal scroller (#34). */
+.solo-game-content {
   flex: 1;
-  text-align: center;
-  padding: 7px 0;
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  background: none;
-  border: none;
-  border-radius: 6px;
-  color: var(--text-label, #83868e);
-  cursor: pointer;
-  font-family: inherit;
-  font-weight: 600;
-  white-space: nowrap;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
-.solo-game-tab:hover { color: var(--text-2, #b0b3bb); }
-.solo-game-tab.active {
-  color: var(--on-accent, #0a0a0b);
-  background: var(--accent, #c2c6cf);
-}
-.solo-game-content { flex: 1; overflow-y: auto; }
-.solo-tab-panel[hidden] { display: none; }
 
 /* ---- Scene tab visual flourishes ---- */
 .solo-scene-art {
@@ -2528,8 +2481,6 @@ button:disabled {
   border-color: var(--border, #202024);
   color: var(--text, #d9dbe0);
 }
-.solo-game-shell .solo-tab-panel > .solo-panel,
-.solo-game-shell .solo-tab-panel > .module-card { margin: 22px 40px; }
 .solo-game-shell .solo-location-card { margin: 0; border: none; background: transparent; }
 .solo-game-shell .solo-location-copy { padding: 18px 28px 8px; }
 
@@ -2558,10 +2509,10 @@ button:disabled {
 .solo-scene-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) clamp(280px, 22vw, 360px);
-  /* #34 step 2: BOUND the zones to the panel height (was min-height:100%, which
-     let the column grow unbounded so flex:1 never resolved to real remaining
-     space and the log could not scroll). height:100% gives .solo-scene-center a
-     definite box, so the narration log's flex:1 resolves and it scrolls itself. */
+  /* Fills the (now header-less) .solo-game-content flex column so the zones get a
+     definite bounded box and the narration log's flex:1 resolves and scrolls
+     itself (#34). */
+  flex: 1;
   height: 100%;
   min-height: 0;
 }
@@ -3036,18 +2987,10 @@ button:disabled {
   .solo-game-layout { height: 100%; }
   .solo-game-frame { flex: 1; min-height: 0; }
   .solo-game-main { min-height: 0; }
-  /* #34 step 3: .solo-game-content is a flex column so the active tab panel gets
-     the bounded remaining height; it does NOT scroll (single scroller lives
-     deeper, in the narration log). */
+  /* #34: .solo-game-content is a bounded flex column so the scene's stage + dock
+     pin and the narration log is the single internal scroller. (Tab panels are
+     gone — the scene is the only view.) */
   .solo-game-content { min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
-  .solo-tab-panel { flex: 1 1 auto; min-height: 0; box-sizing: border-box; }
-  /* The SCENE tab does NOT scroll here — its narration log is the single internal
-     scroller (#34). Making the panel a bounded flex column lets the stage/dock
-     pin and the log scroll between them, with the input always reachable. */
-  .solo-tab-panel[data-solo-tabpanel="scene"] { overflow: hidden; display: flex; flex-direction: column; }
-  /* Non-scene tabs (Actions/Character/Inventory/Map/Journal) still scroll as a
-     whole panel — they have no internal-scroll zone. */
-  .solo-tab-panel:not([data-solo-tabpanel="scene"]) { overflow-y: auto; }
 }
 
 /* Ultrawide ( >1600px ): give the centre column more breathing room. */
