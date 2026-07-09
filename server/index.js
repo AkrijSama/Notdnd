@@ -29,7 +29,7 @@ function loadDotenv() {
 loadDotenv();
 
 import { createAiJobProcessor } from "./ai/processor.js";
-import { generateNarrative, generateRaw, getCampaignUsage, getModelTiers, resolveCloudChain, resolveGmModel, runWithBatteryContext } from "./ai/openrouter.js";
+import { generateNarrative, generateRaw, getCampaignUsage, getModelTiers, localFallbackEnabled, resolveCloudChain, resolveGmModel, runWithBatteryContext } from "./ai/openrouter.js";
 import { getBuildInfo, getGmServe, getImageServe, debugPanelDefault } from "./runtimeStatus.js";
 import { appendTurnLog, logTurnEvent } from "./logging/sessionLog.js";
 import { startTurnTiming, getLastTurnTiming, getRecentTurnTimings } from "./logging/turnTiming.js";
@@ -1395,7 +1395,11 @@ async function handleApi(req, res) {
       build,
       gm: {
         configuredModel: resolveGmModel(),
-        served: getGmServe()
+        served: getGmServe(),
+        // GPU-safety at a glance: whether a slow cloud turn may cascade to the
+        // local 8b (ollama loads ~6GB into the 8GB GPU — the freeze path). The
+        // SAME predicate the fallback path evaluates, never a re-derivation.
+        localFallback: localFallbackEnabled()
       },
       image: {
         configuredProvider: resolveImageProvider(),

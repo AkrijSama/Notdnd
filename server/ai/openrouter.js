@@ -351,7 +351,8 @@ export function resolveGmProvider(edition = "mainline", { fallback = false } = {
 }
 
 // Cloud->local fallback is ON by default; disable with INKBORNE_GM_LOCAL_FALLBACK=false.
-function localFallbackEnabled() {
+// Exported: /api/debug/status surfaces this so GPU-safety is visible at a glance.
+export function localFallbackEnabled() {
   const v = String((process.env.INKBORNE_GM_LOCAL_FALLBACK ?? process.env.NOTDND_GM_LOCAL_FALLBACK) || "")
     .trim()
     .toLowerCase();

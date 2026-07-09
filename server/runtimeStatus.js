@@ -15,11 +15,17 @@
 
 import { execFileSync } from "node:child_process";
 
-// --- BUILD: git tip the running server was launched from --------------------
-// Resolved once (a spawn per request would be wasteful) and cached. Env overrides
+// --- BUILD: git tip of the CHECKOUT the server is serving --------------------
+// Cached with a short TTL (not process-lifetime): a long-lived dev server serves
+// client files from disk per request, so after a pull/commit the checkout moves
+// while the process stays — a boot-frozen badge then lies for the process's whole
+// life (the 2026-07-09 "66d8a72 while serving fb48ed9" incident). Env overrides
 // (INKBORNE_BUILD_SHA / _BRANCH) win so a deploy that builds outside a git
-// checkout can still stamp the build; otherwise we read git at first ask.
+// checkout can still stamp the build; those are truly static, so they cache forever.
+const BUILD_TTL_MS = 30_000;
 let cachedBuild = null;
+let cachedBuildAt = 0;
+let bootStartedAt = null;
 function gitValue(args) {
   try {
     return String(execFileSync("git", args, { cwd: process.cwd(), stdio: ["ignore", "pipe", "ignore"] })).trim();
@@ -27,20 +33,46 @@ function gitValue(args) {
     return "";
   }
 }
+
+// Dirty = a TRACKED file differs from HEAD, excluding known runtime churn the
+// server itself writes inside the repo (the waitlist db; anything under data/).
+// Untracked files never count — `??` noise (campaign dirs, logs, reports) made
+// the flag permanently true and therefore meaningless.
+const RUNTIME_CHURN_RE = /^(?:server\/db\/waitlist\.json|data\/)/;
+export function isTrackedSourceDirty(porcelain) {
+  return String(porcelain || "")
+    .split("\n")
+    .filter((line) => line.trim().length > 0)
+    .some((line) => {
+      const status = line.slice(0, 2);
+      if (status === "??") return false; // untracked never counts
+      const rest = line.slice(3).trim();
+      // renames read "old -> new" — judge the destination path.
+      const file = rest.includes(" -> ") ? rest.split(" -> ").pop() : rest;
+      return !RUNTIME_CHURN_RE.test(file);
+    });
+}
+
 export function getBuildInfo() {
-  if (cachedBuild) {
+  const envSha = String(process.env.INKBORNE_BUILD_SHA || "").trim();
+  const now = Date.now();
+  if (cachedBuild && (envSha || now - cachedBuildAt < BUILD_TTL_MS)) {
     return cachedBuild;
   }
-  const sha = String(process.env.INKBORNE_BUILD_SHA || "").trim() || gitValue(["rev-parse", "--short", "HEAD"]);
+  if (!bootStartedAt) {
+    bootStartedAt = new Date().toISOString();
+  }
+  const sha = envSha || gitValue(["rev-parse", "--short", "HEAD"]);
   const branch = String(process.env.INKBORNE_BUILD_BRANCH || "").trim() || gitValue(["rev-parse", "--abbrev-ref", "HEAD"]);
-  const dirty = process.env.INKBORNE_BUILD_SHA ? false : gitValue(["status", "--porcelain"]).length > 0;
+  const dirty = envSha ? false : isTrackedSourceDirty(gitValue(["status", "--porcelain"]));
   cachedBuild = {
     sha: sha || "unknown",
     branch: branch || "unknown",
     dirty,
     nodeEnv: String(process.env.NODE_ENV || "development"),
-    startedAt: new Date().toISOString()
+    startedAt: bootStartedAt
   };
+  cachedBuildAt = now;
   return cachedBuild;
 }
 
