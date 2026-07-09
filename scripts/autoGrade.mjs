@@ -132,10 +132,14 @@ async function main() {
   const act = (intent) => call(`/api/solo/runs/${runId}/actions`, { method: "POST", token, body: { action: { type: "attempt", intent, actorId: "player" } } });
 
   const turns = [];
+  // Ruler v2 run-level checks (name collisions, introduction beats) read the
+  // committed run record — the action response carries it; keep the freshest.
+  let lastRun = null;
   let prevSnap = snapshot((await scene()).json);
   for (let i = 0; i < TURNS; i += 1) {
     const intent = intentForTurn(i);
     const r = await act(intent);
+    if (r.json?.run) lastRun = r.json.run;
     // The model that ACTUALLY served THIS turn.
     const served = (await call("/api/debug/status", { token })).json?.gm?.served || {};
     const sc = (await scene()).json;
@@ -173,7 +177,8 @@ async function main() {
   // Wall-clock of THIS grading run (not the server's start time) so each session
   // writes a unique report file.
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-  const graded = gradeSession(turns, { meta: { runId, sha, drive: "free-text autoplay" } });
+  const graded = gradeSession(turns, { run: lastRun, meta: { runId, sha, drive: "free-text autoplay" } });
+  console.log(`[auto-grade] ruler=${graded.ruler?.version}`);
   const report = renderGradeReport(graded, { timestamp, runId, sha, drive: "free-text autoplay" });
 
   mkdirSync(GRADES_DIR, { recursive: true });

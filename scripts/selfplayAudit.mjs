@@ -367,6 +367,324 @@ export function auditInventedAgents(prose, scene) {
 }
 
 // ===========================================================================
+// RULER v2 — tightened diagnostic checks (one-time ruler change, then FROZEN)
+// ===========================================================================
+// The goal is NOT higher grades: a stricter, more diagnostic ruler whose
+// findings are machine-actionable. Grades are EXPECTED to drop under v2 — that
+// is success. Every check below ships with known-bad + known-good tests.
+// v1 auditors above (auditProseAgainstState / auditInventedAgents) are frozen —
+// the selfplay battery consumes them; v2 layers on top for the grader.
+
+export const RULER_VERSION = "v2";
+export const RULER_CHECKS = Object.freeze([
+  "phantom-proper-nouns(#27/#41)",
+  "unnamed-invented-agents(strict-colocated)",
+  "narrated-state-drift(classC)",
+  "pronoun-gender-enforcement",
+  "introduction-beat",
+  "name-collision(worldgen)",
+  "band-desync(#28)",
+  "clock-divergence(#14)",
+  "conditions-without-shed(#26)",
+  "recycled-loop",
+  "narrate-into-void",
+  "handles(pacing)",
+  "paragraph-structure(raw-gm)",
+  "latency",
+  "model-integrity",
+  "compliments(regression-guards)"
+]);
+
+// Aggregation across sessions must never mix rulers — a v1 A and a v2 B are not
+// on the same scale. Throws on mixed input.
+export function assertSameRulerVersion(versions = []) {
+  const distinct = [...new Set(versions.filter(Boolean))];
+  if (distinct.length > 1) {
+    throw new Error(`ruler-version mix: refusing to aggregate ${distinct.join(" + ")} — regrade on one ruler`);
+  }
+  return distinct[0] || null;
+}
+
+// ---- 2a. UNNAMED INVENTED AGENTS (strict, co-located) ---------------------
+// The v1 agent check vouches a noun by token-matching the WHOLE known-name pool
+// (locations, POIs, away NPCs) and waves through person-generics whenever any
+// cast exists. v2 rule: an ACTING agent noun is vouched only by a CO-LOCATED
+// committed cast member whose name/role/tag matches the noun; pure person
+// generics ("figure", "someone") are vouched by any co-located cast member.
+const V2_ROLE_NOUNS = [
+  "guard", "merchant", "medic", "barkeep", "courier", "marshal", "broker",
+  "warden", "soldier", "sentry", "watcher", "thief", "hunter", "raider",
+  "bandit", "assailant", "attacker", "rider", "priest", "farmer", "smith",
+  "trader", "scout", "officer", "stranger", "traveler", "woman", "man",
+  "boy", "girl", "elder", "child", "drone", "scavenger", "creature",
+  "beast", "wolf", "hound", "figure", "voice", "someone", "somebody"
+];
+const V2_PERSON_GENERICS = new Set(["figure", "voice", "someone", "somebody", "stranger"]);
+// v1 verb list plus the quiet social verbs it missed (scowls, frowns, gestures…).
+const V2_AGENCY_VERB_RE = new RegExp(
+  AGENCY_VERB_RE.source.slice(0, -3) +
+    "|scowls?|scowled|frowns?|frowned|gestures?|gestured|leans?|leaned|eyes|eyed|studies|studied|" +
+    "shrugs?|shrugged|sighs?|sighed|laughs?|laughed|points?|pointed|raises|raised|offers?|offered|" +
+    "hands?|handed|slides?|pushes|pushed|pulls?|pulled|sits?|sat|stands?|stood|rises|rose)\\b",
+  "i"
+);
+
+function colocatedCast(scene = {}) {
+  return (Array.isArray(scene.cast) ? scene.cast : []).filter((m) => m && m.present !== false);
+}
+
+export function auditUnnamedAgents(prose, scene = {}) {
+  const text = String(prose || "");
+  const cast = colocatedCast(scene);
+  const castTokens = new Set();
+  for (const m of cast) {
+    for (const src of [m.displayName, m.role, ...(Array.isArray(m.tags) ? m.tags : [])]) {
+      for (const t of String(src || "").toLowerCase().split(/[\s-]+/)) {
+        const clean = t.replace(/[^a-z']/g, "");
+        if (clean.length >= 3) castTokens.add(clean);
+      }
+    }
+  }
+  const flags = [];
+  const sentences = text.split(/(?<=[.!?])\s+/).filter((s) => s.trim().length > 0);
+  for (const sentence of sentences) {
+    // strip player-possessives ("your hand closes…") like v1
+    const lower = sentence.toLowerCase().replace(/\b(?:your|my)\s+(?:own\s+)?\w+/g, " ");
+    for (const noun of V2_ROLE_NOUNS) {
+      const nounRe = new RegExp(`\\b(?:a|an|the|some|another)\\s+(?:\\w+\\s+){0,2}${noun}s?\\b`, "i");
+      if (!nounRe.test(lower)) continue;
+      const negatedRe = new RegExp(`\\b(?:no|not a|nor a|neither|without a|no other)\\s+(?:\\w+\\s+)?${noun}s?\\b`, "i");
+      if (negatedRe.test(lower)) continue;
+      if (!V2_AGENCY_VERB_RE.test(sentence)) continue;
+      const vouched = V2_PERSON_GENERICS.has(noun) ? cast.length > 0 : castTokens.has(noun);
+      if (!vouched) {
+        flags.push({ noun, sentence: sentence.trim().slice(0, 180) });
+        break;
+      }
+    }
+  }
+  return flags;
+}
+
+// ---- 2b. CLASS C — NARRATED-BUT-UNCOMMITTED STATE (detail drift) -----------
+const NUMBER_WORDS = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 };
+function parseCount(word) {
+  const n = Number(word);
+  if (Number.isFinite(n)) return n;
+  return NUMBER_WORDS[String(word).toLowerCase()] ?? null;
+}
+const DRIFT_CONDITION_WORDS = [
+  "poisoned", "bleeding", "exhausted", "grappled", "stunned", "burning",
+  "frozen", "blinded", "cursed", "diseased", "paralyzed", "prone"
+];
+const WOUND_ASSERT_RE = /\byou(?:'re| are)\s+(?:badly|gravely|severely)\s+(?:wounded|hurt|injured)|\bbleeding out\b|\bnear(?:ly)? death\b|\bbarely alive\b|\bhalf(?: of)? your (?:health|strength|life)\b/i;
+
+export function detectNarratedStateDrift(prose, scene = {}) {
+  const text = String(prose || "");
+  const lower = text.toLowerCase();
+  const drifts = [];
+
+  // Conditions asserted about the player that committed state does not hold.
+  const committedConditions = (scene.conditions || scene.player?.conditions || scene.player?.status?.conditions || [])
+    .map((c) => String(c?.name || c?.id || c || "").toLowerCase());
+  for (const cond of DRIFT_CONDITION_WORDS) {
+    const assertRe = new RegExp(`\\byou(?:'re| are| feel)\\s+(?:\\w+\\s+)?${cond}\\b`, "i");
+    if (assertRe.test(text) && !committedConditions.some((c) => c.includes(cond.replace(/ed$/, "")) || cond.includes(c))) {
+      drifts.push({ kind: "condition", detail: `narrated "you are ${cond}" but committed conditions = [${committedConditions.join(", ") || "none"}]` });
+    }
+  }
+
+  // Wound/HP severity asserted while committed HP is full.
+  const hp = scene.player?.resources?.hp || scene.player?.resources?.hitPoints || scene.player?.hitPoints || null;
+  const hpCurrent = hp?.current ?? hp?.value ?? null;
+  const hpMax = hp?.max ?? null;
+  if (WOUND_ASSERT_RE.test(text) && hpCurrent != null && hpMax != null && hpCurrent >= hpMax) {
+    drifts.push({ kind: "hp", detail: `narrated grave wounds but committed HP is full (${hpCurrent}/${hpMax})` });
+  }
+
+  // Enemy/agent counts above committed co-located cast.
+  const cast = colocatedCast(scene);
+  for (const m of lower.matchAll(/\b(two|three|four|five|six|seven|eight|nine|ten|\d+)\s+(guards?|raiders?|bandits?|soldiers?|men|women|figures?|wolves|hunters?|riders?|attackers?)\b/g)) {
+    const n = parseCount(m[1]);
+    if (n != null && n >= 2 && n > cast.length) {
+      drifts.push({ kind: "agent_count", detail: `narrated "${m[1]} ${m[2]}" but committed co-located cast = ${cast.length}` });
+    }
+  }
+
+  // Item counts that contradict committed inventory quantities.
+  const inventory = scene.playerInventory || scene.player?.inventory || [];
+  for (const item of inventory) {
+    const name = String(item?.name || "").toLowerCase().trim();
+    const qty = item?.quantity ?? item?.qty ?? null;
+    if (!name || qty == null) continue;
+    const token = name.split(/\s+/).pop(); // "field ration" → "ration(s)"
+    if (token.length < 4) continue;
+    const re = new RegExp(`\\b(one|two|three|four|five|six|seven|eight|nine|ten|\\d+)\\s+(?:\\w+\\s+)?${token}s?\\b`, "i");
+    const m = text.match(re);
+    if (m) {
+      const n = parseCount(m[1]);
+      if (n != null && n !== qty) {
+        drifts.push({ kind: "item_count", detail: `narrated "${m[0].trim()}" but committed ${name} quantity = ${qty}` });
+      }
+    }
+  }
+  return drifts;
+}
+
+// ---- 2c. GENDER / PRONOUN ENFORCEMENT --------------------------------------
+// Narrated pronouns vs committed gender for ALL committed NPCs (not only
+// #50-backfilled ones). Window: from a committed name's mention until the next
+// committed name. Conservative: flags only >=2 contradicting pronouns with 0
+// agreeing in the window. `focusName` anchors prose that never names its
+// subject (a VN beat where the speaker is implied).
+function pronounGenderOf(entity = {}) {
+  const p = String(entity.pronouns || "").toLowerCase();
+  const g = String(entity.gender || "").toLowerCase();
+  if (/she|her/.test(p) || /female|woman/.test(g)) return "female";
+  if (/\bhe\b|him/.test(p) || /^male$|\bman\b/.test(g)) return "male";
+  return null;
+}
+const FEMALE_PRONOUN_RE = /\b(she|her|hers|herself)\b/gi;
+const MALE_PRONOUN_RE = /\b(he|him|his|himself)\b/gi;
+
+export function detectPronounMismatch(prose, entities = [], { focusName = null } = {}) {
+  const text = String(prose || "");
+  const known = entities
+    .map((e) => ({ name: String(e.displayName || e.name || "").trim(), expected: pronounGenderOf(e) }))
+    .filter((e) => e.name && e.expected);
+  if (!known.length || !text) return [];
+
+  const sentences = text.split(/(?<=[.!?])\s+/);
+  // Assign each sentence to the last-named committed entity (the active subject).
+  let active = null;
+  const windows = new Map(); // name -> concatenated window text
+  const anyNameMentioned = known.some((k) => new RegExp(`\\b${k.name.split(/\s+/)[0]}\\b`, "i").test(text));
+  if (!anyNameMentioned && focusName) {
+    const focus = known.find((k) => k.name.toLowerCase() === String(focusName).toLowerCase().trim());
+    if (focus) windows.set(focus.name, text);
+  } else {
+    for (const s of sentences) {
+      for (const k of known) {
+        if (new RegExp(`\\b${k.name.split(/\s+/)[0]}\\b`, "i").test(s)) active = k.name;
+      }
+      if (active) windows.set(active, `${windows.get(active) || ""} ${s}`);
+    }
+  }
+
+  const flags = [];
+  for (const [name, windowText] of windows) {
+    const expected = known.find((k) => k.name === name)?.expected;
+    if (!expected) continue;
+    const fem = (windowText.match(FEMALE_PRONOUN_RE) || []).length;
+    const masc = (windowText.match(MALE_PRONOUN_RE) || []).length;
+    if (expected === "male" && fem >= 2 && masc === 0) {
+      flags.push({ name, expected: "he/him", observed: `"she/her" ×${fem}`, count: fem });
+    } else if (expected === "female" && masc >= 2 && fem === 0) {
+      flags.push({ name, expected: "she/her", observed: `"he/him" ×${masc}`, count: masc });
+    }
+  }
+  return flags;
+}
+
+// ---- 2d. INTRODUCTION-BEAT CHECK (run-level) --------------------------------
+// A committed NPC's first surfacing must be, or be preceded by, an introduction
+// beat (the courier arrival-event pattern). A procedural pre-seed whose only
+// surfacing evidence is talk (revealed beats / talk facts) with NO non-talk
+// timeline event mentioning its name or role has surfaced cold → flag.
+export function auditIntroductionBeats(run = {}) {
+  const npcs = Object.values(run.npcs || {});
+  const timeline = Array.isArray(run.timeline) ? run.timeline : [];
+  const flags = [];
+  for (const npc of npcs) {
+    const origin = String(npc.origin || npc.committedBy || "").toLowerCase();
+    if (origin !== "procedural") continue; // runtime commits are introduced by their own narration
+    const interacted =
+      (Array.isArray(npc.memoryFactIds) && npc.memoryFactIds.length > 0) ||
+      (Array.isArray(npc.dialogueBeats) && npc.dialogueBeats.some((b) => b?.revealed));
+    if (!interacted) continue; // never surfaced — nothing to judge yet
+    const nameToken = String(npc.displayName || "").split(/\s+/)[0].toLowerCase();
+    const roleToken = String(npc.role || "").toLowerCase();
+    // Introduction evidence must be a WORLD-side event (momentum arrival, quest
+    // beat, commit event). A PLAYER-action echo (talk / attempt / search / move /
+    // rest / use_item) mentioning the name is NOT an introduction — the live miss
+    // was a player attempt saying "the message i got from mara" false-vouching
+    // the medic (and it referred to the OTHER Mara — the conflation itself).
+    const PLAYER_ACTION_TYPES = new Set(["talk", "attempt", "search", "move", "movement", "rest", "use_item", "ooc", "run_created"]);
+    const introduced = timeline.some((ev) => {
+      if (!ev || typeof ev !== "object") return false;
+      const type = String(ev.type || "").toLowerCase();
+      if (PLAYER_ACTION_TYPES.has(type) || type.startsWith("talk")) return false;
+      const blob = `${ev.title || ""} ${ev.summary || ""}`.toLowerCase();
+      return (nameToken && blob.includes(nameToken)) || (roleToken && blob.includes(roleToken));
+    });
+    if (!introduced) {
+      flags.push({
+        npcId: npc.npcId,
+        name: npc.displayName,
+        role: npc.role,
+        detail: `committed-but-never-introduced: pre-seeded "${npc.displayName}" (${npc.role}) surfaced cold in a talk beat with no introduction event`
+      });
+    }
+  }
+  return flags;
+}
+
+// ---- 2e. NAME-COLLISION DETECTION (run-level, worldgen severity) ------------
+export function detectNameCollisions(npcs = {}) {
+  const groups = new Map();
+  for (const npc of Object.values(npcs || {})) {
+    const first = String(npc?.displayName || "").trim().split(/\s+/)[0].toLowerCase();
+    if (!first) continue;
+    if (!groups.has(first)) groups.set(first, []);
+    groups.get(first).push(npc);
+  }
+  const collisions = [];
+  for (const [name, members] of groups) {
+    if (members.length > 1) {
+      collisions.push({
+        name,
+        npcIds: members.map((m) => m.npcId),
+        roles: members.map((m) => m.role),
+        detail: `${members.length} committed NPCs share the name "${members[0].displayName.split(/\s+/)[0]}": ${members.map((m) => `${m.npcId}(${m.role})`).join(" + ")}`
+      });
+    }
+  }
+  return collisions;
+}
+
+// ---- 3a. HANDLES (pacing/agency) --------------------------------------------
+// Does the narration turn end with actionable, state-grounded directions?
+// Hooks counted over the FINAL paragraph: a direct question, an explicit option
+// construction, an exit/direction affordance, or a named co-located cast member.
+// >=2 hooks → handles present (compliment); 0 → complaint; 1 → borderline, no
+// finding. Suggestions referencing uncommitted entities are caught by the
+// phantom check as usual.
+export function detectHandles(narration, scene = {}) {
+  const text = String(narration || "").trim();
+  if (!text) return { hooks: 0, verdict: "missing" };
+  const paras = text.split(/\n{2,}/);
+  const tail = paras[paras.length - 1] || text;
+  const tailAndPrev = paras.length > 1 ? `${paras[paras.length - 2]} ${tail}` : tail;
+  let hooks = 0;
+  if (/\?\s*["”']?\s*$/.test(text) || /\?/.test(tail)) hooks += 1;
+  if (/\byou (?:could|can|might)\b|\beither\b|\bor you\b|\bchoice\b|\bdecide\b/i.test(tailAndPrev)) hooks += 1;
+  if (/\b(?:door|path|road|street|stairs|corridor|exit|gate|trail|north|south|east|west)\b/i.test(tail)) hooks += 1;
+  for (const m of colocatedCast(scene)) {
+    const first = String(m.displayName || "").split(/\s+/)[0];
+    if (first && new RegExp(`\\b${first}\\b`, "i").test(tail)) { hooks += 1; break; }
+  }
+  return { hooks, verdict: hooks >= 2 ? "present" : hooks === 0 ? "missing" : "borderline" };
+}
+
+// ---- 3b. PARAGRAPH STRUCTURE (raw GM output, pre-chunker) --------------------
+export function detectSingleBlockProse(narration, { threshold = 500 } = {}) {
+  const text = String(narration || "");
+  if (text.length <= threshold) return null;
+  if (/\n\s*\n/.test(text)) return null;
+  return { chars: text.length, detail: `${text.length} chars with no paragraph break — single-block prose only the client chunker saves` };
+}
+
+// ===========================================================================
 // LETTER-GRADE SESSION SCORER (autoplay grade harness)
 // ===========================================================================
 // A grading LAYER on top of the existing selfplay drive + auditors. It consumes
@@ -538,14 +856,27 @@ export function detectConditionsWithoutShed(conditionCounts, { stackAt = 3 } = {
 }
 
 function pushFinding(findings, f) {
+  const finding = f.finding || f.failure;
   findings.push({
     axis: f.axis,
     severity: f.severity,
     turns: Array.isArray(f.turns) ? f.turns : f.turns != null ? [f.turns] : [],
-    failure: f.failure,
+    // Ruler v2 schema: polarity distinguishes complaints (deduct) from
+    // compliments (regression guards — logged, never scored). `finding` is the
+    // canonical text; `failure` kept as a back-compat alias (same string).
+    polarity: f.polarity === "compliment" ? "compliment" : "complaint",
+    finding,
+    failure: finding,
     rootCause: f.rootCause,
     fixTarget: f.fixTarget
   });
+}
+
+// Compliments carry NO score weight (deductions are computed over complaints
+// only) — their job is to make strengths measurable so the fix phase can't
+// regress them unnoticed. severity is always "low" for stable sort order.
+function pushCompliment(findings, f) {
+  pushFinding(findings, { ...f, severity: "low", polarity: "compliment" });
 }
 
 /**
@@ -586,11 +917,12 @@ export function gradeSession(turns = [], opts = {}) {
         fixTarget: "server/solo/npcCommit.js phantom auditor (promote-or-strip) + GM-prompt name/lore discipline"
       });
     }
+    // v1 invented-agent auditor keeps ownership of dialogue + state-tag kinds;
+    // the strict v2 co-located check below owns the agent kind (no double-flag).
     const inv = auditInventedAgents(t.narration, scene);
-    for (const iv of inv.inventions) {
-      const sev = iv.kind === "state_tag" ? "high" : "high";
+    for (const iv of inv.inventions.filter((x) => x.kind !== "agent")) {
       pushFinding(findings, {
-        axis: iv.kind === "state_tag" ? "narration" : "coherence", severity: sev, turns: t.n,
+        axis: iv.kind === "state_tag" ? "narration" : "coherence", severity: "high", turns: t.n,
         failure: `T${t.n}: invented ${iv.kind} "${iv.detail}" with no committed backing ("${iv.sentence}")`,
         rootCause: iv.kind === "state_tag"
           ? "pseudo-state tag leaked into prose (interpreter output not stripped)"
@@ -598,6 +930,39 @@ export function gradeSession(turns = [], opts = {}) {
         fixTarget: iv.kind === "state_tag"
           ? "server/gm/actionNarration.js voice/strip pass"
           : "server/solo/npcCommit.js commit-or-strip + GM-prompt actor discipline"
+      });
+    }
+    // RULER v2 2a: unnamed invented agents, strict co-located vouching.
+    for (const agent of auditUnnamedAgents(t.narration, scene)) {
+      pushFinding(findings, {
+        axis: "coherence", severity: "high", turns: t.n,
+        failure: `T${t.n}: unnamed invented agent "a/the ${agent.noun}" acting with no co-located committed entity ("${agent.sentence}")`,
+        rootCause: "GM gave agency to an uncommitted generic actor (B2 class) — v1 vouching let non-co-located tokens cover it",
+        fixTarget: "server/solo/npcCommit.js auditAndCommitInventedAgents co-location + GM-prompt actor discipline"
+      });
+    }
+    // RULER v2 2b: Class C narrated-but-uncommitted state (detail drift).
+    for (const d of detectNarratedStateDrift(t.narration, scene)) {
+      pushFinding(findings, {
+        axis: "coherence", severity: "high", turns: t.n,
+        failure: `T${t.n}: narrated-state drift (${d.kind}) — ${d.detail}`,
+        rootCause: "narration asserts player/world state the committed state does not hold (Class C detail drift — the coherence failure players notice most)",
+        fixTarget: "GM-prompt state-echo discipline + server-side narration state check"
+      });
+    }
+    // RULER v2 2c: pronoun/gender enforcement for ALL committed NPCs.
+    const focusName = (() => {
+      const sid = scene.vn?.speakerId || scene.speakerId || null;
+      if (!sid) return null;
+      const m = (scene.cast || []).find((c) => c && (c.npcId === sid || c.entityId === `npc:${sid}`));
+      return m ? m.displayName : null;
+    })();
+    for (const p of detectPronounMismatch(t.narration, scene.cast || [], { focusName })) {
+      pushFinding(findings, {
+        axis: "coherence", severity: "high", turns: t.n,
+        failure: `T${t.n}: pronoun mismatch — "${p.name}" committed ${p.expected} but narrated ${p.observed}`,
+        rootCause: "narration genders a committed NPC against their committed gender/pronouns (#50 class, all NPCs)",
+        fixTarget: "GM-prompt committed-gender echo + server/solo/npcCommit.js gender enforcement"
       });
     }
     const desync = detectBandDesync(t.attemptResult);
@@ -629,6 +994,24 @@ export function gradeSession(turns = [], opts = {}) {
         failure: `T${t.n}: ${emdashes} em-dash AI-tell(s) leaked into narration`,
         rootCause: "narration bypassed the em-dash strip (likely the fallback/template path)",
         fixTarget: "server/gm/voice.js stripAiTells + composeAttemptNarration voice pass"
+      });
+    }
+    // RULER v2 3b: paragraph structure measured on the RAW GM output (the client
+    // chunker rescuing a wall is not the GM writing structured beats).
+    const block = detectSingleBlockProse(t.narration);
+    if (block) {
+      pushFinding(findings, {
+        axis: "narration", severity: "medium", turns: t.n,
+        failure: `T${t.n}: single-block prose — ${block.detail}`,
+        rootCause: "GM emits monolithic prose instead of structured multi-paragraph beats; the client chunker masks it",
+        fixTarget: "GM-prompt paragraph-structure clause (raw output, pre-chunker)"
+      });
+    } else if (/\n\s*\n/.test(String(t.narration || "")) && String(t.narration || "").length > 300) {
+      pushCompliment(findings, {
+        axis: "narration", turns: t.n,
+        finding: `T${t.n}: native multi-paragraph beat structure (raw GM output, no chunker rescue needed)`,
+        rootCause: "GM emitted structured paragraphs on its own",
+        fixTarget: "KEEP — regression guard: paragraph structure must survive prompt changes"
       });
     }
   }
@@ -737,11 +1120,110 @@ export function gradeSession(turns = [], opts = {}) {
     });
   }
 
-  // ---- Axis scores from the findings ----
+  // ---- RULER v2 3a: HANDLES (pacing/agency) — does each real turn end with
+  // actionable, state-grounded directions? ----
+  for (const t of realTurns) {
+    const handles = detectHandles(t.narration, t.scene || {});
+    if (handles.verdict === "missing") {
+      pushFinding(findings, {
+        axis: "pacing", severity: "medium", turns: t.n,
+        failure: `T${t.n}: no handles — narration ends with zero actionable, state-grounded directions`,
+        rootCause: "the turn gives the player nothing to push on (no question, option, exit, or present NPC in the closing beat)",
+        fixTarget: "GM-prompt closing-handles clause (2-4 grounded directions per turn)"
+      });
+    } else if (handles.verdict === "present") {
+      pushCompliment(findings, {
+        axis: "pacing", turns: t.n,
+        finding: `T${t.n}: handles present — ${handles.hooks} actionable direction hook(s) in the closing beat`,
+        rootCause: "turn ends with grounded directions the player can act on",
+        fixTarget: "KEEP — regression guard: closing handles must survive prompt changes"
+      });
+    }
+  }
+
+  // ---- RULER v2 compliments (regression guards; zero score weight) ----
+  for (const t of realTurns) {
+    const scene = t.scene || {};
+    const ar = t.attemptResult || {};
+    // Clean band: a rolled turn whose band/label/math all agree.
+    if (ar.checkResult && !detectBandDesync(ar)) {
+      pushCompliment(findings, {
+        axis: "mechanical", turns: t.n,
+        finding: `T${t.n}: clean band/label — roll ${ar.checkResult.total} vs DC ${ar.checkResult.dc} reads as "${ar.outcomeLabel || ar.band}"`,
+        rootCause: "band derivation and label agree with the rolled math",
+        fixTarget: "KEEP — regression guard: #28 band integrity"
+      });
+    }
+    // Possession-gate refusal correctly held.
+    const refused = ar.refused === true || ar.possession === "refused" ||
+      /refus/i.test(String(ar.outcomeLabel || "")) ||
+      (Array.isArray(ar.warningCodes) && ar.warningCodes.some((w) => /POSSESS|REFUS/i.test(w)));
+    if (refused) {
+      pushCompliment(findings, {
+        axis: "mechanical", turns: t.n,
+        finding: `T${t.n}: possession gate held — refused a claimed item the player does not hold`,
+        rootCause: "the possession gate refused an ungrounded item claim instead of minting it",
+        fixTarget: "KEEP — regression guard: possession-gate refusals"
+      });
+    }
+    // Grounded narration: no phantoms, no invented agents, and it names committed state.
+    const phantomFree = auditProseAgainstState(t.narration, scene).phantoms.length === 0;
+    const agentFree = auditUnnamedAgents(t.narration, scene).length === 0;
+    const namesCommitted = [...(scene.cast || []).map((c) => c.displayName), scene.location?.name]
+      .filter(Boolean)
+      .some((n) => new RegExp(`\\b${String(n).split(/\s+/)[0]}\\b`, "i").test(String(t.narration || "")));
+    if (phantomFree && agentFree && namesCommitted) {
+      pushCompliment(findings, {
+        axis: "coherence", turns: t.n,
+        finding: `T${t.n}: grounded narration — every named actor/place is committed state`,
+        rootCause: "narration stayed inside the committed world",
+        fixTarget: "KEEP — regression guard: grounded-narration rate"
+      });
+    }
+    // Grounded callback: narration references a committed discovery/memory fact.
+    const callbacks = [
+      ...(scene.discoveredDetails || []).map((d) => d.label),
+      ...(scene.relevantMemoryFacts || []).map((f) => f?.payload?.name).filter(Boolean)
+    ].filter((label) => label && String(label).length >= 4);
+    const calledBack = callbacks.find((label) => new RegExp(`\\b${String(label).split(/\s+/)[0]}\\b`, "i").test(String(t.narration || "")));
+    if (calledBack) {
+      pushCompliment(findings, {
+        axis: "depth", turns: t.n,
+        finding: `T${t.n}: grounded callback — narration references committed fact "${calledBack}"`,
+        rootCause: "the world remembered its own committed state",
+        fixTarget: "KEEP — regression guard: memory callbacks"
+      });
+    }
+  }
+
+  // ---- RULER v2 run-level checks (2d introduction beats, 2e name collisions).
+  // Supplied via opts.run (the committed run record); skipped when absent. ----
+  const run = opts.run || null;
+  if (run && run.npcs) {
+    for (const c of detectNameCollisions(run.npcs)) {
+      pushFinding(findings, {
+        axis: "coherence", severity: "high", turns: [],
+        failure: `name collision — ${c.detail}`,
+        rootCause: "worldgen/namegen minted two committed NPCs with the same first name in one run (players conflate them)",
+        fixTarget: "server worldgen/identity namegen: per-run first-name dedup"
+      });
+    }
+    for (const f of auditIntroductionBeats(run)) {
+      pushFinding(findings, {
+        axis: "coherence", severity: "high", turns: [],
+        failure: f.detail,
+        rootCause: "pre-seeded NPC reached dialogue with no introduction beat (the courier arrival-event pattern is the known-good)",
+        fixTarget: "server/solo/scene.js first-surfacing introduction event + GM-prompt introduce-on-first-appearance clause"
+      });
+    }
+  }
+
+  // ---- Axis scores: deductions from COMPLAINTS only (compliments carry no
+  // weight — a check that raised a grade would be a ruler defect). ----
   const axisNumeric = (axis, gradeableTurns) => {
     if (gradeableTurns === 0) return null;
     const deduction = findings
-      .filter((f) => f.axis === axis)
+      .filter((f) => f.axis === axis && f.polarity !== "compliment")
       .reduce((sum, f) => sum + (SEVERITY_WEIGHT[f.severity] || 0), 0);
     return Math.max(0, Math.min(100, AXIS_BASE - deduction));
   };
@@ -764,16 +1246,31 @@ export function gradeSession(turns = [], opts = {}) {
     pacing: mk("pacing", list.length)
   };
 
-  // Rank findings: severity, then turn count (broader = worse).
-  findings.sort((a, b) => (SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity]) || (b.turns.length - a.turns.length));
+  // Rank findings: complaints first (severity, then turn breadth), compliments
+  // after (by turn) — the report renders both, only complaints deduct.
+  const POLARITY_RANK = { complaint: 0, compliment: 1 };
+  findings.sort(
+    (a, b) =>
+      (POLARITY_RANK[a.polarity] - POLARITY_RANK[b.polarity]) ||
+      (SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity]) ||
+      (b.turns.length - a.turns.length)
+  );
 
-  return { axes, findings, integrity, meta: opts.meta || {} };
+  return {
+    axes,
+    findings,
+    integrity,
+    // Ruler stamp: aggregates must refuse to mix versions (assertSameRulerVersion).
+    ruler: { version: RULER_VERSION, checks: RULER_CHECKS },
+    meta: opts.meta || {}
+  };
 }
 
 // Render a graded session to the machine-actionable markdown report written to
 // docs/grades/auto-grade-<timestamp>.md.
 export function renderGradeReport(graded, meta = {}) {
   const { axes, findings, integrity } = graded;
+  const ruler = graded.ruler || { version: "v1", checks: [] };
   const axisRow = (name, key) => {
     const a = axes[key] || {};
     const num = a.numeric == null ? "—" : a.numeric;
@@ -785,6 +1282,7 @@ export function renderGradeReport(graded, meta = {}) {
   lines.push("");
   lines.push(`> Autoplay letter-grade of run \`${meta.runId || "?"}\` — ${integrity.total} turns, drive: \`${meta.drive || "free-text autoplay"}\`, tip \`${meta.sha || "?"}\`.`);
   lines.push(`> Scored against the manual walkthrough rubric (docs/design/grade-improvement-roadmap.md).`);
+  lines.push(`> **ruler=${ruler.version}** — checks: ${ruler.checks.join(", ") || "(v1 baseline)"}. Do NOT aggregate across ruler versions.`);
   lines.push("");
   lines.push("## Model integrity");
   lines.push("");
@@ -802,18 +1300,29 @@ export function renderGradeReport(graded, meta = {}) {
   lines.push(axisRow("Mechanical", "mechanical"));
   lines.push(axisRow("Pacing", "pacing"));
   lines.push("");
-  lines.push(`## Machine-actionable findings (${findings.length}, ranked by severity)`);
+  const complaints = findings.filter((f) => f.polarity !== "compliment");
+  const compliments = findings.filter((f) => f.polarity === "compliment");
+  lines.push(`## Machine-actionable findings (${complaints.length} complaints, ranked by severity)`);
   lines.push("");
-  if (findings.length === 0) {
+  if (complaints.length === 0) {
     lines.push("_No deductions — clean session._");
   }
-  findings.forEach((f, i) => {
+  complaints.forEach((f, i) => {
     lines.push(`### ${i + 1}. ${sevBadge[f.severity] || f.severity} · ${f.axis} · T${f.turns.join("/") || "—"}`);
     lines.push("");
-    lines.push(`- **Observed:** ${f.failure}`);
+    lines.push(`- **Observed:** ${f.finding || f.failure}`);
     lines.push(`- **Root-cause hypothesis:** ${f.rootCause}`);
     lines.push(`- **Fix-target:** \`${f.fixTarget}\``);
     lines.push("");
   });
+  lines.push(`## What worked (${compliments.length} compliments — regression guards, zero score weight)`);
+  lines.push("");
+  if (compliments.length === 0) {
+    lines.push("_No compliments logged._");
+  }
+  compliments.forEach((f, i) => {
+    lines.push(`${i + 1}. ✅ **${f.axis} · T${f.turns.join("/") || "—"}** — ${f.finding || f.failure} _(keep: ${f.fixTarget})_`);
+  });
+  lines.push("");
   return lines.join("\n");
 }
