@@ -34,8 +34,8 @@ test("log entries and the location card carry the shared measure class", () => {
 });
 
 test("styles.css defines the ONE measure rule: book-page left anchor + left-aligned prose", () => {
-  // measure-alignment-tune: fixed left offset (clamp), auto right, never centered
-  assert.match(css, /\.solo-measure \{[^}]*max-width: 75ch;[^}]*margin-left: clamp\(24px, 8%, 120px\);[^}]*margin-right: auto;[^}]*text-align: left;/s);
+  // measure-width-fix (third pass): container-percentage sizing, auto right, never centered
+  assert.match(css, /\.solo-measure \{[^}]*max-width: min\(62%, 1200px\);[^}]*margin-left: clamp\(24px, 6%, 96px\);[^}]*margin-right: auto;[^}]*text-align: left;/s);
   assert.match(css, /\.solo-measure p \{[^}]*text-align: left;/s);
   // the root-cause shorthand: .solo-scene-opening horizontal margins stay auto so
   // the later .solo-measure longhands (left clamp / right auto) win the cascade

@@ -4713,8 +4713,12 @@ textarea.hb-input { min-height: 76px; resize: vertical; }
    margin bug) can zero the anchoring again.
    ========================================================================= */
 .solo-measure {
-  max-width: 75ch;
-  margin-left: clamp(24px, 8%, 120px);
+  /* measure-width-fix (third pass, owner spec in container percentages): the
+     column takes ~62% of the reading area (capped 1200px), anchored ~96px off
+     the column's left edge — text occupies the left 55-60% with clear but not
+     cavernous space right. Proportional at laptop widths via the 62%. */
+  max-width: min(62%, 1200px);
+  margin-left: clamp(24px, 6%, 96px);
   margin-right: auto;
   /* Body prose is never center-aligned. */
   text-align: left;
