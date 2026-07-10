@@ -39,6 +39,19 @@ if [ -z "${INKBORNE_GM_LOCAL_FALLBACK:-}" ] && [ -z "${NOTDND_GM_LOCAL_FALLBACK:
   export INKBORNE_GM_LOCAL_FALLBACK=false
 fi
 
+# INTERPRETER FAST-LANE default-on (baseline: interpreter median 3.8s / max 15s of
+# every contested turn — a sequential prefix before narration). Routes JUST the
+# roll-gating interpreter to a fast PAID model (gemini-2.5-flash via OpenRouter —
+# reliable; the FREE gemini tier 429s under per-turn volume and was reverted).
+# Measured −24% total turn latency. Interpreter failure degrades to the engine's
+# heuristic classification, so this can only speed a turn up, never break it.
+# Opt out: NOTDND_INTERPRETER_MODEL=off scripts/play-server.sh
+if [ -z "${NOTDND_INTERPRETER_MODEL:-}" ] && [ -z "${INKBORNE_INTERPRETER_MODEL:-}" ]; then
+  export NOTDND_INTERPRETER_MODEL="google/gemini-2.5-flash"
+elif [ "${NOTDND_INTERPRETER_MODEL:-}" = "off" ]; then
+  unset NOTDND_INTERPRETER_MODEL
+fi
+
 echo "play server: port ${PORT} · local-8b GM fallback=${INKBORNE_GM_LOCAL_FALLBACK:-${NOTDND_GM_LOCAL_FALLBACK}} (GPU-safe when false)"
 
 # Clear scenario-forcing operator env so a plain launch is never silently a
