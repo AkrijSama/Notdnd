@@ -4713,13 +4713,12 @@ textarea.hb-input { min-height: 76px; resize: vertical; }
    margin bug) can zero the anchoring again.
    ========================================================================= */
 .solo-measure {
-  /* measure-width-fix (third pass, owner spec in container percentages): the
-     column takes ~62% of the reading area (capped 1200px), anchored ~96px off
-     the column's left edge — text occupies the left 55-60% with clear but not
-     cavernous space right. Proportional at laptop widths via the 62%. */
-  max-width: min(62%, 1200px);
-  margin-left: clamp(24px, 6%, 96px);
-  margin-right: auto;
+  /* Owner final call (screenshot 2026-07-09): prose fills the reading area
+     edge-to-edge like it originally did — no column cap, no left anchor. The
+     narration log's own padding is the only inset. */
+  max-width: none;
+  margin-left: 0;
+  margin-right: 0;
   /* Body prose is never center-aligned. */
   text-align: left;
 }
