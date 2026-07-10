@@ -31,6 +31,12 @@ function childEnv() {
   if (env.INKBORNE_GM_LOCAL_FALLBACK === undefined && env.NOTDND_GM_LOCAL_FALLBACK === undefined) {
     env.INKBORNE_GM_LOCAL_FALLBACK = "false";
   }
+  // FLASH TRIAL (Jul 10, reversible): default the GM narration model to
+  // deepseek-v4-flash for latency (non-think pinned in generateNarrative).
+  // Revert: export NOTDND_GM_MODEL=deepseek/deepseek-v4-pro before `npm start`.
+  if (env.NOTDND_GM_MODEL === undefined && env.INKBORNE_GM_MODEL === undefined) {
+    env.NOTDND_GM_MODEL = "deepseek/deepseek-v4-flash";
+  }
   return env;
 }
 

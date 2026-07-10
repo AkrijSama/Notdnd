@@ -39,6 +39,15 @@ if [ -z "${INKBORNE_GM_LOCAL_FALLBACK:-}" ] && [ -z "${NOTDND_GM_LOCAL_FALLBACK:
   export INKBORNE_GM_LOCAL_FALLBACK=false
 fi
 
+# FLASH TRIAL (Jul 10, reversible): default the GM narration model to
+# deepseek-v4-flash for latency (the prose contract made v4-pro narration
+# ~22.5s median). Reasoning is pinned NON-THINK in generateNarrative for flash.
+# REVERT: NOTDND_GM_MODEL=deepseek/deepseek-v4-pro scripts/play-server.sh
+# (or delete this block) if contract compliance drops.
+if [ -z "${NOTDND_GM_MODEL:-}" ] && [ -z "${INKBORNE_GM_MODEL:-}" ]; then
+  export NOTDND_GM_MODEL="deepseek/deepseek-v4-flash"
+fi
+
 # INTERPRETER FAST-LANE default-on (baseline: interpreter median 3.8s / max 15s of
 # every contested turn — a sequential prefix before narration). Routes JUST the
 # roll-gating interpreter to a fast PAID model (gemini-2.5-flash via OpenRouter —

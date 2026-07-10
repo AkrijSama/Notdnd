@@ -929,7 +929,17 @@ export function getModelTiers() {
 export async function generateNarrative(messages, campaignId, options = {}) {
   const tiers = resolveModelTiers();
   captureGmCall(campaignId, "narrative", messages);
-  const response = await requestWithFallback(messages, tiers.narrative, options);
+  // V4 FLASH NON-THINK PIN (flash-trial Jul 10): deepseek-v4-flash is a reasoning
+  // model (Non-Think / Think-High / Think-Max); un-pinned it spends hidden
+  // reasoning_tokens per narration — added latency AND billed tokens for prose
+  // that the style contract fully specifies. Pin reasoning OFF for flash
+  // narration unless the caller explicitly set a reasoning option. No effect on
+  // non-flash models (pro ignores it server-side either way).
+  const narrativeOptions =
+    /deepseek-v4-flash/i.test(tiers.narrative) && !options.reasoning
+      ? { ...options, reasoning: { enabled: false } }
+      : options;
+  const response = await requestWithFallback(messages, tiers.narrative, narrativeOptions);
   pushUsage(campaignId, response.model === tiers.fallback ? "fallback" : "narrative", response.model, response.tokensUsed, response.cost);
   // Live attribution for the debug panel: the model that ACTUALLY served this
   // GM turn (narrative is the headline "GM MODEL"), not the configured value.
