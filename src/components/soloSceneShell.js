@@ -559,6 +559,13 @@ export function renderNarrationLog(entries = []) {
   }
   return list
     .map((entry) => {
+      // Bug A (#37/#38): the GM's OUT-OF-CHARACTER reply. Rendered as a distinct
+      // muted, bracketed aside — NEVER a story beat (no YOU header, no roll, no
+      // speaker plate). Self-contained inline styling (theme vars) so it reads as
+      // meta across all skins without a shared CSS dependency.
+      if (entry.kind === "ooc") {
+        return `<aside class="solo-log-entry solo-measure solo-log-ooc" role="note" style="border-left:3px solid var(--muted,#8b8e96);background:var(--inset,#070708);padding:10px 14px;border-radius:8px;margin:0 auto 34px;font-style:italic;color:var(--text-2,#b0b3bb);"><span style="display:block;text-transform:uppercase;letter-spacing:.1em;font-size:10px;font-weight:800;font-style:normal;color:var(--muted,#8b8e96);margin-bottom:6px;">GM · out of character</span><div>${escapeHtml(String(entry.text || ""))}</div></aside>`;
+      }
       const cr = entry.checkResult || null;
       const hasRoll = cr && cr.total != null;
       // #33: band-code the log roll tag (success / cost / failure), matching the
@@ -3780,12 +3787,49 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     state.attemptDraft = String(value || "");
   }
 
+  // Bug A (#37/#38): render the GM's out-of-character reply as a distinct log
+  // note. NOT a story beat — no YOU header, no roll, no turn cost. A failed/empty
+  // reply shows an explicit retry prompt: silence is never an acceptable outcome.
+  function appendOocNote({ reply } = {}) {
+    const body = String(reply || "").trim() || "The GM couldn't answer that — try again.";
+    state.narrationLog.push({ id: `ooc${state.narrationLog.length + 1}`, kind: "ooc", text: body });
+    if (state.narrationLog.length > 200) {
+      state.narrationLog.splice(0, state.narrationLog.length - 200);
+    }
+    render();
+  }
+
   function handleAttempt({ intent, mode }) {
     if (!state.scene) {
       return;
     }
+    // Bug B (provenance): remember the player's VERBATIM submitted text so the YOU
+    // header renders exactly what they typed — never a GM-generated beat title,
+    // regardless of how the resolver commits the turn (attempt / move / search…).
+    const submittedText = String(intent || "").trim();
     return runAction("attempt", async () => {
-      const response = await postAction(createAttemptAction({ intent, mode }));
+      let response;
+      try {
+        response = await postAction(createAttemptAction({ intent, mode }));
+      } catch (error) {
+        // OOC must never fail silently (Bug A): a thrown OOC request still gets a
+        // visible failure note rather than a generic banner + resync.
+        if (mode === "ooc") {
+          appendOocNote({ reply: "" });
+          state.attemptDraft = "";
+          return;
+        }
+        throw error;
+      }
+      // Bug A — OOC (#37/#38): the server committed NO state (run echoed unchanged)
+      // and answered AS GM. Render that reply as a distinct note and STOP: no turn
+      // cost, no clock tick, no scene reload, no story entry, no auditor pass.
+      if (response && response.ooc) {
+        appendOocNote({ reply: response.oocReply });
+        state.attemptDraft = "";
+        return;
+      }
+      state.pendingPlayerAction = submittedText;
       state.attemptResult = response.attemptResult || response.latestAttemptResult || null;
       // #20-full: capture the server's per-line speaker attribution for this turn
       // so logNarration can nameplate each grounded NPC line (cross-wire to #20).
