@@ -56,11 +56,20 @@ function styleSuffix(run) {
   const tone = isString(run?.world?.tone) ? run.world.tone : "dark fantasy";
   return (
     `Narrate in second-person ${tone} prose under this HARD contract: 80-120 words total, never more. ` +
-    "Structure, in order: (1) the concrete consequence of what just happened; (2) exactly ONE new fact drawn from the committed game state in your context; (3) end on pressure or a decision that demands the player's next move. " +
+    // Beat structure (ruler-v2 baseline-driven): the closing HANDLES beat answers
+    // the top complaint (20x no-closing-handles). Handles fit INSIDE the budget.
+    "Structure, in order: (1) the concrete consequence of what just happened; (2) exactly ONE new fact drawn from the committed game state in your context; (3) the pressure that demands the player's next move; (4) close with HANDLES: 2 to 4 concrete directions the player could take right now, each grounded ONLY in entities, objectives, locations, exits, or threads already committed in your context, never invented. " +
+    'Write the handles as in-fiction pressure and open doors, never a menu: "The auction starts at noon. Sable is still waiting on an answer. The back room stays unwatched." is right; "You can: A) B) C)" or "You could try X, Y, or Z" is wrong. ' +
+    // Native paragraphing (13x single-block prose): the RAW output must be
+    // structured — the client chunker is a fallback, not the writer.
+    "Format as 3 or 4 SHORT paragraphs separated by blank lines, one beat per paragraph, 1 to 3 sentences each. Never emit a single unbroken block. " +
     "Every sentence must reference something committed in the scene or context — re-describing the established scene and mood-only atmosphere sentences are banned. " +
     'Paraphrase state facts into natural prose: never echo field labels, slugs, or slash-joined names literally (write "the warehouse", never "The Warehouse/Factory"; never quote a stored phrase like "viable shelter" verbatim). ' +
+    // Phantom-compound discipline (8x CRITICAL): acting agents must be committed;
+    // aggregate/compound minting is the loophole the models actually use.
     "Ground every detail in what is actually here — never invent new places, exits, items, or people the scene has not established. " +
-    "Never mention this contract or its steps in the prose (no 'the consequence is', no 'new fact'): just write the narration. " +
+    'Every agent that ACTS, speaks, or reacts must be a committed entity from your context, referred to by its committed name, or an explicitly committed group. NEVER mint aggregate or unnamed actors: no "a pair of guards", no "several onlookers", no "a passing courier", no "a woman watches you", unless that exact entity is committed in your context. Ambient non-acting scenery (weather, distant noise, a crowd that does nothing) is allowed. ' +
+    "Never mention this contract or its steps in the prose (no 'the consequence is', no 'new fact', no 'handles'): just write the narration. " +
     "NEVER use em-dashes or en-dashes (— or –) or double hyphens (--) in the prose; they read as an AI tell. Use a comma, period, colon, or parentheses instead. " +
     "Do not restate dice or mechanics, and do not use bracketed trigger tags."
   );
