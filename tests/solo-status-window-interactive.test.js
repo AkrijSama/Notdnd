@@ -3,7 +3,6 @@ import test from "node:test";
 import {
   characterFromScenePlayer,
   renderBabelStatusWindow,
-  renderSoloCharacterSheet,
   renderSoloCharacterSidebar,
   renderSoloSceneShell
 } from "../src/components/soloSceneShell.js";
@@ -74,13 +73,6 @@ test("rankedSkillCount actually flows into the WINDOW count (was read but never 
   assert.match(html, /<span>Skills<\/span><span>1<\/span>/, "the count renders (not 'none')");
 });
 
-test("5e sheet skills are inspectable: expand to read what the skill does", () => {
-  const character = characterFromScenePlayer(babelPlayer(), null);
-  const html = renderSoloCharacterSheet(character);
-  assert.match(html, /<details class="solo-sheet-skill">/, "sheet skill rows expand");
-  assert.match(html, /hidden foes, faint sounds/, "Perception's rules text is readable");
-  assert.match(html, /\(WIS\)/, "governing ability shown");
-});
 
 test("D&D sidebar inventory gets the same interactable treatment", () => {
   const character = characterFromScenePlayer(babelPlayer(), null);

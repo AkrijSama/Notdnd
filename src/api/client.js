@@ -192,12 +192,6 @@ export function createApiClient(baseUrl = "") {
         timeoutMs: 120000
       });
     },
-    async saveSoloBattleMap(runId, battleMap) {
-      return request(`/api/solo/runs/${encodeURIComponent(runId)}/map`, {
-        method: "POST",
-        body: JSON.stringify(battleMap || {})
-      });
-    },
     async completeSoloRun(runId, outcome) {
       return request(`/api/solo/runs/${encodeURIComponent(runId)}/complete`, {
         method: "POST",

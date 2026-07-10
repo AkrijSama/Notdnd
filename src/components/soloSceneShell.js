@@ -1,13 +1,5 @@
-import { completeSoloRun, fetchSoloGmScene, fetchSoloScene, postSoloAction, redoLocationImage, saveLocationImage, saveSoloBattleMap } from "./soloSceneApi.js";
+import { completeSoloRun, fetchSoloGmScene, fetchSoloScene, postSoloAction, redoLocationImage, saveLocationImage } from "./soloSceneApi.js";
 import textFit from "../vendor/textFit.js";
-import {
-  DEFAULT_VISION_TILES,
-  computeReachable,
-  computeRevealed,
-  isLegalMove,
-  moveCost,
-  tilesForSpeed
-} from "./battleMapEngine.js";
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -1645,49 +1637,6 @@ export function renderSoloSceneArt(locationImageUri = null, { locked = false } =
   `;
 }
 
-export function renderSoloCharacterSheet(character = SOLO_SAMPLE_CHARACTER) {
-  const row = (entry) => `
-    <div class="solo-sheet-row">
-      <span class="${entry.proficient ? "proficient" : ""}">${escapeHtml(entry.name)}${entry.proficient ? ` <span class="solo-dot">●</span>` : ""}</span>
-      <span class="${entry.proficient ? "proficient" : ""}">${escapeHtml(entry.mod)}</span>
-    </div>`;
-  const combatCard = (label, value) =>
-    `<div class="solo-combat-card"><div class="solo-mini-label">${escapeHtml(label)}</div><div class="solo-combat-val">${escapeHtml(value)}</div></div>`;
-
-  return `
-    <div class="solo-character-sheet">
-      <div class="solo-sheet-col">
-        <div class="solo-stat-kicker">Saving Throws</div>
-        <div class="solo-sheet-list">${(character.saves || []).map(row).join("")}</div>
-        <div class="solo-stat-kicker" style="margin-top:26px;">Combat</div>
-        <div class="solo-combat-grid">
-          ${combatCard("Armor Class", character.armorClass)}
-          ${combatCard("Initiative", character.initiative)}
-          ${combatCard("Speed", `${character.speed} ft`)}
-          ${combatCard("Hit Points", `${character.hitPoints.current} / ${character.hitPoints.max}`)}
-        </div>
-      </div>
-      <div class="solo-sheet-col">
-        <div class="solo-stat-kicker">Skills</div>
-        <div class="solo-sheet-list">${(character.skills || [])
-          .map((entry) =>
-            entry.description
-              ? `<details class="solo-sheet-skill">
-                  <summary class="solo-sheet-row solo-sheet-skill-summary">
-                    <span class="${entry.proficient ? "proficient" : ""}">${escapeHtml(entry.name)}${entry.ability ? ` <span class="solo-skill-ability">(${escapeHtml(entry.ability)})</span>` : ""}${entry.proficient ? ` <span class="solo-dot">●</span>` : ""}</span>
-                    <span class="${entry.proficient ? "proficient" : ""}">${escapeHtml(entry.mod)}</span>
-                  </summary>
-                  <p class="solo-sheet-skill-desc">${escapeHtml(entry.description)}</p>
-                </details>`
-              : row(entry)
-          )
-          .join("")}</div>
-        <div class="solo-stat-kicker" style="margin-top:26px;">Proficiencies</div>
-        <div class="solo-proficiencies">${escapeHtml(character.proficiencies)}</div>
-      </div>
-    </div>
-  `;
-}
 
 // ---------------------------------------------------------------------------
 // Solo battle map — Phase 1 (Tickets: solo battle map).
@@ -1695,10 +1644,6 @@ export function renderSoloCharacterSheet(character = SOLO_SAMPLE_CHARACTER) {
 // spawn the player + visible NPCs as tokens on a 5ft grid, linked to real run
 // entities. No movement/fog yet (Phase 2/3). Positions are derived
 // deterministically from the scene; nothing is persisted server-side.
-// ---------------------------------------------------------------------------
-export const SOLO_MAP_WIDTH = 12;
-export const SOLO_MAP_HEIGHT = 10;
-export const SOLO_MAP_TILE_FEET = 5;
 
 // Image-completion poll cadence. Portraits + location art generate async (one
 // shared worker queue, no WebSocket), so the scene loads with placeholders and
@@ -1725,202 +1670,9 @@ function soloTokenInitials(name) {
   return (words[0][0] + words[words.length - 1][0]).toUpperCase();
 }
 
-/**
- * Pure. Builds the Phase-1 token list from a solo scene payload: the player
- * plus every NPC currently present, each linked to its real run entity and
- * given a deterministic, collision-free grid position. No movement yet.
- * @param {object} scene buildSoloScenePayload output (needs .player, .cast)
- * @param {{width?:number,height?:number}} options
- * @returns {Array<{id,kind,entityId,displayName,label,portraitUri,faction,speed?,x,y}>}
- */
-export function buildSoloMapTokens(scene = {}, options = {}) {
-  const width = Number.isFinite(options.width) ? options.width : SOLO_MAP_WIDTH;
-  const height = Number.isFinite(options.height) ? options.height : SOLO_MAP_HEIGHT;
-  const player = scene && typeof scene.player === "object" ? scene.player : null;
-  const cast = Array.isArray(scene?.cast) ? scene.cast : [];
-  const presentNpcs = cast.filter((npc) => npc && npc.present && typeof npc.npcId === "string");
 
-  const used = new Set();
-  const place = (rawX, rawY) => {
-    let x = soloMapClamp(Math.round(rawX), 0, width - 1);
-    let y = soloMapClamp(Math.round(rawY), 0, height - 1);
-    let guard = 0;
-    const limit = width * height;
-    while (used.has(`${x},${y}`) && guard < limit) {
-      x += 1;
-      if (x >= width) {
-        x = 0;
-        y = (y + 1) % height;
-      }
-      guard += 1;
-    }
-    used.add(`${x},${y}`);
-    return { x, y };
-  };
 
-  const tokens = [];
 
-  let playerSpawn = null;
-  if (player) {
-    const name = typeof player.displayName === "string" && player.displayName ? player.displayName : "You";
-    const vision = typeof player.vision === "number" ? player.vision : DEFAULT_VISION_TILES;
-    const pos = place(Math.floor(width / 2), height - 1);
-    playerSpawn = { x: pos.x, y: pos.y, vision };
-    tokens.push({
-      id: "player",
-      kind: "player",
-      entityId: "player",
-      displayName: name,
-      label: soloTokenInitials(name),
-      portraitUri: typeof player.portraitUri === "string" ? player.portraitUri : "",
-      faction: "player",
-      // Carried for Phase 2 (speed-validated movement); unused in Phase 1.
-      speed: typeof player.speed === "number" ? player.speed : 30,
-      vision,
-      ...pos
-    });
-  }
-
-  // Present NPCs spawn within the player's starting vision (fanned out a couple
-  // tiles in front of — above — the player) so they're visible on entry instead
-  // of hidden by fog near the top edge. Falls back to a top-row spread when
-  // there is no player token to anchor on.
-  const placeNpcInSight = (index, total, anchor) => {
-    if (!anchor) {
-      const spacing = Math.max(1, Math.floor(width / (total + 1)));
-      return place(Math.min(width - 1, (index + 1) * spacing), 1);
-    }
-    const radius = Number.isFinite(anchor.vision) ? anchor.vision : DEFAULT_VISION_TILES;
-    // Two rows toward the top keeps NPCs in front of the player without taking
-    // the player's own cell; clamp so we never step above the board.
-    const dy = Math.min(2, anchor.y, radius);
-    // Widest horizontal offset that still lands inside the circular vision.
-    const maxDx = Math.max(1, Math.floor(Math.sqrt(Math.max(0, radius * radius - dy * dy))));
-    const t = total > 1 ? index / (total - 1) : 0.5;
-    const dx = Math.round(-maxDx + t * (2 * maxDx));
-    return place(anchor.x + dx, anchor.y - dy);
-  };
-
-  const count = presentNpcs.length;
-  presentNpcs.forEach((npc, index) => {
-    const name = npc.displayName || npc.role || npc.npcId;
-    tokens.push({
-      id: `npc:${npc.npcId}`,
-      kind: "npc",
-      entityId: npc.npcId,
-      displayName: name,
-      label: soloTokenInitials(name),
-      portraitUri: typeof npc.portraitUri === "string" ? npc.portraitUri : "",
-      faction: "npc",
-      speed: typeof npc.speed === "number" ? npc.speed : 30,
-      vision: typeof npc.vision === "number" ? npc.vision : DEFAULT_VISION_TILES,
-      ...placeNpcInSight(index, count, playerSpawn)
-    });
-  });
-
-  return tokens;
-}
-
-function renderSoloMapToken(token, selected = false) {
-  const inner = token.portraitUri
-    ? `<img src="${escapeHtml(token.portraitUri)}" alt="${escapeHtml(token.displayName)}" />`
-    : escapeHtml(token.label);
-  return `<span class="solo-token solo-token-${escapeHtml(token.kind)} ${selected ? "solo-token-selected" : ""}" draggable="true" title="${escapeHtml(token.displayName)}" data-token-id="${escapeHtml(token.id)}" data-entity-id="${escapeHtml(token.entityId)}" data-entity-kind="${escapeHtml(token.kind)}">${inner}</span>`;
-}
-
-// Pure. Resolves the base tokens (Phase 1) with any persisted/in-progress
-// positions from the battle-map state. Returns tokens (with x,y) + a positions
-// map keyed by token id (for the movement engine).
-export function resolveBattleTokens(scene = {}, mapState = {}) {
-  const base = buildSoloMapTokens(scene, { width: SOLO_MAP_WIDTH, height: SOLO_MAP_HEIGHT });
-  const saved = mapState && mapState.positions ? mapState.positions : {};
-  const tokens = base.map((token) => {
-    const pos = saved[token.id];
-    return pos && Number.isFinite(pos.x) && Number.isFinite(pos.y) ? { ...token, x: pos.x, y: pos.y } : token;
-  });
-  const positionsById = {};
-  for (const token of tokens) {
-    positionsById[token.id] = { x: token.x, y: token.y };
-  }
-  return { tokens, positionsById };
-}
-
-export function renderSoloMapTab(scene = {}, mapState = {}) {
-  const width = SOLO_MAP_WIDTH;
-  const height = SOLO_MAP_HEIGHT;
-  const { tokens, positionsById } = resolveBattleTokens(scene, mapState);
-  const selectedId = mapState.selectedTokenId || null;
-  const selected = tokens.find((token) => token.id === selectedId) || null;
-  const budget = selected ? Math.max(0, tilesForSpeed(selected.speed) - (mapState.movedTiles || 0)) : 0;
-  const reachable = selected
-    ? computeReachable({ width, height, positions: positionsById, tokenId: selectedId }, budget)
-    : new Set();
-  const tokenByCell = new Map(tokens.map((token) => [`${token.x},${token.y}`, token]));
-
-  // Fog of war: a cell is revealed if it's in the explored (sticky) set OR
-  // within a player-faction token's current vision radius. Fogged cells are
-  // darkened and any token standing in fog is hidden.
-  const viewers = tokens
-    .filter((token) => token.faction === "player")
-    .map((token) => ({ x: token.x, y: token.y, radius: token.vision }));
-  const revealed = computeRevealed(width, height, viewers);
-  for (const key of Array.isArray(mapState.revealed) ? mapState.revealed : []) {
-    revealed.add(key);
-  }
-
-  const cells = [];
-  for (let y = 0; y < height; y += 1) {
-    for (let x = 0; x < width; x += 1) {
-      const key = `${x},${y}`;
-      const fogged = !revealed.has(key);
-      const token = tokenByCell.get(key);
-      const legal = reachable.has(key);
-      const showToken = token && !fogged;
-      cells.push(
-        `<div class="solo-map-cell${legal ? " legal" : ""}${fogged ? " fogged" : ""}" data-cell="${x},${y}">${showToken ? renderSoloMapToken(token, token.id === selectedId) : ""}</div>`
-      );
-    }
-  }
-
-  // Legend lists only currently-visible tokens (fog hides the rest).
-  const legend = tokens
-    .filter((token) => revealed.has(`${token.x},${token.y}`))
-    .map(
-      (token) =>
-        `<span class="solo-map-legend-item"><span class="solo-token solo-token-${escapeHtml(token.kind)}">${escapeHtml(token.label)}</span>${escapeHtml(token.displayName)}</span>`
-    )
-    .join("");
-  const visibleCount = tokens.filter((token) => revealed.has(`${token.x},${token.y}`)).length;
-
-  const canUndo = Array.isArray(mapState.history) && mapState.history.length > 0;
-  // Honest copy: reachability is a client-side movement-range highlight, not a
-  // server-enforced legality gate (there is no server terrain/blockers/LOS yet),
-  // so we say "within range highlight", not "legal tiles glow".
-  const status = selected
-    ? `${escapeHtml(selected.displayName)} — ${budget * SOLO_MAP_TILE_FEET} ft of movement left`
-    : "Select a token, then drag it or use arrow keys to reposition it (tiles within range highlight).";
-
-  return `
-    <div class="solo-map-tab" tabindex="0" data-solo-map data-map-width="${width}" data-map-height="${height}">
-      <div class="solo-map-toolbar">
-        <span class="tag">${width}×${height} grid</span>
-        <span class="small">1 tile = ${SOLO_MAP_TILE_FEET} ft</span>
-        <span class="tag">Fog of war (vision radius)</span>
-        <span class="small solo-map-status">${status}</span>
-        <button type="button" class="ghost solo-map-undo" data-map-undo ${canUndo ? "" : "disabled"}>Undo</button>
-      </div>
-      <div class="solo-map-board" style="grid-template-columns: repeat(${width}, minmax(0, 1fr));" data-map-width="${width}" data-map-height="${height}">
-        ${cells.join("")}
-      </div>
-      ${
-        visibleCount
-          ? `<div class="solo-map-legend">${legend}</div>`
-          : `<div class="solo-map-sub">Nothing in sight — explore to reveal the map.</div>`
-      }
-      <div class="solo-map-sub solo-map-honesty">Positioning sketch — token placement is visual and saved, but line-of-sight, cover and ranges aren't modelled yet.</div>
-    </div>
-  `;
-}
 
 // Procedural LOCAL-AREA map: the ruins (home base) + forest + discovered POIs in
 // their remembered positions. Undiscovered places stay fogged (the payload only
@@ -1928,48 +1680,6 @@ export function renderSoloMapTab(scene = {}, mapState = {}) {
 // tactics. Built to ZOOM OUT later: scale:"local" today; a world layer can nest
 // regions around the same home anchor. Pure render from scene.areaMap.
 const AREA_POI_GLYPH = { home: "⌂", ruins: "▲", forest: "♣", settlement: "⌂", water: "≈", site: "◆" };
-export function renderSoloAreaMap(scene = {}) {
-  const am = scene && typeof scene.areaMap === "object" && scene.areaMap ? scene.areaMap : {};
-  const pois = Array.isArray(am.pois) ? am.pois : [];
-  const width = Number.isFinite(am.width) && am.width > 0 ? Math.min(32, Math.trunc(am.width)) : 16;
-  const height = Number.isFinite(am.height) && am.height > 0 ? Math.min(32, Math.trunc(am.height)) : 16;
-  const undiscovered = Number.isFinite(am.undiscoveredCount) ? Math.max(0, Math.trunc(am.undiscoveredCount)) : 0;
-  const clampTo = (n, max) => Math.max(0, Math.min(max - 1, Math.trunc(Number(n) || 0)));
-
-  const head = `<div class="solo-presence-head"><span class="solo-stat-kicker">Area map</span><span class="solo-presence-loc" data-textfit>${escapeHtml(am.scale === "local" ? "Around the ruins" : "Known world")}</span></div>`;
-  if (!pois.length) {
-    return `<div class="solo-area"><div class="solo-area-head">${head}</div><div class="solo-presence-empty">No places remembered yet — explore to chart the area.</div></div>`;
-  }
-
-  // Fogged ground beneath the markers, so undiscovered space reads as unexplored.
-  const fog = [];
-  for (let y = 0; y < height; y += 1) {
-    for (let x = 0; x < width; x += 1) {
-      fog.push(`<span class="solo-area-fog" style="grid-column:${x + 1};grid-row:${y + 1};"></span>`);
-    }
-  }
-
-  const markers = pois
-    .map((poi) => {
-      const kind = typeof poi.kind === "string" ? poi.kind : "site";
-      const glyph = AREA_POI_GLYPH[kind] || AREA_POI_GLYPH.site;
-      const x = clampTo(poi.x, width);
-      const y = clampTo(poi.y, height);
-      const name = typeof poi.name === "string" && poi.name ? poi.name : "Unknown";
-      const classes = ["solo-area-poi", `solo-area-poi-${escapeHtml(kind)}`];
-      if (poi.isHome) classes.push("is-home");
-      if (poi.isCurrent) classes.push("is-current");
-      const label = `${name}${poi.isHome ? " (home base)" : ""}${poi.isCurrent ? " — you are here" : ""}`;
-      return `<span class="${classes.join(" ")}" style="grid-column:${x + 1};grid-row:${y + 1};" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}"><span class="solo-area-glyph">${glyph}</span><span class="solo-area-name">${escapeHtml(name)}</span></span>`;
-    })
-    .join("");
-
-  const foot = undiscovered
-    ? `<div class="solo-area-foot small">${pois.length} place${pois.length === 1 ? "" : "s"} charted · ${undiscovered} still hidden in the fog</div>`
-    : `<div class="solo-area-foot small">${pois.length} place${pois.length === 1 ? "" : "s"} charted</div>`;
-
-  return `<div class="solo-area">${head}<div class="solo-area-grid" style="grid-template-columns:repeat(${width},1fr);grid-template-rows:repeat(${height},1fr);" role="img" aria-label="Local area map">${fog.join("")}${markers}</div>${foot}</div>`;
-}
 
 // Resolves a token's display name from the scene (player → displayName; npc →
 // cast/visibleEntities; else the raw id). Pure.
@@ -3090,7 +2800,6 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     runSummary: null,
     menuOpen: false,
     cogNote: "",
-    battleMap: { positions: {}, selectedTokenId: null, movedTiles: 0, history: [], revealed: [] },
     dialogueActive: false,
     dialogueTyped: false,
     dialogueHistory: [],
@@ -3816,56 +3525,9 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     }
   }
 
-  // ---- Battle map (Phase 2) ----
-  function ensureBattlePositions() {
-    if (!state.battleMap.positions || Object.keys(state.battleMap.positions).length === 0) {
-      const { positionsById } = resolveBattleTokens(state.scene || {}, state.battleMap);
-      state.battleMap.positions = positionsById;
-    }
-  }
 
-  function persistBattleMap() {
-    saveSoloBattleMap(apiClient, runId, {
-      width: SOLO_MAP_WIDTH,
-      height: SOLO_MAP_HEIGHT,
-      positions: state.battleMap.positions,
-      revealed: state.battleMap.revealed
-    });
-  }
 
-  // Fog of war: fold each player-faction token's current vision into the sticky
-  // explored set so tiles stay revealed once seen (auto-reveal on movement).
-  function accumulateReveal() {
-    const { tokens } = resolveBattleTokens(state.scene || {}, state.battleMap);
-    const viewers = tokens
-      .filter((token) => token.faction === "player")
-      .map((token) => ({ x: token.x, y: token.y, radius: token.vision }));
-    const merged = new Set(Array.isArray(state.battleMap.revealed) ? state.battleMap.revealed : []);
-    for (const cell of computeRevealed(SOLO_MAP_WIDTH, SOLO_MAP_HEIGHT, viewers)) {
-      merged.add(cell);
-    }
-    state.battleMap.revealed = [...merged];
-  }
 
-  // One-time seed (run entry): reveal every cell within the player's starting
-  // vision radius so the map shows the player's immediate surroundings on load
-  // instead of an all-black grid. Movement-time fog (accumulateReveal) is
-  // unchanged.
-  function seedInitialReveal() {
-    const { tokens } = resolveBattleTokens(state.scene || {}, state.battleMap);
-    const playerToken = tokens.find((token) => token.faction === "player");
-    if (!playerToken) {
-      return;
-    }
-    const radius = Number.isFinite(playerToken.vision) ? playerToken.vision : DEFAULT_VISION_TILES;
-    const merged = new Set(Array.isArray(state.battleMap.revealed) ? state.battleMap.revealed : []);
-    for (const cell of computeRevealed(SOLO_MAP_WIDTH, SOLO_MAP_HEIGHT, [
-      { x: playerToken.x, y: playerToken.y, radius }
-    ])) {
-      merged.add(cell);
-    }
-    state.battleMap.revealed = [...merged];
-  }
 
   function handleCogPlaceholder(label) {
     state.cogNote = `${label} — coming soon`;
@@ -4309,24 +3971,9 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
         // when the payload genuinely lacks a player).
         state.character = characterFromScenePlayer(state.scene.player, state.scene.world);
       }
-      // Adopt persisted battle-map positions (Phase 2) if the run has them.
-      if (state.scene?.battleMap?.positions && typeof state.scene.battleMap.positions === "object") {
-        state.battleMap.positions = { ...state.scene.battleMap.positions };
-      }
-      // Adopt persisted explored fog (Phase 3), then seed reveal around the
-      // current player position so the player always sees their surroundings.
-      if (Array.isArray(state.scene?.battleMap?.revealed)) {
-        state.battleMap.revealed = [...state.scene.battleMap.revealed];
-      }
       if (initial) {
-        // Run entry: seed the player's starting vision so the map isn't a black
-        // grid on first load.
-        seedInitialReveal();
         // First entry this session: explain that images stream in.
         maybeShowImageWaitBanner();
-      } else {
-        // Reload after an action: fold any newly-visible cells into explored fog.
-        accumulateReveal();
       }
       // Terminal-run detection from the server's STATE CONTRACT (runStatus /
       // isDead / resumable / player.status). A concluded run — most importantly a

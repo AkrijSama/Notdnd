@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { renderSoloPresenceMap, renderSoloMapTab } from "../src/components/soloSceneShell.js";
+import { renderSoloPresenceMap } from "../src/components/soloSceneShell.js";
 
 // C.15: presence-map feature markers were ambiguous — a bare ◆ with no visible
 // tooltip (aria-label is screen-reader-only; the CSS killed the `title` tooltip via
@@ -48,13 +48,3 @@ test("no features placed → no legend rendered (nothing invented)", () => {
 
 // Presentation-honesty: the tactical Map tab must not over-promise a combat system
 // that the backend doesn't own (no server terrain/LOS/cover/ranges yet).
-test("the Map tab copy is honest about being a positioning sketch, not tactical combat", () => {
-  const html = renderSoloMapTab(
-    { player: { displayName: "Bram", speed: 30 }, battleMap: { width: 12, height: 12, tokens: [{ kind: "player", entityId: "player:bram", x: 6, y: 6 }] } },
-    {}
-  );
-  assert.match(html, /Positioning sketch/);
-  assert.match(html, /line-of-sight, cover and ranges aren't modelled yet/);
-  // The old over-promising "legal tiles glow" claim is gone.
-  assert.doesNotMatch(html, /legal tiles glow/);
-});
