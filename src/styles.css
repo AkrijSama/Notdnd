@@ -2885,7 +2885,10 @@ button:disabled {
 .solo-scene-opening {
   flex: none;
   position: relative;
-  margin: 4px 4px 14px;
+  /* VOICE-block fix: the old `margin: 4px 4px 14px` shorthand sat LATER in the
+     file than the 75ch measure rule and zeroed its auto-centering — the opening
+     slammed left while normal entries centered. Horizontal margins are auto. */
+  margin: 4px auto 14px;
   padding: 0 20px 0 22px;
   border: none;
   border-radius: 0;
@@ -2913,8 +2916,10 @@ button:disabled {
   margin: 0 0 1.05em;
   font-family: var(--font-body, Georgia, serif);
   /* One narration type-scale across every beat: the set-piece opening shares the
-     same clamp as location + GM narration. */
-  font-size: clamp(1.35rem, 1.1vw + 1rem, 1.85rem);
+     same clamp as location + GM narration — AND the A-/A+ user multiplier. The
+     opening previously skipped the multiplier, so at walk start (when it is the
+     only visible prose) the font-size control looked dead. */
+  font-size: calc(clamp(1.35rem, 1.1vw + 1rem, 1.85rem) * var(--solo-log-scale, 1));
   line-height: 1.6;
   color: var(--text-bright, #f1f2f5);
 }
@@ -2961,8 +2966,9 @@ button:disabled {
      surface. clamp() keeps it big on wide panels and steps down on narrow ones so
      the scrolling scene column never overflows horizontally. #18b: real vertical
      spacing between paragraphs so narration reads as spaced paragraphs, not a
-     slab (the render now splits body/description on blank lines into <p>s). */
-  font-size: clamp(1.35rem, 1.1vw + 1rem, 1.85rem);
+     slab (the render now splits body/description on blank lines into <p>s).
+     Scales with the A-/A+ multiplier like every other prose surface. */
+  font-size: calc(clamp(1.35rem, 1.1vw + 1rem, 1.85rem) * var(--solo-log-scale, 1));
   line-height: 1.6;
   margin: 0 0 1.05em;
 }
@@ -4694,4 +4700,28 @@ textarea.hb-input { min-height: 76px; resize: vertical; }
   color: #c9b083;
   border: 1px solid rgba(242, 198, 109, 0.4);
   vertical-align: middle;
+}
+
+/* =========================================================================
+   ONE MEASURE RULE (voice-block-layout-fix). Every narration-column prose
+   block carries .solo-measure in markup and gets exactly this treatment:
+   centered, max ~75ch. No prose path may bypass it. Deliberately LAST in the
+   file so no earlier same-specificity shorthand (the .solo-scene-opening
+   margin bug) can zero the centering again.
+   ========================================================================= */
+.solo-measure {
+  max-width: 75ch;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* textFit targets: bounded single-line boxes whose text must shrink-to-fit
+   rather than overflow/wrap out of frame. widthOnly fitting (JS) needs a
+   definite width + nowrap + hidden overflow. Never applied to prose. */
+[data-textfit] {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  min-width: 0;
+  max-width: 100%;
 }

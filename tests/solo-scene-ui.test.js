@@ -634,7 +634,7 @@ test("mountSoloSceneShell auto-opens VN for a freeform speaker with the NPC's ow
   assert.equal(talkCall.targetEntityId, "npc:placeholder_npc");
   // The in-stage VN textbox (#49) opens showing the NPC's NAME (not "NPC")...
   assert.match(root.innerHTML, /solo-vn-box/);
-  assert.match(root.innerHTML, /solo-vn-box-speaker">Placeholder NPC</);
+  assert.match(root.innerHTML, /solo-vn-box-speaker"[^>]*>Placeholder NPC</);
   // ...speaking the NPC's OWN beat line, never the GM opening narration.
   assert.match(root.innerHTML, /data-fulltext="The keeper sizes you up/);
   assert.doesNotMatch(root.innerHTML, /data-fulltext="You are Akrij/);

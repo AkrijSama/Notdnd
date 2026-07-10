@@ -1,4 +1,5 @@
 import { completeSoloRun, fetchSoloGmScene, fetchSoloScene, postSoloAction, redoLocationImage, saveLocationImage, saveSoloBattleMap } from "./soloSceneApi.js";
+import textFit from "../vendor/textFit.js";
 import {
   DEFAULT_VISION_TILES,
   computeReachable,
@@ -399,7 +400,7 @@ export function renderSoloSceneOpening(openingNarration = "", openingBeats = nul
       .map((beat, i) => `<div class="solo-opening-beat" style="animation-delay:${(i * 1.1).toFixed(2)}s">${beatToParas(beat)}</div>`)
       .join("");
     return `
-      <section class="solo-scene-opening solo-opening-paced" role="note" aria-label="Opening narration">
+      <section class="solo-scene-opening solo-opening-paced solo-measure" role="note" aria-label="Opening narration">
         <style>
           .solo-opening-paced .solo-opening-beat { opacity: 0; animation: soloBeatIn 0.9s ease forwards; }
           .solo-opening-paced .solo-opening-beat + .solo-opening-beat { margin-top: 0.9rem; padding-top: 0.9rem; border-top: 1px solid rgba(255,255,255,0.08); }
@@ -417,7 +418,7 @@ export function renderSoloSceneOpening(openingNarration = "", openingBeats = nul
   }
   const body = beatToParas(text);
   return `
-    <section class="solo-scene-opening" role="note" aria-label="Opening narration">
+    <section class="solo-scene-opening solo-measure" role="note" aria-label="Opening narration">
       <span class="solo-scene-opening-kicker">The GM sets the scene</span>
       ${body}
     </section>
@@ -488,7 +489,7 @@ export function renderLocationPanel(location = {}, gmNarration = null, gmStatus 
   // the data is left untouched on the payload for internal use (home-base
   // classification, etc.). (Defect 9: metadata must not surface in the scene.)
   return `
-    <section class="solo-location-card">
+    <section class="solo-location-card solo-measure">
       <div class="solo-location-image" data-image-asset-id="${escapeHtml(location.imageAssetId || "")}">
         <div>
           <div class="solo-image-kicker">Location Image</div>
@@ -566,7 +567,7 @@ export function renderNarrationLog(entries = []) {
       // #46/#47: each turn is a delineated UNIT — the `has-action` class carries a
       // divider + the action anchor; opening/ambient entries (no header) read as
       // continuous prose without a false turn boundary.
-      const unitClass = header ? "solo-log-entry has-action" : "solo-log-entry";
+      const unitClass = header ? "solo-log-entry has-action solo-measure" : "solo-log-entry solo-measure";
       return `<article class="${unitClass}">${header}${nameplate}<div class="solo-log-prose">${beatToParas(entry.text)}</div></article>`;
     })
     .join("");
@@ -1407,8 +1408,8 @@ export function renderBabelStatusWindow(character = SOLO_SAMPLE_CHARACTER) {
         <div class="solo-char-sub">Level ${escapeHtml(b.displayLevel)} · ${escapeHtml(b.milestoneTier || "")}</div>
       </div>
       <div class="solo-sidebar-block">
-        <div class="solo-passive-row"><span>RANK</span><span>${escapeHtml(b.rank || "UNASSESSED")}</span></div>
-        <div class="solo-passive-row"><span>ORIGIN</span><span>${escapeHtml(b.origin || "The Beckoned")}</span></div>
+        <div class="solo-passive-row"><span>RANK</span><span data-textfit>${escapeHtml(b.rank || "UNASSESSED")}</span></div>
+        <div class="solo-passive-row"><span>ORIGIN</span><span data-textfit>${escapeHtml(b.origin || "The Beckoned")}</span></div>
       </div>
       <div class="solo-sidebar-block">
         <div class="solo-gauge-row">
@@ -1928,7 +1929,7 @@ export function renderSoloAreaMap(scene = {}) {
   const undiscovered = Number.isFinite(am.undiscoveredCount) ? Math.max(0, Math.trunc(am.undiscoveredCount)) : 0;
   const clampTo = (n, max) => Math.max(0, Math.min(max - 1, Math.trunc(Number(n) || 0)));
 
-  const head = `<div class="solo-presence-head"><span class="solo-stat-kicker">Area map</span><span class="solo-presence-loc">${escapeHtml(am.scale === "local" ? "Around the ruins" : "Known world")}</span></div>`;
+  const head = `<div class="solo-presence-head"><span class="solo-stat-kicker">Area map</span><span class="solo-presence-loc" data-textfit>${escapeHtml(am.scale === "local" ? "Around the ruins" : "Known world")}</span></div>`;
   if (!pois.length) {
     return `<div class="solo-area"><div class="solo-area-head">${head}</div><div class="solo-presence-empty">No places remembered yet — explore to chart the area.</div></div>`;
   }
@@ -2045,7 +2046,7 @@ export function renderSoloPresenceMap(scene = {}) {
   const bm = scene && typeof scene.battleMap === "object" && scene.battleMap ? scene.battleMap : {};
   const tokens = Array.isArray(bm.tokens) ? bm.tokens : [];
   const locationName = scene.location && typeof scene.location.name === "string" && scene.location.name ? scene.location.name : "Here";
-  const head = `<div class="solo-presence-head"><span class="solo-stat-kicker">Where you are</span><span class="solo-presence-loc">${escapeHtml(locationName)}</span></div>`;
+  const head = `<div class="solo-presence-head"><span class="solo-stat-kicker">Where you are</span><span class="solo-presence-loc" data-textfit>${escapeHtml(locationName)}</span></div>`;
   if (!tokens.length) {
     return `<div class="solo-presence">${head}<div class="solo-presence-empty">The ground beneath you hasn't taken shape yet.</div></div>`;
   }
@@ -2210,7 +2211,7 @@ export function renderSoloRightRail(state = {}) {
             <div class="solo-cast-card">
               <div class="solo-cast-thumb" data-portrait-for="${escapeHtml(entityId)}">${thumb}</div>
               <div class="solo-cast-meta">
-                <div class="solo-cast-name">${escapeHtml(name)}${away}</div>
+                <div class="solo-cast-name" data-textfit>${escapeHtml(name)}${away}</div>
                 <div class="solo-cast-role">${escapeHtml(role)}</div>
               </div>
               <div class="solo-cast-actions" style="display:flex;flex-direction:column;gap:4px;">
@@ -2240,7 +2241,7 @@ export function renderSoloRightRail(state = {}) {
           const total = cr.total ?? "—";
           const dc = cr.dc ?? "—";
           const cls = cr.success ? "good" : "accent";
-          return `<div class="solo-roll"><div><div class="solo-roll-name">${escapeHtml(label)}</div><div class="solo-roll-detail">vs DC ${escapeHtml(dc)}</div></div><span class="solo-roll-total ${cls}">${escapeHtml(total)}</span></div>`;
+          return `<div class="solo-roll"><div><div class="solo-roll-name">${escapeHtml(label)}</div><div class="solo-roll-detail">vs DC ${escapeHtml(dc)}</div></div><span class="solo-roll-total ${cls}" data-textfit>${escapeHtml(total)}</span></div>`;
         })
         .join("")
     : `<div class="solo-empty-state">No rolls yet.</div>`;
@@ -2341,7 +2342,7 @@ export function renderSoloDialogueOverlay(state = {}) {
     </div>
     <div class="solo-vn-box" data-solo-dialogue-panel role="group" aria-label="Dialogue with ${escapeHtml(speaker)}">
       <div class="solo-vn-box-head">
-        <span class="solo-vn-box-speaker">${escapeHtml(speaker)}</span>
+        <span class="solo-vn-box-speaker" data-textfit>${escapeHtml(speaker)}</span>
         <button type="button" class="solo-vn-box-end" data-solo-dialogue-end aria-label="End conversation" title="End conversation">End ✕</button>
       </div>
       <div
@@ -2934,6 +2935,54 @@ export function readSoloThemePref(key, fallback) {
   }
 }
 
+// #48 SELF-HEAL: read the persisted narration text-size, normalize it (clamped
+// 0.8-1.6, 0.1 steps), and WRITE THE HEALED VALUE BACK when the stored raw is
+// stale/invalid ("9", "NaN", garbage) — so one bad write can never wedge the
+// sizer across reloads. Returns the sane multiplier.
+export function readHealedLogScale(storage) {
+  const store = storage !== undefined ? storage : (typeof localStorage !== "undefined" ? localStorage : null);
+  let raw = null;
+  try {
+    raw = store ? store.getItem(SOLO_LOG_SCALE_STORAGE_KEY) : null;
+  } catch {
+    raw = null;
+  }
+  const value = normalizeLogScale(raw == null ? 1 : raw);
+  if (raw != null && String(value) !== String(raw).trim()) {
+    try {
+      store?.setItem(SOLO_LOG_SCALE_STORAGE_KEY, String(value));
+    } catch {
+      // best-effort heal; the in-memory value is already sane
+    }
+  }
+  return value;
+}
+
+// Shrink-to-fit for BOUNDED single-line UI text ([data-textfit]: VN speaker
+// name, cast-rail names, status-window values, roll chips, location label).
+// widthOnly (no fixed height required); prose NEVER gets fit-scaling — it has
+// the .solo-measure column rule instead. Best-effort: silently skips in
+// non-browser environments (unit tests use mock roots) and on detached nodes.
+function applySoloTextFit(root) {
+  if (typeof document === "undefined" || !root || typeof root.querySelectorAll !== "function") {
+    return;
+  }
+  let nodes;
+  try {
+    nodes = root.querySelectorAll("[data-textfit]");
+  } catch {
+    return;
+  }
+  for (const el of nodes) {
+    try {
+      if (!el || !el.offsetWidth || !String(el.textContent || "").trim()) continue;
+      textFit(el, { widthOnly: true, reProcess: true, minFontSize: 8, maxFontSize: 22 });
+    } catch {
+      // fitting is cosmetic — never let it break a render
+    }
+  }
+}
+
 // Player-hidden debug surfaces (e.g. the GM provider/fallback status panel) are
 // shown only when localStorage notdnd_debug === "true". Off for beta players —
 // the "Fallback"/"Placeholder" tags read as "broken" to a real player.
@@ -3032,7 +3081,9 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     skin: normalizeSkin(readSoloThemePref(SOLO_SKIN_STORAGE_KEY, "ashen")),
     fontSet: normalizeFontSet(readSoloThemePref(SOLO_FONT_STORAGE_KEY, "tome")),
     // #48: persisted narration text-size multiplier (see normalizeLogScale).
-    logScale: normalizeLogScale(readSoloThemePref(SOLO_LOG_SCALE_STORAGE_KEY, "1")),
+    // #48: self-healing read — a stale/invalid persisted multiplier is clamped
+    // AND written back, so a bad value can never wedge the sizer across reloads.
+    logScale: readHealedLogScale(),
     // Guest play: when the player has no real account, the shell offers a
     // persistent "save your adventure" affordance. Registering upgrades the
     // guest identity in place server-side, so the run is never lost.
@@ -3206,6 +3257,8 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     } else {
       restoreSoloScroll(scrollSnapshot);
     }
+    // The in-place rail repaint recreates cast names / roll chips — re-fit them.
+    applySoloTextFit(root);
     return true;
   }
 
@@ -3276,6 +3329,9 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     // #15: snapshot the stage so the NEXT render can decide whether it's a
     // patchable turn (only the log/outcome/input changed) or a full rebuild.
     recordStageBaseline();
+    // Shrink-to-fit the bounded UI text (VN speaker, cast names, status values,
+    // roll chips, location label). Never applied to prose.
+    applySoloTextFit(root);
   }
 
   // Preserve/restore the scroll position of the in-scene scrolling container

@@ -1,0 +1,117 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import test from "node:test";
+import {
+  renderSoloSceneOpening,
+  renderNarrationLog,
+  renderLocationPanel,
+  renderSoloSceneShell,
+  renderSoloSceneInputBar,
+  dispatchSoloClick,
+  readHealedLogScale,
+  SOLO_LOG_SCALE_STORAGE_KEY
+} from "../src/components/soloSceneShell.js";
+
+const css = fs.readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
+
+// ---- voice-block-layout-fix: ONE measure rule for every prose block ----
+
+test("VOICE opening (both variants) carries the shared measure class", () => {
+  const paced = renderSoloSceneOpening("", ["First beat.", "Second beat."]);
+  assert.match(paced, /solo-scene-opening solo-opening-paced solo-measure/);
+  assert.match(paced, /The VOICE speaks/);
+  const plain = renderSoloSceneOpening("A single opening block.", null);
+  assert.match(plain, /solo-scene-opening solo-measure/);
+});
+
+test("log entries and the location card carry the shared measure class", () => {
+  const log = renderNarrationLog([{ id: "n1", intent: "look", text: "Quiet." }]);
+  assert.match(log, /solo-log-entry has-action solo-measure/);
+  const ambient = renderNarrationLog([{ id: "n1", intent: "", text: "Quiet." }]);
+  assert.match(ambient, /solo-log-entry solo-measure/);
+  const loc = renderLocationPanel({ name: "Tavern", description: "Old." });
+  assert.match(loc, /solo-location-card solo-measure/);
+});
+
+test("styles.css defines the ONE measure rule and the opening no longer zeroes centering", () => {
+  assert.match(css, /\.solo-measure \{[^}]*max-width: 75ch;[^}]*margin-left: auto;[^}]*margin-right: auto;/s);
+  // the root-cause shorthand: .solo-scene-opening horizontal margins must be auto
+  const opening = css.match(/\.solo-scene-opening \{[^}]*\}/s)[0];
+  assert.match(opening, /margin: 4px auto 14px/);
+});
+
+// ---- sizer: every prose surface consumes the multiplier ----
+
+test("ALL prose surfaces consume --solo-log-scale (opening + location/gm prose included)", () => {
+  const openingP = css.match(/\.solo-scene-opening p \{[^}]*\}/s)[0];
+  assert.match(openingP, /var\(--solo-log-scale, 1\)/, "VOICE opening prose scales with A-/A+");
+  const locP = css.match(/\.solo-scene-center \.solo-location-copy > p,\s*\.solo-scene-center \.solo-gm-narration p \{[^}]*\}/s)[0];
+  assert.match(locP, /var\(--solo-log-scale, 1\)/, "location/GM prose scales with A-/A+");
+  assert.match(css, /\.solo-scene-center \.solo-log-prose p \{[^}]*var\(--solo-log-scale, 1\)/s, "log prose scales");
+});
+
+test("sizer control pinned to the CURRENT DOM: buttons render, dispatch routes, target exists", () => {
+  // buttons in the input bar
+  const bar = renderSoloSceneInputBar({ attemptDraft: "" });
+  assert.match(bar, /data-solo-logfont="down"/);
+  assert.match(bar, /data-solo-logfont="up"/);
+  // delegated dispatch still routes (the f3ae7eb orphaned-handler class)
+  const dirs = [];
+  dispatchSoloClick(
+    { closest: (s) => (s === "[data-solo-logfont]" ? { getAttribute: () => "up" } : null) },
+    { onLogFontScale: (a) => dirs.push(a) }
+  );
+  assert.deepEqual(dirs, [{ dir: "up" }]);
+  // the handler's target selector (.solo-scene-shell) matches the shell root
+  const shell = renderSoloSceneShell({ scene: { location: { name: "T" } } });
+  assert.match(shell, /class="solo-scene-shell /);
+  // and the shell stamps the multiplier var the CSS consumes
+  assert.match(shell, /--solo-log-scale:/);
+});
+
+test("readHealedLogScale self-heals a stale/invalid persisted value", () => {
+  const writes = [];
+  const store = (val) => ({
+    getItem: () => val,
+    setItem: (k, v) => writes.push([k, v])
+  });
+  // out-of-range "9" → clamps to 1.6 AND writes the healed value back
+  assert.equal(readHealedLogScale(store("9")), 1.6);
+  assert.deepEqual(writes.pop(), [SOLO_LOG_SCALE_STORAGE_KEY, "1.6"]);
+  // garbage → defaults to 1 and heals
+  assert.equal(readHealedLogScale(store("garbage")), 1);
+  assert.deepEqual(writes.pop(), [SOLO_LOG_SCALE_STORAGE_KEY, "1"]);
+  // valid value → returned as-is, NO write
+  assert.equal(readHealedLogScale(store("1.2")), 1.2);
+  assert.equal(writes.length, 0);
+  // nothing stored → default 1, no write
+  assert.equal(readHealedLogScale(store(null)), 1);
+  assert.equal(writes.length, 0);
+});
+
+// ---- textFit: fixed-box text only, never prose ----
+
+test("textFit vendor is a dependency-free ESM function", async () => {
+  const mod = await import("../src/vendor/textFit.js");
+  assert.equal(typeof mod.default, "function");
+});
+
+test("fixed-box text carries data-textfit; prose does NOT", () => {
+  const shell = renderSoloSceneShell({
+    scene: {
+      location: { name: "Tavern" },
+      cast: [{ npcId: "m", displayName: "Mara", portraitUri: "/m.png" }],
+      attemptHistory: [{ intent: "x", checkResult: { total: 17, dc: 14, success: true } }]
+    },
+    dialogueActive: true,
+    talkResult: { npcId: "m", speakerName: "Mara", line: "Hi.", expression: "neutral", expressionVariants: {} }
+  });
+  assert.match(shell, /solo-vn-box-speaker" data-textfit/, "VN speaker fits");
+  assert.match(shell, /solo-cast-name" data-textfit/, "cast names fit");
+  assert.match(shell, /solo-presence-loc" data-textfit/, "location label fits");
+  assert.match(shell, /solo-roll-total [^"]*" data-textfit/, "roll chips fit");
+  // prose renderers never get fit-scaling
+  const log = renderNarrationLog([{ id: "n1", intent: "", text: "Prose." }]);
+  assert.doesNotMatch(log, /data-textfit/);
+  assert.doesNotMatch(renderSoloSceneOpening("Opening prose.", null), /data-textfit/);
+});
