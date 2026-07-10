@@ -2687,17 +2687,16 @@ button:disabled {
 }
 /* The input dock shares the same measure so the type-here line sits under the
    text column rather than stretching the full ultrawide width. */
-.solo-input-dock .solo-scene-input {
-  max-width: 75ch;
-  margin-left: auto;
-  margin-right: auto;
-}
+/* Item 3 (client-clearout): the type-line sits DIRECTLY under the text column —
+   the input adopts the shared .solo-measure class in markup (one measure rule
+   governs prose AND dock; a future measure change can never misalign them), and
+   the dock's horizontal padding matches the narration log's inset. */
 /* #30: the input dock gets more vertical room (was 8px/2px) so the field and
    its submit sit comfortably, not cramped against the log border. */
 .solo-input-dock {
   flex: none;
   background: var(--bg, #050506);
-  padding: 14px 4px 10px;
+  padding: 14px 24px 10px;
   border-top: 1px solid var(--border, #202024);
 }
 

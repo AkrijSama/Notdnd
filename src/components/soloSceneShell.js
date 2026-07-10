@@ -1578,7 +1578,7 @@ export function renderSoloSceneInputBar(state = {}) {
   const count = draft.length;
   const over = count > SOLO_INPUT_MAXLEN;
   return `
-    <div class="solo-scene-input">
+    <div class="solo-scene-input solo-measure">
       <div class="solo-scene-input-row">
         <input type="text" class="solo-scene-field" data-solo-attempt-input placeholder="What do you do?  (&quot;quote&quot; to speak · /ooc to ask the GM)" value="${escapeHtml(draft)}" maxlength="${SOLO_INPUT_MAXLEN}" ${busy ? "disabled" : ""} />
         <button type="button" class="solo-attempt-submit" data-solo-attempt-submit ${busy ? "disabled" : ""}>${busy ? "Thinking…" : "Attempt"}</button>

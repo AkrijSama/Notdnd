@@ -92,6 +92,17 @@ test("readHealedLogScale self-heals a stale/invalid persisted value", () => {
   assert.equal(writes.length, 0);
 });
 
+// ---- item 3 (client-clearout): the input dock shares the ONE measure ----
+
+test("the input bar carries the shared measure class — dock can never misalign from prose", () => {
+  const bar = renderSoloSceneInputBar({ attemptDraft: "" });
+  assert.match(bar, /class="solo-scene-input solo-measure"/);
+  // the dock's horizontal inset matches the narration log's (24px)
+  assert.match(css, /\.solo-input-dock \{[^}]*padding: 14px 24px 10px;/s);
+  // the bespoke dock 75ch rule is gone — one measure rule governs both
+  assert.doesNotMatch(css, /\.solo-input-dock \.solo-scene-input \{[^}]*max-width: 75ch/s);
+});
+
 // ---- turn-scroll phases (owner fix: GM-thinking must not reset to top) ----
 
 test("turn-scroll policy: submit pins bottom ONCE, interim preserves, completion anchors newest", async () => {
