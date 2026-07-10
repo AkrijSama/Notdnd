@@ -1549,6 +1549,69 @@ export function renderSoloCharacterSidebar(character = SOLO_SAMPLE_CHARACTER) {
 
 // #15: the "GM is thinking / Loading scene" strip, extracted so the turn
 // fast-path can repaint just this node (inside data-solo-thinking) in place.
+// ---------------------------------------------------------------------------
+// CONDITIONS HUD (#26 made player-visible). The server commits conditions with
+// durations and sheds them on expiry — but nothing rendered them (the live
+// palm-mark example: committed, invisible). One chip per active condition,
+// read from the scene payload the client already polls:
+//   scene.player.conditions[] = { id, name, effect, remainingMinutes|null,
+//                                 permanent } (conditionStatusPayload)
+// DATA GAP (flagged, not invented): the payload has NO buff/debuff type field.
+// Hue is a client-side PRESENTATION heuristic over name+effect words; unknown
+// stays neutral. Colors reuse the existing fixed band semantics (success green /
+// failure red) so they read identically across all four skins.
+// ---------------------------------------------------------------------------
+const CONDITION_BUFF_RE = /\b(bless|blessed|haste|hasted|inspir|ward|warded|protect|shield|regen|fortif|strengthen|suppress|resist|guid|heal)/i;
+const CONDITION_DEBUFF_RE = /\b(exhaust|poison|grappl|stun|burn|frozen|blind|curse|disease|paralyz|prone|bleed|weaken|slow|frighten|fear|wound)/i;
+
+export function classifyConditionHue(condition = {}) {
+  const blob = `${condition.name || ""} ${condition.effect || ""}`;
+  if (CONDITION_DEBUFF_RE.test(blob)) return "debuff";
+  if (CONDITION_BUFF_RE.test(blob)) return "buff";
+  return "neutral";
+}
+
+// World-clock minutes → a short human duration ("45m", "≈2h", "≈3d").
+export function formatConditionDuration(remainingMinutes) {
+  if (remainingMinutes == null) return ""; // Number(null)===0 — never "1m" a permanent
+  const m = Number(remainingMinutes);
+  if (!Number.isFinite(m)) return "";
+  if (m < 60) return `${Math.max(1, Math.round(m))}m`;
+  if (m < 1440) return `≈${Math.round(m / 60)}h`;
+  return `≈${Math.round(m / 1440)}d`;
+}
+
+export function renderSoloConditionsHud(scene = {}) {
+  const conditions = (Array.isArray(scene.player?.conditions) ? scene.player.conditions : Array.isArray(scene.conditions) ? scene.conditions : [])
+    .filter((c) => c && (c.name || c.id));
+  if (!conditions.length) {
+    return ""; // empty state: nothing visible, no placeholder text
+  }
+  const chips = conditions
+    .map((c) => {
+      const hue = classifyConditionHue(c);
+      const name = String(c.name || c.id);
+      const duration = c.permanent ? "" : formatConditionDuration(c.remainingMinutes);
+      const remainText = c.permanent
+        ? "Lasts until cleared."
+        : duration
+          ? `Time remaining: ${duration}.`
+          : "";
+      const tipBody = [String(c.effect || "").trim(), remainText].filter(Boolean).join(" ");
+      return `
+        <span class="solo-cond-chip cond-${hue}" tabindex="0" data-cond-id="${escapeHtml(c.id || name)}" aria-label="${escapeHtml(`${name}. ${tipBody}`)}">
+          <span class="solo-cond-dot" aria-hidden="true"></span>
+          <span class="solo-cond-name">${escapeHtml(name)}</span>
+          ${duration ? `<span class="solo-cond-time">${escapeHtml(duration)}</span>` : ""}
+          <span class="solo-cond-tip" role="tooltip">
+            <strong>${escapeHtml(name)}</strong>${tipBody ? `<span>${escapeHtml(tipBody)}</span>` : ""}
+          </span>
+        </span>`;
+    })
+    .join("");
+  return `<div class="solo-conditions solo-measure" role="group" aria-label="Active conditions">${chips}</div>`;
+}
+
 export function renderSoloThinkingIndicator(state = {}) {
   if (!state.gmThinking && !state.sceneReloading) {
     return "";
@@ -2333,6 +2396,10 @@ export function renderSoloSceneShell(state = {}) {
                 </div>
                 <!-- ZONE 3 — INPUT DOCK -->
                 <div class="solo-input-dock">
+                  <!-- CONDITIONS HUD (#26 made visible): committed buffs/debuffs as
+                       chips adjacent to the input — in view while choosing the next
+                       action. Stable wrapper so the fast-path patches it in place. -->
+                  <div data-solo-conditions>${renderSoloConditionsHud(scene)}</div>
                   <div data-solo-dock-status>${renderSoloThinkingIndicator(state)}</div>
                   ${renderSoloSceneInputBar(state)}
                 </div>
@@ -2425,6 +2492,20 @@ export function bindSoloSceneShell(root, handlers = {}) {
     root.__soloDelegated = true;
     root.addEventListener("click", (event) => dispatchSoloClick(event?.target, root.__soloHandlers || {}));
     root.addEventListener("keydown", (event) => dispatchSoloKeydown(event, root.__soloHandlers || {}));
+    // CONDITIONS HUD tooltip edge-clamp: on hover/focus of a chip, flip the
+    // tooltip to right-anchored when its default left-anchored box would clip
+    // the viewport's right edge. Delegated once; chips are re-rendered freely.
+    const clampConditionTip = (event) => {
+      const chip = event?.target && typeof event.target.closest === "function" ? event.target.closest(".solo-cond-chip") : null;
+      if (!chip || typeof chip.getBoundingClientRect !== "function" || typeof window === "undefined") {
+        return;
+      }
+      const rect = chip.getBoundingClientRect();
+      const TIP_WIDTH = 320; // matches .solo-cond-tip max-width
+      chip.classList.toggle("tip-right", rect.left + TIP_WIDTH > window.innerWidth - 8);
+    };
+    root.addEventListener("mouseover", clampConditionTip);
+    root.addEventListener("focusin", clampConditionTip);
   }
 
   // ---- Visual-novel typewriter (shared: dialogue box + victory card) ----
@@ -2940,6 +3021,14 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     }
     outcomeEl.innerHTML = renderSoloActionOutcome(state);
     thinkingEl.innerHTML = renderSoloThinkingIndicator(state);
+
+    // CONDITIONS HUD: chips appear on commit and vanish on shed via BOTH render
+    // paths (one policy — the scroll-fix precedent). Tolerates absence in the
+    // lightweight test mocks.
+    const conditionsEl = root.querySelector("[data-solo-conditions]");
+    if (conditionsEl && "innerHTML" in conditionsEl) {
+      conditionsEl.innerHTML = renderSoloConditionsHud(state.scene || {});
+    }
 
     // #15-full: repaint the right rail in place (rolls / clock / cast / exits).
     // Because it's no longer in stageSignature, patch it unconditionally on every

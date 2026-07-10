@@ -918,15 +918,18 @@ test("bindSoloSceneShell binds ONE delegated click listener on the stable root",
   };
   let inspected = null;
   bindSoloSceneShell(root, { onInspect: (e) => (inspected = e) });
-  // Bound once for click, once for keydown — not per element.
-  assert.equal(addCount, 2);
+  // Bound once each: click, keydown, and the conditions-tooltip clamp pair
+  // (mouseover + focusin) — never per element.
+  assert.equal(addCount, 4);
   assert.equal(typeof listeners.click, "function");
+  assert.equal(typeof listeners.mouseover, "function", "tooltip edge-clamp bound");
+  assert.equal(typeof listeners.focusin, "function", "keyboard tooltip clamp bound");
   // A delegated click on an inspect button routes through the single listener.
   listeners.click({ target: clickTarget({ "[data-solo-action='inspect']": { "data-entity-id": "npc:x" } }) });
   assert.deepEqual(inspected, { entityId: "npc:x" });
   // Re-binding on a subsequent full render does NOT add duplicate listeners.
   bindSoloSceneShell(root, { onInspect: () => {} });
-  assert.equal(addCount, 2, "delegation is bound exactly once per root");
+  assert.equal(addCount, 4, "delegation is bound exactly once per root");
 });
 
 test("createMoveAction builds persisted move action shape", () => {
