@@ -38,6 +38,36 @@ const ART_STYLE_OPTIONS = [
   { id: "cinematic", label: "Dark Cinematic", blurb: "Moody, filmic key art", sample: "/public/assets/art-cinematic.jpg" }
 ];
 
+// World-select cards (owner spec): image-led, PLAYER-FACING copy only — no
+// system jargon on this screen. The card component is the investment; per-world
+// art + copy are DATA (swap art/hook per world here, not in code). Art is
+// PLACEHOLDER key art from the committed static assets — nothing is generated.
+export const WORLD_SELECT_CARDS = [
+  {
+    scenarioId: "babel",
+    title: "Babel",
+    hook: "Wake in a strange land. Answer the call. Climb.",
+    art: "/public/assets/art-illustrated.jpg"
+  },
+  {
+    scenarioId: "",
+    title: "Custom World",
+    hook: "A world imagined for you.",
+    art: "/public/assets/art-cinematic.jpg"
+  }
+];
+
+function renderWorldCard(card, active) {
+  return `
+    <button type="button" class="onb-world-card ${active ? "active" : ""}" data-world-scenario="${esc(card.scenarioId)}" aria-pressed="${active ? "true" : "false"}">
+      <img class="onb-world-card-art" src="${esc(card.art)}" alt="" loading="lazy" />
+      <span class="onb-world-card-body">
+        <span class="onb-world-card-title">${esc(card.title)}</span>
+        <span class="onb-world-card-hook">${esc(card.hook)}</span>
+      </span>
+    </button>`;
+}
+
 function esc(value) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -70,16 +100,15 @@ function renderWorldStep(state) {
   return `
     <section class="onboarding-shell onb-world">
       <header class="onboarding-header">
-        <div class="tag">${authored ? "Authored World" : "World Generator"}</div>
-        <h2>${authored ? "An Authored World" : "Define Your World"}</h2>
-        <p class="onb-disclaimer">${authored ? "This world provides its own setting, the VOICE opening, cast, and STATUS WINDOW — there is nothing to configure here." : "Fields you leave blank will be imagined by the AI."}</p>
+        <div class="tag">${authored ? "A World Awaits" : "World Builder"}</div>
+        <h2>${authored ? "Choose Your World" : "Define Your World"}</h2>
+        <p class="onb-disclaimer">${authored ? "This world is ready to play — everything is set up for you. Just make your character and step in." : "Fields you leave blank will be imagined by the AI."}</p>
       </header>
 
       <div class="onb-field onb-featured-world">
-        <label>Featured world</label>
-        <div class="onb-chips">
-          ${renderChip("Babel — The Wrong Woods (authored)", def.scenarioId === "babel", `data-world-scenario="babel"`)}
-          ${renderChip("Custom world — imagined for you", !def.scenarioId, `data-world-scenario=""`)}
+        <label>Choose a world</label>
+        <div class="onb-world-cards">
+          ${WORLD_SELECT_CARDS.map((card) => renderWorldCard(card, (def.scenarioId || "") === card.scenarioId)).join("")}
         </div>
       </div>
 
