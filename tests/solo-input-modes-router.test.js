@@ -52,7 +52,10 @@ test("resolveSoloAction tags a SPEECH attempt on the result", () => {
 
 test("a plain action defaults to inputMode 'action'", () => {
   const run = createDefaultSoloRun();
-  const res = resolveSoloAction(run, { type: "attempt", intent: "search the desk drawers" });
+  // NOTE: an object-search intent ("search the desk drawers") now reroutes to the
+  // committed search mechanic (baseline T8 void fix) and carries no attemptResult
+  // — use a plain physical attempt to exercise the input-mode default.
+  const res = resolveSoloAction(run, { type: "attempt", intent: "force the rusty lock open" });
   assert.equal(res.ok, true);
   assert.equal(res.attemptResult.inputMode, "action");
 });

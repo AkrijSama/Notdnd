@@ -159,3 +159,28 @@ test("intro directive is built from introInstructions and consumed once", () => 
   assert.equal(after.npcs.guard.introInstructions, null);
   assert.equal(buildNpcIntroDirective(after), "");
 });
+
+test("per-run first-name uniqueness at mint (the two-Maras bug)", async () => {
+  const { ensureUniqueFirstName, npcTakenNames } = await import("../server/solo/npcIdentity.js");
+  // unused name passes through
+  assert.equal(ensureUniqueFirstName("Mara", ["Garrick", "Hale"], 3), "Mara");
+  // taken first name -> a different, unused fallback is picked
+  const alt = ensureUniqueFirstName("Mara", ["Mara", "Garrick"], 3);
+  assert.notEqual(alt.split(/\s+/)[0].toLowerCase(), "mara");
+  assert.ok(alt.length >= 3);
+  // full-name variants block by FIRST token ("Mara Vex" blocks "Mara")
+  assert.notEqual(ensureUniqueFirstName("Mara", ["Mara Vex"], 5).toLowerCase(), "mara");
+  // placeholder articles never block ("A shaken traveler" does not block "Ash"… or anything)
+  assert.equal(ensureUniqueFirstName("Ash", ["A shaken traveler"], 1), "Ash");
+  // roster extraction covers generatedName + displayName, excludes the npc itself
+  const run = { npcs: { a: { npcId: "a", generatedName: "Mara", displayName: "Mara" }, b: { npcId: "b", displayName: "Hale" } } };
+  assert.deepEqual(npcTakenNames(run, "b").sort(), ["Mara", "Mara"]);
+});
+
+test("generateNpcIdentity respects takenNames (no duplicate mint)", async () => {
+  const { generateNpcIdentity } = await import("../server/solo/npcIdentity.js");
+  const a = await generateNpcIdentity({ role: "Tavern Keeper", worldSeed: "seed_u", npcIndex: 0 });
+  const b = await generateNpcIdentity({ role: "Guard", worldSeed: "seed_u", npcIndex: 0, takenNames: [a.generatedName] });
+  assert.notEqual(b.generatedName.split(/\s+/)[0].toLowerCase(), a.generatedName.split(/\s+/)[0].toLowerCase());
+  assert.ok(b.portraitPrompt.includes(b.generatedName), "portrait prompt carries the FINAL name");
+});

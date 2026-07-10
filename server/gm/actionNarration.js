@@ -483,7 +483,31 @@ export function buildActionGmMessage(run, resolved) {
  * @param {{characterName?:string, race?:string, characterClass?:string, world?:object, npc?:object|null}} input
  * @returns {string}
  */
-export function buildOpeningGmMessage({ characterName, race, characterClass, world = {}, npc = null, npcReason = null, baseBuilding = false, questObjective = null } = {}) {
+// #14: the opening was the ONE narration path with no clock pin — normal turns get
+// buildClockDirective, but the opening GM call bypassed it, and a fresh run's clock
+// starts at 07:00 morning, so "night falls over..." openings were the baseline's
+// concentrated clock-divergence (13x). `worldTime` = { clock:"HH:MM", phase } from
+// the committed run clock; when present the opening is pinned to it.
+const OPENING_PHASE_DESC = {
+  dawn: "early dawn — thin first light, the sun not yet up",
+  day: "daylight — the sun is up",
+  dusk: "dusk — failing light",
+  night: "night — full dark"
+};
+export function buildOpeningClockClause(worldTime) {
+  const clock = worldTime && isString(worldTime.clock) ? worldTime.clock : "";
+  const phase = worldTime && isString(worldTime.phase) ? worldTime.phase : "";
+  if (!clock || !phase) {
+    return "";
+  }
+  return (
+    ` COMMITTED TIME: it is ${clock} — ${OPENING_PHASE_DESC[phase] || phase}. The opening MUST read as ${phase}: ` +
+    `light, sky, and activity match that hour. Do NOT narrate a different time of day — no nightfall, moonlight, or ` +
+    `"as darkness falls" while it is morning or day, and no daylight at night.`
+  );
+}
+
+export function buildOpeningGmMessage({ characterName, race, characterClass, world = {}, npc = null, npcReason = null, baseBuilding = false, questObjective = null, worldTime = null } = {}) {
   const name = isString(characterName) ? characterName : "the wanderer";
   const descriptor = [race, characterClass].filter((part) => isString(part)).join(" ");
   const who = descriptor ? `${name}, a ${descriptor},` : name;
@@ -512,7 +536,8 @@ export function buildOpeningGmMessage({ characterName, race, characterClass, wor
     : "";
   return (
     `${who} arrives at ${locLine}.${worldLine} ` +
-    `Narrate their arrival in 3-5 vivid sentences of second-person ${tone} prose, grounding them in the atmosphere of the scene.${npcHint}${baseLine}${hookLine} ` +
+    `Narrate their arrival in 3-5 vivid sentences of second-person ${tone} prose, grounding them in the atmosphere of the scene.${npcHint}${baseLine}${hookLine}` +
+    `${buildOpeningClockClause(worldTime)} ` +
     "End by leaving the moment open and unspoken — theirs to act on. Do not use bracketed trigger tags."
   );
 }

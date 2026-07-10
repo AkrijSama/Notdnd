@@ -150,7 +150,12 @@ function classifyIntentDc(intent) {
 // knowledge->INT. Default INT (the catch-all "figure it out" check).
 const PHYSICAL_INTENT_RE = /\b(force|break|smash|bash|lift|carry|push|pull|shove|wrench|haul|climb|swim|grapple|drag|hold)\b/;
 const FINESSE_INTENT_RE = /\b(sneak|stealth|slip|hide|dodge|pick|lockpick|disarm|balance|tumble|aim|throw|juggle|steal|pickpocket|nimble|acrobat)\b/;
-const SOCIAL_INTENT_RE = /\b(persuade|convince|talk|deceive|lie|bluff|charm|seduce|intimidate|threaten|negotiate|barter|impress|perform|comfort|flatter)\b/;
+// Includes plain conversational verbs (ask/greet/approach/introduce/question/
+// inquire): the baseline's T5/T13 narrate-into-void was "approach whoever is
+// nearest and ask them their name" resolving as an automatic success that
+// committed NOTHING — with these verbs in the social class, the disposition
+// commit (B2, commitSocialDisposition) fires and the turn moves real state.
+const SOCIAL_INTENT_RE = /\b(persuade|convince|talk|deceive|lie|bluff|charm|seduce|intimidate|threaten|negotiate|barter|impress|perform|comfort|flatter|ask|greet|approach|introduce|question|inquire)\b/;
 const KNOWLEDGE_INTENT_RE = /\b(recall|remember|identify|examine|inspect|analyze|study|research|decipher|read|investigate|search|recognize|understand|recount)\b/;
 function abilityFromIntent(intent) {
   const text = String(intent || "").toLowerCase();

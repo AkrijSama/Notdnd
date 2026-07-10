@@ -64,6 +64,18 @@ test("detectObservationIntent recognizes scene-perception, not idle waiting or N
   assert.equal(detectObservationIntent(withNpc, "watch Goran in the room"), null);
 });
 
+test("detectSearchIntent routes OBJECT-directed searches (the baseline T8 void class)", () => {
+  const run = createDefaultSoloRun({ runId: "search_object" });
+  // the exact 2x baseline offender — object/fixture search with an articled "for a hidden…"
+  assert.ok(detectSearchIntent(run, "search the door and its frame for a hidden catch or key"));
+  assert.ok(detectSearchIntent(run, "check the hearth for a secret compartment"));
+  assert.ok(detectSearchIntent(run, "rummage through the desk for anything useful"));
+  // a person-search still stays out of the area path
+  const withNpc = clone(run);
+  withNpc.npcs = { npc_g: { npcId: "npc_g", displayName: "Goran", currentLocationId: run.currentLocationId, status: "present" } };
+  assert.equal(detectSearchIntent(withNpc, "search Goran for weapons"), null);
+});
+
 test("detectSearchIntent and detectObservationIntent partition the passive-intent space", () => {
   const run = createDefaultSoloRun({ runId: "observe_partition" });
   // "search the area" is a search, not an observation reroute (search wins)

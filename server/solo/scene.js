@@ -501,27 +501,39 @@ export function collectNpcsNeedingIdentity(run, visibleEntities = null) {
   return needing;
 }
 
-// Pure. Returns the npcIds of NPCs that still have unconsumed intro
-// instructions (a user directive on how the GM should introduce them).
-export function collectNpcsWithPendingIntro(run) {
+// INTRODUCTION BEAT (baseline: the medic-Mara cold-surface). An NPC is "pending
+// introduction" when EITHER it carries unconsumed authored introInstructions, OR
+// it is a committed-but-never-introduced NPC PRESENT at the player's location
+// (flags.introduced !== true) — the class that used to surface cold mid-turn
+// with no arrival beat. The server GUARANTEES the intro context (the known-good
+// momentum-arrival pattern), it is not a prompt suggestion; the caller marks
+// each introduced after the narration lands (markNpcIntroduced).
+function npcsPendingIntro(run) {
   if (!isPlainObject(run) || !isPlainObject(run.npcs)) {
     return [];
   }
-  return Object.values(run.npcs)
-    .filter((npc) => isPlainObject(npc) && isString(npc.introInstructions))
+  return Object.values(run.npcs).filter((npc) => {
+    if (!isPlainObject(npc)) return false;
+    if (isString(npc.introInstructions)) return true; // authored intro, any location
+    if (npc.flags?.introduced === true) return false;
+    // Default (synthesized) intro: only for a PRESENT, live NPC about to appear.
+    return npc.currentLocationId === run.currentLocationId && npc.status !== "gone";
+  });
+}
+
+// Pure. Returns the npcIds of NPCs whose introduction is still pending
+// (authored introInstructions, or present-but-never-introduced).
+export function collectNpcsWithPendingIntro(run) {
+  return npcsPendingIntro(run)
     .map((npc) => npc.npcId)
     .filter((npcId) => isString(npcId));
 }
 
-// Pure. Builds a one-time GM directive describing how to introduce any NPCs
-// that carry user-supplied intro instructions. Returns "" when there are none.
+// Pure. Builds a one-time GM directive describing how to introduce every
+// pending NPC — the authored directive when supplied, else a synthesized
+// arrival/presence beat from the committed identity. Returns "" when none.
 export function buildNpcIntroDirective(run) {
-  if (!isPlainObject(run) || !isPlainObject(run.npcs)) {
-    return "";
-  }
-  const pending = Object.values(run.npcs).filter(
-    (npc) => isPlainObject(npc) && isString(npc.introInstructions)
-  );
+  const pending = npcsPendingIntro(run);
   if (pending.length === 0) {
     return "";
   }
@@ -531,9 +543,17 @@ export function buildNpcIntroDirective(run) {
       : isString(npc.displayName)
         ? npc.displayName
         : npc.role;
-    return `- ${name} (${npc.role}): ${String(npc.introInstructions).trim()}`;
+    if (isString(npc.introInstructions)) {
+      return `- ${name} (${npc.role}): ${String(npc.introInstructions).trim()}`;
+    }
+    const appearance = isString(npc.appearance) ? ` Appearance: ${npc.appearance.trim()}.` : "";
+    return (
+      `- ${name} (${npc.role}): FIRST APPEARANCE — this character has never been narrated before. ` +
+      `Introduce them with a concrete presence beat (where they are, what they are doing) before they speak or act;` +
+      ` never treat them as already established.${appearance}`
+    );
   });
-  return `Introduce the following custom NPC(s) naturally into the scene, following each directive:\n${lines.join("\n")}`;
+  return `Introduce the following NPC(s) naturally into the scene, following each directive:\n${lines.join("\n")}`;
 }
 
 // Pure. Builds the full NPC roster (every NPC in run.npcs, policy-filtered) with

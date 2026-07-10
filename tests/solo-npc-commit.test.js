@@ -11,7 +11,8 @@ import {
   detectInventedAgents,
   auditAndCommitInventedAgents,
   inferNpcGenderFromNarration,
-  backfillNpcGenderFromNarration
+  backfillNpcGenderFromNarration,
+  repairNarrationPronouns
 } from "../server/solo/npcCommit.js";
 import { evaluatePhantomEntities, evaluateGmNarration } from "../server/solo/gmEval.js";
 import { validateNpc, createDefaultSoloRun } from "../server/solo/schema.js";
@@ -207,4 +208,38 @@ test("evaluateGmNarration surfaces phantomNpcNames in its result", () => {
   const result = evaluateGmNarration(scenePayload, { narration: { title: "", body: "Doc Han says the way is shut." } });
   assert.ok(result.phantomNpcNames.includes("Doc Han"));
   assert.ok(result.warnings.includes("no_phantom_npcs"));
+});
+
+test("repairNarrationPronouns (item 6) repairs narration contradicting committed gender", () => {
+  const npcs = [{ npcId: "npc_m", displayName: "Mara", generatedName: "Mara", gender: "male", pronouns: "he/him" }];
+  // committed he/him, narrated she/her x3 — the exact baseline case
+  const r = repairNarrationPronouns("Mara wipes the bar. She eyes you and her hand drifts to her belt.", npcs);
+  assert.equal(r.repairs.length, 1);
+  assert.equal(r.repairs[0].name, "Mara");
+  assert.match(r.text, /He eyes you/);
+  assert.match(r.text, /his hand drifts to his belt/);
+  assert.doesNotMatch(r.text, /\bshe\b/i);
+});
+
+test("repairNarrationPronouns leaves agreeing narration untouched + scopes to name sentences", () => {
+  const npcs = [{ npcId: "npc_f", displayName: "Ilse", generatedName: "Ilse", gender: "female", pronouns: "she/her" }];
+  const ok = repairNarrationPronouns("Ilse laughs. She pours another round.", npcs);
+  assert.equal(ok.repairs.length, 0, "agreement -> no repair");
+  // ANOTHER named character's pronouns in their own sentence are never touched
+  // (the repair only edits sentences that mention the mismatched NPC's name or
+  // open with a bare wrong pronoun right after one).
+  const mixed = repairNarrationPronouns(
+    "Ilse frowns. Goran was here before and he left his coin on the bar.",
+    npcs
+  );
+  assert.equal(mixed.repairs.length, 0);
+  assert.match(mixed.text, /he left his coin/);
+});
+
+test("repairNarrationPronouns flags non-binary contradictions as unrepairable (no text surgery)", () => {
+  const npcs = [{ npcId: "npc_x", displayName: "Ash", generatedName: "Ash", gender: "non-binary", pronouns: "they/them" }];
+  const r = repairNarrationPronouns("Ash nods. She turns away, her cloak snapping.", npcs);
+  assert.equal(r.repairs.length, 1);
+  assert.equal(r.repairs[0].unrepairable, true);
+  assert.match(r.text, /She turns away/, "text untouched");
 });

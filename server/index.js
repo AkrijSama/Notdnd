@@ -124,7 +124,7 @@ import { buildGmRuntimeStatus } from "./solo/gmSmoke.js";
 import { enqueueDraftPortrait, enqueueImageJob, enqueueLocationImageJob, enqueuePlayerImageJob, enqueueVnBodyImageJob, getDraftPortrait, writeUploadedBasePortrait } from "./solo/imageWorker.js";
 import { enqueueIdentityJob, runIdentityJob } from "./solo/npcIdentity.js";
 import { buildNpcIntroDirective, buildSoloScenePayload, collectNpcsWithPendingIntro } from "./solo/scene.js";
-import { auditAndCommitNarratedNpcs, auditAndCommitNarratedLore, auditAndCommitInventedAgents, backfillNpcGenderFromNarration } from "./solo/npcCommit.js";
+import { auditAndCommitNarratedNpcs, auditAndCommitNarratedLore, auditAndCommitInventedAgents, backfillNpcGenderFromNarration, repairNarrationPronouns } from "./solo/npcCommit.js";
 import { refreshSceneSuggestions } from "./solo/suggestions.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -861,6 +861,26 @@ function buildClockDirective(resolved) {
   );
 }
 
+// PRONOUN GROUNDING (item 6). Lists every present NPC's committed pronouns so the
+// narration model reads them as truth instead of guessing off the name — half of
+// the enforcement pair (repairNarrationPronouns is the post-narration back-stop).
+function buildPronounDirective(run) {
+  const present = Object.values(run?.npcs || {}).filter(
+    (npc) =>
+      npc &&
+      npc.currentLocationId === run?.currentLocationId &&
+      npc.status !== "gone" &&
+      (typeof npc.pronouns === "string" && npc.pronouns.trim() || typeof npc.gender === "string" && npc.gender.trim())
+  );
+  if (present.length === 0) {
+    return "";
+  }
+  const list = present
+    .map((npc) => `${npc.generatedName || npc.displayName || npc.role} (${npc.pronouns || npc.gender})`)
+    .join(", ");
+  return ` COMMITTED PRONOUNS: ${list}. Refer to each of these characters with EXACTLY these pronouns — never swap, drift, or infer different ones.`;
+}
+
 // COMPOUND ACTION (#6, resolver blindspot Class A). A multi-part intent ("pick the
 // lock AND slip past the guard") is resolved on ONE roll, so the prose is free to
 // narrate BOTH parts landing even on a failure/at-cost. We do not decompose (one
@@ -1036,6 +1056,17 @@ async function narrateActionWithGm(run, resolved, user) {
   // WORLD CLOCK (#14): pin the narration to the committed time-of-day so prose
   // can't drift to night while the clock reads morning.
   message += buildClockDirective(resolved);
+  // INTRODUCTION BEAT: any committed-but-never-introduced NPC present in the
+  // scene gets a server-guaranteed first-appearance directive (the momentum-
+  // arrival pattern) — no more cold-surfacing mid-turn. Marked introduced by the
+  // action handler once the narration lands.
+  const introDirective = buildNpcIntroDirective(run);
+  if (introDirective) {
+    message += ` ${introDirective}`;
+  }
+  // PRONOUN GROUNDING: committed gender/pronouns for every present NPC ride the
+  // context, so the model never has to guess (the he/him-Mara narrated-she bug).
+  message += buildPronounDirective(run);
   // COMPOUND ACTION (#6): a multi-part intent resolved on ONE roll — constrain the
   // prose to that single committed outcome so it can't narrate every part landing.
   message += buildCompoundDirective(resolved);
@@ -1773,7 +1804,21 @@ async function handleApi(req, res) {
         refreshSceneSuggestions(responseRun, setSoloRunSuggestions)
       ]);
       timing.mark("gm");
-      const gmNarration = gmResult?.narration || null;
+      let gmNarration = gmResult?.narration || null;
+      // PRONOUN ENFORCEMENT (item 6): repair narration that contradicts a present
+      // NPC's committed gender BEFORE anything consumes it — same enforcement
+      // class as phantom rejection (the server's pronouns are truth). Repairs are
+      // logged so a drifting model is visible.
+      if (typeof gmNarration === "string" && gmNarration.trim()) {
+        const pronounFix = repairNarrationPronouns(gmNarration, Object.values(responseRun.npcs || {}));
+        if (pronounFix.repairs.length > 0) {
+          gmNarration = pronounFix.text;
+          logTurnEvent(
+            responseRun.runId,
+            `pronoun-enforcement repaired narration for: ${pronounFix.repairs.map((r) => `${r.name}(${r.committed}${r.unrepairable ? ", unrepairable" : ""})`).join(", ")}`
+          );
+        }
+      }
       // PER-TURN SESSION TRANSCRIPT (data/logs/runs/<runId>.log) — the full causal
       // chain of this turn, including every formerly-silent fallback, so the owner
       // can tail it during a detached playtest and see exactly what happened.
@@ -1804,6 +1849,19 @@ async function handleApi(req, res) {
         }
         updateSoloRunNarration(responseRun.runId, gmNarration);
         responseRun.narration = gmNarration;
+
+        // INTRODUCTION BEAT: the narration above carried the first-appearance
+        // directive for every pending NPC — mark them introduced so the beat
+        // fires exactly once. Only on a SUCCESSFUL narration (a failed/timeout
+        // turn leaves the intro pending for the next one).
+        for (const npcId of collectNpcsWithPendingIntro(responseRun)) {
+          markNpcIntroduced(responseRun.runId, npcId);
+          const held = responseRun.npcs?.[npcId];
+          if (held) {
+            held.introInstructions = null;
+            held.flags = { ...(held.flags || {}), introduced: true };
+          }
+        }
 
         // #20-full: attribute each quoted line to a present speaker so a multi-NPC
         // scene gets the right nameplate per line (server-owned, grounded against

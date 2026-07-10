@@ -189,9 +189,12 @@ function detailFactExists(run, detailId) {
 const SEARCH_VERB_RE =
   /\b(?:search|scour|comb|rummage|forage|sift|ransack|rifle|scavenge|dig (?:through|around|into)|poke around|look (?:for|around|about|through)|hunt (?:for|around|through)|explore\b[^.?!]*\bfor\b|check\b[^.?!]*\bfor\b)\b/i;
 // Marks an AREA search (vs "search the guard's pockets"): a place/generic target,
-// or a "for <loot/clues/…>" clause. Keeps a person-search out of the location path.
+// an OBJECT/FIXTURE of the location (door, frame, hearth — the baseline's T8 void:
+// "search the door and its frame for a hidden catch" fell through to a hollow
+// attempt because neither "door" nor "for a hidden" matched), or a "for <loot/
+// clues/…>" clause (articles allowed). Keeps a person-search out of this path.
 const SEARCH_AREA_RE =
-  /\b(?:area|room|ruins?|surroundings?|walls?|floor|rubble|debris|place|here|around|nearby|ground|corner|chamber|hall|passage|everything|for (?:anything|something|clues?|loot|valuables?|supplies|useful|hidden|secrets?|traps?|treasure))\b/i;
+  /\b(?:area|room|ruins?|surroundings?|walls?|floor|rubble|debris|place|here|around|nearby|ground|corner|chamber|hall|passage|everything|doors?|doorway|frame|lintel|window|windowsill|hearth|counter|bar|desk|table|chest|crate|barrel|shelf|shelves|floorboards?|panel|alcove|for (?:a |an |the )?(?:anything|something|clues?|loot|valuables?|supplies|useful|hidden|secrets?|traps?|treasure|catch|key|latch|lever|mechanism|compartment))\b/i;
 
 function presentNpcNamesLc(run) {
   const npcs = isPlainObject(run?.npcs) ? Object.values(run.npcs) : [];

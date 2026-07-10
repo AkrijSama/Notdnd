@@ -58,12 +58,26 @@ export function commitNarratedNpc(run, spec, options = {}) {
   }
   const displayName = spec.displayName.trim();
   const nameSlug = slugify(displayName);
-  // Dedupe: same explicit id, same slug, or same case-insensitive display name.
+  const firstNameLc = displayName.split(/\s+/)[0].toLowerCase();
+  // Dedupe-BIND (the two-Sables bug): same explicit id, same slug or
+  // case-insensitive name on EITHER displayName or generatedName, or a matching
+  // FIRST name (>=3 chars — identity-minted "Sable" vs narrated "Sable" 30s
+  // later). Mint-time uniqueness (npcIdentity) keeps first names unique per run,
+  // so a first-name match here means the same character — bind, never re-mint.
+  const nameMatches = (name) => {
+    if (!isString(name)) return false;
+    const trimmed = name.trim();
+    return (
+      slugify(trimmed) === nameSlug ||
+      trimmed.toLowerCase() === displayName.toLowerCase() ||
+      (firstNameLc.length >= 3 && trimmed.split(/\s+/)[0].toLowerCase() === firstNameLc)
+    );
+  };
   const existing = Object.values(run.npcs).find((npc) =>
     isPlainObject(npc) && (
       (isString(spec.npcId) && npc.npcId === spec.npcId) ||
-      slugify(npc.displayName) === nameSlug ||
-      (isString(npc.displayName) && npc.displayName.trim().toLowerCase() === displayName.toLowerCase())
+      nameMatches(npc.displayName) ||
+      nameMatches(npc.generatedName)
     )
   );
   if (existing) {
@@ -86,7 +100,9 @@ export function commitNarratedNpc(run, spec, options = {}) {
     // Narrated NPCs are hybrid: the fiction (GM) named them, the server commits them.
     origin: "hybrid",
     tags: Array.isArray(spec.tags) ? spec.tags.filter(isString) : [],
-    flags: isPlainObject(spec.flags) ? spec.flags : {}
+    // Born introduced: the narration that minted them IS their introduction —
+    // the first-appearance directive must not re-fire next turn.
+    flags: { ...(isPlainObject(spec.flags) ? spec.flags : {}), introduced: true }
   };
   if (isString(spec.appearance)) npc.appearance = spec.appearance.trim();
   if (isString(spec.personality)) npc.personality = spec.personality.trim();
@@ -316,6 +332,81 @@ export function backfillNpcGenderFromNarration(run, narrationText) {
     }
   }
   return updated;
+}
+
+// PRONOUN ENFORCEMENT AT NARRATION (baseline: he/him Mara narrated she ×5).
+// Same enforcement class as phantom rejection: the committed gender/pronouns are
+// server truth; narration contradicting them is detected and REPAIRED, not
+// trusted. Conservative surgery — only sentences that mention the NPC's name
+// (plus an immediately-following sentence that opens with the wrong pronoun)
+// are touched, and only when the narration's own usage measurably contradicts
+// the committed gender (inferNpcGenderFromNarration disagrees).
+const PRONOUN_SWAPS = {
+  female: [
+    [/\bhe\b/g, "she"], [/\bHe\b/g, "She"],
+    [/\bhimself\b/g, "herself"], [/\bHimself\b/g, "Herself"],
+    [/\bhim\b/g, "her"], [/\bHim\b/g, "Her"],
+    [/\bhis\b/g, "her"], [/\bHis\b/g, "Her"]
+  ],
+  male: [
+    [/\bshe\b/g, "he"], [/\bShe\b/g, "He"],
+    [/\bherself\b/g, "himself"], [/\bHerself\b/g, "Himself"],
+    [/\bhers\b/g, "his"], [/\bHers\b/g, "His"],
+    // "her" is object OR possessive: possessive when a word follows directly.
+    [/\bher\b(?=\s+[a-z])/g, "his"], [/\bHer\b(?=\s+[a-z])/g, "His"],
+    [/\bher\b/g, "him"], [/\bHer\b/g, "Him"]
+  ]
+};
+
+/**
+ * Pure. Detects and repairs narration pronouns that contradict a committed NPC's
+ * gender. Returns { text, repairs: [{ name, committed }] } — text unchanged and
+ * repairs empty when nothing contradicts. Non-binary commitments are detected
+ * but NOT text-repaired (verb agreement can't be patched safely); they surface
+ * in repairs with `unrepairable: true` so the caller can log them.
+ */
+export function repairNarrationPronouns(narrationText, npcs = []) {
+  let text = String(narrationText || "");
+  const repairs = [];
+  if (!text.trim()) {
+    return { text, repairs };
+  }
+  for (const npc of npcs) {
+    if (!isPlainObject(npc)) continue;
+    const committed = isString(npc.gender) ? npc.gender.trim().toLowerCase() : "";
+    if (!committed) continue;
+    const name = isString(npc.generatedName) && npc.generatedName.trim() ? npc.generatedName.trim() : (isString(npc.displayName) ? npc.displayName.trim() : "");
+    if (name.length < 3) continue;
+    const inferred = inferNpcGenderFromNarration(name, text);
+    if (!inferred || inferred.gender === committed) continue;
+    if (committed !== "female" && committed !== "male") {
+      repairs.push({ name, committed, unrepairable: true });
+      continue;
+    }
+    const swaps = PRONOUN_SWAPS[committed];
+    const nameRe = new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:['’]s)?\\b`, "i");
+    const wrongOpen = committed === "female" ? /^\s*(?:He|Him|His)\b/ : /^\s*(?:She|Her|Hers)\b/;
+    const sentences = text.split(/(?<=[.!?])\s+/);
+    let touched = false;
+    for (let i = 0; i < sentences.length; i += 1) {
+      const mentions = nameRe.test(sentences[i]);
+      const follows = i > 0 && nameRe.test(sentences[i - 1]) && wrongOpen.test(sentences[i]);
+      if (!mentions && !follows) continue;
+      let s = sentences[i];
+      for (const [re, sub] of swaps) {
+        s = s.replace(re, sub);
+      }
+      if (s !== sentences[i]) {
+        sentences[i] = s;
+        touched = true;
+      }
+    }
+    if (touched) {
+      text = sentences.join(" ");
+      repairs.push({ name, committed });
+    }
+  }
+  return { text, repairs };
 }
 
 // PHANTOM PLACE / LORE DETECTION (#41) — the moat, LORE side. The #27 detector

@@ -1279,8 +1279,29 @@ export function updateNpcIdentity(runId, npcId, identity = {}) {
   }
 
   if (typeof identity.generatedName === "string" && identity.generatedName.trim()) {
-    npc.generatedName = identity.generatedName.trim();
-    npc.displayName = npc.generatedName;
+    let name = identity.generatedName.trim();
+    // Final per-run first-name uniqueness guard (the two-Maras bug): if another
+    // committed NPC already holds this first name, suffix rather than collide.
+    // (Mint-time uniqueness lives in npcIdentity — this backstops stale queue
+    // jobs that were generated before the roster changed.) Inline, no import:
+    // npcIdentity imports this module, so the helper can't be reused here.
+    const firstLc = name.split(/\s+/)[0].toLowerCase();
+    const clash = Object.values(run.npcs || {}).some(
+      (other) =>
+        other && other.npcId !== npcId &&
+        [other.generatedName, other.displayName].some(
+          (n) => typeof n === "string" && n.trim().split(/\s+/)[0].toLowerCase() === firstLc && firstLc.length >= 3
+        )
+    );
+    if (clash) {
+      const renamed = `${name} the Younger`;
+      if (typeof identity.portraitPrompt === "string") {
+        identity.portraitPrompt = identity.portraitPrompt.replace(name, renamed);
+      }
+      name = renamed;
+    }
+    npc.generatedName = name;
+    npc.displayName = name;
   }
   if (typeof identity.appearance === "string") {
     npc.appearance = identity.appearance;
@@ -1413,6 +1434,12 @@ export function markNpcIntroduced(runId, npcId) {
     return false;
   }
   npc.introInstructions = null;
+  // Durable introduced flag: default (synthesized) intros have no
+  // introInstructions to consume, so the pending-intro check reads this.
+  if (!npc.flags || typeof npc.flags !== "object" || Array.isArray(npc.flags)) {
+    npc.flags = {};
+  }
+  npc.flags.introduced = true;
   bumpStateVersion();
   writeToDisk();
   return true;

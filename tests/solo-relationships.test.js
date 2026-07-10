@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createDefaultSoloRun, validateSoloRun } from "../server/solo/schema.js";
 import { commitSocialDisposition, resolveSocialTarget } from "../server/solo/relationships.js";
+import { resolveAttemptAction } from "../server/solo/attempt.js";
 
 const seq = () => {
   let n = 0;
@@ -54,6 +55,30 @@ test("commitSocialDisposition: no groundable target -> null (no phantom disposit
   const run = createDefaultSoloRun({ runId: "rel_none" });
   run.npcs = {}; // nobody present
   assert.equal(commitSocialDisposition(run, { intent: "persuade the barkeep", band: "success" }), null);
+});
+
+test("an ask/approach ATTEMPT commits disposition end-to-end (the baseline T5/T13 void class)", () => {
+  // "approach whoever is nearest and ask them their name" resolved as an automatic
+  // success with zero delta — now the conversational verbs are social-class, so
+  // resolveAttemptAction fires the disposition commit against the present NPC.
+  const run = runWithNpc();
+  const resolved = resolveAttemptAction(run, {
+    type: "attempt",
+    actorId: "player",
+    intent: "approach whoever is nearest and ask them their name"
+  }, {
+    attemptProviderFn: () => ({
+      summary: "You approach.", recommendedAbility: "charisma", dc: 10,
+      needsCheck: false, advantage: false, disadvantage: false,
+      successNarration: "They answer.", failureNarration: "They ignore you.",
+      proposedEffects: [], failureConsequence: null
+    })
+  });
+  assert.equal(resolved.ok, true);
+  const dc = resolved.attemptResult.dispositionChange;
+  assert.ok(dc, "conversational approach commits a delta");
+  assert.equal(dc.meter, "trust");
+  assert.equal(dc.after, 3);
 });
 
 test("resolveSocialTarget: names in intent beat the sole-present fallback", () => {

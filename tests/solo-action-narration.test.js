@@ -128,6 +128,24 @@ test("opening prompt grounds the character, world, location, and NPC", () => {
   assert.match(msg, /grimdark/);
 });
 
+test("#14 opening prompt is PINNED to the committed clock (no unpinned night register)", () => {
+  const msg = buildOpeningGmMessage({
+    characterName: "Kael",
+    world: { tone: "grimdark", startingLocation: { name: "The Ember Tavern" } },
+    worldTime: { clock: "07:00", phase: "day" }
+  });
+  assert.match(msg, /COMMITTED TIME: it is 07:00/);
+  assert.match(msg, /MUST read as day/);
+  assert.match(msg, /no nightfall, moonlight/i);
+  // a night clock pins the other direction
+  const night = buildOpeningGmMessage({ characterName: "Kael", world: {}, worldTime: { clock: "23:10", phase: "night" } });
+  assert.match(night, /COMMITTED TIME: it is 23:10/);
+  assert.match(night, /MUST read as night/);
+  // no worldTime (legacy callers) -> no clause, message otherwise intact
+  const bare = buildOpeningGmMessage({ characterName: "Kael", world: {} });
+  assert.doesNotMatch(bare, /COMMITTED TIME/);
+});
+
 test("opening prompt with a present NPC states WHY they are here (justified presence)", () => {
   const msg = buildOpeningGmMessage({
     characterName: "Kael",

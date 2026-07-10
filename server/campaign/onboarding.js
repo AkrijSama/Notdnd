@@ -9,7 +9,8 @@ import { runGmPipeline } from "../gm/prompting.js";
 import { buildOpeningGmMessage, buildOpeningFallback } from "../gm/actionNarration.js";
 import { buildCharacter, toRunPlayer } from "../solo/characterBuild.js";
 import { copyDraftPortraitToRun } from "../solo/imageWorker.js";
-import { generateNpcIdentity } from "../solo/npcIdentity.js";
+import { generateNpcIdentity, npcTakenNames } from "../solo/npcIdentity.js";
+import { ensureClock } from "../solo/worldClock.js";
 import { writeNpcMemoryDoc } from "../solo/npcMemory.js";
 import { buildFarLocation, buildSecondLocation, generateWorld } from "../solo/worldGen.js";
 import { createMainQuest } from "../solo/quests.js";
@@ -373,7 +374,10 @@ export async function createOnboardingCampaign(userId, characterInfo = {}) {
     const identity = await generateNpcIdentity({
       role: npc.role,
       worldSeed: run.worldSeed,
-      npcIndex
+      npcIndex,
+      // Per-run first-name uniqueness (the two-Maras bug): each mint checks the
+      // roster committed so far, so pre-seeded starting NPCs can never collide.
+      takenNames: npcTakenNames(run)
     });
     npc.generatedName = identity.generatedName;
     npc.appearance = identity.appearance;
@@ -690,7 +694,9 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
     const identity = await generateNpcIdentity({
       role: `${npcRole} in a ${resolvedWorld.tone} world`,
       worldSeed: run.worldSeed,
-      npcIndex: 0
+      npcIndex: 0,
+      // Per-run first-name uniqueness (the two-Maras bug).
+      takenNames: npcTakenNames(run)
     });
     npc.generatedName = identity.generatedName;
     npc.appearance = identity.appearance;
@@ -994,6 +1000,11 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
   const authoredOpening = (authoredBeats && authoredBeats.length)
     ? authoredBeats.join("\n\n")
     : (scenarioActive && isStr(scenario.opening?.authoredNarration) ? String(scenario.opening.authoredNarration) : null);
+  // #14: pin the opening to the run's COMMITTED clock (fresh runs start 07:00
+  // morning) — the opening was the one narration path without the clock directive,
+  // which produced the baseline's "night falls" openings at a committed 07:0x.
+  const openClock = ensureClock(run);
+  const openWorldTime = openClock ? { clock: openClock.clock, phase: openClock.phase } : null;
   const opening = authoredOpening || await generateOpeningNarration({
     campaignId,
     runId: run.runId,
@@ -1005,7 +1016,8 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
       npc: openNpc,
       npcReason: openNpcReason,
       baseBuilding: openBaseBuilding,
-      questObjective: openObjective
+      questObjective: openObjective,
+      worldTime: openWorldTime
     }),
     playerName: characterName,
     actorUserId,

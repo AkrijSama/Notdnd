@@ -105,6 +105,22 @@ function pronounsForGender(gender) {
   if (gender === "non-binary") return "they/them";
   return "";
 }
+// Name→gender tiebreaker (mint consistency: the he/him-Mara bug). Used ONLY when
+// the model gave no gender AND the appearance text carries no signal — a known
+// fallback name, then a light suffix heuristic, keeps name and gender coherent
+// instead of leaving a feminine-read name committed male by a coin-flip.
+const NAME_GENDER_HINTS = {
+  brynn: "female", mara: "female", kessa: "female", ilse: "female", vorga: "female",
+  sable: "female", dru: "female", yarrow: "female",
+  soren: "male", talin: "male", garrick: "male", renn: "male", hale: "male",
+  corwin: "male", esk: "male", fenn: "male"
+};
+function genderHintFromName(name) {
+  const first = String(name || "").trim().split(/\s+/)[0].toLowerCase();
+  if (!first) return "";
+  if (NAME_GENDER_HINTS[first]) return NAME_GENDER_HINTS[first];
+  return /[ae]$/.test(first) && first.length >= 3 ? "female" : "";
+}
 
 function parseIdentity(raw) {
   const text = String(raw || "").trim();
@@ -131,6 +147,51 @@ function pick(list, seed, offset = 0) {
   return list[(seed + offset) % list.length];
 }
 
+// --- Per-run first-name uniqueness (the two-Maras bug) -----------------------
+// Two mints in one run can land the same first name (the model repeats itself,
+// or two fallback picks collide) — two committed "Mara"s then share one identity
+// in the fiction and the narration can't tell them apart. Uniqueness is enforced
+// at MINT time against the committed roster; the narrated-commit path (#27)
+// instead dedup-BINDS to the existing entity (npcCommit.js), never renames.
+
+function firstTokenLc(name) {
+  return String(name || "").trim().split(/\s+/)[0].toLowerCase();
+}
+
+/** Names the committed roster already holds (generated + display), minus one npc. */
+export function npcTakenNames(run, excludeNpcId = null) {
+  return Object.values(run?.npcs || {})
+    .filter((npc) => npc && npc.npcId !== excludeNpcId)
+    .flatMap((npc) => [npc.generatedName, npc.displayName])
+    .filter((name) => isString(name));
+}
+
+/**
+ * Pure. Returns `name` if its FIRST name is unused in `takenNames`, else the
+ * first unused FALLBACK_NAMES entry (rotating from the seed), else a suffixed
+ * form. Articles/initials in placeholder display names ("A shaken traveler")
+ * are ignored (tokens < 3 chars never block a real name).
+ */
+export function ensureUniqueFirstName(name, takenNames = [], identitySeed = 0) {
+  const candidate = String(name || "").trim();
+  if (!candidate) {
+    return candidate;
+  }
+  const taken = new Set(
+    [...takenNames].map(firstTokenLc).filter((token) => token.length >= 3)
+  );
+  if (!taken.has(firstTokenLc(candidate))) {
+    return candidate;
+  }
+  for (let i = 0; i < FALLBACK_NAMES.length; i += 1) {
+    const alt = FALLBACK_NAMES[(Math.abs(identitySeed) + i) % FALLBACK_NAMES.length];
+    if (!taken.has(alt.toLowerCase())) {
+      return alt;
+    }
+  }
+  return `${candidate} the Younger`;
+}
+
 function assemblePortraitPrompt(name, role, appearance, gender = "") {
   // #50: name the gender FIRST so the base model renders the right figure (the
   // Mara-rendered-male bug) instead of defaulting to a male portrait.
@@ -142,13 +203,17 @@ function assemblePortraitPrompt(name, role, appearance, gender = "") {
 // Builds a complete, non-null identity. User-provided fields (`existing`) are
 // authoritative and never overwritten; AI-parsed fields come next; remaining
 // gaps are filled deterministically from the role + identitySeed.
-function synthesizeIdentity(parsed, role, identitySeed, existing = {}) {
+function synthesizeIdentity(parsed, role, identitySeed, existing = {}, takenNames = []) {
   const safeRole = isString(role) ? role.trim() : "stranger";
+  // Uniquify BEFORE the portrait prompt is assembled, so the prompt carries the
+  // final name. A USER-provided name is authoritative and never renamed.
   const generatedName = isString(existing.generatedName)
     ? existing.generatedName.trim()
-    : isString(parsed?.generatedName)
-      ? parsed.generatedName.trim()
-      : pick(FALLBACK_NAMES, identitySeed);
+    : ensureUniqueFirstName(
+        isString(parsed?.generatedName) ? parsed.generatedName.trim() : pick(FALLBACK_NAMES, identitySeed),
+        takenNames,
+        identitySeed
+      );
   const appearance = isString(existing.appearance)
     ? existing.appearance.trim()
     : isString(parsed?.appearance)
@@ -164,7 +229,9 @@ function synthesizeIdentity(parsed, role, identitySeed, existing = {}) {
   const gender =
     normalizeGender(existing.gender) ||
     normalizeGender(parsed?.gender) ||
-    inferGenderFromText(`${appearance} ${generatedName}`);
+    inferGenderFromText(`${appearance} ${generatedName}`) ||
+    // last resort: keep name and gender coherent (the he/him-Mara mint bug)
+    genderHintFromName(generatedName);
   const pronouns = isString(existing.pronouns) ? existing.pronouns.trim() : pronounsForGender(gender);
   // A user-set portraitPrompt wins; otherwise (re)assemble from the final
   // name + gender + appearance so the portrait matches the committed character.
@@ -181,7 +248,7 @@ function synthesizeIdentity(parsed, role, identitySeed, existing = {}) {
  * @param {{ role?: string, worldSeed?: string, npcIndex?: number, provider?: string, fetchImpl?: typeof fetch }} [args]
  * @returns {Promise<{ generatedName: string, appearance: string, personality: string, portraitPrompt: string, identitySeed: number }>}
  */
-export async function generateNpcIdentity({ role, worldSeed, npcIndex, existing = {}, provider, fetchImpl } = {}) {
+export async function generateNpcIdentity({ role, worldSeed, npcIndex, existing = {}, takenNames = [], provider, fetchImpl } = {}) {
   const identitySeed = deterministicSeed(worldSeed, npcIndex);
   const safeRole = isString(role) ? role.trim() : "stranger";
 
@@ -208,7 +275,7 @@ export async function generateNpcIdentity({ role, worldSeed, npcIndex, existing 
     }
   }
 
-  const identity = synthesizeIdentity(parseIdentity(raw), safeRole, identitySeed, userFields);
+  const identity = synthesizeIdentity(parseIdentity(raw), safeRole, identitySeed, userFields, takenNames);
   return { ...identity, identitySeed };
 }
 
@@ -261,6 +328,8 @@ export async function runIdentityJob(job = {}) {
     const identity = await generateNpcIdentity({
       role: npc.role,
       worldSeed: run.worldSeed,
+      // Per-run first-name uniqueness: never mint a name the roster already holds.
+      takenNames: npcTakenNames(run, npcId),
       npcIndex: indexFromNpcId(npcId),
       existing: {
         generatedName: npc.generatedName,
