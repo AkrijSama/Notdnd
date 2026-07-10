@@ -2630,7 +2630,8 @@ button:disabled {
   font-family: var(--font-body, Georgia, serif);
   font-size: calc(1.05rem * var(--solo-log-scale, 1));
   line-height: 1.5;
-  color: var(--text, #e7e9ee);
+  /* The VN textbox line IS NPC speech — light blue like all NPC dialogue. */
+  color: #9ed6ff;
   min-height: 1.5em;
   margin-bottom: 8px;
 }
@@ -2935,10 +2936,20 @@ button:disabled {
    2. AMBIENT description: muted body prose (--text-2, set on .solo-log-prose p).
    3. ACTION/MECHANICS: accent — the YOU anchor bar, intent, and band-coded roll
       badges (.solo-log-action / .solo-log-roll / outcome strip). */
+/* Owner spec: ALL NPC spoken dialogue is LIGHT BLUE (every skin). */
 .solo-dialogue {
-  color: var(--accent-bright, #e7e9ee);
+  color: #9ed6ff;
   font-style: italic;
-  background: color-mix(in srgb, var(--accent, #c2c6cf) 9%, transparent);
+  background: rgba(120, 180, 255, 0.08);
+  border-radius: 4px;
+  padding: 0 3px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+/* Owner spec: THE VOICE is a GOD — divine bracketed speech is YELLOW. */
+.solo-voice-dialogue {
+  color: #f5d76e;
+  background: rgba(245, 215, 110, 0.07);
   border-radius: 4px;
   padding: 0 3px;
   box-decoration-break: clone;

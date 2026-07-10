@@ -92,6 +92,22 @@ test("readHealedLogScale self-heals a stale/invalid persisted value", () => {
   assert.equal(writes.length, 0);
 });
 
+// ---- dialogue colors: NPC light blue, VOICE (god) yellow ----
+
+test("bracketed VOICE god-speech wraps in .solo-voice-dialogue; quoted NPC speech in .solo-dialogue", () => {
+  const html = renderNarrationLog([
+    { id: "n1", intent: "", text: '[ YOU ARE HEARD. ] The trees lean in. "Stay close to the fire," the barkeep says.' }
+  ]);
+  assert.match(html, /<span class="solo-voice-dialogue">\[ YOU ARE HEARD\. \]<\/span>/);
+  assert.match(html, /<span class="solo-dialogue">.*Stay close to the fire.*<\/span>/);
+});
+
+test("CSS pins NPC dialogue LIGHT BLUE and VOICE dialogue YELLOW; VN line is NPC-blue", () => {
+  assert.match(css, /\.solo-dialogue \{[^}]*color: #9ed6ff;/s, "NPC dialogue light blue");
+  assert.match(css, /\.solo-voice-dialogue \{[^}]*color: #f5d76e;/s, "VOICE god-speech yellow");
+  assert.match(css, /\.solo-vn-box-text \{[^}]*color: #9ed6ff;/s, "VN textbox speech light blue");
+});
+
 // ---- textFit: fixed-box text only, never prose ----
 
 test("textFit vendor is a dependency-free ESM function", async () => {

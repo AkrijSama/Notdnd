@@ -308,7 +308,10 @@ function isSpokenDialogue(quotedRun) {
 // name), so this is a render-time pass: split each paragraph on quoted runs
 // (straight OR curly), escape every segment, wrap only genuine speech in
 // .solo-dialogue. Escaping is per-segment so the wrapper markup is the only HTML.
-const DIALOGUE_RE = /(“[^”]*”|"[^"]*")/g;
+// Speech runs: quoted NPC dialogue (light blue) OR bracketed VOICE god-speech
+// ("[ YOU ARE HEARD. ]" — yellow). The VOICE speaks in brackets by convention,
+// so bracket runs are divine dialogue wherever they appear (opening + turns).
+const DIALOGUE_RE = /(“[^”]*”|"[^"]*"|\[[^\]\n]+\])/g;
 function paragraphInnerHtml(text) {
   const raw = String(text || "");
   if (!raw) {
@@ -318,6 +321,10 @@ function paragraphInnerHtml(text) {
     .split(DIALOGUE_RE)
     .filter((seg) => seg !== "" && seg !== undefined)
     .map((seg) => {
+      const looksBracketed = /^\[[\s\S]*\]$/.test(seg);
+      if (looksBracketed) {
+        return `<span class="solo-voice-dialogue">${escapeHtml(seg)}</span>`;
+      }
       const looksQuoted = /^“[\s\S]*”$/.test(seg) || (/^"[\s\S]*"$/.test(seg) && seg.length >= 2);
       return looksQuoted && isSpokenDialogue(seg)
         ? `<span class="solo-dialogue">${escapeHtml(seg)}</span>`
