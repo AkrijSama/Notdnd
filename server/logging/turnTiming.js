@@ -26,12 +26,17 @@ export function startTurnTiming(runId, actionType = "") {
   const t0 = Date.now();
   let prev = t0;
   const stages = {};
+  const meta = {};
   let finished = false;
   return {
     mark(stage) {
       const now = Date.now();
       stages[stage] = now - prev;
       prev = now;
+    },
+    // Non-stage annotations that ride the timing line (e.g. handlesRetry=0|1).
+    note(key, value) {
+      meta[String(key)] = value;
     },
     finish() {
       if (finished) {
@@ -43,6 +48,7 @@ export function startTurnTiming(runId, actionType = "") {
         runId: String(runId || ""),
         actionType: String(actionType || ""),
         stages: { ...stages },
+        meta: { ...meta },
         totalMs,
         at: new Date().toISOString()
       };
@@ -53,7 +59,8 @@ export function startTurnTiming(runId, actionType = "") {
       }
       try {
         const parts = Object.entries(stages).map(([k, v]) => `${k}=${v}ms`);
-        logTurnEvent(record.runId, `turnTiming ${parts.join(" ")} total=${totalMs}ms (${record.actionType || "action"})`);
+        const metaParts = Object.entries(meta).map(([k, v]) => `${k}=${v}`);
+        logTurnEvent(record.runId, `turnTiming ${parts.join(" ")}${metaParts.length ? ` ${metaParts.join(" ")}` : ""} total=${totalMs}ms (${record.actionType || "action"})`);
       } catch {
         // timing must never break a turn
       }

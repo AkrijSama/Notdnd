@@ -377,21 +377,44 @@ export function repairNarrationPronouns(narrationText, npcs = []) {
     if (!committed) continue;
     const name = isString(npc.generatedName) && npc.generatedName.trim() ? npc.generatedName.trim() : (isString(npc.displayName) ? npc.displayName.trim() : "");
     if (name.length < 3) continue;
-    const inferred = inferNpcGenderFromNarration(name, text);
-    if (!inferred || inferred.gender === committed) continue;
+    // GATE (widened for the S5 Talin slip): the old gate was a MAJORITY vote over
+    // the narration window (inferNpcGenderFromNarration) — MIXED usage ("…he
+    // wipes… She sets her mug…") ties or flips the vote and the repair never
+    // fired, while any single wrong pronoun near the name is still a visible
+    // contradiction. New gate: ANY wrong-gender pronoun inside the repair scope
+    // (a sentence mentioning the name, or one opening with the wrong pronoun
+    // right after such a sentence) triggers the repair of exactly that scope.
+    const nameRe = new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:['’]s)?\\b`, "i");
+    if (!nameRe.test(text)) continue;
     if (committed !== "female" && committed !== "male") {
-      repairs.push({ name, committed, unrepairable: true });
+      // Non-binary: detect a gendered pronoun near the name (window heuristic) —
+      // unrepairable (verb agreement can't be patched safely), surfaced for logs.
+      const inferred = inferNpcGenderFromNarration(name, text);
+      if (inferred && inferred.gender !== committed) {
+        repairs.push({ name, committed, unrepairable: true });
+      }
       continue;
     }
+    const wrongPronounRe = committed === "female" ? /\b(?:he|him|his|himself)\b/i : /\b(?:she|her|hers|herself)\b/i;
     const swaps = PRONOUN_SWAPS[committed];
-    const nameRe = new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:['’]s)?\\b`, "i");
     const wrongOpen = committed === "female" ? /^\s*(?:He|Him|His)\b/ : /^\s*(?:She|Her|Hers)\b/;
     const sentences = text.split(/(?<=[.!?])\s+/);
     let touched = false;
+    // Ambiguity guard: a sentence that ALSO names a different committed NPC of
+    // the opposite gender may legitimately use those pronouns for them — skip it
+    // (never swap another character's pronouns by proximity).
+    const oppositeNames = npcs
+      .filter((other) => isPlainObject(other) && other !== npc && isString(other.gender) && other.gender.trim().toLowerCase() !== committed)
+      .map((other) => (isString(other.generatedName) && other.generatedName.trim()) || (isString(other.displayName) ? other.displayName.trim() : ""))
+      .filter((n) => n.length >= 3);
+    const mentionsOpposite = (sentence) =>
+      oppositeNames.some((n) => new RegExp(`\\b${n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:['’]s)?\\b`, "i").test(sentence));
     for (let i = 0; i < sentences.length; i += 1) {
       const mentions = nameRe.test(sentences[i]);
       const follows = i > 0 && nameRe.test(sentences[i - 1]) && wrongOpen.test(sentences[i]);
       if (!mentions && !follows) continue;
+      if (!wrongPronounRe.test(sentences[i])) continue; // nothing wrong in scope
+      if (mentionsOpposite(sentences[i])) continue; // shared sentence — ambiguous
       let s = sentences[i];
       for (const [re, sub] of swaps) {
         s = s.replace(re, sub);
