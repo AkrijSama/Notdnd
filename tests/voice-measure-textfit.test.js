@@ -92,6 +92,22 @@ test("readHealedLogScale self-heals a stale/invalid persisted value", () => {
   assert.equal(writes.length, 0);
 });
 
+// ---- turn-scroll phases (owner fix: GM-thinking must not reset to top) ----
+
+test("turn-scroll policy: submit pins bottom ONCE, interim preserves, completion anchors newest", async () => {
+  const { resolveTurnScrollMode } = await import("../src/components/soloSceneShell.js");
+  // passive render (no live turn) → preserve the player's position
+  assert.equal(resolveTurnScrollMode({ pending: false }), "restore");
+  // submit render (turn pending, no new entry yet, not yet pinned) → bottom once
+  assert.equal(resolveTurnScrollMode({ pending: true, freshEntry: false, submitScrolled: false }), "pin-bottom");
+  // interim thinking renders (already pinned) → NEVER yank; preserve scroll
+  assert.equal(resolveTurnScrollMode({ pending: true, freshEntry: false, submitScrolled: true }), "restore");
+  // completion (the new log entry exists) → anchor ITS top (newest dialogue /
+  // most recent player action), never the top of the whole text
+  assert.equal(resolveTurnScrollMode({ pending: true, freshEntry: true, submitScrolled: true }), "anchor-newest");
+  assert.equal(resolveTurnScrollMode({ pending: true, freshEntry: true, submitScrolled: false }), "anchor-newest");
+});
+
 // ---- dialogue colors: NPC light blue, VOICE (god) yellow ----
 
 test("bracketed VOICE god-speech wraps in .solo-voice-dialogue; quoted NPC speech in .solo-dialogue", () => {

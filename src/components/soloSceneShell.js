@@ -2946,6 +2946,22 @@ export function readSoloThemePref(key, fallback) {
 // 0.8-1.6, 0.1 steps), and WRITE THE HEALED VALUE BACK when the stored raw is
 // stale/invalid ("9", "NaN", garbage) — so one bad write can never wedge the
 // sizer across reloads. Returns the sane multiplier.
+// Turn-scroll policy (owner fix 2026-07-10). Given the live-turn anchor state,
+// decide what the post-render scroll does:
+//   "anchor-newest" — the completion entry exists: land on ITS top (the player
+//                     action header + fresh narration, read from the start)
+//   "pin-bottom"    — the submit render: keep the newest content in view ONCE
+//   "restore"       — passive/interim renders: preserve the player's position
+export function resolveTurnScrollMode({ pending = false, freshEntry = false, submitScrolled = false } = {}) {
+  if (!pending) {
+    return "restore";
+  }
+  if (freshEntry) {
+    return "anchor-newest";
+  }
+  return submitScrolled ? "restore" : "pin-bottom";
+}
+
 export function readHealedLogScale(storage) {
   const store = storage !== undefined ? storage : (typeof localStorage !== "undefined" ? localStorage : null);
   let raw = null;
@@ -3108,6 +3124,10 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
   // runAction lifecycle and cleared after its final render; passive poll renders
   // (anchor off) still preserve scroll position.
   let anchorLiveTurnPending = false;
+  // Turn-scroll phase state: the log length at submit (a LONGER log later means
+  // the completion entry landed) and whether the one-shot submit bottom-pin ran.
+  let anchorLogCountAtSubmit = 0;
+  let anchorSubmitScrolled = false;
 
   // #15: the stage baseline recorded by the last FULL render — the fast-path
   // compares against it to decide whether the turn can be patched in place
@@ -3259,11 +3279,7 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       }
     }
 
-    if (anchorLiveTurnPending) {
-      scrollLiveTurnIntoView();
-    } else {
-      restoreSoloScroll(scrollSnapshot);
-    }
+    applyPostRenderScroll(scrollSnapshot);
     // The in-place rail repaint recreates cast names / roll chips — re-fit them.
     applySoloTextFit(root);
     return true;
@@ -3326,13 +3342,10 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       onBringBack: handleBringBack
     });
     restoreSoloFocus(focusSnapshot);
-    // Action render -> keep the player's eye on the live turn (their action went
-    // through, the GM is working); passive render -> preserve where they were.
-    if (anchorLiveTurnPending) {
-      scrollLiveTurnIntoView();
-    } else {
-      restoreSoloScroll(scrollSnapshot);
-    }
+    // Action render -> phase-aware turn scroll (submit pins bottom once, interim
+    // renders preserve position, completion anchors the new entry's top);
+    // passive render -> preserve where they were.
+    applyPostRenderScroll(scrollSnapshot);
     // #15: snapshot the stage so the NEXT render can decide whether it's a
     // patchable turn (only the log/outcome/input changed) or a full rebuild.
     recordStageBaseline();
@@ -3381,6 +3394,48 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       el.scrollTop = snapshot.top;
     } catch {
       // Non-fatal — restoring scroll is best-effort.
+    }
+  }
+
+  // TURN-SCROLL PHASES (owner fix 2026-07-10: "GM thinking resets scroll to the
+  // top"). anchorLiveTurnPending is set at SUBMIT, but the new log entry only
+  // exists at COMPLETION — anchoring `.solo-log-entry:last-child` during the
+  // thinking phase targeted the PREVIOUS entry's top, which on a young run is
+  // the top of the whole text. Phase-aware behavior instead:
+  //   submit render      -> pin the log to the BOTTOM once (the newest content /
+  //                         the player's just-sent action context stays in view)
+  //   interim thinking   -> preserve the player's scroll (they may be re-reading)
+  //   completion render  -> anchor the NEW entry's top (the player-action header
+  //                         + fresh narration read from the beginning)
+  // Pure decision fn, exported for tests.
+  const resolveTurnScrollModeLocal = (pending, freshEntry, submitScrolled) =>
+    resolveTurnScrollMode({ pending, freshEntry, submitScrolled });
+
+  function scrollLogToBottom() {
+    const container = getSoloScroller();
+    if (!container) {
+      return;
+    }
+    try {
+      if (typeof container.scrollHeight === "number") {
+        container.scrollTop = container.scrollHeight;
+      }
+    } catch {
+      // best-effort
+    }
+  }
+
+  // One post-render scroll policy for BOTH render paths (full + patch).
+  function applyPostRenderScroll(scrollSnapshot) {
+    const freshEntry = Array.isArray(state.narrationLog) && state.narrationLog.length > anchorLogCountAtSubmit;
+    const mode = resolveTurnScrollModeLocal(anchorLiveTurnPending, freshEntry, anchorSubmitScrolled);
+    if (mode === "anchor-newest") {
+      scrollLiveTurnIntoView();
+    } else if (mode === "pin-bottom") {
+      anchorSubmitScrolled = true;
+      scrollLogToBottom();
+    } else {
+      restoreSoloScroll(scrollSnapshot);
     }
   }
 
@@ -3707,10 +3762,14 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     state.busy = label;
     state.banner = "";
     clearLag();
-    // Anchor every render for this action's lifecycle on the live turn (submit ->
-    // thinking banner -> result), so the player keeps their place and the "GM is
-    // thinking" indicator stays visible while the call is pending.
+    // Anchor this action's lifecycle on the live turn, phase-aware (owner fix
+    // 2026-07-10): the submit render pins the log BOTTOM once (newest content /
+    // the just-sent action stays in view — never yanked to the top), interim
+    // thinking renders preserve the player's scroll, and the completion render
+    // anchors the NEW entry's top (see resolveTurnScrollMode).
     anchorLiveTurnPending = true;
+    anchorLogCountAtSubmit = Array.isArray(state.narrationLog) ? state.narrationLog.length : 0;
+    anchorSubmitScrolled = false;
     if (typeof setTimeout === "function") {
       // Timer-triggered: the "GM is thinking" lag indicator must not rebuild the
       // DOM (and drop focus) if the player is mid-keystroke in a text field.
