@@ -4703,16 +4703,24 @@ textarea.hb-input { min-height: 76px; resize: vertical; }
 }
 
 /* =========================================================================
-   ONE MEASURE RULE (voice-block-layout-fix). Every narration-column prose
-   block carries .solo-measure in markup and gets exactly this treatment:
-   centered, max ~75ch. No prose path may bypass it. Deliberately LAST in the
+   ONE MEASURE RULE (voice-block-layout-fix + measure-alignment-tune). Every
+   narration-column prose block carries .solo-measure in markup and gets
+   exactly this treatment: BOOK-PAGE anchored left-of-center (owner spec —
+   dead-centering read as "centered too heavily"), max ~75ch, left-aligned
+   text. The larger empty space falls to the RIGHT, where the scene art
+   already breathes. No prose path may bypass it. Deliberately LAST in the
    file so no earlier same-specificity shorthand (the .solo-scene-opening
-   margin bug) can zero the centering again.
+   margin bug) can zero the anchoring again.
    ========================================================================= */
 .solo-measure {
   max-width: 75ch;
-  margin-left: auto;
+  margin-left: clamp(24px, 8%, 120px);
   margin-right: auto;
+  /* Body prose is never center-aligned. */
+  text-align: left;
+}
+.solo-measure p {
+  text-align: left;
 }
 
 /* textFit targets: bounded single-line boxes whose text must shrink-to-fit

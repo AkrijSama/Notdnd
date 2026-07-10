@@ -33,9 +33,12 @@ test("log entries and the location card carry the shared measure class", () => {
   assert.match(loc, /solo-location-card solo-measure/);
 });
 
-test("styles.css defines the ONE measure rule and the opening no longer zeroes centering", () => {
-  assert.match(css, /\.solo-measure \{[^}]*max-width: 75ch;[^}]*margin-left: auto;[^}]*margin-right: auto;/s);
-  // the root-cause shorthand: .solo-scene-opening horizontal margins must be auto
+test("styles.css defines the ONE measure rule: book-page left anchor + left-aligned prose", () => {
+  // measure-alignment-tune: fixed left offset (clamp), auto right, never centered
+  assert.match(css, /\.solo-measure \{[^}]*max-width: 75ch;[^}]*margin-left: clamp\(24px, 8%, 120px\);[^}]*margin-right: auto;[^}]*text-align: left;/s);
+  assert.match(css, /\.solo-measure p \{[^}]*text-align: left;/s);
+  // the root-cause shorthand: .solo-scene-opening horizontal margins stay auto so
+  // the later .solo-measure longhands (left clamp / right auto) win the cascade
   const opening = css.match(/\.solo-scene-opening \{[^}]*\}/s)[0];
   assert.match(opening, /margin: 4px auto 14px/);
 });
