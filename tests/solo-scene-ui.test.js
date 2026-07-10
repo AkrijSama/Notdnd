@@ -795,17 +795,28 @@ test("dispatchSoloClick: a Talk button INSIDE an inspectable card fires talk, NO
   assert.equal(inspected, null, "card inspect must NOT also fire");
 });
 
-test("dispatchSoloClick: move, bring-back and cog dispatch correctly", () => {
-  // tab bar removed (nuke-chrome-fullbleed-scene) — no onTab.
+test("dispatchSoloClick: move and bring-back dispatch correctly", () => {
+  // tab bar removed (chrome nuke); cog placeholders removed (UI audit —
+  // "coming soon" controls are lying UI, so no onCogPlaceholder dispatch exists).
   let moved = null;
   let broughtBack = null;
-  let cog = null;
   dispatchSoloClick(clickTarget({ "[data-solo-action='move']": { "data-location-id": "loc_b", "data-direction": "east" } }), { onMove: (m) => (moved = m) });
   dispatchSoloClick(clickTarget({ "[data-solo-npc-bringback]": { "data-entity-id": "npc:y" } }), { onBringBack: (e) => (broughtBack = e) });
-  dispatchSoloClick(clickTarget({ "[data-solo-cog]": { "data-solo-cog": "settings" } }), { onCogPlaceholder: (v) => (cog = v) });
   assert.deepEqual(moved, { locationId: "loc_b", direction: "east" });
   assert.deepEqual(broughtBack, { entityId: "npc:y" });
-  assert.equal(cog, "settings");
+});
+
+test("cog placeholder controls are GONE (audit removal pin): no cog dispatch, no Settings/Report items", async () => {
+  const { renderSoloSceneShell: shell } = await import("../src/components/soloSceneShell.js");
+  const html = shell({ scene: { location: { name: "T" } }, menuOpen: true });
+  assert.doesNotMatch(html, /data-solo-cog/);
+  assert.doesNotMatch(html, /coming soon/);
+  assert.doesNotMatch(html, />Settings</);
+  assert.doesNotMatch(html, /Report a bug/);
+  // the honest survivors stay
+  assert.match(html, /data-solo-exit/);
+  const handled = dispatchSoloClick(clickTarget({ "[data-solo-cog]": { "data-solo-cog": "x" } }), { onCogPlaceholder: () => {} });
+  assert.equal(handled, false, "cog selector no longer dispatches");
 });
 
 test("dispatchSoloClick returns false for an unrelated target", () => {

@@ -735,7 +735,6 @@ export function renderOnboardingFlow(onboardingState = {}) {
         ${exchanges >= 3 ? `
           <div class="onboarding-hint">
             <p>Want to invite friends to play? You can start a full session anytime.</p>
-            <button class="ghost" data-action="onboarding-open-dashboard">Open Campaign Dashboard</button>
           </div>
         ` : ""}
 
@@ -998,10 +997,4 @@ export function bindOnboardingFlow(root, handlers = {}) {
     });
   }
 
-  const dashboardBtn = root.querySelector('[data-action="onboarding-open-dashboard"]');
-  if (dashboardBtn) {
-    dashboardBtn.addEventListener("click", () => {
-      handlers.onOpenDashboard?.();
-    });
-  }
 }

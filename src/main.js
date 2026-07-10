@@ -1238,16 +1238,6 @@ async function sendOnboardingMessage(message) {
   scheduleRender();
 }
 
-function openOnboardingCampaignDashboard() {
-  uiState.onboarding = {
-    ...uiState.onboarding,
-    step: "completed",
-    thinking: false,
-    loading: false
-  };
-  scheduleRender();
-}
-
 // Guest play (DEFECT 13): the first screen must be the game, not a registration
 // wall. One click mints an anonymous identity server-side and drops the visitor
 // straight into onboarding; the save/register prompt comes AFTER they're hooked.
@@ -1731,7 +1721,6 @@ function renderApp() {
       bindOnboardingFlow(onboardingRoot, {
         onStart: startOnboarding,
         onSendMessage: sendOnboardingMessage,
-        onOpenDashboard: openOnboardingCampaignDashboard,
         onWorldField: onWorldFieldSelect,
         onWorldFieldInput,
         onGenerateWorld: generateWorld,

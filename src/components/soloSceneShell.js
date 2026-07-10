@@ -2282,9 +2282,6 @@ export function renderSoloSceneShell(state = {}) {
           <div class="solo-settings-menu solo-cog-menu" role="menu">
             ${state.isGuest ? `<button type="button" class="solo-cog-item" data-solo-guest-save role="menuitem">Save your adventure</button>` : ""}
             <button type="button" class="solo-cog-item" data-solo-exit role="menuitem">Leave Adventure</button>
-            <button type="button" class="solo-cog-item" data-solo-cog="Settings" role="menuitem">Settings</button>
-            <button type="button" class="solo-cog-item" data-solo-cog="Report a bug" role="menuitem">Report a bug</button>
-            ${state.cogNote ? `<div class="solo-cog-note">${escapeHtml(state.cogNote)}</div>` : ""}
           </div>
         ` : ""}
       </div>
@@ -2397,7 +2394,6 @@ export function dispatchSoloClick(target, handlers = {}) {
   if ((el = closest("[data-solo-exit]"))) { handlers.onExit?.(); return true; }
   if ((el = closest("[data-solo-guest-save]"))) { handlers.onGuestSave?.(); return true; }
   if ((el = closest("[data-solo-menu-toggle]"))) { handlers.onMenuToggle?.(); return true; }
-  if ((el = closest("[data-solo-cog]"))) { handlers.onCogPlaceholder?.(el.getAttribute("data-solo-cog")); return true; }
   return false;
 }
 
@@ -2799,7 +2795,6 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     victoryTyped: false,
     runSummary: null,
     menuOpen: false,
-    cogNote: "",
     dialogueActive: false,
     dialogueTyped: false,
     dialogueHistory: [],
@@ -2858,7 +2853,6 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
         skin: normalizeSkin(state.skin),
         font: normalizeFontSet(state.fontSet),
         menu: Boolean(state.menuOpen),
-        cog: state.cogNote || "",
         guest: Boolean(state.isGuest),
         banner: state.banner || "",
         bannerKind: state.bannerKind || "",
@@ -3023,7 +3017,6 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       onGuestSave: handleGuestSave,
       onDismissBanner: handleDismissBanner,
       onMenuToggle: handleMenuToggle,
-      onCogPlaceholder: handleCogPlaceholder,
       onMove: handleMove,
       onInspect: handleInspect,
       onTalk: handleTalk,
@@ -3409,7 +3402,6 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
 
   function handleMenuToggle() {
     state.menuOpen = !state.menuOpen;
-    state.cogNote = "";
     render();
   }
 
@@ -3528,11 +3520,6 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
 
 
 
-
-  function handleCogPlaceholder(label) {
-    state.cogNote = `${label} — coming soon`;
-    render();
-  }
 
   // Concludes the run server-side exactly once and caches its summary.
   // Best-effort: a failed close must never block the death screen or navigation.
