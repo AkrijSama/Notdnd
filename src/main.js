@@ -5,7 +5,7 @@ import { createApiClient } from "./api/client.js";
 // their render/bind dispatchers (renderActiveTab + the activeTab bind switch) were
 // never reached. Only homebrewManager survives — it IS used on the live solo path.
 import { renderHomebrewManager, bindHomebrewManager, homebrewDraftToItem, itemToDraft } from "./components/homebrewManager.js";
-import { renderOnboardingFlow, bindOnboardingFlow } from "./components/onboardingFlow.js";
+import { renderOnboardingFlow, bindOnboardingFlow, validatePortraitUpload } from "./components/onboardingFlow.js";
 import { soloRunActionLabel } from "./state/runLabels.js";
 import { ABILITIES, pointBuyCost, rollAbilityScores } from "../server/solo/dndData.js";
 import {
@@ -703,6 +703,36 @@ function charField(field, value) {
   scheduleRender();
 }
 
+// ---- "I'll upload my own" portrait (upload path — zero generation) ----
+// Validates client-side (png/jpg/webp, 5MB — visible error on reject), uploads
+// the file as the draft portrait, and treats it as accepted: the upload is the
+// player's explicit choice. enterWorld carries the returned draftId so the run
+// uses the uploaded image (server copyDraftPortraitToRun).
+async function handlePortraitFile(file) {
+  const verdict = validatePortraitUpload(file);
+  if (!verdict.ok) {
+    uiState.onboarding.portraitUploadError = verdict.error;
+    scheduleRender();
+    return;
+  }
+  uiState.onboarding.portraitUploadError = "";
+  stopDraftPortraitPoll();
+  uiState.onboarding.draftPortraitStatus = "generating"; // brief "working" state while the upload posts
+  scheduleRender();
+  try {
+    const res = await apiClient.uploadDraftPortrait(file);
+    uiState.onboarding.draftPortraitId = res.draftId;
+    uiState.onboarding.draftPortraitUri = res.uri;
+    uiState.onboarding.draftPortraitStatus = "generated";
+    uiState.onboarding.draftPortraitAccepted = true;
+    recordPortraitVersion(res.draftId, res.uri);
+  } catch (error) {
+    uiState.onboarding.draftPortraitStatus = "failed";
+    uiState.onboarding.portraitUploadError = String(error?.message || "Upload failed — try again.");
+  }
+  scheduleRender();
+}
+
 let draftPortraitDebounceTimer = null;
 function scheduleDraftPortrait() {
   if (draftPortraitDebounceTimer) {
@@ -772,6 +802,11 @@ function startDraftPortraitPoll(draftId, key) {
 
 async function maybeRequestDraftPortrait() {
   const c = uiState.onboarding.character || {};
+  // "I'll upload my own": the player's file IS the portrait — NO generation
+  // call may fire on this path (it was silently overriding the upload choice).
+  if (c.portraitMode === "upload") {
+    return;
+  }
   if (!c.race || !c.characterClass) {
     return; // need both race + class before a meaningful portrait
   }
@@ -1707,6 +1742,7 @@ function renderApp() {
         onCharField: charField,
         onCharInput: charInput,
         onPortraitRedo: redoDraftPortrait,
+        onPortraitFile: handlePortraitFile,
         onPortraitAccept: acceptDraftPortrait,
         onPortraitEdit: submitPortraitEdit,
         onPortraitEditInput: portraitEditInput,

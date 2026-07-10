@@ -124,6 +124,8 @@ import { buildGmRuntimeStatus } from "./solo/gmSmoke.js";
 import { enqueueDraftPortrait, enqueueImageJob, enqueueLocationImageJob, enqueuePlayerImageJob, enqueueVnBodyImageJob, getDraftPortrait, writeUploadedBasePortrait } from "./solo/imageWorker.js";
 import { enqueueIdentityJob, runIdentityJob } from "./solo/npcIdentity.js";
 import { buildNpcIntroDirective, buildSoloScenePayload, collectNpcsWithPendingIntro } from "./solo/scene.js";
+import { buildSystemLoreClause, detectSystemLoreViolations } from "./gm/systemLore.js";
+import { enforceHandles, HANDLES_CORRECTIVE_CLAUSE } from "./gm/handlesEnforcement.js";
 import { auditAndCommitNarratedNpcs, auditAndCommitNarratedLore, auditAndCommitInventedAgents, backfillNpcGenderFromNarration, repairNarrationPronouns } from "./solo/npcCommit.js";
 import { refreshSceneSuggestions } from "./solo/suggestions.js";
 
@@ -1067,6 +1069,9 @@ async function narrateActionWithGm(run, resolved, user) {
   // PRONOUN GROUNDING: committed gender/pronouns for every present NPC ride the
   // context, so the model never has to guess (the he/him-Mara narrated-she bug).
   message += buildPronounDirective(run);
+  // SYSTEM LORE (item 1): the WINDOW/VOICE world-law facts ground every turn, so
+  // the model never invents system capabilities ("the window will remember…").
+  message += buildSystemLoreClause();
   // COMPOUND ACTION (#6): a multi-part intent resolved on ONE roll — constrain the
   // prose to that single committed outcome so it can't narrate every part landing.
   message += buildCompoundDirective(resolved);
@@ -1078,19 +1083,21 @@ async function narrateActionWithGm(run, resolved, user) {
   }
   const ceiling = effectiveActionTimeoutMs();
   const t0 = Date.now();
-  const { timedOut, value, error } = await withGmTimeout(
-    runGmPipeline({
-      campaignId: run.campaignId,
-      message,
-      mode: "companion",
-      playerName: run.player?.displayName || "the wanderer",
-      actorUserId: user?.id,
-      edition: run.edition,
-      // Fire-after-response: the knowledge-graph write must not block the turn.
-      deferMemory: true
-    }),
-    ceiling
-  );
+  const generateOnce = (msg) =>
+    withGmTimeout(
+      runGmPipeline({
+        campaignId: run.campaignId,
+        message: msg,
+        mode: "companion",
+        playerName: run.player?.displayName || "the wanderer",
+        actorUserId: user?.id,
+        edition: run.edition,
+        // Fire-after-response: the knowledge-graph write must not block the turn.
+        deferMemory: true
+      }),
+      ceiling
+    );
+  const { timedOut, value, error } = await generateOnce(message);
   const latencyMs = Date.now() - t0;
   // FORMERLY SILENT (#5/#6): the route-level backstop fired before the model
   // returned. Now LOUD — which run, how long, that the deterministic template is
@@ -1108,14 +1115,38 @@ async function narrateActionWithGm(run, resolved, user) {
   // still slips one occasionally (leaked on 4/15 turns of run_b06da13d). Strip the
   // finished LIVE prose too so the player never sees a dash-tell on screen — the
   // same sanitizer the fallback templates use.
-  const narrative = value && typeof value.narrative === "string" ? stripAiTells(value.narrative.trim()) : "";
+  let narrative = value && typeof value.narrative === "string" ? stripAiTells(value.narrative.trim()) : "";
   const model = value?.meta?.model || "unknown";
   const provider = gmProviderForModel(model);
   if (!narrative) {
     logTurnEvent(run.runId, `GM returned EMPTY narration (${provider} ${model}, ${latencyMs}ms) — using deterministic template.`);
     return { narration: null, source: "template-empty", provider, model, latencyMs };
   }
-  return { narration: narrative, source: "provider", provider, model, latencyMs };
+  // HANDLES ENFORCEMENT (item 5): one corrective regeneration when the draft has
+  // no closing handles; never blocks a turn (see server/gm/handlesEnforcement.js).
+  let handlesRetry = 0;
+  try {
+    const handleScene = {
+      cast: presentNpcsForVn(run).map((npc) => ({ displayName: npc.generatedName || npc.displayName || "", present: true }))
+    };
+    const enforced = await enforceHandles(narrative, {
+      scene: handleScene,
+      regenerate: async () => {
+        const retry = await generateOnce(`${message}${HANDLES_CORRECTIVE_CLAUSE}`);
+        return !retry.timedOut && !retry.error && retry.value && typeof retry.value.narrative === "string"
+          ? stripAiTells(retry.value.narrative.trim())
+          : "";
+      }
+    });
+    if (enforced.handlesRetry) {
+      logTurnEvent(run.runId, `handles-retry fired (draft had no closing directions); retry ${enforced.retryReplaced ? "replaced the draft" : "failed — keeping the first draft"}`);
+    }
+    narrative = enforced.narrative;
+    handlesRetry = enforced.handlesRetry;
+  } catch {
+    // enforcement must never break a turn
+  }
+  return { narration: narrative, source: "provider", provider, model, latencyMs: Date.now() - t0, handlesRetry };
 }
 
 // OOC (#37/#38) — the GM answers an out-of-character note AS THE GM (meta), never
@@ -1804,7 +1835,20 @@ async function handleApi(req, res) {
         refreshSceneSuggestions(responseRun, setSoloRunSuggestions)
       ]);
       timing.mark("gm");
+      // item 5: whether the handles-enforcement retry fired rides the timing line.
+      timing.note("handlesRetry", gmResult?.handlesRetry ? 1 : 0);
       let gmNarration = gmResult?.narration || null;
+      // SYSTEM-LORE AUDITOR (item 1, live check — NOT a ruler change): flag any
+      // narration attributing a does-NOT capability to the WINDOW or VOICE.
+      if (typeof gmNarration === "string" && gmNarration.trim()) {
+        const loreViolations = detectSystemLoreViolations(gmNarration);
+        if (loreViolations.length > 0) {
+          logTurnEvent(
+            responseRun.runId,
+            `system-lore VIOLATION: ${loreViolations.map((v) => `${v.subject} "${v.verb}" — ${v.sentence}`).join(" | ")}`
+          );
+        }
+      }
       // PRONOUN ENFORCEMENT (item 6): repair narration that contradicts a present
       // NPC's committed gender BEFORE anything consumes it — same enforcement
       // class as phantom rejection (the server's pronouns are truth). Repairs are
@@ -2604,6 +2648,40 @@ async function handleApi(req, res) {
         consistentEdit: pollinationsEditConfigured(),
         entitlement: entitlementSummary(user, { byok })
       });
+    } catch (error) {
+      routeError(res, error);
+    }
+    return true;
+  }
+
+  // UPLOAD a draft portrait (the "I'll upload my own" onboarding path). The
+  // player's file IS the portrait: it lands on disk in the standard draft layout
+  // (assets/<draftId>/player/base.<ext>) so the existing disk-first plumbing does
+  // the rest — getDraftPortrait() reports it generated, runDraftPortraitJob's
+  // idempotency SKIPS generation for this draftId, and world-run's
+  // copyDraftPortraitToRun carries it onto the run player. NO generation call
+  // fires anywhere on this path. png/jpg/webp, 5MB cap (owner spec).
+  if (req.method === "POST" && url.pathname === "/api/onboarding/portrait/upload") {
+    try {
+      const MAX_UPLOAD_PORTRAIT_BYTES = 5 * 1024 * 1024;
+      requireAuth(req);
+      // 1MB slack for the multipart envelope; the real cap applies to file bytes.
+      const raw = await readRawBody(req, MAX_UPLOAD_PORTRAIT_BYTES + 1024 * 1024);
+      const file = parseMultipartFile(raw, req.headers["content-type"]);
+      if (!file || !file.data || file.data.length === 0) {
+        throw Object.assign(new Error("No image file provided."), { code: "BAD_REQUEST", statusCode: 400 });
+      }
+      if (file.data.length > MAX_UPLOAD_PORTRAIT_BYTES) {
+        throw Object.assign(new Error("Image exceeds the 5MB limit."), { code: "PAYLOAD_TOO_LARGE", statusCode: 413 });
+      }
+      const ext = detectImageExt(file.data);
+      if (!ext || !["png", "jpg", "jpeg", "webp"].includes(ext)) {
+        throw Object.assign(new Error("Unsupported image type. Use PNG, JPG, or WEBP."), { code: "UNSUPPORTED_MEDIA_TYPE", statusCode: 415 });
+      }
+      // Server-minted draftId (never client-supplied — no path traversal).
+      const draftId = `draft_upload_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+      const { uri } = writeUploadedBasePortrait(draftId, "player", ext, file.data);
+      writeJson(res, 201, { ok: true, draftId, status: "generated", uri });
     } catch (error) {
       routeError(res, error);
     }

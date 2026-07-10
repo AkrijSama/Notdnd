@@ -239,6 +239,27 @@ export function createApiClient(baseUrl = "") {
       }
       return payload;
     },
+    // Onboarding "I'll upload my own" portrait: the file IS the portrait — the
+    // server writes it into the draft layout and NO generation fires on this
+    // path. Multipart (no manual Content-Type; the browser sets the boundary).
+    async uploadDraftPortrait(file) {
+      const headers = {};
+      if (authToken) {
+        headers.Authorization = `Bearer ${authToken}`;
+      }
+      const form = new FormData();
+      form.append("file", file);
+      const response = await fetch(`${baseUrl}/api/onboarding/portrait/upload`, { method: "POST", headers, body: form });
+      const payload = await response.json();
+      if (!response.ok || payload.ok === false) {
+        const error = new Error(payload.error || `Request failed: ${response.status}`);
+        error.code = payload.code;
+        error.status = response.status;
+        error.payload = payload;
+        throw error;
+      }
+      return payload;
+    },
     async applyOperation(op, payload = {}, expectedVersion = null) {
       return request("/api/ops", {
         method: "POST",

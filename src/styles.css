@@ -3622,6 +3622,12 @@ button:disabled {
 .cw-step.done { color: var(--text, #d9dbe0); border-color: var(--border-strong, #34343b); }
 .cw-body { display: flex; flex-direction: column; gap: 14px; }
 .onb-hint { font-size: 12px; color: var(--text-muted, #9a8b76); }
+/* Upload-my-own portrait control (onboarding): a real file picker + a visible
+   validation error. */
+.onb-upload { display: block; margin: 8px 0 4px; }
+.onb-upload input[type="file"] { display: block; margin-bottom: 4px; color: var(--text-2, #b0b3bb); }
+.onb-upload span { font-size: 12px; color: var(--text-muted, #9a8b76); }
+.onb-upload-error { display: block; margin: 4px 0; color: #d98a86; font-weight: 600; }
 .cw-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
 .cw-card {
   appearance: none; cursor: pointer; text-align: left; display: flex; flex-direction: column; gap: 4px;

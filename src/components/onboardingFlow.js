@@ -319,8 +319,28 @@ function renderPortraitEditor(portrait = {}) {
     </div>`;
 }
 
+// Client-side validation for the "I'll upload my own" portrait path (owner
+// spec: png/jpg/webp, 5MB cap, visible error on reject). Pure — takes the
+// file's {name,type,size}; exported for tests.
+export const PORTRAIT_UPLOAD_MAX_BYTES = 5 * 1024 * 1024;
+const PORTRAIT_UPLOAD_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
+export function validatePortraitUpload(file) {
+  if (!file) {
+    return { ok: false, error: "Choose an image file first." };
+  }
+  const type = String(file.type || "").toLowerCase();
+  if (!PORTRAIT_UPLOAD_TYPES.has(type)) {
+    return { ok: false, error: "That file type isn't supported — use a PNG, JPG, or WEBP image." };
+  }
+  if (Number(file.size) > PORTRAIT_UPLOAD_MAX_BYTES) {
+    return { ok: false, error: "That image is over the 5MB limit — pick a smaller file." };
+  }
+  return { ok: true };
+}
+
 function renderCharIdentity(c, portrait = {}) {
   const mode = c.portraitMode || "generate";
+  const uploadError = typeof portrait.uploadError === "string" ? portrait.uploadError : "";
   return `
     <div class="onb-identity">
       <div class="onb-identity-fields">
@@ -333,7 +353,16 @@ function renderCharIdentity(c, portrait = {}) {
             ${renderChip("Let the GM imagine them", mode === "generate", 'data-cw-portraitmode="generate"')}
             ${renderChip("I'll upload my own", mode === "upload", 'data-cw-portraitmode="upload"')}
           </div>
-          <small class="onb-hint">Your portrait is crafted from your race and class — it appears here as you choose them.</small>
+          ${
+            mode === "upload"
+              ? `<label class="onb-upload">
+                   <input type="file" data-cw-portrait-file accept="image/png,image/jpeg,image/webp" />
+                   <span>Choose an image (PNG, JPG, or WEBP · up to 5MB)</span>
+                 </label>
+                 ${uploadError ? `<small class="onb-upload-error" role="alert">${esc(uploadError)}</small>` : ""}
+                 <small class="onb-hint">Your image is used as-is — nothing is generated on this path.</small>`
+              : `<small class="onb-hint">Your portrait is crafted from your race and class — it appears here as you choose them.</small>`
+          }
         </div>
       </div>
       <div class="onb-identity-portrait">
@@ -500,7 +529,9 @@ function renderCharacterWizard(state) {
     editDraft: typeof state.portraitEditDraft === "string" ? state.portraitEditDraft : "",
     editPending: state.portraitEditPending === true,
     editError: state.portraitEditError || "",
-    consistentEdit: state.portraitConsistentEdit === true
+    consistentEdit: state.portraitConsistentEdit === true,
+    // Upload-my-own path: the visible client-side validation error.
+    uploadError: typeof state.portraitUploadError === "string" ? state.portraitUploadError : ""
   };
   // SRD-shaped custom content catalogs (from the user's homebrew); additive to SRD.
   const custom = state.customContent || {};
@@ -842,6 +873,13 @@ export function bindOnboardingFlow(root, handlers = {}) {
   });
   root.querySelectorAll("[data-cw-portraitmode]").forEach((button) => {
     button.addEventListener("click", () => handlers.onCharField?.("portraitMode", button.getAttribute("data-cw-portraitmode")));
+  });
+  // Upload-my-own portrait: hand the chosen File to the app (validation +
+  // upload live in main.js so errors surface in the preview state).
+  root.querySelectorAll("[data-cw-portrait-file]").forEach((input) => {
+    if (typeof input.addEventListener === "function") {
+      input.addEventListener("change", (event) => handlers.onPortraitFile?.(event?.target?.files?.[0] || null));
+    }
   });
   root.querySelectorAll("[data-cw-portrait-redo]").forEach((button) => {
     button.addEventListener("click", () => handlers.onPortraitRedo?.());
