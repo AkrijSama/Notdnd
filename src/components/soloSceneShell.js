@@ -522,6 +522,36 @@ const TURN_ACTION_LABELS = Object.freeze({
   ooc: "(out of character)"
 });
 
+// Bug B (provenance, owner 2026-07-10): resolve what renders under the YOU
+// badge for a turn. The rule is ABSOLUTE — YOU is the player's OWN words, never
+// a GM-generated beat title. Priority: the verbatim text the player just
+// submitted this turn; else the attempt result's intent (also the raw input);
+// else the raw intent the server preserved on a rerouted non-attempt event
+// (payload.intent); else a deterministic action label for click-driven
+// affordances. A GM narration `title` (e.g. "Smoke on the horizon") is NEVER a
+// source. Pure + exported so the provenance rule is unit-testable in isolation.
+export function resolveTurnHeaderIntent({ submitted, attemptResult, lastEvent, isFirst } = {}) {
+  if (isFirst) {
+    return "";
+  }
+  const clean = (s) => String(s || "").trim();
+  if (clean(submitted)) {
+    return clean(submitted);
+  }
+  if (attemptResult && clean(attemptResult.intent)) {
+    return clean(attemptResult.intent);
+  }
+  const ev = lastEvent || null;
+  if (ev && ev.type && ev.type !== "attempt") {
+    const rawIntent = clean(ev.payload && ev.payload.intent);
+    if (rawIntent) {
+      return rawIntent;
+    }
+    return clean(TURN_ACTION_LABELS[ev.type] || "");
+  }
+  return "";
+}
+
 export function renderNarrationLog(entries = []) {
   const list = Array.isArray(entries) ? entries.filter((e) => e && String(e.text || "").trim()) : [];
   if (!list.length) {
@@ -541,8 +571,12 @@ export function renderNarrationLog(entries = []) {
       // "YOU" badge + the intent in heavier weight + the (band-coded) roll. Present
       // on every action turn; absent only on the opening (no player action).
       const intent = entry.intent && String(entry.intent).trim();
+      // Bug B: YOU renders the player's VERBATIM words. Long inputs truncate with
+      // an ellipsis for layout, but the full text is preserved in the title attr
+      // (hover) and in the stored entry (transcript / grader player-echo).
+      const intentDisplay = intent && intent.length > 120 ? `${intent.slice(0, 119)}…` : intent;
       const header = intent
-        ? `<header class="solo-log-action"><span class="solo-log-you">You</span><span class="solo-log-intent">${escapeHtml(intent)}</span>${rollTag}</header>`
+        ? `<header class="solo-log-action"><span class="solo-log-you">You</span><span class="solo-log-intent" title="${escapeHtml(intent)}">${escapeHtml(intentDisplay)}</span>${rollTag}</header>`
         : "";
       const hasDialogue = /[“"][^”"]+[”"]/.test(String(entry.text));
       // #20-full: prefer the server's grounded per-line speakers — a multi-NPC beat
@@ -3997,14 +4031,15 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     const timeline = Array.isArray(scene.recentTimeline) ? scene.recentTimeline : [];
     const lastEv = timeline.length ? timeline[timeline.length - 1] : null;
     const ar = lastEv && lastEv.type === "attempt" ? scene.latestAttemptResult || state.attemptResult : null;
-    // #45/#46: give EVERY turn (not just rolled attempts) a player-action header
-    // so the log reads as delineated turn units. Attempts use their intent; other
-    // action types derive a label from the committed timeline event (title, else a
-    // type map). The opening (isFirst) has no player action → no header.
-    let turnIntent = ar && ar.intent ? String(ar.intent).trim() : "";
-    if (!turnIntent && !isFirst && lastEv && lastEv.type && lastEv.type !== "attempt") {
-      turnIntent = String(lastEv.title || TURN_ACTION_LABELS[lastEv.type] || "").trim();
-    }
+    // Bug B (provenance): the YOU header is the player's OWN words. Prefer the
+    // verbatim text just submitted this turn, then the raw intent the resolver /
+    // server preserved — a GM-generated beat title is NEVER used. Consume the
+    // pending submitted text immediately so it can never leak onto a later
+    // (e.g. ambient poll) turn. #45/#46: click-driven affordance turns with no
+    // typed words fall back to a deterministic action label (inside the helper).
+    const submitted = state.pendingPlayerAction;
+    state.pendingPlayerAction = null;
+    const turnIntent = resolveTurnHeaderIntent({ submitted, attemptResult: ar, lastEvent: lastEv, isFirst });
     state.narrationLog.push({
       id: `n${state.narrationLog.length + 1}`,
       intent: turnIntent,

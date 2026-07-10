@@ -15,7 +15,9 @@ test("a turn with an action renders a prominent player-action anchor + has-actio
   ]);
   assert.match(html, /solo-log-entry has-action/, "turn is a delineated unit");
   assert.match(html, /class="solo-log-you">You</, "YOU badge present");
-  assert.match(html, /solo-log-intent">force the door</, "intent shown prominently");
+  // Bug B (2026-07-10): the intent renders verbatim, with the full text also in the
+  // title attr for hover (long inputs truncate the display only).
+  assert.match(html, /solo-log-intent" title="force the door">force the door</, "intent shown prominently");
   assert.match(html, /solo-log-roll band-success/, "band-coded roll present");
 });
 
@@ -29,7 +31,7 @@ test("the opening / ambient entry (no action) is NOT a false turn boundary", () 
 test("every action turn gets a header — a no-roll action still shows its anchor", () => {
   const html = renderNarrationLog([{ id: "n2", intent: "Search the area", checkResult: null, text: "You find a loose flagstone." }]);
   assert.match(html, /has-action/);
-  assert.match(html, /solo-log-intent">Search the area</);
+  assert.match(html, /solo-log-intent" title="Search the area">Search the area</);
   assert.doesNotMatch(html, /solo-log-roll/, "no roll tag when there was no check");
 });
 
