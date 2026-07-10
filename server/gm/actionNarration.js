@@ -55,7 +55,8 @@ function describeCommittedConsequence(consequence) {
 function styleSuffix(run) {
   const tone = isString(run?.world?.tone) ? run.world.tone : "dark fantasy";
   return (
-    `Narrate in second-person ${tone} prose under this HARD contract: 80-120 words total, never more. ` +
+    `Narrate in second-person ${tone} prose under this HARD contract: HARD LIMIT 120 words total — aim for 100. Count your words before finishing; ` +
+    "if over, cut description sentences — NEVER cut the closing handles. A draft over 120 words is a failed draft. " +
     // Beat structure (ruler-v2 baseline-driven): the closing HANDLES beat answers
     // the top complaint (20x no-closing-handles). Handles fit INSIDE the budget.
     "Structure, in order: (1) the concrete consequence of what just happened; (2) exactly ONE new fact drawn from the committed game state in your context; (3) the pressure that demands the player's next move; (4) close with HANDLES: 2 to 4 concrete directions the player could take right now, each grounded ONLY in entities, objectives, locations, exits, or threads already committed in your context, never invented. " +
@@ -543,11 +544,29 @@ export function buildOpeningGmMessage({ characterName, race, characterClass, wor
   const hookLine = isString(questObjective)
     ? ` A pull toward purpose hangs in the air — ${questObjective} Hint at this hook in the fiction; do not resolve it.`
     : "";
+  // CHAOS-GRADIENT LAW (owner ruling, Jul 10): corruption scales with proximity
+  // to the Tower; the starting area is maximally distant, so it reads as an
+  // ORDINARY, everyday place — no dread register at turn 1. And the OPENING is
+  // full isekai ORIENTATION: the character is new here but the PLAYER is never
+  // confused. Over-explanation is CORRECT for this one beat.
+  const environmentLine =
+    " STARTING REGISTER (world-law): this starting area lies farthest from the Tower, where corruption is weakest — it is an ordinary, calm, everyday place. " +
+    "Describe it as normal countryside/settlement life: real light, real birdsong, real people going about their day. No dread, no menace, no uncanny register, no eerie distortions of light or sound. " +
+    "At most ONE subtle seed of strangeness is permitted (a single oddly-behaving animal, at a distance) and it must stay background, never a threat.";
+  const orientationLine =
+    " VOICE ORIENTATION (mandatory, in-fiction): the opening must plainly deliver, through the VOICE's arrival address or its immediate aftermath: " +
+    "(1) what happened to the character — they were brought here from their old life; " +
+    "(2) what this land is; " +
+    "(3) that a town lies nearby, and that safety and answers are found there; " +
+    "(4) that the WINDOW has been granted — a status display only they can perceive. " +
+    "State each plainly. Clarity outranks mystery for this beat: the player must finish the opening knowing where they are, why, and where to go.";
+  const handlesLine =
+    " Close with the nearby town as the UNMISTAKABLE primary direction — name it and point the way.";
   return (
     `${who} arrives at ${locLine}.${worldLine} ` +
-    `Narrate their arrival in 3-5 vivid sentences of second-person ${tone} prose, grounding them in the atmosphere of the scene.${npcHint}${baseLine}${hookLine}` +
-    `${buildOpeningClockClause(worldTime)} ` +
-    "End by leaving the moment open and unspoken — theirs to act on. Do not use bracketed trigger tags."
+    `Narrate their arrival in second-person ${tone} prose, grounding them in the scene.${environmentLine}${orientationLine}${npcHint}${baseLine}${hookLine}` +
+    `${buildOpeningClockClause(worldTime)}${handlesLine} ` +
+    "Do not use bracketed trigger tags."
   );
 }
 
@@ -570,17 +589,25 @@ export function buildOpeningFallback({ characterName, race, characterClass, worl
     : isString(world.startingLocation?.description)
       ? world.startingLocation.description
       : "";
+  // CHAOS-GRADIENT LAW + ORIENTATION (item 2): the deterministic fallback is the
+  // safety net when the GM opening call times out — it must deliver the SAME
+  // oriented-and-ordinary beats as the live directive: brought-here, what this
+  // land is, the nearby town = safety/answers, the WINDOW grant, town as the
+  // unmistakable direction. Ordinary register — the starting area is farthest
+  // from the Tower, corruption weakest.
   const sentences = [
-    `You are ${who}, and the ${tone} of ${worldName} settles over you as you arrive at ${placeName}.`,
-    placeDesc || "The place watches you in silence, every shadow holding its own weight.",
+    `You are ${who}. You were brought here — pulled out of your old life and set down whole in ${worldName}, at ${placeName}.`,
+    placeDesc || "It is an ordinary, calm stretch of frontier: real morning light, birdsong, a worn path through the grass.",
+    "A voice spoke as you arrived, plain and unhurried: this land is real, you are its newest arrival, and a town lies nearby — safety, work, and answers wait there.",
+    "The voice granted you the WINDOW: a pane of pale light only you can see, showing your six measures, your level, and your tracked objective. It displays; nothing more.",
     // Base-building beat for an adoptable start: name the option without taking it.
     baseBuilding
       ? "No one holds this ground. You could make it yours — shelter here, and in time build it into a foothold of your own."
       : "",
     isString(questObjective)
       ? `Something tugs at the edge of your purpose: ${questObjective}`
-      : "Whatever brought you here, it has not finished with you yet.",
-    "The moment is yours now — what do you do?"
+      : "",
+    "The road to the town is the clear way forward. The moment is yours — what do you do?"
   ];
   return sentences.filter(Boolean).join(" ");
 }

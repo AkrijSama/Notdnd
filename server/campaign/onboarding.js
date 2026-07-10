@@ -11,6 +11,7 @@ import { buildCharacter, toRunPlayer } from "../solo/characterBuild.js";
 import { copyDraftPortraitToRun } from "../solo/imageWorker.js";
 import { generateNpcIdentity, npcTakenNames } from "../solo/npcIdentity.js";
 import { ensureClock } from "../solo/worldClock.js";
+import { buildSystemLoreClause } from "../gm/systemLore.js";
 import { writeNpcMemoryDoc } from "../solo/npcMemory.js";
 import { buildFarLocation, buildSecondLocation, generateWorld } from "../solo/worldGen.js";
 import { createMainQuest } from "../solo/quests.js";
@@ -488,7 +489,7 @@ async function generateOpeningNarration({ campaignId, runId, message, playerName
   const t0 = Date.now();
   try {
     const result = await Promise.race([
-      Promise.resolve(runGmPipeline({ campaignId, message, mode: "companion", playerName, actorUserId })).catch(() => null),
+      Promise.resolve(runGmPipeline({ campaignId, message, mode: "companion", playerName, actorUserId, flashMaxTokens: 420 })).catch(() => null),
       timeout
     ]);
     if (timer) {
@@ -1018,7 +1019,7 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
       baseBuilding: openBaseBuilding,
       questObjective: openObjective,
       worldTime: openWorldTime
-    }),
+    }) + buildSystemLoreClause(),
     playerName: characterName,
     actorUserId,
     fallback: buildOpeningFallback({

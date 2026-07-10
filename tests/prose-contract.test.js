@@ -37,9 +37,14 @@ test("contract demands in-fiction handles, bans the menu form", () => {
   assert.match(msg, /"You can: A\) B\) C\)" or "You could try X, Y, or Z" is wrong/);
 });
 
-test("handles fit INSIDE the hard word budget (budget unchanged)", () => {
+test("handles fit INSIDE the hard word budget (item 3: restated as a hard numeric)", () => {
   const msg = contractText();
-  assert.match(msg, /80-120 words total, never more/);
+  // item 3 (flash ran 125-152 vs the cap): the budget is now a HARD numeric with
+  // consequence framing — count-before-finishing, cut description never handles.
+  assert.match(msg, /HARD LIMIT 120 words total/);
+  assert.match(msg, /Count your words before finishing/);
+  assert.match(msg, /NEVER cut the closing handles/);
+  assert.match(msg, /over 120 words is a failed draft/);
 });
 
 // ---- item 2: native paragraphing ----

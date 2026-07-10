@@ -199,7 +199,27 @@ function applyStyleModelOverrides(options, styleConfig) {
   return next;
 }
 
+// Word-budget enforcement (item 3): on NON-THINK flash the 2048-token reasoning
+// floor is pure runaway headroom — the contract caps prose at 120 words, so cap
+// the API budget at ~220 tokens (comfortable margin over 120 words + paragraph
+// breaks, blocks a runaway draft mechanically). Reasoning models keep the floor
+// (their thinking spends from the same budget).
+const NARRATIVE_FLASH_MAX_TOKENS = Math.max(150, Number(process.env.NOTDND_GM_FLASH_MAX_TOKENS || 190));
+function isNonThinkFlash(model) {
+  return /deepseek-v4-flash/i.test(String(model || ""));
+}
+
 async function callNarrativeModel(messages, campaignId, resolvedModel, modelTiers, options) {
+  if (isNonThinkFlash(resolvedModel)) {
+    const flashCap = Number.isFinite(Number(options.flashMaxTokens))
+      ? Math.min(Number(options.flashMaxTokens), 512)
+      : NARRATIVE_FLASH_MAX_TOKENS;
+    const capped = { ...options, maxResponseTokens: flashCap };
+    if (resolvedModel === modelTiers.narrative) {
+      return generateNarrative(messages, campaignId, capped);
+    }
+    return generateRaw(messages, resolvedModel, campaignId, capped);
+  }
   // Floor the response budget so a reasoning model isn't starved of room to
   // narrate after its internal thinking (see NARRATIVE_MIN_RESPONSE_TOKENS).
   const floored = withNarrativeTokenFloor(options);
@@ -291,6 +311,10 @@ export async function runGmPipeline({
   // local uncensored model; "mainline" (default) stays on cloud. The AI layer
   // (openrouter.requestWithFallback) honors options.edition — we just thread it.
   edition = "mainline",
+  // Optional per-call override of the non-think-flash token cap (bounded at 512).
+  // The OPENING passes a larger budget: orientation is intentionally longer than
+  // a turn beat, and the default 190-token turn cap truncated it mid-sentence.
+  flashMaxTokens,
   // When true, the post-narration WRITE-SIDE memory work (knowledge-graph
   // extraction + player-profile update) is fired AFTER this function returns
   // instead of being awaited — it never blocks the turn's HTTP response. The
@@ -336,7 +360,7 @@ export async function runGmPipeline({
   let companionIntent = "chat";
   let selectedModel = resolveNarrativeModel(styleConfig, modelTiers);
   let promptProfile = getProfile(selectedModel);
-  let modelOptions = { ...applyStyleModelOverrides(profileCallOptions(promptProfile, stream, onStream), styleConfig), edition: normalizedEdition };
+  let modelOptions = { ...applyStyleModelOverrides(profileCallOptions(promptProfile, stream, onStream), styleConfig), edition: normalizedEdition, flashMaxTokens };
 
   if (mode === "companion") {
     const intent = inferCompanionIntent(input);
@@ -347,7 +371,7 @@ export async function runGmPipeline({
       ? resolveUtilityModel(styleConfig, modelTiers)
       : resolveNarrativeModel(styleConfig, modelTiers);
     promptProfile = getProfile(selectedModel);
-    modelOptions = { ...applyStyleModelOverrides(profileCallOptions(promptProfile, stream, onStream), styleConfig), edition: normalizedEdition };
+    modelOptions = { ...applyStyleModelOverrides(profileCallOptions(promptProfile, stream, onStream), styleConfig), edition: normalizedEdition, flashMaxTokens };
 
     const companionContext = await buildCompanionPlayerContext(campaignKey, input, playerName, state);
     systemPrompt = buildCompanionSystemPrompt({
@@ -406,7 +430,7 @@ export async function runGmPipeline({
   } else {
     selectedModel = resolveNarrativeModel(styleConfig, modelTiers);
     promptProfile = getProfile(selectedModel);
-    modelOptions = { ...applyStyleModelOverrides(profileCallOptions(promptProfile, stream, onStream), styleConfig), edition: normalizedEdition };
+    modelOptions = { ...applyStyleModelOverrides(profileCallOptions(promptProfile, stream, onStream), styleConfig), edition: normalizedEdition, flashMaxTokens };
 
     systemPrompt = buildSessionSystemPrompt({
       campaignName: campaign?.name || campaignKey,
