@@ -269,8 +269,10 @@ function renderPortraitPreview(portrait = {}, options = {}) {
         ${redoBtn}
       </div>`;
   }
+  // Item 5 (bucket-2): the idle caption is MODE-AWARE — upload mode must never
+  // show generation-flavored copy.
   return `<div class="onb-portrait-preview${variant} onb-portrait-loading">
-      <small>Pick a race and class to preview your portrait.</small>
+      <small>${options.portraitMode === "upload" ? "Your uploaded image will be your portrait." : "Pick a race and class to preview your portrait."}</small>
     </div>`;
 }
 
@@ -389,14 +391,14 @@ function renderCharIdentity(c, portrait = {}) {
                    <span>Choose an image (PNG, JPG, or WEBP · up to 5MB)</span>
                  </label>
                  ${uploadError ? `<small class="onb-upload-error" role="alert">${esc(uploadError)}</small>` : ""}
-                 <small class="onb-hint">Your image is used as-is — nothing is generated on this path.</small>`
+                 <small class="onb-hint">Your uploaded image will be your portrait.</small>`
               : `<small class="onb-hint">Your portrait is crafted from your race and class — it appears here as you choose them.</small>`
           }
         </div>
       </div>
       <div class="onb-identity-portrait">
         <div class="onb-kicker">Portrait preview</div>
-        ${renderPortraitPreview(portrait, { charName: c.name, variant: "identity" })}
+        ${renderPortraitPreview(portrait, { charName: c.name, variant: "identity", portraitMode: mode })}
       </div>
     </div>`;
 }

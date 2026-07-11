@@ -45,7 +45,7 @@ test("upload mode renders the file input (png/jpg/webp accept) and honest hint",
   assert.match(html, /data-cw-portrait-file/);
   assert.match(html, /accept="image\/png,image\/jpeg,image\/webp"/);
   assert.match(html, /up to 5MB/);
-  assert.match(html, /nothing is generated on this path/i);
+  assert.match(html, /Your uploaded image will be your portrait\./);
 });
 
 test("a rejected upload shows the visible error message", () => {
@@ -57,6 +57,18 @@ test("a rejected upload shows the visible error message", () => {
 test("generate mode shows NO file input (and no upload error)", () => {
   const html = renderOnboardingFlow(wizardState({}, { portraitMode: "generate" }));
   assert.doesNotMatch(html, /data-cw-portrait-file/);
+});
+
+// Item 5 (bucket-2): the portrait caption is MODE-AWARE — generation copy never
+// renders on the upload path.
+test("caption per mode: generate keeps crafted-copy; upload reads the upload copy", () => {
+  const gen = renderOnboardingFlow(wizardState({}, { portraitMode: "generate" }));
+  assert.match(gen, /Your portrait is crafted from your race and class/);
+  assert.doesNotMatch(gen, /Your uploaded image will be your portrait\./);
+  const up = renderOnboardingFlow(wizardState());
+  assert.match(up, /Your uploaded image will be your portrait\./);
+  assert.doesNotMatch(up, /crafted from your race and class/, "generation copy banned in upload mode");
+  assert.doesNotMatch(up, /Pick a race and class to preview your portrait/, "preview idle caption is mode-aware too");
 });
 
 // ---- the server route stores the file in the draft layout (disk-first) ----
