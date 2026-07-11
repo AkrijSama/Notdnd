@@ -570,7 +570,7 @@ test("render() preserves focus + caret of the action input across a re-render", 
   }
 });
 
-test("mountSoloSceneShell auto-opens VN for a freeform speaker with the NPC's own line, not GM narration", async () => {
+test("vn-dialogue-only: freeform VN opens from the SAME narration's split — quote in VN, beat in log, NO second generation", async () => {
   const root = {
     innerHTML: "",
     querySelectorAll() {
@@ -581,45 +581,21 @@ test("mountSoloSceneShell auto-opens VN for a freeform speaker with the NPC's ow
   const vnScene = () => ({
     ...sampleScene(),
     vnMode: true,
-    // The freeform "speak to X" trigger surfaces the RAW npcId on the scene; the
-    // GM-driven path can surface a prefixed one. Either must resolve the beat.
     speakerId: "placeholder_npc",
     cast: [{ npcId: "placeholder_npc", displayName: "Placeholder NPC", portraitUri: null }]
   });
+  // The turn's narration carries the addressed speaker's quoted line embedded in a
+  // scene beat — exactly the owner's failure shape (multi-actor prose around a quote).
+  const NARRATION = `The keeper sizes you up across the counter. "You're not from around here," she says, and the neon hums against the glass.`;
   const apiClient = {
     async fetchSoloScene() {
       return vnScene();
     },
     async fetchSoloGmScene() {
-      return {
-        ok: true,
-        gmNarration: {
-          narration: { title: "Start", body: "You are Akrij and the neon city settles over you.", tone: "mysterious" }
-        },
-        gmStatus: null
-      };
+      return { ok: true, gmNarration: { narration: { title: "Start", body: NARRATION, tone: "mysterious" } }, gmStatus: null };
     },
     async postSoloAction(runId, action) {
       calls.push(action);
-      // Mirror the server: the talk pipeline only resolves a beat for the PREFIXED
-      // visible entity id. A raw id (the old bug) returns no talkResult, which used
-      // to make the overlay fall through to GM narration under a generic "NPC".
-      if (action.type === "talk" && action.targetEntityId === "npc:placeholder_npc") {
-        return {
-          ok: true,
-          talkResult: {
-            npcId: "placeholder_npc",
-            beatId: "quiet_area",
-            found: true,
-            speakerName: "Placeholder NPC",
-            line: "The keeper sizes you up and says her piece.",
-            summary: "Placeholder NPC: Quiet Area",
-            revealed: true,
-            expressionVariants: {},
-            warningCodes: []
-          }
-        };
-      }
       return { ok: true };
     }
   };
@@ -627,17 +603,19 @@ test("mountSoloSceneShell auto-opens VN for a freeform speaker with the NPC's ow
   const mounted = mountSoloSceneShell(root, { apiClient, runId: "run_test" });
   await mounted.reload();
 
-  // FIX I: the talk pipeline is invoked with the PREFIXED entity id (the raw
-  // speakerId is normalized), so the beat actually resolves.
-  const talkCall = calls.find((action) => action.type === "talk");
-  assert.ok(talkCall, "a talk action was posted for the freeform speaker");
-  assert.equal(talkCall.targetEntityId, "npc:placeholder_npc");
-  // The in-stage VN textbox (#49) opens showing the NPC's NAME (not "NPC")...
+  // OWNER RULING / SEAM FIX: the overlay opens from THIS turn's narration split —
+  // no second talk generation is fired (the divergent-prose root cause is gone).
+  assert.equal(calls.find((a) => a.type === "talk"), undefined, "no second talk postAction — one narration, one split");
+  // The VN textbox shows the NPC's NAME and ONLY their quoted line (with marks)...
   assert.match(root.innerHTML, /solo-vn-box/);
   assert.match(root.innerHTML, /solo-vn-box-speaker"[^>]*>Placeholder NPC</);
-  // ...speaking the NPC's OWN beat line, never the GM opening narration.
-  assert.match(root.innerHTML, /data-fulltext="The keeper sizes you up/);
-  assert.doesNotMatch(root.innerHTML, /data-fulltext="You are Akrij/);
+  assert.match(root.innerHTML, /data-fulltext="[^"]*not from around here/);
+  // ...never the surrounding scene beat, which belongs to the log below.
+  assert.doesNotMatch(root.innerHTML, /data-fulltext="[^"]*keeper sizes you up/);
+  assert.doesNotMatch(root.innerHTML, /data-fulltext="[^"]*neon hums/);
+  // The non-dialogue beat is present in the narration log (nothing lost).
+  assert.match(root.innerHTML, /The keeper sizes you up across the counter\./);
+  assert.match(root.innerHTML, /the neon hums against the glass\./);
 });
 
 test("VN reply input stays typeable while busy; only the submit button is gated", () => {

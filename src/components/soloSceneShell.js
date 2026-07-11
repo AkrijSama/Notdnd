@@ -670,6 +670,122 @@ export function resolveSceneSpeaker(scene = {}, talkResult = null) {
   return soleSceneSpeaker(scene);
 }
 
+// ---------------------------------------------------------------------------
+// VN QUOTE SPLIT (owner ruling, absolute): the VN overlay shows QUOTED DIALOGUE
+// from the ADDRESSED speaker ONLY. Every other character — scene beats, gestures,
+// other NPCs' lines, atmosphere — goes to the narration log below. No "minimal
+// speaker action" exception. If the addressed speaker has zero quoted speech, the
+// VN shows nothing new and the whole response goes to the log.
+//
+// CONSERVATION: the split partitions the source into ordered segments; every
+// character lands in exactly one segment, so segments.join("") === source. No
+// character is dropped or duplicated (this is what kills the "Ilse's scarred"
+// data-loss class dead). Attribution mirrors the server's grounded rule
+// (attributeSceneDialogue): a quote is the addressed speaker's iff a speech tag
+// names them, or they are the SOLE present NPC and no other name is tagged;
+// anything ambiguous or tagged to another character goes to the log — the VN
+// never guesses.
+const VN_SPLIT_SPEECH_VERBS = "says?|said|asks?|asked|repl(?:y|ies|ied)|answers?|answered|whispers?|whispered|mutters?|muttered|growls?|growled|calls?|called|adds?|added|shouts?|shouted|murmurs?|murmured|snaps?|snapped|continues?|continued|offers?|offered|warns?|warned|hisses|barks?|declares?|declared";
+const VN_SPLIT_QUOTED_SPAN_RE = /["“][^"“”]+["”]/g;
+const VN_SPLIT_NAME_CAP = "([A-Z][a-z]+(?:\\s+[A-Z][a-z]+)?)";
+
+function vnSplitFirstName(name) {
+  return String(name || "").trim().toLowerCase().split(/\s+/)[0] || "";
+}
+
+const VN_SPLIT_PRONOUNS = new Set(["she", "he", "they", "her", "him", "them"]);
+
+// Which character does this quoted span belong to? Returns "addressed" (VN),
+// "other" (a different named present character or the player), or "unknown".
+// The speech tag must sit IMMEDIATELY against the quote — a distant earlier tag
+// ("Garrick warns … " sentences back) must never attach to a later quote.
+function vnSplitAttributeSpan(text, index, span, ctx) {
+  const before = text.slice(Math.max(0, index - 40), index);
+  const after = text.slice(index + span.length, index + span.length + 40);
+  const V = VN_SPLIT_SPEECH_VERBS;
+  // Priority: the post-quote tag is the most reliable and immediate
+  //   ," she says   |   ," Ilse adds   |   ," said Ilse
+  const tagged =
+    (new RegExp(`^[\\s,]*([A-Za-z]+)\\s+(?:${V})\\b`).exec(after) || [])[1] ||
+    (new RegExp(`^[\\s,]*(?:${V})\\s+([A-Z][a-z]+)`).exec(after) || [])[1] ||
+    // Pre-quote tag, bound to the quote: "Ilse said," / "she whispered,"
+    (new RegExp(`([A-Za-z]+)\\s+(?:${V})[\\s,:]*$`).exec(before) || [])[1] ||
+    null;
+  if (tagged) {
+    const first = vnSplitFirstName(tagged);
+    // A PRONOUN speech tag ("she says", "he warns") in an active VN attributes to
+    // the conversation partner — the addressed speaker. (Another NPC speaking is
+    // name-tagged, as in "Garrick warns"; those route to the log below.)
+    if (VN_SPLIT_PRONOUNS.has(first)) {
+      return ctx.addressedFirst ? "addressed" : "unknown";
+    }
+    if (first && first === ctx.addressedFirst) return "addressed";
+    if (ctx.otherFirsts.has(first) || first === ctx.playerFirst) return "other";
+    return "unknown"; // a name that isn't a known present character — don't guess
+  }
+  // No tag: attribute to the addressed speaker ONLY when they are the sole present
+  // NPC (the 1:1 conversation). With other NPCs on stage, an untagged line is
+  // ambiguous — log it.
+  return ctx.soleAddressed ? "addressed" : "unknown";
+}
+
+// Pure. Splits GM narration into the addressed speaker's quotes (VN) and
+// everything else (log), conserving every character.
+// @returns {{ vnText: string, logText: string, segments: Array<{part:'vn'|'log',text:string}>, hasVnDialogue: boolean }}
+export function splitVnDialogue(fullText, options = {}) {
+  const text = typeof fullText === "string" ? fullText : "";
+  const addressedName = typeof options.addressedSpeakerName === "string" ? options.addressedSpeakerName : "";
+  const otherNames = Array.isArray(options.otherPresentNames) ? options.otherPresentNames : [];
+  const playerName = typeof options.playerName === "string" ? options.playerName : "";
+  const ctx = {
+    addressedFirst: vnSplitFirstName(addressedName),
+    otherFirsts: new Set(otherNames.map(vnSplitFirstName).filter(Boolean)),
+    playerFirst: vnSplitFirstName(playerName),
+    soleAddressed: otherNames.filter(Boolean).length === 0 && Boolean(addressedName)
+  };
+  const segments = [];
+  if (!text) {
+    return { vnText: "", logText: "", segments, hasVnDialogue: false };
+  }
+  let cursor = 0;
+  let m;
+  VN_SPLIT_QUOTED_SPAN_RE.lastIndex = 0;
+  while ((m = VN_SPLIT_QUOTED_SPAN_RE.exec(text)) !== null) {
+    const span = m[0];
+    const start = m.index;
+    if (start > cursor) {
+      segments.push({ part: "log", text: text.slice(cursor, start) });
+    }
+    const spoken = span.replace(/^["“]|["”]$/g, "").trim();
+    const verdict = spoken ? vnSplitAttributeSpan(text, start, span, ctx) : "other";
+    segments.push({ part: verdict === "addressed" ? "vn" : "log", text: span });
+    cursor = start + span.length;
+  }
+  if (cursor < text.length) {
+    segments.push({ part: "log", text: text.slice(cursor) });
+  }
+  const vnParts = segments.filter((s) => s.part === "vn").map((s) => s.text);
+  const logText = segments.filter((s) => s.part === "log").map((s) => s.text).join("");
+  return {
+    vnText: vnParts.join(" ").replace(/\s+/g, " ").trim(),
+    logText,
+    segments,
+    hasVnDialogue: vnParts.length > 0
+  };
+}
+
+// Convenience: derive the split for a talk turn from scene + the addressed
+// speaker, pulling the "other present names" from the cast roster so other NPCs'
+// quotes route to the log.
+export function splitVnDialogueForScene(fullText, scene = {}, addressedSpeakerName = "", playerName = "") {
+  const cast = Array.isArray(scene.cast) ? scene.cast : [];
+  const addressedFirst = vnSplitFirstName(addressedSpeakerName);
+  const otherPresentNames = cast
+    .map((c) => (c && (c.displayName || c.name)) || "")
+    .filter((n) => n && vnSplitFirstName(n) !== addressedFirst);
+  return splitVnDialogue(fullText, { addressedSpeakerName, otherPresentNames, playerName });
+}
+
 export function renderMovementPanel(scene = {}) {
   const moves = Array.isArray(scene.availableMoves) ? scene.availableMoves : [];
   return `
@@ -2134,7 +2250,11 @@ export function renderSoloDialogueOverlay(state = {}) {
   const variantUri = typeof variants[expression] === "string" && variants[expression] ? variants[expression] : "";
   const portraitUri = variantUri || baseUri;
   const speaker = talk.speakerName || "NPC";
-  const line = talk.line || "There is not much new to say right now.";
+  // VN QUOTE SPLIT (owner rule 3): the addressed speaker's quotes ARE the VN line.
+  // When this turn carried none (the whole beat went to the log), the VN shows
+  // NOTHING NEW — an empty text area with the reply prompt still live — rather
+  // than fabricating a "nothing to say" line the NPC never spoke.
+  const line = typeof talk.line === "string" ? talk.line : "";
   const typed = state.dialogueTyped === true;
   const initial = String(speaker).trim().slice(0, 1).toUpperCase() || "?";
   // The reply TEXT INPUT is intentionally never disabled — the player must always
@@ -4072,7 +4192,21 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
           ? scene.openingBeats.filter(Boolean).join("\n\n")
           : "";
     const isFirst = state.narrationLog.length === 0;
-    const text = gmBody || (isFirst ? opening : "") || String(scene.location?.description || "").trim();
+    let text = gmBody || (isFirst ? opening : "") || String(scene.location?.description || "").trim();
+    // VN QUOTE SPLIT (owner ruling): on a VN turn, the addressed speaker's quoted
+    // lines belong to the OVERLAY, not the log — the log gets everything else, in
+    // original order. Stash the VN quotes for openVnDialogueForSpeaker to consume
+    // (one narration, one split — never a second GM generation). Conservation is
+    // total: split.logText + the stashed VN quotes reconstruct gmBody.
+    state.vnDialogueSplit = null;
+    if (gmBody && text === gmBody && scene.vnMode === true && typeof scene.speakerId === "string" && scene.speakerId.trim()) {
+      const speakerName = resolveSceneSpeaker(scene, null) || "";
+      const split = splitVnDialogueForScene(gmBody, scene, speakerName, scene.player?.displayName || "");
+      state.vnDialogueSplit = { speakerId: scene.speakerId, speakerName, ...split };
+      // The log entry is the non-dialogue remainder (may be empty for a pure-
+      // dialogue beat, which then logs nothing and lives entirely in the VN).
+      text = split.logText.trim();
+    }
     if (!text) {
       return;
     }
@@ -4112,6 +4246,38 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     if (state.narrationLog.length > 200) {
       state.narrationLog.splice(0, state.narrationLog.length - 200);
     }
+  }
+
+  // VN QUOTE SPLIT for the talk-button / reply paths (which reload via
+  // refreshSceneAfterAction, bypassing logNarration). Splits the NPC's full turn
+  // narration: returns the addressed speaker's quoted lines for the VN box and
+  // pushes the non-dialogue remainder to the narration log (owner ruling — every
+  // unquoted word goes to the log). Conservation holds via splitVnDialogue.
+  // Returns the VN line (quotes only; "" when the turn carried no quoted speech).
+  function splitTalkNarrationToLog(fullNarration, speakerName, intentText) {
+    const scene = state.scene || {};
+    const split = splitVnDialogueForScene(String(fullNarration || ""), scene, speakerName || "", scene.player?.displayName || "");
+    const remainder = split.logText.trim();
+    if (remainder) {
+      const last = state.narrationLog[state.narrationLog.length - 1];
+      if (!last || last.text !== remainder) {
+        state.narrationLog.push({
+          id: `n${state.narrationLog.length + 1}`,
+          intent: typeof intentText === "string" ? intentText : "",
+          checkResult: null,
+          success: undefined,
+          band: null,
+          outcomeLabel: null,
+          text: remainder,
+          speaker: speakerName || null,
+          dialogueLines: []
+        });
+        if (state.narrationLog.length > 200) {
+          state.narrationLog.splice(0, state.narrationLog.length - 200);
+        }
+      }
+    }
+    return split.vnText;
   }
 
   async function loadScene() {
@@ -4252,7 +4418,16 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
   function handleTalk(entity) {
     return runAction("talk", async () => {
       const response = await postAction(createTalkAction(entity));
-      state.talkResult = response.talkResult || null;
+      const talk = response.talkResult || null;
+      // VN QUOTE SPLIT (owner ruling): when the GM narrated (talkResult.line is a
+      // full scene block, not a scripted one-liner), keep only the addressed
+      // speaker's quotes in the VN and send the rest to the log. A quote-free
+      // scripted beat is shown as-is (no split changes it → the beat stays in VN).
+      let vnLine = talk && typeof talk.line === "string" ? talk.line : "";
+      if (talk && /["“][^"”]+["”]/.test(vnLine)) {
+        vnLine = splitTalkNarrationToLog(vnLine, talk.speakerName || "NPC", `Speak with ${talk.speakerName || "NPC"}`);
+      }
+      state.talkResult = talk ? { ...talk, line: vnLine, fullNarration: talk.line } : null;
       // Open the visual-novel dialogue overlay and restart the typewriter.
       state.dialogueActive = Boolean(state.talkResult);
       state.dialogueTyped = false;
@@ -4263,8 +4438,8 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
         entity.entityId || entity.targetEntityId || (state.talkResult ? `npc:${state.talkResult.npcId}` : null);
       state.dialogueReplyDraft = "";
       state.dialogueHistory =
-        state.talkResult && state.talkResult.line
-          ? [{ role: "npc", speaker: state.talkResult.speakerName || "NPC", text: state.talkResult.line }]
+        state.talkResult && vnLine
+          ? [{ role: "npc", speaker: state.talkResult.speakerName || "NPC", text: vnLine }]
           : [];
       state.searchResult = null;
       state.restResult = null;
@@ -4281,50 +4456,38 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
   // runAction): loadScene may already be running inside an action's runAction,
   // whose busy guard would block a nested runAction. Best-effort — on any failure
   // we leave the scene ambient rather than open an empty overlay.
-  async function openVnDialogueForSpeaker(speakerId) {
+  function openVnDialogueForSpeaker(speakerId) {
     const target = String(speakerId || "").trim();
     if (!target) {
       return;
     }
     // scene.speakerId arrives as the RAW npcId (the freeform "speak to X" trigger)
-    // or, from the GM-driven classifier, an already-"npc:"-prefixed id. The talk
-    // pipeline validates targetEntityId against the visible ENTITY id, which is
-    // always prefixed — so normalize to "npc:<rawId>" before resolving the beat.
-    // Passing the raw id was the bug: validateTalkAction rejected it, no talkResult
-    // came back, and the overlay fell through to GM scene narration under a generic
-    // "NPC". With the prefix, resolveTalkAction returns the NPC's own beat + name.
+    // or, from the GM-driven classifier, an already-"npc:"-prefixed id. Normalize
+    // to "npc:<rawId>" so replies re-target the same visible entity.
     const rawId = target.includes(":") ? target.split(":").slice(1).join(":") : target;
     const entityId = `npc:${rawId}`;
-    let talk = null;
-    try {
-      const resp = await postAction(createTalkAction({ targetEntityId: entityId }));
-      talk = resp && resp.talkResult ? resp.talkResult : null;
-    } catch {
-      talk = null;
-    }
-    // The dialogue content must be the NPC's OWN line — never the GM scene
-    // narration. resolveTalkAction always returns a line for a valid, present NPC
-    // (a real unrevealed beat, or an in-character "nothing new yet" placeholder),
-    // so a missing line/talkResult means the NPC isn't talkable here: stay ambient
-    // rather than open an overlay echoing scene prose under the wrong speaker.
-    const line = talk && typeof talk.line === "string" && talk.line.trim() ? talk.line.trim() : "";
-    if (!talk || !line) {
-      return;
-    }
-    // Always show the NPC's actual NAME. resolveTalkAction sets speakerName to the
-    // NPC's displayName; fall back to the cast roster (keyed by raw npcId) so a
-    // known NPC is never labeled the generic "NPC".
+    // NO SECOND GENERATION (owner ruling / seam fix): the dialogue content is the
+    // addressed speaker's QUOTED lines already carried by THIS turn's narration —
+    // split out in logNarration and stashed on state.vnDialogueSplit. Firing a
+    // fresh talk postAction here was the root of the "VN says one thing, log says
+    // another" seam (two independent GM generations) AND doubled per-turn latency.
+    const split = state.vnDialogueSplit && state.vnDialogueSplit.speakerId === speakerId
+      ? state.vnDialogueSplit
+      : null;
     const castName = (Array.isArray(state.scene?.cast) ? state.scene.cast : [])
       .find((member) => member && member.npcId === rawId)?.displayName || null;
-    const speakerName = typeof talk.speakerName === "string" && talk.speakerName.trim()
-      ? talk.speakerName
-      : castName;
-    state.talkResult = speakerName && speakerName !== talk.speakerName ? { ...talk, speakerName } : talk;
+    const speakerName = (split && split.speakerName) || castName || "NPC";
+    // The VN line is the addressed speaker's quotes only. When this turn's
+    // narration carried zero quotes from them, the VN shows nothing new (empty
+    // line) and the whole response is already in the log — the session stays open
+    // awaiting the player's reply (owner rule 3).
+    const vnLine = split && typeof split.vnText === "string" ? split.vnText : "";
+    state.talkResult = { npcId: rawId, speakerName, line: vnLine, found: true };
     state.dialogueActive = true;
     state.dialogueTyped = false;
     state.dialogueTargetEntityId = entityId;
     state.dialogueReplyDraft = "";
-    state.dialogueHistory = [{ role: "npc", speaker: speakerName || "NPC", text: line }];
+    state.dialogueHistory = vnLine ? [{ role: "npc", speaker: speakerName, text: vnLine }] : [];
   }
 
   function handleDialogueReplyDraft({ value }) {
@@ -4351,12 +4514,17 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       const response = await postAction(createTalkAction({ entityId: target, message: reply, history: priorHistory }));
       const next = response.talkResult || null;
       if (next && next.found !== false && next.line) {
-        state.talkResult = next;
+        // VN QUOTE SPLIT (owner ruling): the reply narration is one block — the
+        // addressed speaker's quotes stay in the VN, every other word (scene beats,
+        // other NPCs, atmosphere) goes to the log. A pure-action reply with zero
+        // quoted speech leaves vnLine empty → the VN shows nothing new, the whole
+        // beat is logged, and the session stays open (rule 3).
+        const vnLine = splitTalkNarrationToLog(next.line, next.speakerName || "NPC", reply || "");
+        state.talkResult = { ...next, line: vnLine, fullNarration: next.line };
         state.dialogueTyped = false;
-        state.dialogueHistory = [
-          ...(state.dialogueHistory || []),
-          { role: "npc", speaker: next.speakerName || "NPC", text: next.line }
-        ];
+        state.dialogueHistory = vnLine
+          ? [...(state.dialogueHistory || []), { role: "npc", speaker: next.speakerName || "NPC", text: vnLine }]
+          : (state.dialogueHistory || []);
       } else {
         // The NPC has nothing more to add — note it but keep the overlay open so
         // the exit stays explicit (the player clicks "End conversation").
