@@ -1,0 +1,17 @@
+{
+  "name": "dark-fantasy",
+  "checkpoint": "Juggernaut-XI-byRunDiffusion.safetensors",
+  "lora": [],
+  "sampler": { "sampler_name": "dpmpp_2m", "scheduler": "karras", "steps": 30, "cfg": 6.0, "denoise": 1.0 },
+  "positiveSuffix": "dark fantasy, cinematic lighting, highly detailed, painterly, dramatic, moody, artstation, sharp focus",
+  "negative": "lowres, worst quality, bad anatomy, bad hands, extra fingers, deformed, blurry, jpeg artifacts, watermark, signature, text, cartoon, anime, flat colors",
+  "dimensions": {
+    "world-card": [1344, 768],
+    "scene": [1344, 768],
+    "npc-body": [832, 1216],
+    "npc-portrait": [896, 1152],
+    "item": [1024, 1024],
+    "decor": [1152, 896],
+    "default": [1024, 1024]
+  }
+}

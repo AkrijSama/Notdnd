@@ -1,0 +1,17 @@
+{
+  "name": "anime",
+  "checkpoint": "Illustrious-XL-v2.0.safetensors",
+  "lora": [],
+  "sampler": { "sampler_name": "euler_ancestral", "scheduler": "normal", "steps": 28, "cfg": 5.0, "denoise": 1.0 },
+  "positiveSuffix": "masterpiece, best quality, very aesthetic, highly detailed, anime illustration, clean line art, vibrant",
+  "negative": "lowres, worst quality, bad anatomy, bad hands, extra fingers, deformed, blurry, jpeg artifacts, watermark, signature, text, 3d, photorealistic",
+  "dimensions": {
+    "world-card": [1344, 768],
+    "scene": [1344, 768],
+    "npc-body": [832, 1216],
+    "npc-portrait": [896, 1152],
+    "item": [1024, 1024],
+    "decor": [1152, 896],
+    "default": [1024, 1024]
+  }
+}
