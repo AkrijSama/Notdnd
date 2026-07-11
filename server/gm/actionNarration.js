@@ -352,6 +352,18 @@ export function buildActionGmMessage(run, resolved) {
         `Never "nothing happens, try again"; narrate the committed consequence as already true, do not invent a different one. Give them a specific new thing to act on next. ${suffix}`
       );
     }
+    // AUTOMATIC (Ch3 Tier 0 — no stakes): safe movement / conversation /
+    // observation resolved with NO roll and NO band. The narrator must NOT frame
+    // it as a passed check ("you manage to", "successfully") — it simply happens.
+    // band→directive coherence: an automatic outcome reads as a clean event, never
+    // a contest won.
+    if (band === "automatic") {
+      return (
+        `In the current scene, the player does this and it simply happens: "${String(ar.intent || "an action")}". ` +
+        `This is a SAFE, no-stakes action — there was NO roll and no chance of failure, so do NOT narrate a struggle, a near-miss, or "you manage to". ` +
+        `Narrate it unfolding cleanly, then show the CONCRETE result — what they now see, reach, or learn — and give them a specific new thing to act on next. ${suffix}`
+      );
+    }
     return (
       `In the current scene, the player attempts: "${String(ar.intent || "an action")}". ` +
       `The attempt SUCCEEDS${rollText}. ` +

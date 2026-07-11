@@ -1838,7 +1838,13 @@ export function resolveAttemptAction(run, action, options = {}) {
     if (foreclosure.effect === "blocked") {
       foreclosed = true;
       success = false;
-      band = "failure";
+      // RESOLUTION LAW: no FAILURE band is ever stamped without a checkResult. A
+      // foreclosed retry is a pre-roll REFUSAL (the approach is closed — no dice
+      // were thrown), exactly like the authority/possession gates, so it carries
+      // NO rolled band (band stays null) rather than a numberless "Failure" badge.
+      // The block is fully expressed by foreclosed/success:false + blockNarration +
+      // the retry_foreclosed consequence; the narrator still reads it as a denial.
+      band = null;
       checkResult = null;
       const obj = foreclosure.object || {};
       blockNarration = isString(obj.reason)
