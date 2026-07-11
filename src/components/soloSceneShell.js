@@ -874,15 +874,23 @@ export function renderSoloActionOutcome(state = {}) {
     return "";
   }
   const cr = outcome.checkResult || null;
-  const b = outcomeBandInfo(outcome);
   const hasTotal = cr && cr.total !== undefined && cr.total !== null;
   const hasDc = cr && cr.dc !== undefined && cr.dc !== null;
+  // resolution-tier (item 3/6): a roll-less outcome is AUTOMATIC — it must show
+  // NO band badge and NEVER a numberless FAILURE. The log-entry render already
+  // gates its roll tag on hasRoll (#33); THIS strip missed that guard and stamped
+  // a bare "Failure ✕" whenever the resolver produced no checkResult (the owner's
+  // "FAILURE badge, no visible roll" symptom). No roll total => no strip. This is
+  // the client half; the resolver's automatic tier (server/solo, CLI 1) is what
+  // stops stamping a band on safe move/talk/observe in the first place.
+  if (!hasTotal) {
+    return "";
+  }
+  const b = outcomeBandInfo(outcome);
   // #5 readability: label the numbers — bare "2/12" was unreadable. Verified
   // semantics: cr.total is the roll total, cr.dc the difficulty (matches the
   // right rail's "vs DC" framing and the resolver's checkResult contract).
-  const roll = hasTotal
-    ? `<span class="solo-outcome-roll">Rolled ${escapeHtml(cr.total)}${hasDc ? `<span class="solo-outcome-dc"> · DC ${escapeHtml(cr.dc)}</span>` : ""}</span>`
-    : "";
+  const roll = `<span class="solo-outcome-roll">Rolled ${escapeHtml(cr.total)}${hasDc ? `<span class="solo-outcome-dc"> · DC ${escapeHtml(cr.dc)}</span>` : ""}</span>`;
   const intent = String(outcome.intent || "").trim();
   // #32: one thin row. Band glyph + label + roll on the left; the attempted
   // intent trails, dimmed. No card chrome, no gold stripe.

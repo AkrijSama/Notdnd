@@ -76,6 +76,34 @@ test("stage outcome strip reads 'Rolled X · DC Y'", () => {
   assert.match(html, /· DC 14/);
 });
 
+// resolution-tier (item 3/6): the outcome strip is the render site the roll-tag
+// guard missed. A roll-less outcome must show NO band badge and NEVER a
+// numberless FAILURE — the automatic tier reads as no-badge on the client too.
+test("outcome strip renders NOTHING when the outcome carried no roll (no numberless FAILURE)", () => {
+  const noRoll = renderSoloActionOutcome({
+    scene: {
+      recentTimeline: [{ type: "attempt" }],
+      // the owner's live symptom: a FAILURE band stamped with no checkResult
+      latestAttemptResult: { intent: "tell the guard of the smoke", band: "failure", success: false, checkResult: null }
+    }
+  });
+  assert.equal(noRoll, "", "no strip at all when there was no roll");
+  assert.doesNotMatch(noRoll, /Failure/, "never a numberless FAILURE badge");
+  assert.doesNotMatch(noRoll, /solo-outcome-badge/, "no band badge without a roll");
+});
+
+test("outcome strip STILL renders the band badge + roll whenever a real check happened", () => {
+  const rolled = renderSoloActionOutcome({
+    scene: {
+      recentTimeline: [{ type: "attempt" }],
+      latestAttemptResult: { intent: "force the cellar door", band: "failure", success: false, checkResult: { total: 6, dc: 15 } }
+    }
+  });
+  assert.match(rolled, /solo-outcome-badge/, "a real roll keeps its badge");
+  assert.match(rolled, /Rolled 6/);
+  assert.match(rolled, /· DC 15/, "a rolled FAILURE is never numberless");
+});
+
 // ---- Item 7: per-turn timing collector ----
 
 test("startTurnTiming records sequential stage segments + total", async () => {
