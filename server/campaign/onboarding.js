@@ -1077,7 +1077,7 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
   markStage("runSave");
   try {
     const total = Date.now() - stageT.t0;
-    logTurnEvent(runId, `openingTiming ${Object.entries(stageT.marks).map(([k, v]) => `${k}=${v}ms`).join(" ")} total=${total}ms`);
+    logTurnEvent(run.runId, `openingTiming ${Object.entries(stageT.marks).map(([k, v]) => `${k}=${v}ms`).join(" ")} total=${total}ms`);
   } catch {
     // diagnosis line is best-effort
   }
