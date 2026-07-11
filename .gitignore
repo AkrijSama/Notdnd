@@ -11,3 +11,6 @@ backups/
 
 # Generated NPC portrait / image assets (never commit binaries)
 data/assets/
+
+# GM generation transcripts (fine-tune dataset groundwork; runtime churn, never commit)
+data/logs/gm-transcripts/

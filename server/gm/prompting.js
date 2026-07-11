@@ -1,5 +1,7 @@
 import { generateNarrative, generateRaw, generateUtility, getModelTiers } from "../ai/openrouter.js";
 import { trimToCompleteSentence } from "./trimSentence.js";
+import { HANDLES_CORRECTIVE_CLAUSE } from "./handlesEnforcement.js";
+import { recordGmGeneration } from "../logging/gmTranscript.js";
 import { getCampaignRuntimeState, getState, setCampaignRuntimeState } from "../db/repository.js";
 import { resolveSkillCheck, rollDiceExpression } from "../rules/engine.js";
 import { buildContextWindow, getEntity, getRelated, search, upsertEntity } from "./memoryStore.js";
@@ -321,7 +323,13 @@ export async function runGmPipeline({
   // instead of being awaited — it never blocks the turn's HTTP response. The
   // narration is unaffected; the graph simply updates a beat late (like image
   // gen). The solo per-turn path sets this; it still RUNS, it is not skipped.
-  deferMemory = false
+  deferMemory = false,
+  // GM-TRANSCRIPT metadata (fine-tune dataset groundwork). Optional, best-effort:
+  // callers MAY pass { runId, turnRef, callType } to enrich the persisted record.
+  // Absent, the capture falls back to campaignId as the file key and "narration"
+  // as the callType (the handles-retry is detected here, not passed in). Threading
+  // opening/talk/ooc labels from the request-layer callers is a trivial follow-up.
+  transcript = {}
 }) {
   const campaignKey = String(campaignId || "").trim();
   const input = String(message || "").trim();
@@ -362,6 +370,10 @@ export async function runGmPipeline({
   let selectedModel = resolveNarrativeModel(styleConfig, modelTiers);
   let promptProfile = getProfile(selectedModel);
   let modelOptions = { ...applyStyleModelOverrides(profileCallOptions(promptProfile, stream, onStream), styleConfig), edition: normalizedEdition, flashMaxTokens };
+
+  // GM-transcript timing: the model call dominates this window (prompt assembly is
+  // string work). Captured with the record below.
+  const genStartedAt = Date.now();
 
   if (mode === "companion") {
     const intent = inferCompanionIntent(input);
@@ -462,6 +474,35 @@ export async function runGmPipeline({
   // retry itself is bounded to one by enforceHandles — so trim -> detectHandles ->
   // (retry -> trim) can never loop beyond that single retry.
   const rawNarrative = trimToCompleteSentence(String(aiResult.content || "").trim(), aiResult.finishReason);
+
+  // GM-TRANSCRIPT CAPTURE (single chokepoint — narration, opening, talk, ooc all
+  // flow through here, and the handles-RETRY re-enters this pipeline as its own
+  // call so it is captured as a second record). Best-effort; recordGmGeneration
+  // never throws, and this block is additionally guarded so no capture path can
+  // ever fail a turn. The handles-retry is detected in-scope by the corrective
+  // clause the caller appends to the message (no caller change needed).
+  try {
+    const rawContent = String(aiResult.content || "");
+    const isHandlesRetry = typeof input === "string" && input.includes(HANDLES_CORRECTIVE_CLAUSE.trim());
+    const trimApplied = rawNarrative !== rawContent.trim();
+    recordGmGeneration({
+      runId: transcript.runId || campaignKey,
+      campaignId: campaignKey,
+      turnRef: transcript.turnRef ?? null,
+      callType: isHandlesRetry ? "handles-retry" : (transcript.callType || "narration"),
+      model: aiResult.model ?? null,
+      finishReason: aiResult.finishReason ?? null,
+      promptMessages: messages,
+      rawOutput: rawContent,
+      trimmedOutput: trimApplied ? rawNarrative : null,
+      latencyMs: Date.now() - genStartedAt,
+      trimApplied,
+      handlesRetry: isHandlesRetry
+    });
+  } catch {
+    // Persistence must never fail a turn.
+  }
+
   const parsed = parseResponseTriggers(rawNarrative);
   const triggerExecution = await executeParsedTriggers(
     parsed.triggers,
