@@ -127,6 +127,7 @@ import { buildNpcIntroDirective, buildSoloScenePayload, collectNpcsWithPendingIn
 import { buildSystemLoreClause, detectSystemLoreViolations } from "./gm/systemLore.js";
 import { detectSpitViolations, stripSpitGestures, detectRepeatedGestures } from "./gm/mannerismAudit.js";
 import { buildOocSystemPrompt } from "./gm/oocGrounding.js";
+import { recordGmGeneration } from "./logging/gmTranscript.js";
 import { enforceHandles, HANDLES_CORRECTIVE_CLAUSE } from "./gm/handlesEnforcement.js";
 import { auditAndCommitNarratedNpcs, auditAndCommitNarratedLore, auditAndCommitInventedAgents, backfillNpcGenderFromNarration, repairNarrationPronouns } from "./solo/npcCommit.js";
 import { refreshSceneSuggestions } from "./solo/suggestions.js";
@@ -1007,7 +1008,8 @@ async function narrateDeathWithGm(run, resolved, user) {
       mode: "companion",
       playerName: run.player?.displayName || "the wanderer",
       actorUserId: user?.id,
-      edition: run.edition
+      edition: run.edition,
+      transcript: { runId: run.runId, turnRef: Array.isArray(run.timeline) ? run.timeline.length : null, callType: "narration" }
     }),
     effectiveActionTimeoutMs()
   );
@@ -1121,7 +1123,16 @@ async function narrateActionWithGm(run, resolved, user) {
         actorUserId: user?.id,
         edition: run.edition,
         // Fire-after-response: the knowledge-graph write must not block the turn.
-        deferMemory: true
+        deferMemory: true,
+        // Item 3: true transcript labels — a talk turn records "talk", everything
+        // else on this path is turn narration. runId/turnRef replace the
+        // campaignId-keyed default. (The handles-retry re-entry is tagged by the
+        // pipeline itself and overrides this label.)
+        transcript: {
+          runId: run.runId,
+          turnRef: Array.isArray(run.timeline) ? run.timeline.length : null,
+          callType: resolved?.action?.type === "talk" ? "talk" : "narration"
+        }
       }),
       ceiling
     );
@@ -1200,8 +1211,25 @@ async function narrateOocWithGm(run, question) {
     { role: "user", content: question.trim().slice(0, 800) }
   ];
   try {
+    const oocT0 = Date.now();
     const response = await generateNarrative(messages, run.campaignId, { maxResponseTokens: 220, temperature: 0.3 });
     const raw = typeof response?.content === "string" ? response.content : (typeof response?.narrative === "string" ? response.narrative : "");
+    // Item 3 (bucket-2): OOC bypasses runGmPipeline (direct generateNarrative), so
+    // it records its own transcript entry with the true callType.
+    recordGmGeneration({
+      runId: run.runId,
+      campaignId: run.campaignId,
+      turnRef: Array.isArray(run.timeline) ? run.timeline.length : null,
+      callType: "ooc",
+      model: response?.model ?? null,
+      finishReason: response?.finishReason ?? null,
+      promptMessages: messages,
+      rawOutput: String(raw),
+      trimmedOutput: null,
+      latencyMs: Date.now() - oocT0,
+      trimApplied: false,
+      handlesRetry: false
+    });
     const reply = stripAiTells(String(raw).trim());
     return { reply: reply || null, model: response?.model || null };
   } catch {
@@ -1429,7 +1457,8 @@ async function narrateVictoryWithGm(run, quest, user) {
       mode: "companion",
       playerName: run.player?.displayName || "the wanderer",
       actorUserId: user?.id,
-      edition: run.edition
+      edition: run.edition,
+      transcript: { runId: run.runId, turnRef: Array.isArray(run.timeline) ? run.timeline.length : null, callType: "narration" }
     }),
     effectiveActionTimeoutMs()
   );
@@ -2570,7 +2599,8 @@ async function handleApi(req, res) {
         mode: "companion",
         playerName: characterName,
         actorUserId: user.id,
-        stream: true
+        stream: true,
+        transcript: { runId, callType: "opening" }
       });
 
       if (opening?.narrative) {

@@ -501,7 +501,7 @@ async function generateOpeningNarration({ campaignId, runId, message, playerName
   const t0 = Date.now();
   try {
     const result = await Promise.race([
-      Promise.resolve(runGmPipeline({ campaignId, message, mode: "companion", playerName, actorUserId, flashMaxTokens: 420 })).catch(() => null),
+      Promise.resolve(runGmPipeline({ campaignId, message, mode: "companion", playerName, actorUserId, flashMaxTokens: 420, transcript: { runId, callType: "opening" } })).catch(() => null),
       timeout
     ]);
     if (timer) {
