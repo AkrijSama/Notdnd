@@ -1178,7 +1178,10 @@ async function narrateOocWithGm(run, question) {
     const reply = stripAiTells(String(raw).trim());
     return { reply: reply || null, model: response?.model || null };
   } catch {
-    return { reply: null };
+    // The GM call failed (cloud outage / quota, and — by policy — NO local 8b
+    // fallback). Flag it so the OOC handler shows an honest "unavailable" note
+    // rather than the "didn't catch that" message meant for an empty question.
+    return { reply: null, unavailable: true };
   }
 }
 
@@ -1792,7 +1795,11 @@ async function handleApi(req, res) {
       // turn cost. The run is echoed back unchanged.
       if (resolved.code === "OOC") {
         const oocOut = await narrateOocWithGm(run, resolved.ooc?.question || "");
-        const oocReply = oocOut.reply || "(Out of character) I didn't quite catch that — try rephrasing your note to me.";
+        const oocReply =
+          oocOut.reply ||
+          (oocOut.unavailable
+            ? "(Out of character) The GM is momentarily unavailable — please try again in a moment."
+            : "(Out of character) I didn't quite catch that — try rephrasing your note to me.");
         writeJson(res, 200, {
           ok: true,
           ooc: true,

@@ -329,16 +329,30 @@ function resolveLocalProvider() {
 /**
  * ONE resolver: edition (+ fallback flag) -> { baseUrl, model, key, local, edition }.
  *  - 'mainline'          -> cloud (UNCHANGED: LLM base + narrative model + key)
- *  - 'forbidden'         -> local uncensored model (no key)
- *  - { fallback: true }  -> local regardless of edition (the cloud->local recovery)
- * Pure + call-time; never throws (cloud key may be empty — enforced at call time).
+ *  - 'forbidden'         -> local uncensored model (no key) — INTENTIONAL local
+ *  - { fallback: true }  -> the cloud->local RECOVERY: local ONLY when the gate is
+ *                           enabled; THROWS GM_LOCAL_FALLBACK_DISABLED otherwise.
+ * This is the SINGLE lowest-level enforcement of the fallback gate: no path —
+ * known or future — can obtain a fallback-local provider while it is disabled.
+ * Forbidden Mode is a deliberate local model (not a fallback) and is never gated.
  * @param {string} edition
  * @param {{ fallback?: boolean }} [opts]
  * @returns {{ baseUrl: string, model: string, key: string|null, local: boolean, edition: string }}
  */
 export function resolveGmProvider(edition = "mainline", { fallback = false } = {}) {
   const ed = String(edition || "mainline").trim().toLowerCase();
-  if (ed === "forbidden" || fallback === true) {
+  if (ed === "forbidden") {
+    // Forbidden Mode: deliberate local-only, uncensored — content never leaves the
+    // box. NOT a cloud->local degradation, so the GPU-safety gate does not apply.
+    return { ...resolveLocalProvider(), edition: ed };
+  }
+  if (fallback === true) {
+    if (!localFallbackEnabled()) {
+      throw Object.assign(
+        new Error("GM local fallback is disabled (set INKBORNE_GM_LOCAL_FALLBACK=true to allow the local 8b)."),
+        { code: "GM_LOCAL_FALLBACK_DISABLED", statusCode: 503 }
+      );
+    }
     return { ...resolveLocalProvider(), edition: ed };
   }
   return {
@@ -350,13 +364,20 @@ export function resolveGmProvider(edition = "mainline", { fallback = false } = {
   };
 }
 
-// Cloud->local fallback is ON by default; disable with INKBORNE_GM_LOCAL_FALLBACK=false.
-// Exported: /api/debug/status surfaces this so GPU-safety is visible at a glance.
+// Cloud->local fallback is OFF by DEFAULT (fail-safe: GPU-safe). It serves the
+// local 8b ONLY when EXPLICITLY enabled with INKBORNE_GM_LOCAL_FALLBACK=true.
+//
+// Why fail-safe: the .env override (=false) is loaded only by server/index.js, so
+// any entry point that touches the GM layer WITHOUT importing index.js (an ad-hoc
+// script, a test harness, a probe) previously inherited the old default-ON and
+// silently degraded a failed cloud call to the GPU model — the freeze hazard. A
+// default-OFF gate means no path can load the 8b unless someone opted in on
+// purpose. Exported: /api/debug/status surfaces this so GPU-safety is visible.
 export function localFallbackEnabled() {
   const v = String((process.env.INKBORNE_GM_LOCAL_FALLBACK ?? process.env.NOTDND_GM_LOCAL_FALLBACK) || "")
     .trim()
     .toLowerCase();
-  return v !== "false" && v !== "0" && v !== "off";
+  return v === "true" || v === "1" || v === "on";
 }
 
 function normalizeTokens(usage = {}) {

@@ -108,8 +108,9 @@ test("FALLBACK: Gemini 429 (cap) falls to GROQ, NOT to local", async () => {
   });
 });
 
-test("LAST RESORT: both cloud lanes fail => local 8b (only then)", async () => {
-  await withEnv({ NOTDND_CLOUD_PROVIDER_CHAIN: "gemini-groq", GEMINI_API_KEY: "g", GROQ_API_KEY: "q" }, async () => {
+test("LAST RESORT: both cloud lanes fail => local 8b (only when fallback EXPLICITLY enabled)", async () => {
+  // Fail-safe default is OFF; local as last resort requires the explicit opt-in.
+  await withEnv({ NOTDND_CLOUD_PROVIDER_CHAIN: "gemini-groq", GEMINI_API_KEY: "g", GROQ_API_KEY: "q", INKBORNE_GM_LOCAL_FALLBACK: "true" }, async () => {
     const chain = resolveCloudChain();
     const { fn, attempted } = fakeRequestFn({ gemini: 429, groq: 500, local: "ok" });
     const res = await requestViaCloudChain(MSGS, chain, { __requestFn: fn });

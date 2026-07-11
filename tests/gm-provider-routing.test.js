@@ -66,14 +66,26 @@ test("gm-provider routing", async (t) => {
     });
   });
 
-  await t.test("fallback flag forces local even for mainline (cloud->local recovery)", () => {
-    withEnv(CLOUD_ENV, () => {
+  await t.test("fallback flag forces local for mainline ONLY when the gate is explicitly enabled", () => {
+    withEnv({ ...CLOUD_ENV, INKBORNE_GM_LOCAL_FALLBACK: "true" }, () => {
       const p = resolveGmProvider("mainline", { fallback: true });
       assert.equal(p.local, true);
       assert.equal(p.baseUrl, "http://127.0.0.1:11434/v1/chat/completions");
       assert.equal(p.model, "inkborne-gm:8b");
       assert.equal(p.key, null);
     });
+  });
+
+  await t.test("fallback flag THROWS (never serves local) when the gate is disabled/unset — GPU-safe default", () => {
+    for (const flag of [undefined, "false", "0", "off"]) {
+      withEnv({ ...CLOUD_ENV, INKBORNE_GM_LOCAL_FALLBACK: flag, NOTDND_GM_LOCAL_FALLBACK: undefined }, () => {
+        assert.throws(
+          () => resolveGmProvider("mainline", { fallback: true }),
+          (e) => e.code === "GM_LOCAL_FALLBACK_DISABLED",
+          `flag=${flag} must refuse the local fallback`
+        );
+      });
+    }
   });
 
   await t.test("forbidden base/model are env-overridable at call time", () => {
