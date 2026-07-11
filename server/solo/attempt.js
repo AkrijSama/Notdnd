@@ -1250,10 +1250,14 @@ export function enforceFailureConsequence(run, spec, context, now) {
     case "condition": {
       // #26: a TIMED condition. Pass any GM-supplied effect/durationMinutes; the
       // conditions module fills vocab defaults (Ch8 FF-status) for what's omitted.
+      // Item 1: kind is declared AT MINT — this path commits afflictions earned by
+      // failed checks, so absent an explicit kind it is a debuff (the vocab canon
+      // still wins for the FF-status set via describeCondition).
       const entry = addPlayerCondition(run, {
         name: consequence.condition,
         effect: consequence.effect,
-        durationMinutes: consequence.durationMinutes
+        durationMinutes: consequence.durationMinutes,
+        kind: consequence.kind || "debuff"
       });
       return {
         type: "condition",

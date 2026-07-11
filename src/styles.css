@@ -4813,12 +4813,21 @@ textarea.hb-input { min-height: 76px; resize: vertical; }
   cursor: default;
 }
 .solo-cond-chip:focus { outline: 1px solid var(--accent, #c2c6cf); outline-offset: 1px; }
-.solo-cond-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
-.solo-cond-chip.cond-buff .solo-cond-dot { background: #86b06a; }
+/* HUD v2 (item 1): kind is server-minted; encoding is MULTI-CHANNEL (colorblind-
+   safe rule — color alone is banned): color family + mandatory shape glyph +
+   kind word in aria/tooltip. Fixed literals so the five families read identically
+   across all four skins (the band-color precedent). */
+.solo-cond-glyph { font-size: 10px; line-height: 1; flex: none; }
+.solo-cond-chip.cond-buff .solo-cond-glyph { color: #86b06a; }
 .solo-cond-chip.cond-buff { border-color: rgba(134, 176, 106, 0.5); }
-.solo-cond-chip.cond-debuff .solo-cond-dot { background: #c86a6a; }
+.solo-cond-chip.cond-debuff .solo-cond-glyph { color: #c86a6a; }
 .solo-cond-chip.cond-debuff { border-color: rgba(200, 106, 106, 0.5); }
-.solo-cond-chip.cond-neutral .solo-cond-dot { background: var(--accent, #c2c6cf); }
+.solo-cond-chip.cond-mark .solo-cond-glyph { color: #d8c06a; }
+.solo-cond-chip.cond-mark { border-color: rgba(216, 192, 106, 0.5); }
+.solo-cond-chip.cond-control .solo-cond-glyph { color: #a98fd4; filter: grayscale(1) sepia(1) hue-rotate(215deg) saturate(2); }
+.solo-cond-chip.cond-control { border-color: rgba(169, 143, 212, 0.5); }
+.solo-cond-chip.cond-neutral .solo-cond-glyph { color: #9a9da6; }
+.solo-cond-chip.cond-neutral { border-color: rgba(154, 157, 166, 0.4); }
 .solo-cond-name { font-weight: 600; color: var(--text, #d9dbe0); }
 .solo-cond-time { font-size: 11px; color: var(--text-muted, #8b8e96); }
 /* Tooltip: hidden until hover/focus; opens above; left-anchored by default,

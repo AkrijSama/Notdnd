@@ -1715,25 +1715,25 @@ export function renderSoloCharacterSidebar(character = SOLO_SAMPLE_CHARACTER) {
 // #15: the "GM is thinking / Loading scene" strip, extracted so the turn
 // fast-path can repaint just this node (inside data-solo-thinking) in place.
 // ---------------------------------------------------------------------------
-// CONDITIONS HUD (#26 made player-visible). The server commits conditions with
-// durations and sheds them on expiry — but nothing rendered them (the live
-// palm-mark example: committed, invisible). One chip per active condition,
-// read from the scene payload the client already polls:
-//   scene.player.conditions[] = { id, name, effect, remainingMinutes|null,
-//                                 permanent } (conditionStatusPayload)
-// DATA GAP (flagged, not invented): the payload has NO buff/debuff type field.
-// Hue is a client-side PRESENTATION heuristic over name+effect words; unknown
-// stays neutral. Colors reuse the existing fixed band semantics (success green /
-// failure red) so they read identically across all four skins.
+// CONDITIONS HUD v2 (#26 + item 1). One chip per active condition from the scene
+// payload: scene.player.conditions[] = { id, name, effect, kind, remaining
+// Minutes|null, permanent } (conditionStatusPayload). `kind` is SERVER-MINTED
+// ("buff"|"debuff"|"mark"|"control"|"neutral") — the client word-guessing
+// classifier is DELETED. Colorblind-safe multi-channel encoding: color alone is
+// banned, so every kind also carries a mandatory shape glyph (color-independent)
+// and the kind word in the screen-reader label + tooltip. Chips are GROUPED by
+// kind (buffs → marks → neutral → control → debuffs), never interleaved.
 // ---------------------------------------------------------------------------
-const CONDITION_BUFF_RE = /\b(bless|blessed|haste|hasted|inspir|ward|warded|protect|shield|regen|fortif|strengthen|suppress|resist|guid|heal)/i;
-const CONDITION_DEBUFF_RE = /\b(exhaust|poison|grappl|stun|burn|frozen|blind|curse|disease|paralyz|prone|bleed|weaken|slow|frighten|fear|wound)/i;
+export const CONDITION_KIND_META = Object.freeze({
+  buff: { glyph: "▲", word: "Buff", order: 0 },
+  mark: { glyph: "◆", word: "Mark", order: 1 },
+  neutral: { glyph: "●", word: "Effect", order: 2 },
+  control: { glyph: "🔒", word: "Control", order: 3 },
+  debuff: { glyph: "▼", word: "Debuff", order: 4 }
+});
 
-export function classifyConditionHue(condition = {}) {
-  const blob = `${condition.name || ""} ${condition.effect || ""}`;
-  if (CONDITION_DEBUFF_RE.test(blob)) return "debuff";
-  if (CONDITION_BUFF_RE.test(blob)) return "buff";
-  return "neutral";
+function conditionKindMeta(kind) {
+  return CONDITION_KIND_META[String(kind || "").toLowerCase()] || CONDITION_KIND_META.neutral;
 }
 
 // World-clock minutes → a short human duration ("45m", "≈2h", "≈3d").
@@ -1752,9 +1752,14 @@ export function renderSoloConditionsHud(scene = {}) {
   if (!conditions.length) {
     return ""; // empty state: nothing visible, no placeholder text
   }
-  const chips = conditions
-    .map((c) => {
-      const hue = classifyConditionHue(c);
+  // Grouped, never interleaved: buffs → marks → neutral → control → debuffs.
+  // Stable within a group (server order preserved).
+  const ordered = conditions
+    .map((c, i) => ({ c, i, meta: conditionKindMeta(c.kind) }))
+    .sort((a, b) => a.meta.order - b.meta.order || a.i - b.i);
+  const chips = ordered
+    .map(({ c, meta }) => {
+      const kind = CONDITION_KIND_META[String(c.kind || "").toLowerCase()] ? String(c.kind).toLowerCase() : "neutral";
       const name = String(c.name || c.id);
       const duration = c.permanent ? "" : formatConditionDuration(c.remainingMinutes);
       const remainText = c.permanent
@@ -1764,12 +1769,12 @@ export function renderSoloConditionsHud(scene = {}) {
           : "";
       const tipBody = [String(c.effect || "").trim(), remainText].filter(Boolean).join(" ");
       return `
-        <span class="solo-cond-chip cond-${hue}" tabindex="0" data-cond-id="${escapeHtml(c.id || name)}" aria-label="${escapeHtml(`${name}. ${tipBody}`)}">
-          <span class="solo-cond-dot" aria-hidden="true"></span>
+        <span class="solo-cond-chip cond-${kind}" tabindex="0" data-cond-id="${escapeHtml(c.id || name)}" aria-label="${escapeHtml(`${name}. ${meta.word}. ${tipBody}`)}">
+          <span class="solo-cond-glyph" aria-hidden="true">${meta.glyph}</span>
           <span class="solo-cond-name">${escapeHtml(name)}</span>
           ${duration ? `<span class="solo-cond-time">${escapeHtml(duration)}</span>` : ""}
           <span class="solo-cond-tip" role="tooltip">
-            <strong>${escapeHtml(name)}</strong>${tipBody ? `<span>${escapeHtml(tipBody)}</span>` : ""}
+            <strong>${escapeHtml(name)} · ${meta.word}</strong>${tipBody ? `<span>${escapeHtml(tipBody)}</span>` : ""}
           </span>
         </span>`;
     })

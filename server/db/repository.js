@@ -5,6 +5,7 @@ import { buildQuickstartBlueprint } from "../campaign/quickstart.js";
 import { ensureCampaignMemoryDocs, ensureCampaignMemoryDocsAsync } from "../gm/memoryStore.js";
 import { formatRollSummary, resolveAttack, resolveSkillCheck, rollDiceExpression } from "../rules/engine.js";
 import { NPC_EXPRESSIONS, createDefaultSoloRun, validateSoloRun } from "../solo/schema.js";
+import { backfillConditionKinds } from "../solo/conditions.js";
 import { uid } from "../utils/ids.js";
 import { createSeedState } from "./seedState.js";
 import { getDatabase } from "./database.js";
@@ -869,7 +870,19 @@ export function getSoloRun(runId) {
   if (!key) {
     return null;
   }
-  return db.soloRuns[key] ? deepClone(db.soloRuns[key]) : null;
+  const stored = db.soloRuns[key];
+  if (!stored) {
+    return null;
+  }
+  // Item 1 one-time kind backfill: legacy runs committed conditions before the
+  // required `kind` field existed. Assign kinds on the STORED record once (cheap
+  // no-op scan afterwards — every entry then carries kind) and persist, so the
+  // heuristic never runs for this run again. New mints carry kind from the
+  // committer and never hit this branch.
+  if (backfillConditionKinds(stored) > 0) {
+    writeToDisk();
+  }
+  return deepClone(stored);
 }
 
 export function listSoloRunsForUser(userId) {

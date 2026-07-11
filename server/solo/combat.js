@@ -454,7 +454,7 @@ function resolvePlayerStunt(run, combat, playerAction, actions, options) {
     const target = combat.combatants[playerAction.target] || livingEnemies(combat)[0];
     if (target) {
       target.conditions = target.conditions || [];
-      if (boon === "apply_condition") target.conditions.push({ id: "off_balance", name: "off-balance" });
+      if (boon === "apply_condition") target.conditions.push({ id: "off_balance", name: "off-balance", kind: "debuff" });
       if (boon === "enemy_disadvantage" || boon === "enemy_intent_disrupted") target.flags = { ...(target.flags || {}), disadvantageNextTurn: true };
     }
     if (boon === "advantage_next_attack") { run.player.flags = { ...(run.player.flags || {}), advantageNextAttack: true }; }

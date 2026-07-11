@@ -20,24 +20,34 @@
 // `defaultMinutes` is the fallback lifetime when neither the GM nor the caller sets
 // one; null means it persists until explicitly cleared (e.g. removed by a cure).
 export const CONDITION_VOCAB = Object.freeze({
-  poisoned: { name: "Poisoned", effect: "Burden on attack rolls and ability checks.", defaultMinutes: 60 },
-  frightened: { name: "Frightened", effect: "Burden while the source of fear is in sight; you cannot willingly approach it.", defaultMinutes: 10 },
-  prone: { name: "Prone", effect: "Burden on attacks; melee attacks against you have Edge until you stand.", defaultMinutes: 2 },
-  blinded: { name: "Blinded", effect: "You cannot see: sight-based checks auto-fail and you attack at Burden.", defaultMinutes: 10 },
-  deafened: { name: "Deafened", effect: "You cannot hear: hearing-based checks auto-fail.", defaultMinutes: 10 },
-  bleeding: { name: "Bleeding", effect: "An open wound; you lose ground until it is bound.", defaultMinutes: 30 },
-  burning: { name: "Burning", effect: "Flames cling to you, searing each round until smothered.", defaultMinutes: 3 },
-  stunned: { name: "Stunned", effect: "You cannot take actions; attacks against you have Edge.", defaultMinutes: 1 },
-  slowed: { name: "Slowed", effect: "Your movement is halved and you act at Burden.", defaultMinutes: 10 },
-  restrained: { name: "Restrained", effect: "You cannot move; attacks against you have Edge and you strike at Burden.", defaultMinutes: 10 },
-  charmed: { name: "Charmed", effect: "You cannot act against the charmer and they persuade you at Edge.", defaultMinutes: 30 },
-  exhausted: { name: "Exhausted", effect: "Burden on everything until you rest.", defaultMinutes: 480 },
-  poisonedFood: { name: "Sickened", effect: "Nausea grips you; Burden on physical checks.", defaultMinutes: 60 },
-  dazed: { name: "Dazed", effect: "Your head swims; Burden on your next actions.", defaultMinutes: 3 },
-  weakened: { name: "Weakened", effect: "Your strength is sapped; Burden on Strength checks.", defaultMinutes: 60 }
+  poisoned: { name: "Poisoned", effect: "Burden on attack rolls and ability checks.", kind: "debuff", defaultMinutes: 60 },
+  frightened: { name: "Frightened", effect: "Burden while the source of fear is in sight; you cannot willingly approach it.", kind: "debuff", defaultMinutes: 10 },
+  prone: { name: "Prone", effect: "Burden on attacks; melee attacks against you have Edge until you stand.", kind: "debuff", defaultMinutes: 2 },
+  blinded: { name: "Blinded", effect: "You cannot see: sight-based checks auto-fail and you attack at Burden.", kind: "debuff", defaultMinutes: 10 },
+  deafened: { name: "Deafened", effect: "You cannot hear: hearing-based checks auto-fail.", kind: "debuff", defaultMinutes: 10 },
+  bleeding: { name: "Bleeding", effect: "An open wound; you lose ground until it is bound.", kind: "debuff", defaultMinutes: 30 },
+  burning: { name: "Burning", effect: "Flames cling to you, searing each round until smothered.", kind: "debuff", defaultMinutes: 3 },
+  stunned: { name: "Stunned", effect: "You cannot take actions; attacks against you have Edge.", kind: "control", defaultMinutes: 1 },
+  slowed: { name: "Slowed", effect: "Your movement is halved and you act at Burden.", kind: "debuff", defaultMinutes: 10 },
+  restrained: { name: "Restrained", effect: "You cannot move; attacks against you have Edge and you strike at Burden.", kind: "control", defaultMinutes: 10 },
+  charmed: { name: "Charmed", effect: "You cannot act against the charmer and they persuade you at Edge.", kind: "control", defaultMinutes: 30 },
+  exhausted: { name: "Exhausted", effect: "Burden on everything until you rest.", kind: "debuff", defaultMinutes: 480 },
+  poisonedFood: { name: "Sickened", effect: "Nausea grips you; Burden on physical checks.", kind: "debuff", defaultMinutes: 60 },
+  dazed: { name: "Dazed", effect: "Your head swims; Burden on your next actions.", kind: "debuff", defaultMinutes: 3 },
+  weakened: { name: "Weakened", effect: "Your strength is sapped; Burden on Strength checks.", kind: "debuff", defaultMinutes: 60 }
 });
 
 const DEFAULT_UNKNOWN_MINUTES = 10;
+
+// Item 1 (bucket-2): the REQUIRED mint-time kind. The committing code knows what
+// it applies — a failed-check affliction is a debuff, an action-denial is control,
+// a sigil/brand is a mark, a blessing is a buff. Never word-guessed at render.
+export const CONDITION_KINDS = Object.freeze(["buff", "debuff", "mark", "control", "neutral"]);
+
+export function normalizeConditionKind(kind) {
+  const k = String(kind || "").trim().toLowerCase();
+  return CONDITION_KINDS.includes(k) ? k : null;
+}
 
 function isPlainObject(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -84,7 +94,10 @@ export function describeCondition(spec) {
     ? Math.round(raw.durationMinutes)
     : (canon && canon.defaultMinutes !== null ? canon.defaultMinutes
       : (canon && canon.defaultMinutes === null ? null : DEFAULT_UNKNOWN_MINUTES));
-  return { id, name, effect, defaultMinutes };
+  // Mint-time kind: the caller's declaration wins (it committed the effect), the
+  // vocab canon covers the FF-status set, anything else is neutral.
+  const kind = normalizeConditionKind(raw.kind) || (canon && normalizeConditionKind(canon.kind)) || "neutral";
+  return { id, name, effect, defaultMinutes, kind };
 }
 
 // Apply (or refresh) a timed condition on the player. `nowMinutes` is the current
@@ -116,12 +129,14 @@ export function applyCondition(run, spec, nowMinutes) {
     }
     existing.name = desc.name;
     existing.effect = desc.effect;
+    existing.kind = desc.kind;
     return existing;
   }
   const entry = {
     id: desc.id,
     name: desc.name,
     effect: desc.effect,
+    kind: desc.kind,
     durationMinutes,
     appliedAtMinutes: now,
     expiresAtMinutes
@@ -184,8 +199,45 @@ export function conditionStatusPayload(run, nowMinutes) {
         id: entry.id,
         name: entry.name || entry.id,
         effect: typeof entry.effect === "string" ? entry.effect : "",
+        kind: normalizeConditionKind(entry.kind) || "neutral",
         remainingMinutes,
         permanent
       };
     });
+}
+
+// ---------------------------------------------------------------------------
+// ONE-TIME BACKFILL (item 1): legacy committed conditions predate the required
+// `kind` field. On load, assign kinds ONCE via this heuristic (vocab canon first,
+// then the retired client word-scan, else neutral), persist, and the heuristic
+// never runs again for that run — new mints always carry kind from the committer.
+// This is the ONLY place word-guessing survives, and only for legacy data.
+// ---------------------------------------------------------------------------
+const BACKFILL_MARK_RE = /\b(sigil|mark|brand|rune|glyph|seal)\b/i;
+const BACKFILL_BUFF_RE = /\b(bless|blessed|haste|hasted|inspir|ward|warded|protect|shield|regen|fortif|strengthen|suppress|resist|guid|heal)/i;
+const BACKFILL_DEBUFF_RE = /\b(exhaust|poison|grappl|stun|burn|frozen|blind|curse|disease|paralyz|prone|bleed|weaken|slow|frighten|fear|wound)/i;
+const BACKFILL_CONTROL_RE = /\b(stunned|restrained|charmed|paralyzed|held|bound|frozen in place)\b/i;
+
+export function backfillConditionKinds(run) {
+  const player = run && isPlainObject(run.player) ? run.player : null;
+  if (!player || !Array.isArray(player.conditions)) {
+    return 0;
+  }
+  let changed = 0;
+  for (const entry of player.conditions) {
+    if (!isPlainObject(entry) || normalizeConditionKind(entry.kind)) {
+      continue; // already minted with a kind
+    }
+    const canon = entry.id && CONDITION_VOCAB[entry.id] ? CONDITION_VOCAB[entry.id] : null;
+    const blob = `${entry.name || ""} ${entry.effect || ""}`;
+    entry.kind =
+      (canon && normalizeConditionKind(canon.kind)) ||
+      (BACKFILL_CONTROL_RE.test(blob) ? "control"
+        : BACKFILL_MARK_RE.test(blob) ? "mark"
+          : BACKFILL_DEBUFF_RE.test(blob) ? "debuff"
+            : BACKFILL_BUFF_RE.test(blob) ? "buff"
+              : "neutral");
+    changed += 1;
+  }
+  return changed;
 }
