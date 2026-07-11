@@ -125,6 +125,7 @@ import { enqueueDraftPortrait, enqueueImageJob, enqueueLocationImageJob, enqueue
 import { enqueueIdentityJob, runIdentityJob } from "./solo/npcIdentity.js";
 import { buildNpcIntroDirective, buildSoloScenePayload, collectNpcsWithPendingIntro } from "./solo/scene.js";
 import { buildSystemLoreClause, detectSystemLoreViolations } from "./gm/systemLore.js";
+import { buildOocSystemPrompt } from "./gm/oocGrounding.js";
 import { enforceHandles, HANDLES_CORRECTIVE_CLAUSE } from "./gm/handlesEnforcement.js";
 import { auditAndCommitNarratedNpcs, auditAndCommitNarratedLore, auditAndCommitInventedAgents, backfillNpcGenderFromNarration, repairNarrationPronouns } from "./solo/npcCommit.js";
 import { refreshSceneSuggestions } from "./solo/suggestions.js";
@@ -1159,16 +1160,15 @@ async function narrateOocWithGm(run, question) {
   if (!run?.campaignId || typeof question !== "string" || !question.trim()) {
     return { reply: null };
   }
+  // ooc-grounding (Jul 10): the OOC answer receives the SAME committed, on-screen
+  // grounding a narration turn sees — recent narration verbatim, objectives,
+  // conditions, clock, location, present NPCs, the recent committed development,
+  // and system lore — so it answers specifically and never asks the player to
+  // re-supply context that is on screen ("5 minutes to do what?" → "clarify").
   const messages = [
     {
       role: "system",
-      content: [
-        "You are the Game Master of a solo tabletop RPG, replying to the player OUT OF CHARACTER.",
-        "The player has stepped outside the story to ask you a direct question or make a meta request (a rules clarification, a recap, what their options are, a tone note).",
-        "Answer briefly and helpfully AS THE GM, out of character.",
-        "Do NOT narrate story events. Do NOT advance the fiction. Do NOT change the game world or any state. Do NOT speak as any in-world character. Do NOT open with quotation marks as if a character is speaking.",
-        "Keep it to 1-3 plain sentences."
-      ].join(" ")
+      content: buildOocSystemPrompt(run)
     },
     { role: "user", content: question.trim().slice(0, 800) }
   ];
