@@ -474,7 +474,18 @@ function resolveStartingNpcSpec(world, resolvedWorld) {
  * @param {{ world?: object, character?: object }} payload
  * @returns {Promise<{ campaignId: string, runId: string, world: object }>}
  */
-const OPENING_NARRATION_TIMEOUT_MS = 15000;
+// Item 2 (bucket-2) ROOT CAUSE FIX: this was a flat 15s race — LESS than the 35s
+// the per-attempt cloud lane itself allows (gmCloudTimeoutMs), while the opening
+// requests 420 tokens (2.2x a turn's budget) for orientation. The wrapper was
+// aborting still-WORKING generations (~10-14s of pure decode + cold-start
+// context), dropping ~half of cold-start openings to the deterministic template.
+// Same principle as effectiveActionTimeoutMs: sit just ABOVE the lane window so
+// this is a true backstop for hung calls, never a pre-emptor of working ones.
+// Onboarding is a one-time cold start; the player is on the world-forge screen.
+const OPENING_NARRATION_TIMEOUT_MS = (() => {
+  const v = Number(process.env.NOTDND_OPENING_TIMEOUT_MS || process.env.INKBORNE_OPENING_TIMEOUT_MS);
+  return Number.isFinite(v) && v > 0 ? v : 40000;
+})();
 
 // Generates the world-entry opening via the real GM pipeline, bounded so a slow
 // or unconfigured provider never blocks onboarding. Falls back to the starting
