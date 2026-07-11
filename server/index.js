@@ -119,7 +119,7 @@ import { createWsHub } from "./realtime/wsHub.js";
 import { resolveSoloAction, testHooksEnabled } from "./solo/actions.js";
 import { buildAttemptContext, buildAttemptProviderInput, classifyIntentAuthority, isObservationQuery, isSafeConversation, isCompoundIntent } from "./solo/attempt.js";
 import { interpretAttemptWithGm } from "./gm/attemptInterpreter.js";
-import { attributeSceneDialogue, classifyNarrationVn, resolveGmNarration } from "./solo/gmProvider.js";
+import { attributeSceneDialogue, resolveGmNarration } from "./solo/gmProvider.js";
 import { buildGmRuntimeStatus } from "./solo/gmSmoke.js";
 import { enqueueDraftPortrait, enqueueImageJob, enqueueLocationImageJob, enqueuePlayerImageJob, enqueueVnBodyImageJob, getDraftPortrait, writeUploadedBasePortrait } from "./solo/imageWorker.js";
 import { enqueueIdentityJob, runIdentityJob } from "./solo/npcIdentity.js";
@@ -1969,27 +1969,21 @@ async function handleApi(req, res) {
           }
         }
 
-        // Automatic ambient->direct VN trigger. The manual talk path already set
-        // run.vn for talk actions (at resolveSoloAction time), so only classify
-        // when vn is not already active: when a non-talk action's narration has
-        // shifted into direct, sustained dialogue with a single present NPC,
-        // promote the scene to VN mode. Conservative + grounded against present
-        // NPCs (see classifyNarrationVn), so the manual signal is never falsely
-        // overridden and an absent speaker never triggers VN. Persisted with a
-        // synchronous read-modify-write (no await between getSoloRun and
-        // saveSoloRun), so no async image-worker write can interleave with a
-        // stale full-run snapshot. Graceful: no narration / no signal -> ambient.
-        if (!(responseRun.vn && responseRun.vn.active)) {
-          const autoVn = classifyNarrationVn(gmNarration, presentNpcsForVn(responseRun));
-          if (autoVn.active) {
-            const fresh = getSoloRun(responseRun.runId);
-            if (fresh) {
-              fresh.vn = autoVn;
-              saveSoloRun(fresh);
-              responseRun.vn = autoVn;
-            }
-          }
-        }
+        // VN AGENCY RULE (vn-trigger-agency, Jul 11 owner ruling): the VN overlay
+        // opens ONLY from PLAYER-INITIATED conversation — a talk action or a
+        // freeform "speak to X" attempt, both resolved at resolveSoloAction time
+        // (actions.js sets run.vn to the ADDRESSED NPC, and resets to ambient on
+        // every other action). We DELIBERATELY no longer auto-promote VN from the
+        // turn's free-text narration: a world event near the player (a momentum
+        // arrival, an NPC-to-NPC exchange, a courier bursting in) is NARRATION and
+        // renders in the log — it must NEVER auto-open a dialogue with an NPC the
+        // player did not choose to address (the live "Ilse" bug: a courier beat
+        // naming a present NPC hijacked the VN with the wrong, never-met speaker).
+        // resolveSoloAction is now the SOLE authority on run.vn. An NPC wanting to
+        // talk = narration stating so, with the choice left to the player.
+        // (classifyNarrationVn is retained as a pure classifier for a possible
+        // future EXPLICIT "committed event addresses the player" path, but it is
+        // no longer wired to auto-activate VN from arbitrary narration.)
       }
 
       timing.mark("auditor");
