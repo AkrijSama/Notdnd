@@ -2,6 +2,8 @@
 
 *The Inkborne System — Core Book*
 
+> Economy constraints: see [economy-law.md](../design/economy-law.md).
+
 A sword in one world is a printed blade in another and a bound spirit in a
 third — and all three are the *same object* to the engine. This chapter is
 the contract every item in every world book signs, the law that keeps money
