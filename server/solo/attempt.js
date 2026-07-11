@@ -263,6 +263,24 @@ export function isSafeConversation(intent) {
   return true;
 }
 
+// A PLAIN QUESTION or statement — a leading interrogative word or a trailing "?"
+// (kept local to avoid a circular import with actions.js). Asking about the world
+// or a present NPC ("licensed cleansing, what is that?") is automatic-tier: a
+// question is never a failable roll. Contested/adversarial phrasing is excluded so
+// a coercive "will you tell me or else?" still checks.
+// A leading WH-word or a trailing "?" — NOT the auxiliary verbs (do/can/will/is…)
+// as a leading word, which are ambiguous with imperatives ("do something strange"
+// is an action, not a question). A genuine auxiliary question still carries a "?".
+const PLAIN_QUESTION_RE = /(^\s*(?:how|what|where|when|who|whose|whom|why|which)\b)|\?/i;
+export function isPlainQuestion(intent) {
+  const t = String(intent || "");
+  if (!t.trim()) return false;
+  if (!PLAIN_QUESTION_RE.test(t)) return false;
+  if (ADVERSARIAL_SOCIAL_RE.test(t)) return false;
+  if (CONTESTED_INTENT_RE.test(t.toLowerCase())) return false;
+  return true;
+}
+
 /**
  * Decides whether an attempt needs a d20 check. A provider-supplied `needsCheck`
  * boolean wins (the GM/provider classified it); otherwise a verb heuristic:
@@ -288,6 +306,12 @@ export function attemptNeedsCheck(intent, providerOutput = null) {
   // a check on stakes-free talk — a stakes-free action cannot be forced into a
   // check by the provider (kills the Talk-to-Vesa "rolled 4 vs DC 8" bug).
   if (isSafeConversation(intent)) {
+    return false;
+  }
+  // PLAIN QUESTION (Ch3 automatic tier): asking about the world or a present NPC
+  // is never a failable roll — the live "licensed cleansing, what is that?" ->
+  // Rolled 20 vs DC 12 bug. Contested/adversarial phrasing is excluded above.
+  if (isPlainQuestion(intent)) {
     return false;
   }
   if (providerOutput && typeof providerOutput.needsCheck === "boolean") {

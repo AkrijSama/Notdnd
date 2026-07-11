@@ -54,6 +54,7 @@ import {
   rollDeathSave
 } from "./death.js";
 import { awardXp, XP_AWARDS } from "./progression.js";
+import { extractQuotedSpeech, hasActionRemainder, resolveConversationSpeaker } from "./dialogueRouting.js";
 
 const IMPLEMENTED_ACTION_TYPES = new Set(["move", "inspect", "search", "talk", "rest", "use_item", "attempt"]);
 const FUTURE_ACTION_TYPES = new Set(["interact", "enter", "exit"]);
@@ -166,6 +167,76 @@ function vnSpeakerFromAttemptIntent(run, action) {
     return new RegExp(`\\b${escaped}\\b`, "i").test(action.intent);
   });
   return named.length === 1 ? named[0].npcId : null;
+}
+
+// SPRITE-READINESS (owner law #5): durably record that the player has spoken TO
+// this NPC — a future body-sprite generator keys off "entities that have been
+// VN-spoken-to". run.vn holds only the CURRENT speaker; this persists the set on
+// the NPC record (npc.flags.spokenTo) + the last-interacted id (for the ambiguous
+// speaker fallback). Both live on already-persisted state.
+function markSpokenTo(run, npcId) {
+  const npc = run?.npcs?.[npcId];
+  if (npc) {
+    npc.flags = { ...(npc.flags || {}), spokenTo: true };
+  }
+  if (run) {
+    run.flags = { ...(run.flags || {}), lastSpokenToNpcId: npcId };
+  }
+}
+
+// DIALOGUE-ALWAYS-VN (owner law): a typed line containing quoted speech is
+// CONVERSATION. The quoted words route to the VN with `speakerId` (a talk turn —
+// NEVER a roll); a non-quoted ACTION remainder («"Wait!" I grab his arm») resolves
+// through the normal resolver in the SAME turn, and the quote still opens the VN.
+function resolveDialogueTurn(run, normalized, speakerId, speech, options) {
+  const actorId = normalized.actorId ?? "player";
+  const talkAction = {
+    type: "talk",
+    actorId,
+    targetEntityId: `npc:${speakerId}`,
+    // The spoken words the GM answers (the reply path reads action.message).
+    message: speech.spokenText,
+    // Preserve the player's verbatim line for the record / YOU header.
+    intent: normalized.intent
+  };
+
+  // MIXED INPUT: resolve the ACTION remainder first (it rolls if it has stakes),
+  // then layer the conversation on the resulting run so BOTH surfaces commit in one
+  // turn — the action beat in the log, the quote in the VN. Conservation holds.
+  if (hasActionRemainder(speech.remainder)) {
+    const actionResult = resolveSoloAction(run, { ...normalized, intent: speech.remainder, mode: "action" }, options);
+    if (!actionResult.ok) {
+      return actionResult;
+    }
+    const midRun = actionResult.run || run;
+    const talk = resolveTalkAction(midRun, talkAction, options);
+    if (!talk.ok) {
+      // The speech couldn't resolve (speaker gone) — keep the action, still open VN.
+      markSpokenTo(midRun, speakerId);
+      midRun.vn = { active: true, speakerId };
+      return { ...actionResult, run: midRun };
+    }
+    const finalRun = talk.run || midRun;
+    finalRun.vn = { active: true, speakerId };
+    markSpokenTo(finalRun, speakerId);
+    return {
+      ...actionResult,
+      run: finalRun,
+      // both surfaces: the action's event stays primary; the talk reply rides the VN.
+      talkResult: talk.talkResult,
+      spokenLine: { speakerId, text: speech.spokenText },
+      availableMoves: getAvailableMoves(finalRun),
+      availableActions: getAvailableSoloActions(finalRun)
+    };
+  }
+
+  // PURE CONVERSATION: route straight to the talk resolver (VN opens, no roll).
+  const result = resolveSoloAction(run, talkAction, options);
+  if (result.ok && result.run) {
+    markSpokenTo(result.run, speakerId);
+    result.spokenLine = { speakerId, text: speech.spokenText };
+  }
+  return result;
 }
 
 function notImplemented(actionType) {
@@ -925,6 +996,18 @@ export function resolveSoloAction(run, action, options = {}) {
   }
 
   if (normalized.type === "attempt") {
+    // DIALOGUE-ALWAYS-VN (owner law Jul 11): a line CONTAINING quoted speech is
+    // CONVERSATION, never a log-attempt. The quoted words open the VN with the
+    // addressed NPC (never a roll); a non-quoted ACTION remainder resolves through
+    // the normal path in the same turn (mixed input). Only fires when someone is
+    // present to address — a soliloquy with no audience falls through unchanged.
+    const speech = extractQuotedSpeech(normalized.intent);
+    if ((inputMode.mode === "speech" || speech.hasQuote) && speech.spokenText) {
+      const speakerId = resolveConversationSpeaker(run, normalized.intent);
+      if (speakerId) {
+        return resolveDialogueTurn(run, normalized, speakerId, speech, options);
+      }
+    }
     // QUEST-ACCEPT COMMIT (delivery loop). Free-text acceptance of a present NPC's
     // job offer ("ok, I'll do it") instantiates a REAL tracked quest + places the
     // takeable item — instead of narrating "you take the job" while quests stays {}.
