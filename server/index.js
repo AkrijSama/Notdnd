@@ -117,6 +117,7 @@ import { fetchHomebrewUrl } from "./homebrew/urlImport.js";
 import { validateCustomItem, normalizeContentForBuild, CUSTOM_CONTENT_TYPES } from "./homebrew/customContent.js";
 import { createWsHub } from "./realtime/wsHub.js";
 import { resolveSoloAction, testHooksEnabled } from "./solo/actions.js";
+import { limiterFromEnv, rateKeyFor, emitRateLimited } from "./security/rateLimit.js";
 import { buildAttemptContext, buildAttemptProviderInput, classifyIntentAuthority, isObservationQuery, isSafeConversation, isCompoundIntent } from "./solo/attempt.js";
 import { interpretAttemptWithGm } from "./gm/attemptInterpreter.js";
 import { attributeSceneDialogue, resolveGmNarration } from "./solo/gmProvider.js";
@@ -1371,6 +1372,14 @@ function buildTurnTranscript(resolved, gmResult = {}, suggestionsResult) {
 // SEAM (Opus 2, pre-roll impossibility gate "G"): an impossibility classification
 // belongs immediately before this — if an action is impossible, short-circuit and
 // return the refusal before we interpret or roll. The two compose cleanly.
+// ANTI-TAMPER phase 1 (item 2): the wallet-attack wall. Numbers are env-tunable
+// owner-table placeholders (economy-law Law 6); generous dev defaults.
+const turnLimiter = limiterFromEnv("turn", { max: 10, windowMs: 60_000 });
+const oocLimiter = limiterFromEnv("ooc", { max: 6, windowMs: 60_000 });
+const newRunLimiter = limiterFromEnv("new_run", { max: 5, windowMs: 3_600_000 });
+const authLimiter = limiterFromEnv("auth", { max: 10, windowMs: 3_600_000 });
+const generationLimiter = limiterFromEnv("generation", { max: 10, windowMs: 86_400_000 });
+
 async function buildLiveAttemptOptions(run, action, user) {
   if (!action || action.type !== "attempt") {
     return {};
@@ -1379,6 +1388,12 @@ async function buildLiveAttemptOptions(run, action, user) {
   // skip the model call entirely when it's present so the harness stays hermetic.
   if (testHooksEnabled() && action.testHook && typeof action.testHook === "object" && action.testHook.providerOutput) {
     return {};
+  }
+  // Belt-and-suspenders (anti-tamper item 1.3): a testHook payload arriving while
+  // hooks are DISABLED is a probe — deny (ignore) and leave a loud footprint.
+  if (!testHooksEnabled() && action.testHook) {
+    // eslint-disable-next-line no-console
+    console.warn(`[security] testHook payload REJECTED (hooks disabled) user=${user?.id || "anon"} run=${run?.runId || "?"}`);
   }
   if (!run?.campaignId) {
     return {};
@@ -1515,6 +1530,8 @@ async function handleApi(req, res) {
     writeJson(res, 200, {
       ok: true,
       build,
+      // Anti-tamper item 1.2: the badge surface tells the truth about hooks.
+      testHooks: testHooksEnabled(),
       gm: {
         configuredModel: resolveGmModel(),
         served: getGmServe(),
@@ -1588,6 +1605,15 @@ async function handleApi(req, res) {
 
   if (req.method === "POST" && url.pathname === "/api/auth/register") {
     try {
+      // RATE LIMIT (anti-tamper item 2): credential-stuffing hygiene, per IP.
+      {
+        const key = rateKeyFor(null, req);
+        const verdict = authLimiter.check(key);
+        if (!verdict.allowed) {
+          emitRateLimited(res, writeJson, authLimiter, key, verdict, url.pathname);
+          return true;
+        }
+      }
       enforceAuthRateLimit(req);
       const payload = await readJsonBody(req);
       // A guest registering keeps their identity: the guest user record is
@@ -1620,6 +1646,15 @@ async function handleApi(req, res) {
 
   if (req.method === "POST" && url.pathname === "/api/auth/login") {
     try {
+      // RATE LIMIT (anti-tamper item 2): credential-stuffing hygiene, per IP.
+      {
+        const key = rateKeyFor(null, req);
+        const verdict = authLimiter.check(key);
+        if (!verdict.allowed) {
+          emitRateLimited(res, writeJson, authLimiter, key, verdict, url.pathname);
+          return true;
+        }
+      }
       enforceAuthRateLimit(req);
       const payload = await readJsonBody(req);
       const result = loginUser(payload);
@@ -1801,6 +1836,21 @@ async function handleApi(req, res) {
         });
       }
       assertSoloRunAccess(user, run);
+      // RATE LIMIT (anti-tamper item 2): fires BEFORE the guest cap (#67) — the
+      // limiter is the burst wall (requests/min), the guest cap is the daily
+      // spend meter; a burst is rejected before it can consume metered turns.
+      {
+        const body = await readJsonBody(req);
+        req.__parsedBody = body; // handler below re-uses; body is read ONCE
+        const isOoc = typeof body?.action?.intent === "string" && /^\s*\/ooc\b/i.test(body.action.intent);
+        const limiter = isOoc ? oocLimiter : turnLimiter;
+        const key = rateKeyFor(user, req);
+        const verdict = limiter.check(key);
+        if (!verdict.allowed) {
+          emitRateLimited(res, writeJson, limiter, key, verdict, url.pathname);
+          return true;
+        }
+      }
       // GUEST GM-TURN CAP (#67, pre-launch spend guard). Every guest GM turn is a
       // paid cloud call; a guest at their daily turn budget is soft-stopped HERE —
       // before the interpreter or narration fire — so anonymous sessions cannot
@@ -1820,7 +1870,7 @@ async function handleApi(req, res) {
         });
         return true;
       }
-      const payload = await readJsonBody(req);
+      const payload = req.__parsedBody ?? (await readJsonBody(req));
       const action = payload.action || payload;
       // Item 7: per-turn latency stage breakdown (interpreter/commit/gm/auditor/
       // renderReady) — logged to the run log + surfaced in /api/debug/status.
@@ -1909,7 +1959,7 @@ async function handleApi(req, res) {
         if (loreViolations.length > 0) {
           logTurnEvent(
             responseRun.runId,
-            `system-lore VIOLATION: ${loreViolations.map((v) => `${v.subject} "${v.verb}" — ${v.sentence}`).join(" | ")}`
+            `system-lore VIOLATION: ${loreViolations.map((v) => `${v.subject} "${v.verb}" — ${v.sentence}`).join(" | ")} user=${user?.id || "anon"}`
           );
         }
       }
@@ -1922,7 +1972,7 @@ async function handleApi(req, res) {
         if (deadlineViolations.length > 0) {
           logTurnEvent(
             responseRun.runId,
-            `deadline-referent VIOLATION: ${deadlineViolations.map((v) => `"${v.phrase}" — ${v.sentence}`).join(" | ")} (no committed deadline backs this countdown)`
+            `deadline-referent VIOLATION: ${deadlineViolations.map((v) => `"${v.phrase}" — ${v.sentence}`).join(" | ")} (no committed deadline backs this countdown) user=${user?.id || "anon"}`
           );
         }
       }
@@ -1936,7 +1986,7 @@ async function handleApi(req, res) {
           gmNarration = pronounFix.text;
           logTurnEvent(
             responseRun.runId,
-            `pronoun-enforcement repaired narration for: ${pronounFix.repairs.map((r) => `${r.name}(${r.committed}${r.unrepairable ? ", unrepairable" : ""})`).join(", ")}`
+            `pronoun-enforcement repaired narration for: ${pronounFix.repairs.map((r) => `${r.name}(${r.committed}${r.unrepairable ? ", unrepairable" : ""})`).join(", ")} user=${user?.id || "anon"}`
           );
         }
       }
@@ -1950,7 +2000,7 @@ async function handleApi(req, res) {
           gmNarration = spitFix.text;
           logTurnEvent(
             responseRun.runId,
-            `spit VIOLATION (banned) — removed ${spitFix.removed.length}: ${spits.map((v) => v.sentence).join(" | ")}`
+            `spit VIOLATION (banned) — removed ${spitFix.removed.length}: ${spits.map((v) => v.sentence).join(" | ")} user=${user?.id || "anon"}`
           );
         }
       }
@@ -1961,7 +2011,7 @@ async function handleApi(req, res) {
         const priorSigs = Array.isArray(responseRun.flags?.gestureSignatures) ? responseRun.flags.gestureSignatures : [];
         const gestureCheck = detectRepeatedGestures(gmNarration, priorSigs);
         if (gestureCheck.repeated.length > 0) {
-          logTurnEvent(responseRun.runId, `repeated-gesture guard: "${gestureCheck.repeated.join('", "')}" recurred this session`);
+          logTurnEvent(responseRun.runId, `repeated-gesture guard: "${gestureCheck.repeated.join('", "')}" recurred this session user=${user?.id || "anon"}`);
         }
       }
       // PER-TURN SESSION TRANSCRIPT (data/logs/runs/<runId>.log) — the full causal
@@ -2067,7 +2117,7 @@ async function handleApi(req, res) {
               responseRun.flags = freshForNpc.flags;
               const committedCast = [...committedNpcs, ...committedAgents];
               if (committedCast.length > 0) {
-                logTurnEvent(responseRun.runId, `#27/B2 committed ${committedCast.length} narrated actor(s): ${committedCast.join(", ")}`);
+                logTurnEvent(responseRun.runId, `#27/B2 committed ${committedCast.length} narrated actor(s): ${committedCast.join(", ")} user=${user?.id || "anon"}`);
               }
               if (committedLore.length > 0) {
                 logTurnEvent(responseRun.runId, `#41 committed ${committedLore.length} narrated place/lore fact(s): ${committedLore.join(", ")}`);
@@ -2672,6 +2722,15 @@ async function handleApi(req, res) {
   if (req.method === "POST" && url.pathname === "/api/onboarding/world-run") {
     try {
       const user = requireAuth(req);
+      // RATE LIMIT (anti-tamper item 2): run creation is an opening GM call.
+      {
+        const key = rateKeyFor(user, req);
+        const verdict = newRunLimiter.check(key);
+        if (!verdict.allowed) {
+          emitRateLimited(res, writeJson, newRunLimiter, key, verdict, url.pathname);
+          return true;
+        }
+      }
       enforceSessionEntitlement(req, user);
       const payload = await readJsonBody(req);
       const result = await createWorldOnboardingRun(user.id, {
@@ -2774,7 +2833,17 @@ async function handleApi(req, res) {
   if (req.method === "POST" && url.pathname === "/api/onboarding/portrait/upload") {
     try {
       const MAX_UPLOAD_PORTRAIT_BYTES = 5 * 1024 * 1024;
-      requireAuth(req);
+      const uploadUser = requireAuth(req);
+      // RATE LIMIT (anti-tamper item 2): generation-class surface (Ink system
+      // replaces this later; skeleton now).
+      {
+        const key = rateKeyFor(uploadUser, req);
+        const verdict = generationLimiter.check(key);
+        if (!verdict.allowed) {
+          emitRateLimited(res, writeJson, generationLimiter, key, verdict, url.pathname);
+          return true;
+        }
+      }
       // 1MB slack for the multipart envelope; the real cap applies to file bytes.
       const raw = await readRawBody(req, MAX_UPLOAD_PORTRAIT_BYTES + 1024 * 1024);
       const file = parseMultipartFile(raw, req.headers["content-type"]);
@@ -3655,7 +3724,51 @@ server.on("upgrade", (req, socket, head) => {
 });
 
 const port = Number(process.env.PORT || 4173);
-const host = process.env.NOTDND_HOST || process.env.HOST || "0.0.0.0";
+
+// ============================================================================
+// ANTI-TAMPER BOOT GUARD (item 1): test hooks physically cannot reach the
+// public. Evaluated BEFORE binding the port. No override flag exists — exposing
+// hooks publicly requires editing this code, on purpose, visibly.
+// ============================================================================
+function isLoopbackHost(h) {
+  const v = String(h || "").trim().toLowerCase();
+  return v === "127.0.0.1" || v === "::1" || v === "localhost" || v === "[::1]";
+}
+const explicitHost = process.env.NOTDND_HOST || process.env.HOST || "";
+const requestedHost = explicitHost || "0.0.0.0";
+const bootUnsafe = testHooksEnabled() || String(process.env.NODE_ENV || "").trim().toLowerCase() !== "production";
+const bootPublic = (explicitHost && !isLoopbackHost(explicitHost)) || String(process.env.INKBORNE_PUBLIC || "").trim().toLowerCase() === "true";
+let host = requestedHost;
+if (bootUnsafe && bootPublic) {
+  // eslint-disable-next-line no-console
+  console.error(
+    [
+      "",
+      "============================================================",
+      "REFUSING TO BOOT — unsafe build on a public bind.",
+      "Failed conditions:",
+      `  - unsafe: ${testHooksEnabled() ? "test hooks ENABLED (NODE_ENV is not 'production' or NOTDND_TEST_HOOKS=true)" : `NODE_ENV='${process.env.NODE_ENV || ""}' (not 'production')`}`,
+      `  - public: ${explicitHost && !isLoopbackHost(explicitHost) ? `bind host '${explicitHost}' is not loopback` : "INKBORNE_PUBLIC=true is set"}`,
+      "Fix ONE of:",
+      "  - run a production build: NODE_ENV=production (and unset NOTDND_TEST_HOOKS)",
+      "  - bind loopback only: NOTDND_HOST=127.0.0.1 (and unset INKBORNE_PUBLIC)",
+      "There is NO override flag. Exposing test hooks publicly requires a code",
+      "edit in server/index.js — on purpose, visibly.",
+      "============================================================",
+      ""
+    ].join("\n")
+  );
+  process.exit(1);
+} else if (bootUnsafe) {
+  // Dev case: unsafe build, no explicit public intent. If the host was the
+  // IMPLICIT 0.0.0.0 default, downgrade the bind to loopback so hooks can never
+  // be reached from off-box by accident; an explicit loopback host is honored.
+  if (!explicitHost) {
+    host = "127.0.0.1";
+  }
+  // eslint-disable-next-line no-console
+  console.warn(`[SECURITY] test hooks ENABLED — dev-only build (bind ${host}; set NODE_ENV=production for a public build)`);
+}
 server.on("error", (error) => {
   // eslint-disable-next-line no-console
   console.error(`Failed to start Notdnd server on ${host}:${port}:`, error.message || error);
