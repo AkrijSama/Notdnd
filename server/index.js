@@ -125,6 +125,7 @@ import { enqueueDraftPortrait, enqueueImageJob, enqueueLocationImageJob, enqueue
 import { enqueueIdentityJob, runIdentityJob, backfillNpcMannerisms } from "./solo/npcIdentity.js";
 import { buildNpcIntroDirective, buildSoloScenePayload, collectNpcsWithPendingIntro } from "./solo/scene.js";
 import { buildSystemLoreClause, detectSystemLoreViolations } from "./gm/systemLore.js";
+import { detectDeadlineViolations } from "./gm/deadlineAudit.js";
 import { detectSpitViolations, stripSpitGestures, detectRepeatedGestures } from "./gm/mannerismAudit.js";
 import { buildOocSystemPrompt } from "./gm/oocGrounding.js";
 import { recordGmGeneration } from "./logging/gmTranscript.js";
@@ -1909,6 +1910,19 @@ async function handleApi(req, res) {
           logTurnEvent(
             responseRun.runId,
             `system-lore VIOLATION: ${loreViolations.map((v) => `${v.subject} "${v.verb}" — ${v.sentence}`).join(" | ")}`
+          );
+        }
+      }
+      // DEADLINE-REFERENT AUDITOR (item 4, owner ruling — same severity class as
+      // narrated-state drift): narrated time-boxed pressure ("maybe five minutes
+      // to decide") with NO committed deadline referent (timed condition) is an
+      // invented countdown — flag it loudly.
+      if (typeof gmNarration === "string" && gmNarration.trim()) {
+        const deadlineViolations = detectDeadlineViolations(gmNarration, responseRun);
+        if (deadlineViolations.length > 0) {
+          logTurnEvent(
+            responseRun.runId,
+            `deadline-referent VIOLATION: ${deadlineViolations.map((v) => `"${v.phrase}" — ${v.sentence}`).join(" | ")} (no committed deadline backs this countdown)`
           );
         }
       }

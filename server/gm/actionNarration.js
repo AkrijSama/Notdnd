@@ -76,6 +76,10 @@ function styleSuffix(run) {
     // as a CLASS so it can't reappear as a euphemism (hawk/expel). Character
     // attitude rides committed mannerisms, posture, and word choice instead.
     "REGISTER RULE: no character, NPC, or player ever SPITS — not to the side, not into the dirt, not deliberately, not casually. Bodily-fluid punctuation gestures (spitting, hawking, expelling) are prohibited as a class in all narration; convey contempt or grit through a committed mannerism, posture, or word choice, never a spit. " +
+    // Deadline-referent law (item 4, owner ruling): narrated urgency binds to
+    // committed state — no invented countdowns. Live-audited by deadlineAudit.js.
+    "URGENCY LAW: never state a specific time budget or countdown (no 'you have five minutes', no 'before nightfall') unless a committed deadline in your context backs it. " +
+    "Pressure without a committed deadline must stay qualitative (the smoke thickens, the voices come closer) with no invented numbers or countdowns. " +
     "Do not restate dice or mechanics, and do not use bracketed trigger tags."
   );
 }
