@@ -1,4 +1,5 @@
 import { generateNarrative, generateRaw, generateUtility, getModelTiers } from "../ai/openrouter.js";
+import { trimToCompleteSentence } from "./trimSentence.js";
 import { getCampaignRuntimeState, getState, setCampaignRuntimeState } from "../db/repository.js";
 import { resolveSkillCheck, rollDiceExpression } from "../rules/engine.js";
 import { buildContextWindow, getEntity, getRelated, search, upsertEntity } from "./memoryStore.js";
@@ -453,7 +454,14 @@ export async function runGmPipeline({
     aiResult = await callNarrativeModel(messages, campaignKey, selectedModel, modelTiers, modelOptions);
   }
 
-  const rawNarrative = String(aiResult.content || "").trim();
+  // SENTENCE-BOUNDARY TRIM: when the token ceiling cut the generation mid-stream
+  // (finish_reason === "length"), repair the tail back to the last complete
+  // sentence BEFORE any parsing/split/render, so no turn ends on a beheaded quote
+  // ('… "That's new'). A self-completed generation is passed through untouched.
+  // Runs on the handles-RETRY generation too (it re-enters this pipeline), and the
+  // retry itself is bounded to one by enforceHandles — so trim -> detectHandles ->
+  // (retry -> trim) can never loop beyond that single retry.
+  const rawNarrative = trimToCompleteSentence(String(aiResult.content || "").trim(), aiResult.finishReason);
   const parsed = parseResponseTriggers(rawNarrative);
   const triggerExecution = await executeParsedTriggers(
     parsed.triggers,

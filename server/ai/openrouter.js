@@ -511,6 +511,7 @@ async function parseStreamingResponse(response, options = {}) {
   let textBuffer = "";
   let content = "";
   let usage = {};
+  let finishReason = null;
 
   while (true) {
     const { done, value } = await reader.read();
@@ -522,6 +523,12 @@ async function parseStreamingResponse(response, options = {}) {
     const parsed = parseSseData(textBuffer, (chunk) => {
       if (chunk?.usage) {
         usage = chunk.usage;
+      }
+      // The last non-null finish_reason across the stream is the terminal cause
+      // ("length" when the cap cut the stream) — feeds the sentence-boundary trim.
+      const fr = chunk?.choices?.[0]?.finish_reason ?? chunk?.choices?.[0]?.native_finish_reason ?? null;
+      if (fr) {
+        finishReason = fr;
       }
       const delta = safeMessageContent(chunk?.choices?.[0]?.delta?.content);
       if (delta) {
@@ -538,7 +545,8 @@ async function parseStreamingResponse(response, options = {}) {
 
   return {
     content: String(content || "").trim(),
-    usage
+    usage,
+    finishReason
   };
 }
 
@@ -561,7 +569,11 @@ async function parseJsonResponse(response) {
 
   return {
     content: safeMessageContent(payload?.choices?.[0]?.message?.content).trim(),
-    usage: payload?.usage || {}
+    usage: payload?.usage || {},
+    // finish_reason drives the sentence-boundary trim: "length" (or a provider
+    // equivalent) means the max_tokens ceiling severed the stream mid-token, so
+    // the tail may be a partial sentence / unclosed quote. Surfaced verbatim.
+    finishReason: payload?.choices?.[0]?.finish_reason ?? payload?.choices?.[0]?.native_finish_reason ?? null
   };
 }
 
@@ -597,7 +609,9 @@ async function requestOpenRouter(messages, model, options = {}) {
         prompt: Math.max(1, Math.floor(userText.length / 4)),
         completion: Math.max(1, Math.floor(content.length / 4))
       },
-      cost: 0
+      cost: 0,
+      // Mock generations are always self-completed — never trimmed.
+      finishReason: "stop"
     };
   }
 
@@ -721,7 +735,8 @@ async function requestOpenRouter(messages, model, options = {}) {
       content: parsed.content || "",
       model,
       tokensUsed,
-      cost
+      cost,
+      finishReason: parsed.finishReason ?? null
     };
   } catch (fetchError) {
     if (fetchError?.name === "AbortError") {
