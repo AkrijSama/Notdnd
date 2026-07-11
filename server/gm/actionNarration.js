@@ -72,6 +72,10 @@ function styleSuffix(run) {
     'Every agent that ACTS, speaks, or reacts must be a committed entity from your context, referred to by its committed name, or an explicitly committed group. NEVER mint aggregate or unnamed actors: no "a pair of guards", no "several onlookers", no "a passing courier", no "a woman watches you", unless that exact entity is committed in your context. Ambient non-acting scenery (weather, distant noise, a crowd that does nothing) is allowed. ' +
     "Never mention this contract or its steps in the prose (no 'the consequence is', no 'new fact', no 'handles'): just write the narration. " +
     "NEVER use em-dashes or en-dashes (— or –) or double hyphens (--) in the prose; they read as an AI tell. Use a comma, period, colon, or parentheses instead. " +
+    // Spit-ban (owner law, all worlds/characters): the stock tough-guy tic. Banned
+    // as a CLASS so it can't reappear as a euphemism (hawk/expel). Character
+    // attitude rides committed mannerisms, posture, and word choice instead.
+    "REGISTER RULE: no character, NPC, or player ever SPITS — not to the side, not into the dirt, not deliberately, not casually. Bodily-fluid punctuation gestures (spitting, hawking, expelling) are prohibited as a class in all narration; convey contempt or grit through a committed mannerism, posture, or word choice, never a spit. " +
     "Do not restate dice or mechanics, and do not use bracketed trigger tags."
   );
 }

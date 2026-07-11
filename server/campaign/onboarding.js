@@ -9,7 +9,7 @@ import { runGmPipeline } from "../gm/prompting.js";
 import { buildOpeningGmMessage, buildOpeningFallback } from "../gm/actionNarration.js";
 import { buildCharacter, toRunPlayer } from "../solo/characterBuild.js";
 import { copyDraftPortraitToRun } from "../solo/imageWorker.js";
-import { generateNpcIdentity, npcTakenNames } from "../solo/npcIdentity.js";
+import { generateNpcIdentity, npcTakenNames, npcTakenMannerisms } from "../solo/npcIdentity.js";
 import { ensureClock } from "../solo/worldClock.js";
 import { buildSystemLoreClause } from "../gm/systemLore.js";
 import { writeNpcMemoryDoc } from "../solo/npcMemory.js";
@@ -378,7 +378,8 @@ export async function createOnboardingCampaign(userId, characterInfo = {}) {
       npcIndex,
       // Per-run first-name uniqueness (the two-Maras bug): each mint checks the
       // roster committed so far, so pre-seeded starting NPCs can never collide.
-      takenNames: npcTakenNames(run)
+      takenNames: npcTakenNames(run),
+      takenMannerisms: npcTakenMannerisms(run)
     });
     npc.generatedName = identity.generatedName;
     npc.appearance = identity.appearance;
@@ -697,7 +698,8 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
       worldSeed: run.worldSeed,
       npcIndex: 0,
       // Per-run first-name uniqueness (the two-Maras bug).
-      takenNames: npcTakenNames(run)
+      takenNames: npcTakenNames(run),
+      takenMannerisms: npcTakenMannerisms(run)
     });
     npc.generatedName = identity.generatedName;
     npc.appearance = identity.appearance;

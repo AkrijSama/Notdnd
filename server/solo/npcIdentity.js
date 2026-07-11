@@ -147,6 +147,89 @@ function pick(list, seed, offset = 0) {
   return list[(seed + offset) % list.length];
 }
 
+// --- Committed mannerisms (spit-ban vacuum fill) -----------------------------
+// One short, distinctive PHYSICAL tell per NPC, drawn from this curated pool so
+// the model has committed character texture to voice instead of reaching for the
+// stock "spits to the side". Register rules for the pool (owner law): NO bodily
+// fluids, NO tics that read as a slur or a medical/neurological condition; no two
+// alike in tone. Assigned at mint, unique per run, grounded into the GM context.
+export const NPC_MANNERISMS = Object.freeze([
+  "turns a ring on one finger while thinking",
+  "never quite finishes a drink",
+  "stands a little too straight, like a soldier at ease",
+  "counts on their fingers before answering",
+  "keeps one hand resting near a pocket",
+  "tilts their head when they disagree",
+  "smooths an eyebrow with a thumb",
+  "lets silences run a beat too long",
+  "taps a rhythm against whatever is nearest",
+  "folds their arms and then thinks better of it",
+  "glances at the exits out of old habit",
+  "speaks more softly the angrier they get",
+  "finishes other people's sentences",
+  "keeps their sleeves rolled to the same exact fold",
+  "studies your hands more than your face",
+  "laughs one beat after everyone else",
+  "cracks their knuckles one at a time, slowly",
+  "always knows where the nearest wall is and stays near it",
+  "answers a question with a question",
+  "picks lint that isn't there off their coat",
+  "measures a room by pacing it once, quietly",
+  "holds eye contact a shade too long",
+  "hums under their breath between sentences",
+  "sorts coins or trinkets by size while talking",
+  "repeats the last word of a hard truth",
+  "keeps a tally of small favors, out loud",
+  "shifts weight foot to foot when impatient",
+  "traces old scars without noticing",
+  "leaves a chair pushed out, never squared",
+  "starts to speak, stops, then starts again lower",
+  "watches the door whenever it opens, mid-sentence",
+  "clasps their hands behind their back to keep them still",
+  "names a price and then waits, dead still",
+  "wipes clean glasses that are already clean"
+]);
+
+/** Committed mannerisms the roster already holds (for per-run uniqueness). */
+export function npcTakenMannerisms(run, excludeNpcId = null) {
+  return Object.values(run?.npcs || {})
+    .filter((npc) => npc && npc.npcId !== excludeNpcId)
+    .map((npc) => npc.mannerism)
+    .filter((m) => isString(m) && m.trim());
+}
+
+// Pure. Returns a pool mannerism not already used in `takenMannerisms`, rotating
+// from the seed; falls back to a seeded pick when the pool is exhausted (>34 NPCs).
+export function pickUniqueMannerism(takenMannerisms = [], seed = 0) {
+  const taken = new Set([...takenMannerisms].map((m) => String(m || "").trim().toLowerCase()).filter(Boolean));
+  for (let i = 0; i < NPC_MANNERISMS.length; i += 1) {
+    const candidate = NPC_MANNERISMS[(Math.abs(seed) + i) % NPC_MANNERISMS.length];
+    if (!taken.has(candidate.toLowerCase())) {
+      return candidate;
+    }
+  }
+  return NPC_MANNERISMS[Math.abs(seed) % NPC_MANNERISMS.length];
+}
+
+// BACKFILL (item 3d, the gender-backfill pattern): give any committed NPC in
+// `npcIds` that predates the mannerism field one now, unique across the roster.
+// Mutates run.npcs in place; returns the ids backfilled (empty when none). The
+// caller persists the run. Pure aside from the in-place assignment.
+export function backfillNpcMannerisms(run, npcIds = []) {
+  const ids = Array.isArray(npcIds) ? npcIds : [];
+  const done = [];
+  for (const npcId of ids) {
+    const npc = run?.npcs?.[npcId];
+    if (!npc || (isString(npc.mannerism))) {
+      continue;
+    }
+    const seed = Number.isFinite(npc.identitySeed) ? npc.identitySeed : indexFromNpcId(npcId);
+    npc.mannerism = pickUniqueMannerism(npcTakenMannerisms(run, npcId), seed);
+    done.push(npcId);
+  }
+  return done;
+}
+
 // --- Per-run first-name uniqueness (the two-Maras bug) -----------------------
 // Two mints in one run can land the same first name (the model repeats itself,
 // or two fallback picks collide) — two committed "Mara"s then share one identity
@@ -203,7 +286,7 @@ function assemblePortraitPrompt(name, role, appearance, gender = "") {
 // Builds a complete, non-null identity. User-provided fields (`existing`) are
 // authoritative and never overwritten; AI-parsed fields come next; remaining
 // gaps are filled deterministically from the role + identitySeed.
-function synthesizeIdentity(parsed, role, identitySeed, existing = {}, takenNames = []) {
+function synthesizeIdentity(parsed, role, identitySeed, existing = {}, takenNames = [], takenMannerisms = []) {
   const safeRole = isString(role) ? role.trim() : "stranger";
   // Uniquify BEFORE the portrait prompt is assembled, so the prompt carries the
   // final name. A USER-provided name is authoritative and never renamed.
@@ -238,7 +321,13 @@ function synthesizeIdentity(parsed, role, identitySeed, existing = {}, takenName
   const portraitPrompt = isString(existing.portraitPrompt)
     ? existing.portraitPrompt.trim()
     : assemblePortraitPrompt(generatedName, safeRole, appearance, gender);
-  return { generatedName, gender, pronouns, appearance, personality, portraitPrompt };
+  // Committed mannerism (spit-ban vacuum fill): a user-set value wins; otherwise
+  // draw from the CURATED pool (never the model's free text, which is the source
+  // of the stock "spits to the side"), unique across the run roster.
+  const mannerism = isString(existing.mannerism) && existing.mannerism.trim()
+    ? existing.mannerism.trim()
+    : pickUniqueMannerism(takenMannerisms, identitySeed);
+  return { generatedName, gender, pronouns, appearance, personality, portraitPrompt, mannerism };
 }
 
 /**
@@ -248,7 +337,7 @@ function synthesizeIdentity(parsed, role, identitySeed, existing = {}, takenName
  * @param {{ role?: string, worldSeed?: string, npcIndex?: number, provider?: string, fetchImpl?: typeof fetch }} [args]
  * @returns {Promise<{ generatedName: string, appearance: string, personality: string, portraitPrompt: string, identitySeed: number }>}
  */
-export async function generateNpcIdentity({ role, worldSeed, npcIndex, existing = {}, takenNames = [], provider, fetchImpl } = {}) {
+export async function generateNpcIdentity({ role, worldSeed, npcIndex, existing = {}, takenNames = [], takenMannerisms = [], provider, fetchImpl } = {}) {
   const identitySeed = deterministicSeed(worldSeed, npcIndex);
   const safeRole = isString(role) ? role.trim() : "stranger";
 
@@ -275,7 +364,7 @@ export async function generateNpcIdentity({ role, worldSeed, npcIndex, existing 
     }
   }
 
-  const identity = synthesizeIdentity(parseIdentity(raw), safeRole, identitySeed, userFields, takenNames);
+  const identity = synthesizeIdentity(parseIdentity(raw), safeRole, identitySeed, userFields, takenNames, takenMannerisms);
   return { ...identity, identitySeed };
 }
 
@@ -330,6 +419,7 @@ export async function runIdentityJob(job = {}) {
       worldSeed: run.worldSeed,
       // Per-run first-name uniqueness: never mint a name the roster already holds.
       takenNames: npcTakenNames(run, npcId),
+      takenMannerisms: npcTakenMannerisms(run, npcId),
       npcIndex: indexFromNpcId(npcId),
       existing: {
         generatedName: npc.generatedName,

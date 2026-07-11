@@ -1312,6 +1312,11 @@ export function updateNpcIdentity(runId, npcId, identity = {}) {
   if (typeof identity.portraitPrompt === "string") {
     npc.portraitPrompt = identity.portraitPrompt;
   }
+  // Committed mannerism (spit-ban vacuum fill): set once, never overwritten so the
+  // NPC keeps a stable physical tell across the run.
+  if (typeof identity.mannerism === "string" && identity.mannerism.trim() && !(typeof npc.mannerism === "string" && npc.mannerism.trim())) {
+    npc.mannerism = identity.mannerism.trim();
+  }
   // #50: gender + pronouns feed the portrait prompt (groundNpcPortrait). Only set
   // when not ALREADY committed — a value inferred from the narration on commit
   // (npcCommit.inferNpcGenderFromNarration) is authoritative over a later guess.

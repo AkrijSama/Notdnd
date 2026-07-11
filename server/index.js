@@ -122,9 +122,10 @@ import { interpretAttemptWithGm } from "./gm/attemptInterpreter.js";
 import { attributeSceneDialogue, resolveGmNarration } from "./solo/gmProvider.js";
 import { buildGmRuntimeStatus } from "./solo/gmSmoke.js";
 import { enqueueDraftPortrait, enqueueImageJob, enqueueLocationImageJob, enqueuePlayerImageJob, enqueueVnBodyImageJob, getDraftPortrait, writeUploadedBasePortrait } from "./solo/imageWorker.js";
-import { enqueueIdentityJob, runIdentityJob } from "./solo/npcIdentity.js";
+import { enqueueIdentityJob, runIdentityJob, backfillNpcMannerisms } from "./solo/npcIdentity.js";
 import { buildNpcIntroDirective, buildSoloScenePayload, collectNpcsWithPendingIntro } from "./solo/scene.js";
 import { buildSystemLoreClause, detectSystemLoreViolations } from "./gm/systemLore.js";
+import { detectSpitViolations, stripSpitGestures, detectRepeatedGestures } from "./gm/mannerismAudit.js";
 import { buildOocSystemPrompt } from "./gm/oocGrounding.js";
 import { enforceHandles, HANDLES_CORRECTIVE_CLAUSE } from "./gm/handlesEnforcement.js";
 import { auditAndCommitNarratedNpcs, auditAndCommitNarratedLore, auditAndCommitInventedAgents, backfillNpcGenderFromNarration, repairNarrationPronouns } from "./solo/npcCommit.js";
@@ -884,6 +885,29 @@ function buildPronounDirective(run) {
   return ` COMMITTED PRONOUNS: ${list}. Refer to each of these characters with EXACTLY these pronouns — never swap, drift, or infer different ones.`;
 }
 
+// COMMITTED MANNERISMS (spit-ban vacuum fill): present NPCs' committed physical
+// tells ride the context so the model voices THOSE instead of reaching for a stock
+// tic (the banned spit). Backfills a mannerism onto any present NPC that predates
+// the field (lazy, on appearance) so the grounding is never empty for legacy cast.
+// Returns the directive text; mutates run.npcs for backfill (persisted with the turn).
+function buildMannerismDirective(run) {
+  const present = Object.values(run?.npcs || {}).filter(
+    (npc) => npc && npc.currentLocationId === run?.currentLocationId && npc.status !== "gone"
+  );
+  if (present.length === 0) {
+    return "";
+  }
+  backfillNpcMannerisms(run, present.map((npc) => npc.npcId));
+  const list = present
+    .filter((npc) => typeof npc.mannerism === "string" && npc.mannerism.trim())
+    .map((npc) => `${npc.generatedName || npc.displayName || npc.role} ${npc.mannerism}`)
+    .join("; ");
+  if (!list) {
+    return "";
+  }
+  return ` COMMITTED MANNERISMS (present characters): ${list}. Use a character's OWN committed mannerism sparingly, at most once, and NEVER invent a new physical tic or gesture for anyone — especially never a spit.`;
+}
+
 // COMPOUND ACTION (#6, resolver blindspot Class A). A multi-part intent ("pick the
 // lock AND slip past the guard") is resolved on ONE roll, so the prose is free to
 // narrate BOTH parts landing even on a failure/at-cost. We do not decompose (one
@@ -1070,6 +1094,9 @@ async function narrateActionWithGm(run, resolved, user) {
   // PRONOUN GROUNDING: committed gender/pronouns for every present NPC ride the
   // context, so the model never has to guess (the he/him-Mara narrated-she bug).
   message += buildPronounDirective(run);
+  // COMMITTED MANNERISMS (spit-ban vacuum fill): present NPCs' committed physical
+  // tells ride the context so the model voices those instead of a stock spit.
+  message += buildMannerismDirective(run);
   // SYSTEM LORE (item 1): the WINDOW/VOICE world-law facts ground every turn, so
   // the model never invents system capabilities ("the window will remember…").
   message += buildSystemLoreClause();
@@ -1870,6 +1897,30 @@ async function handleApi(req, res) {
           );
         }
       }
+      // SPIT BAN (owner law): a character spitting is a violation. Log it, then
+      // surgically excise the gesture sentence (same "server owns the prose"
+      // enforcement class as the pronoun repair) so the banned action never lands.
+      if (typeof gmNarration === "string" && gmNarration.trim()) {
+        const spits = detectSpitViolations(gmNarration);
+        if (spits.length > 0) {
+          const spitFix = stripSpitGestures(gmNarration);
+          gmNarration = spitFix.text;
+          logTurnEvent(
+            responseRun.runId,
+            `spit VIOLATION (banned) — removed ${spitFix.removed.length}: ${spits.map((v) => v.sentence).join(" | ")}`
+          );
+        }
+      }
+      // REPETITION GUARD (item 4): flag a stock physical-gesture phrase reused
+      // across the session (the next tic after spit). Detection + logging here;
+      // the merged signature set is persisted in the commit block's fresh snapshot.
+      if (typeof gmNarration === "string" && gmNarration.trim()) {
+        const priorSigs = Array.isArray(responseRun.flags?.gestureSignatures) ? responseRun.flags.gestureSignatures : [];
+        const gestureCheck = detectRepeatedGestures(gmNarration, priorSigs);
+        if (gestureCheck.repeated.length > 0) {
+          logTurnEvent(responseRun.runId, `repeated-gesture guard: "${gestureCheck.repeated.join('", "')}" recurred this session`);
+        }
+      }
       // PER-TURN SESSION TRANSCRIPT (data/logs/runs/<runId>.log) — the full causal
       // chain of this turn, including every formerly-silent fallback, so the owner
       // can tail it during a detached playtest and see exactly what happened.
@@ -1954,10 +2005,23 @@ async function handleApi(req, res) {
             // were minted ungendered (starting/identity cast) — so their portrait
             // matches the text (write-female/render-male fix).
             const genderedNpcs = backfillNpcGenderFromNarration(freshForNpc, gmNarration);
-            if (committedNpcs.length > 0 || committedAgents.length > 0 || committedLore.length > 0 || genderedNpcs.length > 0) {
+            // MANNERISM BACKFILL (item 3d) + REPETITION-GUARD PERSISTENCE (item 4)
+            // on the same fresh snapshot so both survive an interleaving image
+            // write. Present cast lacking a mannerism gets one now; the session's
+            // gesture-signature set is merged so the guard sees across turns.
+            const presentIds = Object.values(freshForNpc.npcs || {})
+              .filter((npc) => npc && npc.currentLocationId === freshForNpc.currentLocationId && npc.status !== "gone")
+              .map((npc) => npc.npcId);
+            const manneredNpcs = backfillNpcMannerisms(freshForNpc, presentIds);
+            const priorSigs = Array.isArray(freshForNpc.flags?.gestureSignatures) ? freshForNpc.flags.gestureSignatures : [];
+            const gestureMerged = detectRepeatedGestures(gmNarration, priorSigs).signatures;
+            const sigsChanged = gestureMerged.length !== priorSigs.length;
+            freshForNpc.flags = { ...(freshForNpc.flags || {}), gestureSignatures: gestureMerged };
+            if (committedNpcs.length > 0 || committedAgents.length > 0 || committedLore.length > 0 || genderedNpcs.length > 0 || manneredNpcs.length > 0 || sigsChanged) {
               saveSoloRun(freshForNpc);
               responseRun.npcs = freshForNpc.npcs;
               responseRun.memoryFacts = freshForNpc.memoryFacts;
+              responseRun.flags = freshForNpc.flags;
               const committedCast = [...committedNpcs, ...committedAgents];
               if (committedCast.length > 0) {
                 logTurnEvent(responseRun.runId, `#27/B2 committed ${committedCast.length} narrated actor(s): ${committedCast.join(", ")}`);
