@@ -29,7 +29,10 @@ const FLAG_RES = [
   // historical volume stays visible instead of silently vanishing.
   { kind: "system-lore", re: /system-lore VIOLATION:(?!.*user=)/, anon: true },
   { kind: "deadline-referent", re: /deadline-referent VIOLATION:(?!.*user=)/, anon: true },
-  { kind: "spit", re: /spit VIOLATION(?!.*user=)/, anon: true }
+  { kind: "spit", re: /spit VIOLATION(?!.*user=)/, anon: true },
+  { kind: "pronoun-repair", re: /pronoun-enforcement repaired(?!.*user=)/, anon: true },
+  { kind: "repeated-gesture", re: /repeated-gesture guard:(?!.*user=)/, anon: true },
+  { kind: "phantom-commit", re: /#27\/B2 committed(?!.*user=)/, anon: true }
 ];
 
 if (!fs.existsSync(DIR)) {
