@@ -331,6 +331,7 @@ export async function runGmPipeline({
   // opening/talk/ooc labels from the request-layer callers is a trivial follow-up.
   transcript = {}
 }) {
+  const pipelineT0 = Date.now(); // item-2 diagnosis: context-assembly vs model time
   const campaignKey = String(campaignId || "").trim();
   const input = String(message || "").trim();
   const normalizedEdition = String(edition || "mainline").trim().toLowerCase() || "mainline";
@@ -496,6 +497,10 @@ export async function runGmPipeline({
       rawOutput: rawContent,
       trimmedOutput: trimApplied ? rawNarrative : null,
       latencyMs: Date.now() - genStartedAt,
+      // item-2 diagnosis: how long prompt/context assembly (style config, player
+      // context, memory contextWindow, session-history compression) took BEFORE
+      // the model call — the opening #4 case lost 30s+ upstream of generation.
+      contextMs: genStartedAt - pipelineT0,
       trimApplied,
       handlesRetry: isHandlesRetry
     });

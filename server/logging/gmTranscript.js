@@ -100,6 +100,7 @@ export function recordGmGeneration(record = {}) {
       rawOutput: typeof record.rawOutput === "string" ? record.rawOutput : null,
       trimmedOutput: typeof record.trimmedOutput === "string" ? record.trimmedOutput : null,
       latencyMs: Number.isFinite(record.latencyMs) ? record.latencyMs : null,
+      contextMs: Number.isFinite(record.contextMs) ? record.contextMs : null,
       trimApplied: Boolean(record.trimApplied),
       handlesRetry: Boolean(record.handlesRetry)
     });

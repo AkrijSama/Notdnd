@@ -533,7 +533,17 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
     throw error;
   }
 
+  // item-2 diagnosis (purge-and-diagnose): stage marks for the opening path —
+  // one greppable openingTiming line per opening (the turnTiming pattern).
+  const stageT = { t0: Date.now(), marks: {} };
+  const markStage = (name) => {
+    const now = Date.now();
+    stageT.marks[name] = now - (stageT.prev || stageT.t0);
+    stageT.prev = now;
+  };
+
   const resolvedWorld = await generateWorld(world);
+  markStage("worldgen");
   const characterName = sanitizeName(character.name, "Wanderer");
 
   // SCENARIO FORK (root-cause of the location contradiction): a PRE-BUILT scenario
@@ -581,6 +591,7 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
     : `# ${resolvedWorld.name}\n\nTone: ${resolvedWorld.tone}\n\n${resolvedWorld.description}\n\n` +
       `Starting location: ${resolvedWorld.startingLocation.name} — ${resolvedWorld.startingLocation.description}`;
   await ensureCampaignMemoryDocsAsync(campaignId, { "World Overview": worldOverview });
+  markStage("campaignDocs");
 
   const createdRun = createSoloRun({ userId: actorUserId });
   const run = getSoloRun(createdRun.runId);
@@ -712,6 +723,7 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
       takenNames: npcTakenNames(run),
       takenMannerisms: npcTakenMannerisms(run)
     });
+    markStage("npcIdentity");
     npc.generatedName = identity.generatedName;
     npc.appearance = identity.appearance;
     npc.personality = identity.personality;
@@ -962,7 +974,9 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
     loadScenarioIntoRun(run, scenario, { worldSeed });
   }
 
+  markStage("preIndex");
   await rebuildCampaignIndex(campaignId);
+  markStage("indexRebuild");
 
   // Opening narration: the first thing the player reads when they enter the
   // world. Real GM prose (tone-aware, hooked to the main quest's first
@@ -1019,6 +1033,7 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
   // which produced the baseline's "night falls" openings at a committed 07:0x.
   const openClock = ensureClock(run);
   const openWorldTime = openClock ? { clock: openClock.clock, phase: openClock.phase } : null;
+  markStage("preOpening");
   const opening = authoredOpening || await generateOpeningNarration({
     campaignId,
     runId: run.runId,
@@ -1057,7 +1072,15 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
     run.openingBeats = authoredBeats;
   }
 
+  markStage("openingGm");
   const savedRun = saveSoloRun(run);
+  markStage("runSave");
+  try {
+    const total = Date.now() - stageT.t0;
+    logTurnEvent(runId, `openingTiming ${Object.entries(stageT.marks).map(([k, v]) => `${k}=${v}ms`).join(" ")} total=${total}ms`);
+  } catch {
+    // diagnosis line is best-effort
+  }
 
   return { campaignId, runId: savedRun.runId, world: resolvedWorld };
 }
