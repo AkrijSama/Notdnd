@@ -2614,6 +2614,7 @@ async function handleApi(req, res) {
         playerName: characterName,
         actorUserId: user.id,
         stream: true,
+        deferMemory: true,
         transcript: { runId, callType: "opening" }
       });
 
