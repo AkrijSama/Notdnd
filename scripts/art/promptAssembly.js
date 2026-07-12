@@ -176,6 +176,17 @@ function firstClauseMatching(clauses, re) {
   return clauses.find((c) => re.test(c)) || "";
 }
 
+// ERA LAW (all entity lanes): the era qualifier a world carries, sanitized to plain
+// words, or "" when the world has no era field. mapNpcToSlots prefixes it onto the
+// attire slot; a "" here is a WORLD-DATA GAP the intake reports — we never invent an
+// era (the world data must grow the field; see art-pipeline-v2.md).
+export function eraDescriptor(world = {}) {
+  return sanitizeSlot(world && (world.era || world.eraDescriptor));
+}
+export function worldHasEra(world = {}) {
+  return eraDescriptor(world) !== "";
+}
+
 function npcGenderWord(npc) {
   const gender = String(npc.gender || npc.sex || "").toLowerCase();
   const pronouns = String(npc.pronouns || "").toLowerCase();
@@ -194,7 +205,7 @@ function npcGenderWord(npc) {
  * @param {object} npc
  * @returns {object} slotValues
  */
-export function mapNpcToSlots(npc = {}) {
+export function mapNpcToSlots(npc = {}, world = {}) {
   const appearance = String(npc.appearance || npc.description || "");
   const clauses = splitClauses(appearance);
   let hair = firstClauseMatching(clauses, HAIR_RE);
@@ -216,7 +227,11 @@ export function mapNpcToSlots(npc = {}) {
   set("age", npc.age);
   set("build", build);
   set("hair", hair);
-  set("attire", attire);
+  // ERA LAW: prefix the world's committed era qualifier onto the clothing slot so
+  // the model doesn't default to modern dress. No era in the world data -> attire
+  // rides bare (a world-data gap the intake reports; we never invent an era).
+  const era = eraDescriptor(world);
+  set("attire", attire ? (era ? `${era} ${sanitizeSlot(attire)}` : attire) : attire);
   set("expression", npc.expression);
   set("poseHint", npc.mannerism);
   return out;

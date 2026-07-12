@@ -72,8 +72,9 @@ test("ROUTING: recipeCandidates emits the ladder in order, deduped", () => {
     "entity-darkfantasy.json",
     "dark-fantasy.json"
   ]);
-  // scene's lane == legacy == "scene", so the two collapse to one entry
-  assert.deepEqual(recipeCandidates("anime", "scene"), ["scene-anime.json", "anime.json"]);
+  // scene's lane == legacy == "scene" (collapse to one), PLUS the "landscape" alias
+  // the owner names the scene-lane export with, then the per-style fallback.
+  assert.deepEqual(recipeCandidates("anime", "scene"), ["scene-anime.json", "landscape-anime.json", "anime.json"]);
   // no kind -> per-style only
   assert.deepEqual(recipeCandidates("anime"), ["anime.json"]);
 });

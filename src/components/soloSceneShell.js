@@ -2284,7 +2284,7 @@ export function renderSoloDialogueOverlay(state = {}) {
   // data-solo-vn-sprite hook lets bindSoloSceneShell fade the sprite in on load and
   // fall back to the empty state on a failed load (never a broken-image icon).
   const spriteBlock = spriteUri
-    ? `<div class="solo-vn-sprite" data-portrait-key="${escapeHtml(spriteUri)}" aria-hidden="true"><img class="solo-vn-sprite-img" data-solo-vn-sprite src="${escapeHtml(spriteUri)}" alt="${escapeHtml(speaker)}" /></div>`
+    ? `<div class="solo-vn-sprite" data-portrait-key="${escapeHtml(spriteUri)}" aria-hidden="true"><img class="solo-vn-sprite-img solo-vn-sprite-breathe" data-solo-vn-sprite src="${escapeHtml(spriteUri)}" alt="${escapeHtml(speaker)}" /></div>`
     : "";
 
   // The conversation scrollback now lives in the persistent narration log (each

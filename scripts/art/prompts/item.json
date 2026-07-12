@@ -1,9 +1,10 @@
 {
-  "templateVersion": 1,
+  "templateVersion": 2,
   "lane": "item",
   "positive": [
     { "block": "quality" },
     { "literal": "single object, centered, clean plain background, no characters, product shot" },
+    { "literal": "flat lay, empty garment" },
     { "slot": "itemType", "required": true },
     { "slot": "materials", "required": false },
     { "slot": "styleHint", "required": false },
@@ -11,10 +12,13 @@
   ],
   "negative": [
     { "block": "negativeBase" },
-    { "literal": "people, characters, hands, cluttered background, scene, multiple objects" }
+    { "literal": "people, characters, hands, cluttered background, scene, multiple objects" },
+    { "literal": "person, human, face, mannequin, model, body, worn by person" }
   ],
   "laneRules": [
     "item is a SINGLE object on a clean plain background — an icon that composites later. No characters, no hands, no scene.",
-    "Covers weapons / armor / materials / clothing / decor (decor folded into item in v2)."
+    "Covers weapons / armor / materials / clothing / decor (decor folded into item in v2).",
+    "OWNER FIX (v2) — WEARABLES SHOW NO PERSON: clothing/armor are a flat-lay empty garment. 'person, human, face, mannequin, model, body, worn by person' are hard-negated (a face appeared in a cloak shot until this was added). Learned live.",
+    "ERA LAW (all entity lanes) — a clothing/gear slot MUST carry an era qualifier (e.g. 'medieval fantasy clothing'); without it the model defaults to modern dress (a 'wool robe' rendered as a bathrobe). mapNpcToSlots injects the world's era descriptor (world.era) into the attire slot when the world data carries one; a world with no era field is a WORLD-DATA GAP (reported, never invented here)."
   ]
 }

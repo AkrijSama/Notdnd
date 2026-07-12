@@ -14,3 +14,8 @@ data/assets/
 
 # GM generation transcripts (fine-tune dataset groundwork; runtime churn, never commit)
 data/logs/gm-transcripts/
+
+# Owner's ComfyUI workflow exports (machine-specific API graphs w/ a local checkpoint
+# path; loaded by generate.mjs at runtime, never committed). The committed per-style
+# recipes (anime.json, dark-fantasy.json, realistic.json) are NOT matched by this.
+scripts/art/workflows/*-realistic.json

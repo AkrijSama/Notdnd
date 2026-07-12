@@ -1,9 +1,11 @@
 {
-  "templateVersion": 1,
+  "templateVersion": 2,
   "lane": "scene",
   "positive": [
     { "block": "quality" },
     { "literal": "wide establishing shot, full scene composition, ground plane visible, environment" },
+    { "literal": "dramatic lighting, rich saturated color, deep shadows, high contrast, moody atmosphere" },
+    { "literal": "ground plane visible, distant view, atmospheric depth" },
     { "slot": "subject", "required": true },
     { "slot": "setting", "required": false },
     { "slot": "timeOfDay", "required": false, "default": "daylight" },
@@ -12,11 +14,15 @@
   ],
   "negative": [
     { "block": "negativeBase" },
-    { "literal": "closeup, macro, cropped, people, characters, crowd" }
+    { "literal": "closeup, macro, cropped, people, characters, crowd" },
+    { "literal": "fisheye, wide angle distortion, curved horizon, barrel distortion" },
+    { "literal": "washed out, pale, faded, low contrast, hazy, overexposed, flat lighting" }
   ],
   "laneRules": [
     "scene is a WIDE establishing shot with a visible ground/floor plane and horizon — the space the action sits INSIDE, not a zoomed-in texture. The 14/14 toss failed on over-zoom + void floors.",
     "scenes are UNPOPULATED (no people/characters) per current tags — the negative asserts it.",
-    "CANON LAW — DIEGETIC ART OBEYS WORLD GEOGRAPHY: starter-zone scenes NEVER include the Tower. The slot filler injects 'tower' into the NEGATIVE for any scene whose context tags include 'starter' or 'distant-from-tower'. In-world locations render what a person standing there would actually see."
+    "CANON LAW — DIEGETIC ART OBEYS WORLD GEOGRAPHY: starter-zone scenes NEVER include the Tower. The slot filler injects 'tower' into the NEGATIVE for any scene whose context tags include 'starter' or 'distant-from-tower'. In-world locations render what a person standing there would actually see.",
+    "OWNER RULING (v2) — NO FISHEYE, EVER: fisheye / wide-angle / barrel distortion / curved horizon are hard-negated. Scenes are rectilinear.",
+    "OWNER FIX (v2) — NO PALE WASH: 'washed out, pale, faded, low contrast, hazy, overexposed, flat lighting' are negated and the positive asserts dramatic, saturated, high-contrast lighting. Learned live; must never be re-learned."
   ]
 }

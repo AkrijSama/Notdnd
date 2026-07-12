@@ -2600,9 +2600,22 @@ button:disabled {
 }
 .solo-vn-sprite-img.is-loaded { opacity: 1; }
 @keyframes soloVnSpriteIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+/* item 3 — VN idle "breathing": a barely-perceptible scale + ≤2px vertical drift so a
+   standing sprite feels alive. Pure CSS, GPU-cheap (transform only). transform-origin
+   is the feet, so the figure grows UPWARD and stays planted. Disabled under
+   reduced-motion. Composes with the opacity fade (separate property). */
+@keyframes soloVnBreathe {
+  0%, 100% { transform: scale(1) translateY(0); }
+  50%      { transform: scale(1.015) translateY(-2px); }
+}
+.solo-vn-sprite-breathe {
+  transform-origin: center bottom;
+  animation: soloVnBreathe 4s ease-in-out infinite;
+}
 @media (prefers-reduced-motion: reduce) {
   .solo-vn-sprite { animation: none; }
   .solo-vn-sprite-img { transition: none; opacity: 1; }
+  .solo-vn-sprite-breathe { animation: none; }
 }
 .solo-vn-box {
   position: absolute;

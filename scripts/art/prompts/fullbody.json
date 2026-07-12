@@ -1,9 +1,10 @@
 {
-  "templateVersion": 1,
+  "templateVersion": 2,
   "lane": "fullbody",
   "positive": [
     { "block": "quality" },
     { "literal": "solo, full body, standing, single character, feet on ground" },
+    { "literal": "full figure visible from head to feet" },
     { "slot": "gender", "required": true },
     { "slot": "age", "required": false, "default": "adult" },
     { "slot": "build", "required": false },
@@ -15,11 +16,14 @@
   ],
   "negative": [
     { "block": "negativeBase" },
-    { "literal": "multiple views, multiple heads, extra heads, character sheet, reference sheet, floating, cropped feet, disembodied" }
+    { "literal": "multiple views, multiple heads, extra heads, character sheet, reference sheet, floating, cropped feet, disembodied" },
+    { "literal": "cropped, out of frame, feet cut off, close-up, portrait" }
   ],
   "laneRules": [
     "fullbody is ONE figure, head-to-feet, feet planted on the ground — never a turnaround or reference sheet (the 14/14 toss failed on duplicate heads + floating figures).",
     "The bust and the sprite share one identity (both are FACE kinds and check out together); the tailor keeps the face consistent via identityRef.",
-    "Slots are plain words only; no weight/embedding syntax reaches the model — structure lives in this template."
+    "Slots are plain words only; no weight/embedding syntax reaches the model — structure lives in this template.",
+    "OWNER FIX (v2) — WHOLE FIGURE IN FRAME: 'full figure visible from head to feet' asserted; 'cropped, out of frame, feet cut off, close-up, portrait' negated so the sprite is never a bust in disguise.",
+    "ERA LAW (all entity lanes) — a clothing/gear slot MUST carry an era qualifier (e.g. 'medieval fantasy clothing'); without it the model defaults to modern dress (a 'wool robe' rendered as a bathrobe). mapNpcToSlots injects the world's era descriptor (world.era) into the attire slot when the world data carries one; a world with no era field is a WORLD-DATA GAP (reported, never invented here)."
   ]
 }

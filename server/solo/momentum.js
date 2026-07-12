@@ -1,6 +1,46 @@
 import crypto from "node:crypto";
 import { validateSoloRun } from "./schema.js";
 import { momentumCandidates } from "../campaign/momentumEvents.js";
+import { loadThreadsFromJson } from "./threads.js";
+
+// item 4b — MOMENTUM PROMOTION (closes the fake-urgency class at its source). A
+// momentum event whose build() returns a `deadline` { minutes, consequenceBrief,
+// consequenceDecision } also COMMITS a thread with a world-clock deadline, so the
+// urgency the GM narrates ("the storm is minutes away") is backed by a committed
+// referent (deadlineAudit) instead of invented. The threads engine owns the clock /
+// expiry / consequence machinery; this only births the front from the event.
+function promoteEventToDeadlineThread(run, event, built) {
+  const deadline = built && built.deadline;
+  if (!deadline || !Number.isFinite(Number(deadline.minutes))) return null;
+  const threadId = `thread_momentum_${event.templateId}`;
+  if (run.threads && run.threads[threadId]) return null; // already promoted this run
+  const nowMin = Number(run?.world?.time?.minutes);
+  const expiresAtMinutes = Number.isFinite(nowMin) ? nowMin + Math.round(Number(deadline.minutes)) : null;
+  const front = {
+    frontId: threadId,
+    kind: "danger",
+    origin: "momentum",
+    title: event.title,
+    agenda: event.brief,
+    revealState: "revealed", // the player was just told — committed, known pressure
+    groundedIn: { locationRefs: [run.currentLocationId] },
+    clock: { minTurnsBetweenBeats: 1, expiresAtMinutes },
+    beats: [
+      {
+        beatId: "b_consequence",
+        label: "the deadline lapses",
+        reveal: "revealed",
+        brief: String(deadline.consequenceBrief || `${event.title} — the moment to act has passed.`),
+        decision: String(deadline.consequenceDecision || "React to what has now happened."),
+        trigger: { prescriptive: { minTurn: 0 } },
+        payload: { fact: { text: String(deadline.consequenceBrief || `${event.title}: the window closed.`) } }
+      }
+    ],
+    resolution: [{ kind: "beat_final", outcome: "expired" }]
+  };
+  const res = loadThreadsFromJson(run, [front], {});
+  return res.loaded.length ? { threadId, expiresAtMinutes } : null;
+}
 
 // ---------------------------------------------------------------------------
 // THE MOMENTUM ENGINE — the world's own forward pressure.
@@ -350,6 +390,12 @@ export function fireMomentumEvent(run, options = {}) {
   const timelineEvent = createMomentumTimelineEvent(run, event, memoryFact, options);
   run.memoryFacts = [...(run.memoryFacts || []), memoryFact];
   run.timeline = [...(run.timeline || []), timelineEvent];
+
+  // item 4b — a deadline-bearing event commits its thread clock alongside its stakes.
+  const promoted = promoteEventToDeadlineThread(run, event, built);
+  if (promoted) {
+    event.deadlineThread = promoted;
+  }
 
   momentum.tension = 0;
   momentum.lastFiredTurn = momentum.turnCount;

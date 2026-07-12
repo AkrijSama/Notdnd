@@ -1,5 +1,5 @@
 {
-  "templateVersion": 1,
+  "templateVersion": 2,
   "lane": "portrait",
   "positive": [
     { "block": "quality" },
@@ -19,6 +19,7 @@
   "laneRules": [
     "portrait is ONE face, head-and-shoulders framing — never a multi-view sheet or extra limbs.",
     "The portrait is the identity ANCHOR: the fullbody sprite references it (identityRef) so the face stays the same character across appearances.",
-    "Slots are plain words only; structure lives in this template."
+    "Slots are plain words only; structure lives in this template.",
+    "ERA LAW (all entity lanes) — a clothing/gear slot MUST carry an era qualifier (e.g. 'medieval fantasy clothing'); without it the model defaults to modern dress (a 'wool robe' rendered as a bathrobe). mapNpcToSlots injects the world's era descriptor (world.era) into the attire slot when the world data carries one; a world with no era field is a WORLD-DATA GAP (reported, never invented here)."
   ]
 }

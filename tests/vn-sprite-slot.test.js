@@ -20,7 +20,7 @@ const stateWith = (talk = {}, scene = {}) => ({
 test("(a) a payload sprite URL renders an <img> in the 2:3 sprite container", () => {
   const html = renderSoloDialogueOverlay(stateWith({}, { vnBodyUri: "/sprites/vex_fullbody.png" }));
   assert.match(html, /class="solo-vn-sprite"/, "sprite container renders");
-  assert.match(html, /class="solo-vn-sprite-img"[^>]*src="\/sprites\/vex_fullbody\.png"/, "the <img> carries the sprite src");
+  assert.match(html, /class="solo-vn-sprite-img[^"]*"[^>]*src="\/sprites\/vex_fullbody\.png"/, "the <img> carries the sprite src");
   assert.match(html, /data-solo-vn-sprite/, "the load/error hook is present");
   // The 2:3 surface is enforced in CSS: contain (never crops a face) + ratio-driven
   // width (height fills, width follows) so an 832x1216 sprite keeps its 2:3.
@@ -39,7 +39,7 @@ test("the full-body sprite (vnBodyUri) is preferred over the bust portrait", () 
 
 test("falls back to the 2:3 bust portrait when there is no full-body sprite yet", () => {
   const html = renderSoloDialogueOverlay(stateWith({}, { cast: [{ npcId: "vex", portraitUri: "/bust.png" }] }));
-  assert.match(html, /class="solo-vn-sprite-img"[^>]*src="\/bust\.png"/);
+  assert.match(html, /class="solo-vn-sprite-img[^"]*"[^>]*src="\/bust\.png"/);
 });
 
 // ── (b) a null URL renders no visible slot (the "S" is gone) ───────────────────
@@ -147,4 +147,24 @@ test("(e) the VN overlay keeps its interactive elements alongside the sprite", (
   assert.match(html, /data-solo-dialogue-panel/, "panel (skip-typewriter) hook");
   assert.match(html, /data-solo-dialogue-text/, "typewriter target");
   assert.match(html, /class="solo-vn-sprite"/, "…and the sprite renders in the same overlay");
+});
+
+// ── item 3: VN idle "breathing" animation ─────────────────────────────────────
+test("(item 3) the breathing class is applied when a sprite exists", () => {
+  const html = renderSoloDialogueOverlay(stateWith({}, { vnBodyUri: "/sprites/vex.png" }));
+  assert.match(html, /class="solo-vn-sprite-img solo-vn-sprite-breathe"/, "sprite <img> carries the breathe class");
+});
+
+test("(item 3) the breathing class is absent in the empty state", () => {
+  const html = renderSoloDialogueOverlay(stateWith({}, {})); // no sprite
+  assert.doesNotMatch(html, /solo-vn-sprite-breathe/, "no breathe class when there is no sprite");
+});
+
+test("(item 3) breathing is CSS-only, GPU-cheap (transform), and disabled under reduced-motion", () => {
+  // the loop: scale ~1.015 + a ≤2px vertical drift, 4s ease-in-out infinite, transform only
+  assert.match(CSS, /@keyframes soloVnBreathe[\s\S]*?scale\(1\.015\)[\s\S]*?translateY\(-2px\)/);
+  assert.match(CSS, /\.solo-vn-sprite-breathe\s*\{[^}]*animation:\s*soloVnBreathe\s+4s\s+ease-in-out\s+infinite/s);
+  assert.match(CSS, /transform-origin:\s*center bottom/); // feet planted (grows upward)
+  // reduced-motion disables it entirely
+  assert.match(CSS, /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.solo-vn-sprite-breathe\s*\{\s*animation:\s*none/);
 });

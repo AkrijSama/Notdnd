@@ -252,9 +252,15 @@ function renderPortraitPreview(portrait = {}, options = {}) {
       </div>`;
   }
   if (status === "generating") {
+    // MODE-AWARE (item 4c): the upload path briefly hits "generating" while the
+    // file POSTs — an uploading player must not read "crafting" (they gave us an
+    // image; we're not generating one).
+    const generatingCaption = options.portraitMode === "upload"
+      ? "Uploading your portrait…"
+      : "Crafting your portrait… (~20s)";
     return `<div class="onb-portrait-preview${variant} onb-portrait-loading">
         <span class="onb-portrait-spinner" aria-hidden="true"></span>
-        <small>Crafting your portrait… (~20s)</small>
+        <small>${generatingCaption}</small>
       </div>`;
   }
   if (status === "quota") {

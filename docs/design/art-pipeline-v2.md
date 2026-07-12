@@ -278,3 +278,63 @@ still produces a valid lock). **FLAGGED / STOPPED:** updating the chip to render
 `world.artStyleOptions.allowed` (and to show the three canonical styles incl.
 `realistic`) requires `src/**` work beyond the chip's existing handler — out of
 scope for this dispatch.
+
+---
+
+# Session state — realistic lanes exported + workflow intake wired (2026-07-12)
+
+**Status: the four REALISTIC lanes are exported and owner-verified; the intake that
+drives the owner's real ComfyUI graphs is built.**
+
+## Tuned parameters (owner-verified, realistic lane)
+
+- **Checkpoint:** `Juggernaut-XI-byRunDiffusion.safetensors`
+- **Sampler:** `KSamplerAdvanced` — `euler_ancestral` / `normal` / **26 steps** / **cfg 5.2**
+- **No quality block** on the realistic lane (`blocks/realistic.json`: `quality: ""`,
+  `styleVocab: ""`) — Juggernaut-XI keeps in its native register; a quality block hurt it.
+- **Per-lane dims (the spec `KIND_DIMENSIONS`; injection overrides an off-spec export
+  and WARNS):** portrait **896×1152**, fullbody **832×1216**, scene **1344×768**,
+  item **1024×1024**. (Owner exports carried fullbody at 896×1152 and scene at
+  1024×1024 → the intake warns and injects the spec.)
+
+## The intake (`scripts/art/validateWorkflow.mjs` + `generate.mjs`)
+
+- `validateWorkflow` / `identifyWorkflowRoles` confirm API format and identify the
+  driveable sockets **BY GRAPH SHAPE, not titles**: the sampler is the node wiring
+  positive+negative+latent; its `.positive`/`.negative` refs ARE those CLIP encodes;
+  its seed field (`seed` | `noise_seed`) is the seed socket; checkpoint / VAE-decode /
+  save by class family. Malformed exports are rejected with an error that names the fix.
+- `injectWorkflow` writes the assembled prompt / spec dims / seed into the identified
+  node ids (deep-cloned; `batch_size`→1). `generateImage` uses it for owner API graphs,
+  and `buildGraph` (legacy recipe format) otherwise.
+- The scene lane accepts the owner's `landscape-*.json` filename (routing alias).
+- `--plan` (`node scripts/art/generate.mjs --plan`) prints the assembled prompt +
+  resolved workflow file + dims per lane, no GPU.
+- Owner exports are **git-ignored** (`scripts/art/workflows/*-realistic.json`); the
+  committed per-style recipes are not.
+
+## Laws learned live (baked into `scripts/art/prompts/<lane>.json` v2 — never re-learn)
+
+- **NO FISHEYE, EVER** (owner ruling) — scene negative: `fisheye, wide angle
+  distortion, curved horizon, barrel distortion`.
+- **NO PALE WASH** — scene negative: `washed out, pale, faded, low contrast, hazy,
+  overexposed, flat lighting`; positive asserts `dramatic lighting, rich saturated
+  color, deep shadows, high contrast, moody atmosphere`.
+- **WEARABLES SHOW NO PERSON** — item negative: `person, human, face, mannequin,
+  model, body, worn by person`; positive `flat lay, empty garment` (a face appeared
+  in a cloak shot until this was added).
+- **WHOLE FIGURE IN FRAME** — fullbody positive `full figure visible from head to
+  feet`; negative `cropped, out of frame, feet cut off, close-up, portrait`.
+- **ERA LAW (all entity lanes)** — a clothing/gear slot MUST carry an era qualifier or
+  the model defaults to modern dress (a "wool robe" → a bathrobe). `mapNpcToSlots`
+  injects `world.era` onto the attire slot when present. **WORLD-DATA GAP (flagged,
+  owner's hands):** no world currently carries an `era` field (only `tone`/`flavor`);
+  the era injection is a no-op until the world data grows the field. NOT invented here.
+
+## What remains
+
+- **anime lane** — needs LoRAs (the recipe supports a `lora` chain; none tuned yet).
+- **dark-fantasy + sketch lanes** — no cookbook yet (owner shopping for checkpoints).
+- **TAILOR (Chunk 7)** — IP-Adapter identity seams already in place (`identityRef` on
+  the sidecar, `linkIdentity`); the consistency engine wakes when the per-lane
+  workflows carry the IP-Adapter nodes. Not built this round.

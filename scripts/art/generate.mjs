@@ -19,7 +19,9 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { addAsset, assetExists, libraryRoot } from "./library.mjs";
-import { buildPrompt, laneForKind } from "./promptAssembly.js";
+import { buildPrompt, laneForKind, mapNpcToSlots, mapLocationToSlots } from "./promptAssembly.js";
+import { fileURLToPath } from "node:url";
+import { validateWorkflow } from "./validateWorkflow.mjs";
 
 const COMFY = process.env.COMFY_URL || "http://127.0.0.1:8188";
 const PLAY_STATUS = process.env.PLAY_STATUS_URL || "http://localhost:4173/api/debug/status";
@@ -40,8 +42,10 @@ const KIND_ROUTING = Object.freeze({
   portrait: { lane: "portrait", legacy: "entity" },
   fullbody: { lane: "fullbody", legacy: "entity" },
   item: { lane: "item", legacy: "entity" },
-  scene: { lane: "scene", legacy: "scene" },
-  "world-card": { lane: "scene", legacy: "scene" }
+  // The owner named the scene-lane export "landscape-*.json" — accept it as an
+  // alias so the scene kind resolves the owner's real file (workflow-intake).
+  scene: { lane: "scene", legacy: "scene", aliases: ["landscape"] },
+  "world-card": { lane: "scene", legacy: "scene", aliases: ["landscape"] }
 });
 
 // Per-kind filenames collapse the style hyphen: "dark-fantasy" -> "darkfantasy"
@@ -63,6 +67,7 @@ export function recipeCandidates(style, kind) {
   const names = [];
   if (route) {
     names.push(`${route.lane}-${slug}.json`);
+    for (const alias of route.aliases || []) names.push(`${alias}-${slug}.json`);
     names.push(`${route.legacy}-${slug}.json`);
   }
   names.push(`${String(style)}.json`);
@@ -99,13 +104,15 @@ export function loadRecipe(style, kind) {
 // Per-kind DEFAULT dimensions [w,h] (art-pipeline-v2). A recipe file may override
 // any kind via its own `dimensions` map; these are the fallbacks so a lane always
 // gets the right aspect even from an untuned recipe:
-//   portrait   square-ish 1024      (VN / status face framing)
+//   portrait   896 x 1152 tall      (VN / status face framing — owner-verified spec)
 //   fullbody   832 x 1216 tall      (standing VN sprite)
 //   scene      1344 x 768 wide      (wide establishing shot — see composition bar)
 //   world-card 1344 x 768 wide      (world-select cover)
 //   item       1024 x 1024 square   (object on clean bg, icon-composable)
+// These are the owner-verified art-pipeline-v2 lane spec (workflow-intake item 1c);
+// an owner export whose latent differs is WARNED and overridden to these.
 export const KIND_DIMENSIONS = Object.freeze({
-  portrait: [1024, 1024],
+  portrait: [896, 1152],
   fullbody: [832, 1216],
   scene: [1344, 768],
   "world-card": [1344, 768],
@@ -114,9 +121,80 @@ export const KIND_DIMENSIONS = Object.freeze({
 });
 
 export function dimsFor(recipe, kind) {
-  const d = (recipe && recipe.dimensions) || {};
+  const d = (recipe && !isApiWorkflow(recipe) && recipe.dimensions) || {};
   const wh = d[kind] || KIND_DIMENSIONS[kind] || d.default || KIND_DIMENSIONS.default;
   return { width: wh[0], height: wh[1] };
+}
+
+// ── OWNER-EXPORT INJECTION (workflow-intake item 1b) ──────────────────────────
+// The owner exports API-format ComfyUI graphs (node-id → { class_type, inputs }).
+// True when a loaded recipe is such a graph (vs the legacy custom recipe format
+// with top-level checkpoint/sampler/dimensions fields).
+export function isApiWorkflow(recipe) {
+  return Boolean(recipe) && typeof recipe === "object" && !Array.isArray(recipe) &&
+    Object.values(recipe).some((n) => n && typeof n === "object" && typeof n.class_type === "string");
+}
+
+// The graph's committed EmptyLatentImage dims (for the spec-verify warning).
+export function workflowLatentDims(graph) {
+  const { roles } = validateWorkflow(graph);
+  const inp = roles.latent && graph[roles.latent] ? graph[roles.latent].inputs : {};
+  return { width: Number(inp.width), height: Number(inp.height) };
+}
+
+// Item 1c: warn (never fail) when an owner export's latent dims differ from the
+// lane spec — then the injected value (the spec) is what actually cooks.
+export function verifyDimsAgainstSpec(graph, kind, { warn = console.warn } = {}) {
+  const spec = dimsFor(null, kind);
+  const actual = workflowLatentDims(graph);
+  if (Number.isFinite(actual.width) && Number.isFinite(actual.height) &&
+      (actual.width !== spec.width || actual.height !== spec.height)) {
+    warn(`generate: workflow latent ${actual.width}x${actual.height} != lane spec ${spec.width}x${spec.height} for kind "${kind}" — injecting the spec dims.`);
+    return { match: false, actual, spec };
+  }
+  return { match: true, actual, spec };
+}
+
+// Inject the assembled prompt + dims + seed into the identified node ids of an
+// owner-exported graph. Never mutates the loaded recipe (deep-cloned). Throws
+// loudly (naming the fix) if the graph is malformed. Forces batch_size 1 (the
+// owner exports batch 4 for proofing; a run cooks one idempotent image).
+export function injectWorkflow(graph, { positive, negative, width, height, seed }) {
+  const { ok, roles, errors } = validateWorkflow(graph);
+  if (!ok) {
+    const e = new Error(`generate: cannot inject into a malformed workflow — ${errors[0]}`);
+    e.code = "WORKFLOW_INVALID";
+    e.errors = errors;
+    throw e;
+  }
+  const g = JSON.parse(JSON.stringify(graph));
+  if (typeof positive === "string") g[roles.positive].inputs.text = positive;
+  if (typeof negative === "string") g[roles.negative].inputs.text = negative;
+  if (Number.isFinite(width)) g[roles.latent].inputs.width = width;
+  if (Number.isFinite(height)) g[roles.latent].inputs.height = height;
+  if (roles.seedField && Number.isFinite(seed)) g[roles.sampler].inputs[roles.seedField] = seed;
+  if (g[roles.latent] && "batch_size" in g[roles.latent].inputs) g[roles.latent].inputs.batch_size = 1;
+  return g;
+}
+
+// Dry-run PLAN (item 1d): assemble the prompt + resolve the workflow file + dims
+// for one (style, kind, slotValues) WITHOUT touching ComfyUI. Returns the plan the
+// --plan CLI prints.
+export function dryRunPlan({ style, kind, slotValues = {}, tags = [], context = {} }) {
+  const file = resolveRecipeFile(style, kind);
+  if (!file) throw new Error(`dryRunPlan: no workflow recipe for (kind "${kind}", style "${style}") in ${workflowDir()}`);
+  const recipe = JSON.parse(fs.readFileSync(file, "utf8"));
+  const api = isApiWorkflow(recipe);
+  const { positive, negative, meta } = buildPrompt(laneForKind(kind), style, slotValues, { tags, ...context });
+  const { width, height } = dimsFor(api ? null : recipe, kind);
+  const dimCheck = api ? verifyDimsAgainstSpec(recipe, kind, { warn: () => {} }) : { match: true, actual: { width, height }, spec: { width, height } };
+  const roles = api ? validateWorkflow(recipe).roles : null;
+  return {
+    style, kind, lane: laneForKind(kind),
+    workflowFile: path.basename(file), apiFormat: api,
+    dims: { width, height }, dimCheck, roles,
+    positive, negative, meta
+  };
 }
 
 // Deterministic seed from the asset id, so a resumed/idempotent re-cook of the
@@ -282,11 +360,22 @@ export async function generateImage(spec) {
   if (fs.existsSync(pngPath) && assetExists(id)) {
     return { id, skipped: true, ms: 0, pngPath };
   }
+  const recipeFile = resolveRecipeFile(style, kind);
   const recipe = loadRecipe(style, kind);
   const seed = seedFromId(id);
   // Lane rules (e.g. the starter-zone tower ban) read the asset tags as context.
   const { positive, negative, meta } = buildPrompt(laneForKind(kind), style, slotValues, { tags, ...context });
-  const graph = buildGraph(recipe, { kind, positive, negative, seed });
+  // Owner-exported API graph → INJECT into its shape-identified sockets (item 1b);
+  // legacy recipe → build the graph from scratch. Same assembled prompt/dims/seed
+  // drives either. verifyDimsAgainstSpec warns on an off-spec export (item 1c).
+  let graph;
+  if (isApiWorkflow(recipe)) {
+    verifyDimsAgainstSpec(recipe, kind);
+    const { width, height } = dimsFor(null, kind);
+    graph = injectWorkflow(recipe, { positive, negative, width, height, seed });
+  } else {
+    graph = buildGraph(recipe, { kind, positive, negative, seed });
+  }
   const clientId = `inkborne-art-${id}`;
   const t0 = Date.now();
   const promptId = await queuePrompt(graph, clientId);
@@ -296,7 +385,7 @@ export async function generateImage(spec) {
   fs.writeFileSync(pngPath, bytes);
   // meta records templateVersion + blockVersions + slotValues so a tossed image
   // points at a specific slot/template, not an opaque sentence.
-  addAsset({ id, origin, world, style, kind, tags, workflow: recipe.name, promptUsed: positive, meta });
+  addAsset({ id, origin, world, style, kind, tags, workflow: recipe.name || (recipeFile ? path.basename(recipeFile) : ""), promptUsed: positive, meta });
   return { id, skipped: false, ms: Date.now() - t0, pngPath };
 }
 
@@ -375,4 +464,42 @@ export async function runBatch(specs, { chunkSize = 10, onProgress = () => {} } 
     stopComfy();
   }
   return results;
+}
+
+// ── --plan DRY RUN (item 1d) ──────────────────────────────────────────────────
+// Assemble + resolve every lane for a style and print it — NO ComfyUI, NO GPU.
+function printPlan(p) {
+  const warn = p.dimCheck && p.dimCheck.match === false
+    ? `  [WARN: owner export latent ${p.dimCheck.actual.width}x${p.dimCheck.actual.height} → overridden to spec]`
+    : "";
+  console.log(`\n=== LANE: ${p.lane}  (kind=${p.kind}, style=${p.style}) ===`);
+  console.log(`  workflow file : ${p.workflowFile}${p.apiFormat ? " (owner API export)" : " (legacy recipe)"}`);
+  console.log(`  latent dims   : ${p.dims.width}x${p.dims.height}${warn}`);
+  if (p.roles) {
+    console.log(`  inject nodes  : positive→${p.roles.positive}  negative→${p.roles.negative}  latent→${p.roles.latent}  seed→${p.roles.sampler}.${p.roles.seedField}`);
+  }
+  console.log(`  POSITIVE      : ${p.positive}`);
+  console.log(`  NEGATIVE      : ${p.negative}`);
+}
+
+export function runPlanCli(style = process.env.PLAN_STYLE || "realistic") {
+  // Representative committed state (a real NPC/location/item shape) — the plan shows
+  // the ASSEMBLED prompt, so slot mapping (incl. the era law) is exercised end-to-end.
+  const world = { name: "Ashenmoor", tone: "dark fantasy" }; // no `era` field (world-data gap)
+  const npc = { gender: "woman", age: "young", appearance: "red hair loose, simple linen shirt", expression: "wary", mannerism: "arms crossed" };
+  const loc = { name: "Ashenmoor Market Square", type: "market", timeOfDay: "dusk", weather: "overcast" };
+  const plans = [
+    dryRunPlan({ style, kind: "portrait", slotValues: mapNpcToSlots(npc, world) }),
+    dryRunPlan({ style, kind: "fullbody", slotValues: mapNpcToSlots(npc, world) }),
+    dryRunPlan({ style, kind: "scene", slotValues: mapLocationToSlots(loc), tags: ["starter"] }),
+    dryRunPlan({ style, kind: "item", slotValues: { itemType: "a hooded traveling cloak", materials: "wool", styleHint: "worn", era: world.era } })
+  ];
+  for (const p of plans) printPlan(p);
+  return plans;
+}
+
+if (import.meta.url === `file://${process.argv[1]}`) {
+  if (process.argv.includes("--plan")) {
+    runPlanCli();
+  }
 }

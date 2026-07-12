@@ -28,10 +28,23 @@ test("all three style recipes load and name their checkpoints (realistic is firs
 test("realistic routing resolves via the ladder for every lane", async () => {
   const { resolveRecipeFile } = await import("../scripts/art/generate.mjs");
   const pathMod = await import("node:path");
-  for (const kind of ["scene", "fullbody", "portrait", "item", "world-card"]) {
-    const f = resolveRecipeFile("realistic", kind);
-    assert.ok(f, `realistic/${kind} must resolve a recipe`);
-    assert.equal(pathMod.basename(f), "realistic.json", `realistic/${kind} falls through to realistic.json today`);
+  // Deterministic + CI-safe: a temp workflow dir with ONLY the per-style recipe, so
+  // the test exercises the FALLTHROUGH rung independent of the owner's local lane
+  // exports (which are git-ignored and present only on the owner's machine).
+  const wf = fs.mkdtempSync(path.join(os.tmpdir(), "art-wf-"));
+  fs.writeFileSync(path.join(wf, "realistic.json"), JSON.stringify({ name: "realistic", checkpoint: "X.safetensors", lora: [] }));
+  const prev = process.env.NOTDND_ART_WORKFLOW_DIR;
+  process.env.NOTDND_ART_WORKFLOW_DIR = wf;
+  try {
+    for (const kind of ["scene", "fullbody", "portrait", "item", "world-card"]) {
+      const f = resolveRecipeFile("realistic", kind);
+      assert.ok(f, `realistic/${kind} must resolve a recipe`);
+      assert.equal(pathMod.basename(f), "realistic.json", `realistic/${kind} falls through to realistic.json when no lane export is present`);
+    }
+  } finally {
+    if (prev === undefined) delete process.env.NOTDND_ART_WORKFLOW_DIR;
+    else process.env.NOTDND_ART_WORKFLOW_DIR = prev;
+    fs.rmSync(wf, { recursive: true, force: true });
   }
 });
 

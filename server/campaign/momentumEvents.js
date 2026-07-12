@@ -252,6 +252,13 @@ export const MOMENTUM_TEMPLATES = [
           label: "the outbuilding",
           retryEffect: "harder",
           reason: "flame spreading through dry timber"
+        },
+        // item 4b: a SPREADING fire is a deadline — commit the clock so "spreading"
+        // is real, and the blaze goes loose on expiry.
+        deadline: {
+          minutes: 20,
+          consequenceBrief: `The fire at ${locName(run)} has spread past the outbuilding — the blaze is loose now.`,
+          consequenceDecision: "Flee the spreading fire, or throw yourself at containing it."
         }
       };
     }
@@ -272,6 +279,13 @@ export const MOMENTUM_TEMPLATES = [
           label: "the sky",
           retryEffect: "harder",
           reason: "wind and stinging rain closing in"
+        },
+        // item 4b: "minutes away" is a REAL deadline — commit a thread clock so the
+        // urgency is honest (deadlineAudit), and the storm actually breaks on expiry.
+        deadline: {
+          minutes: 30,
+          consequenceBrief: `The storm has broken over ${locName(run)} — driving rain and failing light are on the player now.`,
+          consequenceDecision: "Weather it where you are, or press on through the storm."
         }
       };
     }
@@ -413,7 +427,14 @@ export const MOMENTUM_TEMPLATES = [
             }
           ],
           reward: { xp: 60 }
-        })
+        }),
+        // item 4b: "do it soon / before the way is closed" is a deadline — commit the
+        // clock so the closure is a real window, shut on expiry.
+        deadline: {
+          minutes: 60,
+          consequenceBrief: `The way toward ${onward.name} has been closed — the window to pass ahead of the shutdown is gone.`,
+          consequenceDecision: "Find another route, or find out who closed it and why."
+        }
       };
     }
   }
