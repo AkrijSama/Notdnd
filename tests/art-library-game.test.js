@@ -39,14 +39,17 @@ test("resolveLibraryArt: null-rated and toss assets never surface — only keep"
   assert.equal(resolveLibraryArt({ world: "w_rate", kind: "world-card" }), libraryAssetUri("kept"));
 });
 
-test("resolveLibraryArt: engine style narrows to the mapped library style", () => {
+test("resolveLibraryArt: style narrows to the mapped canonical library style", () => {
   keep({ id: "s_anime", world: "w_style", kind: "scene", style: "anime" });
   keep({ id: "s_dark", world: "w_style", kind: "scene", style: "dark-fantasy" });
-  // anime engine -> anime library style
+  keep({ id: "s_real", world: "w_style", kind: "scene", style: "realistic" });
+  // canonical vocab matches directly
   assert.equal(resolveLibraryArt({ world: "w_style", kind: "scene", style: "anime" }), libraryAssetUri("s_anime"));
-  // illustrated + cinematic engine -> dark-fantasy library style
+  assert.equal(resolveLibraryArt({ world: "w_style", kind: "scene", style: "dark-fantasy" }), libraryAssetUri("s_dark"));
+  assert.equal(resolveLibraryArt({ world: "w_style", kind: "scene", style: "realistic" }), libraryAssetUri("s_real"));
+  // legacy engine vocab is normalized: illustrated -> dark-fantasy, cinematic -> realistic
   assert.equal(resolveLibraryArt({ world: "w_style", kind: "scene", style: "illustrated" }), libraryAssetUri("s_dark"));
-  assert.equal(resolveLibraryArt({ world: "w_style", kind: "scene", style: "cinematic" }), libraryAssetUri("s_dark"));
+  assert.equal(resolveLibraryArt({ world: "w_style", kind: "scene", style: "cinematic" }), libraryAssetUri("s_real"));
 });
 
 test("resolveLibraryArt: stable pick = newest first, stable across calls", () => {

@@ -13,23 +13,25 @@ const {
   stampArtStyle
 } = await import("../server/solo/artStyle.js");
 
-test("the vocab sets are exactly the two locked vocabularies", () => {
+test("the vocab sets are exactly the locked vocabularies (realistic is first-class)", () => {
   assert.deepEqual([...ENGINE_STYLES], ["illustrated", "anime", "cinematic"]);
-  assert.deepEqual([...LIBRARY_STYLES], ["anime", "dark-fantasy"]);
+  assert.deepEqual([...LIBRARY_STYLES], ["anime", "dark-fantasy", "realistic"]);
 });
 
-test("engine <-> library mapping is total and correct", () => {
+test("engine <-> library mapping is total and correct (cinematic -> realistic now)", () => {
   assert.equal(engineToLibraryStyle("illustrated"), "dark-fantasy");
-  assert.equal(engineToLibraryStyle("cinematic"), "dark-fantasy");
+  assert.equal(engineToLibraryStyle("cinematic"), "realistic", "cinematic's nearest key is realistic now");
   assert.equal(engineToLibraryStyle("anime"), "anime");
   // reverse
   assert.equal(libraryToEngineStyle("anime"), "anime");
   assert.equal(libraryToEngineStyle("dark-fantasy"), "illustrated");
+  assert.equal(libraryToEngineStyle("realistic"), "cinematic");
   // junk clamps to the defaults
   assert.equal(engineToLibraryStyle("bogus"), "dark-fantasy");
   assert.equal(normalizeEngineStyle("ANIME"), "anime");
   assert.equal(normalizeEngineStyle(""), "illustrated");
   assert.equal(normalizeLibraryStyle("nope"), "dark-fantasy");
+  assert.equal(normalizeLibraryStyle("realistic"), "realistic");
 });
 
 test("RECONCILIATION FLAG: artStyleOptions.default is primary, legacy artStyle is fallback", () => {
@@ -56,12 +58,16 @@ test("runArtStyle prefers world, uses flags.artStyle only for a world with no st
   assert.equal(runArtStyle({}), "illustrated");
 });
 
-test("stampArtStyle writes BOTH the new primary and the legacy string", () => {
+test("stampArtStyle writes the primary, legacy string, and the allow-list", () => {
   const w = stampArtStyle({}, "anime");
   assert.equal(w.artStyle, "anime");
-  assert.deepEqual(w.artStyleOptions, { default: "anime" });
+  assert.equal(w.artStyleOptions.default, "anime");
+  assert.deepEqual(w.artStyleOptions.allowed, ["anime", "dark-fantasy", "realistic"], "allowed defaults to all canonical styles");
   // clamps junk
   const j = stampArtStyle({}, "bogus");
   assert.equal(j.artStyle, "illustrated");
   assert.equal(j.artStyleOptions.default, "illustrated");
+  // a pre-declared narrower allow-list is preserved
+  const narrow = stampArtStyle({ artStyleOptions: { allowed: ["anime"] } }, "anime");
+  assert.deepEqual(narrow.artStyleOptions.allowed, ["anime"]);
 });

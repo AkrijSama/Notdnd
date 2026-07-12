@@ -13,7 +13,7 @@
 // ---------------------------------------------------------------------------
 
 import { queryAssets } from "../../scripts/art/library.mjs";
-import { engineToLibraryStyle, runArtStyle } from "./artStyle.js";
+import { styleForRun, toCanonicalStyle } from "./artStyle.js";
 
 // Served URI for a library asset PNG. The library lives at data/assets/library/
 // under the repo root, which serveStatic serves verbatim, so <id>.png is public.
@@ -54,8 +54,10 @@ function keepsFor({ world, kind, style }) {
     return [];
   }
   if (style) {
-    const libStyle = engineToLibraryStyle(style);
-    return found.filter((a) => a.style === libStyle);
+    // `style` may arrive as engine OR canonical vocab; normalize to the canonical
+    // library vocab the sidecar `.style` is written in.
+    const libStyle = toCanonicalStyle(style);
+    return libStyle ? found.filter((a) => a.style === libStyle) : [];
   }
   return found;
 }
@@ -98,6 +100,7 @@ export function resolveSceneArtForRun(run) {
   return resolveLibraryArt({
     world: worldKeyForRun(run),
     kind: "scene",
-    style: runArtStyle(run)
+    // Butler-resolved canonical style (was runArtStyle → engine vocab).
+    style: styleForRun(run)
   });
 }

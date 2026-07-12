@@ -206,3 +206,75 @@ Both `blocks/anime.json` and `blocks/darkfantasy.json` ship placeholder
 `quality` / `styleVocab` / `negativeBase` (seeded from the legacy per-style
 recipes) marked with `_TODO`. Replace each with the workbench-tuned value and bump
 `blockVersion`; the template literals + lane invariants stay put.
+
+---
+
+# Realistic lane + The Butler + Style Lock Law
+
+## Style vocabulary (canonical)
+
+The player-facing, run-locked, butler-resolved style set is **`anime` |
+`dark-fantasy` | `realistic`** (= the library / block / workflow vocab).
+`realistic` is first-class as of this round: it shares the **Juggernaut** cookbook
+with `dark-fantasy` (same checkpoint) and diverges only in its `styleVocab` block
+(`blocks/realistic.json`, `_TODO` for the owner's Juggernaut Chunk-1 findings). A
+per-style `workflows/realistic.json` exists so `<lane>-realistic.json` routes via
+the normal ladder.
+
+### The mapping table (engine ↔ canonical), verbatim
+
+The legacy **engine** vocab (`illustrated | anime | cinematic`) still drives the
+live path (`artStyleDirection`, `ai/comfyui` `STYLE_PRESETS`). The single table in
+`server/solo/artStyle.js`:
+
+| engine | → canonical | canonical | → engine | cookbook |
+|---|---|---|---|---|
+| illustrated | `dark-fantasy` | anime | `anime` | Illustrious |
+| anime | `anime` | dark-fantasy | `illustrated` | Juggernaut |
+| cinematic | `realistic` | realistic | `cinematic` | Juggernaut |
+
+`cinematic → realistic` is the **changed** row this round (was `dark-fantasy`):
+`cinematic` is realistic's nearest engine key now that realistic is first-class.
+
+## The Butler — `styleForRun(run, world)`
+
+One function, one module (`server/solo/artStyle.js`), consulted by **every**
+art-request site (library query **and** generation dispatch). Data-driven,
+deterministic, unit-tested per rung. Resolution chain:
+
+1. **`run.flags.artStyle`** — the player's LOCKED choice (accepts either vocab);
+2. **`run.edition === "forbidden"`** — a forbidden-mode run with no lock prefers
+   `realistic` (this is the forbidden-mode flag that exists today — `run.edition`,
+   from `schema.js` `EDITIONS`; there is no `flags.mode/tier`);
+3. **`world.artStyleOptions.default`** (then legacy `world.artStyle`, resume-safety);
+4. **house fallback: `dark-fantasy`** (today's production-quality lane).
+
+Returns a canonical style. `engineStyleForRun(run, world)` maps that result into
+engine vocab for the live `imageWorker` / `comfyui` path — the same single chain,
+engine output. All art sites now call these; no site reads `artStyle` /
+`artStyleOptions` directly anymore.
+
+## Style Lock Law (owner ruling, verbatim)
+
+> "Art style is chosen at run creation and LOCKED for the campaign. Mid-campaign
+> style switching is a premium (Ink-priced) service — repricing reflects real cost:
+> a switch invalidates the run's cached art and face-checkouts and triggers
+> regeneration."
+
+**Enforcement:** `run.flags.artStyle` is written **once** at onboarding via the
+guarded setter `lockRunArtStyle(run, style)`, validated against
+`world.artStyleOptions.allowed`. Any later write that **changes** the style throws
+unless an explicit `{ grant: true }` styleSwitch is passed (the Ink-purchase hook —
+**guarded setter only**; no purchase flow, no UI, price is owner-table per Law 6).
+A same-style re-write is an idempotent no-op.
+
+**Onboarding chip status (honest):** the art-style chip is *wired* (click →
+`onWorldField("artStyle")` → `/api/onboarding/world/field`), but it is authored in
+`src/components/onboardingFlow.js` (excluded from this round) and still offers the
+**legacy engine ids** (`illustrated | anime | cinematic`) hardcoded, rather than
+rendering `world.artStyleOptions.allowed`. The **server** now locks + validates
+whatever the chip sends (engine ids are normalized to canonical, so the legacy chip
+still produces a valid lock). **FLAGGED / STOPPED:** updating the chip to render
+`world.artStyleOptions.allowed` (and to show the three canonical styles incl.
+`realistic`) requires `src/**` work beyond the chip's existing handler — out of
+scope for this dispatch.

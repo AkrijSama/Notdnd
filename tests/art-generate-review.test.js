@@ -13,13 +13,26 @@ const { createReviewServer } = await import("../scripts/art/review.mjs");
 const { addAsset, getAsset } = await import("../scripts/art/library.mjs");
 
 // ---- recipes + graph (pure, no GPU) ---------------------------------------
-test("both style recipes load and name their checkpoints", () => {
+test("all three style recipes load and name their checkpoints (realistic is first-class)", () => {
   const anime = loadRecipe("anime");
   const dark = loadRecipe("dark-fantasy");
+  const realistic = loadRecipe("realistic");
   assert.match(anime.checkpoint, /Illustrious-XL/);
   assert.match(dark.checkpoint, /Juggernaut-XI/);
+  // realistic shares the Juggernaut cookbook with dark-fantasy (for now)
+  assert.match(realistic.checkpoint, /Juggernaut-XI/);
   assert.deepEqual(anime.lora, [], "LoRA slot present and empty");
   assert.deepEqual(dark.lora, [], "LoRA slot present and empty");
+});
+
+test("realistic routing resolves via the ladder for every lane", async () => {
+  const { resolveRecipeFile } = await import("../scripts/art/generate.mjs");
+  const pathMod = await import("node:path");
+  for (const kind of ["scene", "fullbody", "portrait", "item", "world-card"]) {
+    const f = resolveRecipeFile("realistic", kind);
+    assert.ok(f, `realistic/${kind} must resolve a recipe`);
+    assert.equal(pathMod.basename(f), "realistic.json", `realistic/${kind} falls through to realistic.json today`);
+  }
 });
 
 test("buildGraph makes a valid SDXL txt2img graph with per-kind dimensions", () => {

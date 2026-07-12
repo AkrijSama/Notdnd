@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { editImage, generateImage } from "../ai/providers.js";
-import { resolveWorldArtStyle, runArtStyle } from "./artStyle.js";
+import { engineStyleForRun } from "./artStyle.js";
 import { detectImageExt } from "../api/http.js";
 import {
   ensureLocationImageAsset,
@@ -267,7 +267,7 @@ export function buildPlayerPortraitPrompt(character = {}, world = {}) {
   const tone = isStr(world.tone) ? world.tone.trim() : "dark fantasy";
   // Engine art style via the ONE reconciliation reader (artStyleOptions.default
   // first, legacy world.artStyle as fallback) — never compare the legacy string here.
-  const engineStyle = resolveWorldArtStyle(world);
+  const engineStyle = engineStyleForRun(null, world);
   // Canon-origin override: The Beckoned is a modern-Earth human champion, not a
   // fantasy race. Frame a present-day person "out of place" in the fantasy tone
   // and hard-negate the elf/fantasy default (which the medium framing otherwise
@@ -325,7 +325,7 @@ export function buildPlayerPortraitPrompt(character = {}, world = {}) {
 // image). Independent of the draft-namespace id below.
 function playerPortraitSeed(character = {}, world = {}) {
   const c = normalizePortraitCharacter(character);
-  const style = resolveWorldArtStyle(world);
+  const style = engineStyleForRun(null, world);
   // Include origin: switching to/from The Beckoned changes the prompt materially,
   // so it must yield a different seed (deterministic providers key off the seed).
   return hashOf(`${c.name || ""}|${c.race || ""}|${c.characterClass || ""}|${c.origin || ""}|${style}`);
@@ -341,7 +341,7 @@ export function computeDraftPortraitId(character = {}, nonce = 0, world = {}, ed
   // for the same character resolves to the SAME draftId and serves the stale
   // image generated for the previous style — the "picked Anime, got dark fantasy"
   // bug. Defaulting style to "illustrated" matches buildPlayerPortraitPrompt.
-  const style = resolveWorldArtStyle(world);
+  const style = engineStyleForRun(null, world);
   const tone = isStr(world?.tone) ? world.tone.trim().toLowerCase() : "";
   // An edit instruction (conversational portrait editor) is part of the produced
   // image, so it joins the cache namespace — two different tweaks at the same
@@ -597,7 +597,7 @@ export async function runPlayerImageJob(job = {}) {
   }
 
   const character = player.character || {};
-  const style = resolveWorldArtStyle(run.world);
+  const style = engineStyleForRun(run, run.world);
 
   // Merge the full character record with the mirrored run.player.* fallbacks,
   // then build the prompt + seed via the shared player-portrait helpers (same
@@ -674,7 +674,7 @@ export async function runDraftPortraitJob(job = {}) {
 
   draftPortraits.set(draftId, { status: "generating", uri: null });
   const prompt = buildPlayerPortraitPrompt(character, world);
-  const style = resolveWorldArtStyle(world);
+  const style = engineStyleForRun(null, world);
   // Offset the deterministic seed by the redo nonce so a reroll produces a
   // genuinely different image (not the same one under a fresh id). Seed also
   // varies by art style so a style change yields a different image.
@@ -798,12 +798,11 @@ export async function runLocationImageJob(job = {}) {
   }
 
   const location = run?.locations?.[locationId] || null;
-  // The run's selected art style (C.6): prefer an explicit job.style, else resolve
-  // it off the run via the ONE reconciliation reader (run.world's
-  // artStyleOptions.default -> legacy artStyle -> flags.artStyle mirror). Drives
-  // BOTH the location art direction and generateImage's medium cue, so an anime
-  // run yields an anime scene image.
-  const style = (job.style && String(job.style).trim()) || runArtStyle(run);
+  // The run's selected art style: prefer an explicit job.style, else the BUTLER
+  // (styleForRun's locked-choice → forbidden → world-default → house chain), mapped
+  // to engine vocab for the live path. Drives BOTH the location art direction and
+  // generateImage's medium cue, so an anime run yields an anime scene image.
+  const style = (job.style && String(job.style).trim()) || engineStyleForRun(run, run.world);
   const seed = Number.isFinite(Number(job.seed)) ? Number(job.seed) : null;
   // Compose FOR the wide banner: the subject (caller prompt or fallback) plus the
   // STYLE-AWARE location art direction (per-style aesthetic + establishing-shot

@@ -15,6 +15,7 @@ import { buildSystemLoreClause } from "../gm/systemLore.js";
 import { writeNpcMemoryDoc } from "../solo/npcMemory.js";
 import { buildFarLocation, buildSecondLocation, generateWorld } from "../solo/worldGen.js";
 import { createMainQuest } from "../solo/quests.js";
+import { lockRunArtStyle } from "../solo/artStyle.js";
 import { buildTrialQuest, TRIAL_QUEST_ID, buildDeliveryOffer } from "./authoredQuests.js";
 import { resolveRequestedScenario, loadScenarioIntoRun } from "./scenarioLoader.js";
 import { seedSandboxThreads } from "../solo/threads.js";
@@ -622,7 +623,12 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
     artStyle: resolvedWorld.artStyle,
     artStyleOptions: resolvedWorld.artStyleOptions
   };
-  run.flags = { ...(run.flags || {}), artStyle: resolvedWorld.artStyle };
+  // STYLE LOCK LAW: write the player's chosen art style ONCE, validated against
+  // world.artStyleOptions.allowed. This is the guarded setter's first (grant-free)
+  // write; any later CHANGING write throws unless a styleSwitch grant is passed
+  // (the Ink-priced switch, not built here). resolvedWorld.artStyle is the choice
+  // the world-select chip forwarded (normalized to canonical vocab by the setter).
+  lockRunArtStyle(run, resolvedWorld.artStyle);
 
   // Replace the placeholder starting location with the generated one — but NOT for
   // a scenario run: the scenario authors start_location's name/description (the

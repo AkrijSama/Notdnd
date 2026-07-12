@@ -22,6 +22,8 @@
 
 Nothing purchasable with Ink or real money may alter any mechanical value: stats, rolls, DCs, XP, milestones, item abilities, crafting outcomes, turn economy. No convenience carve-outs touching mechanics (inventory slots, XP boosts, reroll tokens — banned). Power is earned in-world only, forever, in every world and every tier.
 
+**Cosmetic catalog — art-style switch (Ink-priced):** Art style is chosen at run creation and **LOCKED for the campaign** (see art-pipeline-v2.md, Style Lock Law). Mid-campaign style switching is a premium (Ink-priced) service; the repricing reflects real cost — a switch invalidates the run's cached art and face-checkouts and triggers regeneration. Purely cosmetic (no mechanical value changes), so it is Law-2-clean. **PENDING: price = owner table (Law 6).**
+
 ---
 
 ## LAW 3 — CRAFTING IS CONTRACT-ONLY THROUGH THE THREE-BAND

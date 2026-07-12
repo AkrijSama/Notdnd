@@ -40,7 +40,7 @@ import { createLemonSqueezyWebhookHandler } from "./api/lemonsqueezy.js";
 import { tokenFromRequest } from "./auth/httpAuth.js";
 import { createOnboardingCampaign, createWorldOnboardingRun } from "./campaign/onboarding.js";
 import { generateWorld, regenerateWorldField } from "./solo/worldGen.js";
-import { runArtStyle } from "./solo/artStyle.js";
+import { engineStyleForRun } from "./solo/artStyle.js";
 import { resolveLibraryArt } from "./solo/artLibrary.js";
 import { sanitizePlayerText } from "./solo/safety.js";
 import {
@@ -668,7 +668,7 @@ function buildNpcBasePrompt(run, npcId) {
 // Returns a fire-and-forget enqueuer for the scene builder. Each visible NPC
 // that still needs art gets one image job. Never blocks the scene response.
 function makeSceneImageEnqueuer(run) {
-  const style = runArtStyle(run);
+  const style = engineStyleForRun(run);
   return (npcIds) => {
     for (const npcId of npcIds) {
       enqueueImageJob({
@@ -694,7 +694,7 @@ function buildLocationBasePrompt(run, locationId) {
 // Returns a fire-and-forget enqueuer for the current location's background
 // image. Generated once per location; never blocks the scene response.
 function makeSceneLocationImageEnqueuer(run) {
-  const style = runArtStyle(run);
+  const style = engineStyleForRun(run);
   return (locationId) => {
     enqueueLocationImageJob({
       runId: run.runId,
@@ -2409,7 +2409,7 @@ async function handleApi(req, res) {
       // Write the upload as the base portrait, mark its asset generated, and
       // link it onto the NPC.
       const { uri } = writeUploadedBasePortrait(run.runId, portraitTarget.npcId, ext, file.data);
-      const linked = ensureNpcImageAssets(run.runId, portraitTarget.npcId, { style: runArtStyle(run) });
+      const linked = ensureNpcImageAssets(run.runId, portraitTarget.npcId, { style: engineStyleForRun(run) });
       if (!linked) {
         throw Object.assign(new Error("NPC not found."), { code: "NOT_FOUND", statusCode: 404 });
       }
@@ -2421,7 +2421,7 @@ async function handleApi(req, res) {
       enqueueImageJob({
         runId: run.runId,
         npcId: portraitTarget.npcId,
-        style: runArtStyle(run),
+        style: engineStyleForRun(run),
         basePrompt: buildNpcBasePrompt(freshRun, portraitTarget.npcId)
       });
 
@@ -2549,7 +2549,7 @@ async function handleApi(req, res) {
         const vnNpcId = scene.speakerId.includes(":")
           ? scene.speakerId.split(":").slice(1).join(":")
           : scene.speakerId;
-        enqueueVnBodyImageJob({ runId: run.runId, npcId: vnNpcId, style: runArtStyle(run) });
+        enqueueVnBodyImageJob({ runId: run.runId, npcId: vnNpcId, style: engineStyleForRun(run) });
       }
       // Surface tier + remaining image quota so the client can show a soft,
       // non-blocking upgrade prompt as a free user approaches their limit.
@@ -2642,7 +2642,7 @@ async function handleApi(req, res) {
           statusCode: 409
         });
       }
-      const style = runArtStyle(run);
+      const style = engineStyleForRun(run);
       // Fresh seed -> a genuinely different image, and doubles as the cache-buster.
       const seed = Math.floor(Math.random() * 1_000_000_000) + 1;
       enqueueLocationImageJob({

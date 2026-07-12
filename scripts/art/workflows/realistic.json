@@ -1,0 +1,17 @@
+{
+  "name": "realistic",
+  "_TODO": "PLACEHOLDER recipe — realistic shares the Juggernaut cookbook with dark-fantasy for now (same checkpoint/sampler); it diverges in styleVocab (see prompts/blocks/realistic.json). OWNER: retune sampler/checkpoint from the Juggernaut Chunk-1 findings, then bump.",
+  "checkpoint": "Juggernaut-XI-byRunDiffusion.safetensors",
+  "lora": [],
+  "sampler": { "sampler_name": "dpmpp_2m", "scheduler": "karras", "steps": 30, "cfg": 6.0, "denoise": 1.0 },
+  "positiveSuffix": "photorealistic, realistic, highly detailed, natural lighting, sharp focus, photography",
+  "negative": "lowres, worst quality, bad anatomy, bad hands, extra fingers, deformed, blurry, jpeg artifacts, watermark, signature, text, cartoon, anime, illustration, painting, 3d render",
+  "dimensions": {
+    "world-card": [1344, 768],
+    "scene": [1344, 768],
+    "fullbody": [832, 1216],
+    "portrait": [1024, 1024],
+    "item": [1024, 1024],
+    "default": [1024, 1024]
+  }
+}
