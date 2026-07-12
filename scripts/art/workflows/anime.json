@@ -8,10 +8,9 @@
   "dimensions": {
     "world-card": [1344, 768],
     "scene": [1344, 768],
-    "npc-body": [832, 1216],
-    "npc-portrait": [896, 1152],
+    "fullbody": [832, 1216],
+    "portrait": [1024, 1024],
     "item": [1024, 1024],
-    "decor": [1152, 896],
     "default": [1024, 1024]
   }
 }

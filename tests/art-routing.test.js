@@ -10,43 +10,72 @@ const WF = fs.mkdtempSync(path.join(os.tmpdir(), "art-wf-"));
 process.env.NOTDND_ART_WORKFLOW_DIR = WF;
 process.env.NOTDND_ASSET_LIBRARY_ROOT = fs.mkdtempSync(path.join(os.tmpdir(), "art-wf-lib-"));
 
-const { resolveRecipeFile, loadRecipe, buildGraph } = await import("../scripts/art/generate.mjs");
+const { resolveRecipeFile, recipeCandidates, loadRecipe, buildGraph } = await import("../scripts/art/generate.mjs");
 
 function writeRecipe(name, body) {
   fs.writeFileSync(path.join(WF, `${name}.json`), JSON.stringify(body));
 }
+const R = (name) => writeRecipe(name, { name, checkpoint: "X.safetensors", lora: [] });
 
-// Mock workflow files: per-kind (scene-anime, entity-darkfantasy) + per-style
-// fallbacks (anime, dark-fantasy). Note the per-kind style slug collapses the
-// hyphen ("dark-fantasy" -> "darkfantasy"); the fallback keeps it.
-writeRecipe("scene-anime", { name: "scene-anime", checkpoint: "Illustrious.safetensors", lora: [] });
-writeRecipe("anime", { name: "anime", checkpoint: "Illustrious.safetensors", lora: [] });
-writeRecipe("entity-darkfantasy", { name: "entity-darkfantasy", checkpoint: "Juggernaut.safetensors", lora: [] });
-writeRecipe("dark-fantasy", { name: "dark-fantasy", checkpoint: "Juggernaut.safetensors", lora: [] });
+// Mock workflow files exercising every rung of the ladder. Per-kind LANE files
+// (portrait-/fullbody-/item-/scene-), legacy FAMILY files (entity-/scene-), and
+// per-STYLE fallbacks (anime/dark-fantasy/cinematic). Per-kind slug collapses the
+// hyphen ("dark-fantasy" -> "darkfantasy"); per-style files keep it.
+R("portrait-anime");       // lane
+R("fullbody-darkfantasy"); // lane
+R("item-anime");           // lane
+R("scene-anime");          // lane (scene's lane == legacy family)
+R("entity-anime");         // legacy family (portrait/fullbody/item)
+R("entity-darkfantasy");   // legacy family
+R("scene-darkfantasy");    // legacy/lane for scene
+R("anime");                // per-style
+R("dark-fantasy");         // per-style
+R("cinematic");            // per-style ONLY — no lane, no legacy
 
-test("ROUTING: per-(kind,style) file wins over the per-style fallback", () => {
-  // scene-kind + anime -> scene-anime.json (per-kind), not anime.json
+test("ROUTING rung 1: the per-kind LANE file wins over legacy + per-style", () => {
+  assert.equal(path.basename(resolveRecipeFile("anime", "portrait")), "portrait-anime.json");
+  assert.equal(path.basename(resolveRecipeFile("dark-fantasy", "fullbody")), "fullbody-darkfantasy.json");
+  assert.equal(path.basename(resolveRecipeFile("anime", "item")), "item-anime.json");
   assert.equal(path.basename(resolveRecipeFile("anime", "scene")), "scene-anime.json");
-  assert.equal(loadRecipe("anime", "scene").name, "scene-anime");
-  // world-card also maps to the "scene" recipe family
+  // world-card rides the scene lane
   assert.equal(path.basename(resolveRecipeFile("anime", "world-card")), "scene-anime.json");
-  // npc-body maps to the "entity" family; dark-fantasy collapses to darkfantasy
-  assert.equal(path.basename(resolveRecipeFile("dark-fantasy", "npc-body")), "entity-darkfantasy.json");
-  assert.equal(path.basename(resolveRecipeFile("dark-fantasy", "npc-portrait")), "entity-darkfantasy.json");
 });
 
-test("ROUTING: falls back to the per-style file when no per-kind file exists", () => {
-  // no entity-anime.json present -> npc-body(anime) falls back to anime.json
-  assert.equal(path.basename(resolveRecipeFile("anime", "npc-body")), "anime.json");
-  // no scene-darkfantasy.json present -> scene(dark-fantasy) falls back to dark-fantasy.json
-  assert.equal(path.basename(resolveRecipeFile("dark-fantasy", "scene")), "dark-fantasy.json");
+test("ROUTING rung 2: portrait/fullbody/item fall back to entity-*, scene to scene-*", () => {
+  // no fullbody-anime.json -> entity-anime.json (legacy family)
+  assert.equal(path.basename(resolveRecipeFile("anime", "fullbody")), "entity-anime.json");
+  // no portrait-darkfantasy.json -> entity-darkfantasy.json
+  assert.equal(path.basename(resolveRecipeFile("dark-fantasy", "portrait")), "entity-darkfantasy.json");
+  // no item-darkfantasy.json -> entity-darkfantasy.json
+  assert.equal(path.basename(resolveRecipeFile("dark-fantasy", "item")), "entity-darkfantasy.json");
+  // scene(dark-fantasy) -> scene-darkfantasy.json (scene's legacy family is scene-*)
+  assert.equal(path.basename(resolveRecipeFile("dark-fantasy", "scene")), "scene-darkfantasy.json");
+});
+
+test("ROUTING rung 3: per-STYLE file when neither lane nor legacy exists", () => {
+  // cinematic has no lane/legacy files -> the per-style cinematic.json for every kind
+  assert.equal(path.basename(resolveRecipeFile("cinematic", "portrait")), "cinematic.json");
+  assert.equal(path.basename(resolveRecipeFile("cinematic", "fullbody")), "cinematic.json");
+  assert.equal(path.basename(resolveRecipeFile("cinematic", "scene")), "cinematic.json");
   // no kind given -> straight to per-style
   assert.equal(path.basename(resolveRecipeFile("anime")), "anime.json");
 });
 
-test("ROUTING: returns null (and loadRecipe throws) when nothing matches", () => {
-  assert.equal(resolveRecipeFile("nope", "scene"), null);
-  assert.throws(() => loadRecipe("nope", "scene"), /no workflow recipe/);
+test("ROUTING rung 4: null (and loadRecipe throws) when nothing matches", () => {
+  assert.equal(resolveRecipeFile("ghost", "portrait"), null);
+  assert.throws(() => loadRecipe("ghost", "portrait"), /no workflow recipe/);
+});
+
+test("ROUTING: recipeCandidates emits the ladder in order, deduped", () => {
+  assert.deepEqual(recipeCandidates("dark-fantasy", "portrait"), [
+    "portrait-darkfantasy.json",
+    "entity-darkfantasy.json",
+    "dark-fantasy.json"
+  ]);
+  // scene's lane == legacy == "scene", so the two collapse to one entry
+  assert.deepEqual(recipeCandidates("anime", "scene"), ["scene-anime.json", "anime.json"]);
+  // no kind -> per-style only
+  assert.deepEqual(recipeCandidates("anime"), ["anime.json"]);
 });
 
 test("LORA: recipe.lora entries chain LoraLoader nodes wired into the graph", () => {

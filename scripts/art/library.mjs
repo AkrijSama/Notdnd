@@ -7,7 +7,7 @@
 // no network — the generator (generate.mjs) calls addAsset after a cook; the
 // review tool (review.mjs) calls rateAsset; the engine (phase 2) will query.
 //
-// FACE-CHECKOUT RULE (Law 5): a face image (kind npc-body | npc-portrait) may hold
+// FACE-CHECKOUT RULE (Law 5): a face image (kind portrait | fullbody) may hold
 // AT MOST ONE checkout {runId, npcId}; scenery (every other kind) never checks
 // out. TOSS-rated images are excluded from query results.
 // ---------------------------------------------------------------------------
@@ -25,10 +25,15 @@ export function libraryRoot() {
 }
 
 export const ASSET_ORIGINS = Object.freeze(["authored", "generated", "player-commissioned"]);
-export const ASSET_KINDS = Object.freeze(["world-card", "scene", "npc-body", "npc-portrait", "item", "decor"]);
+// The four generation lanes ("waiters") + world-card. portrait = faces (VN/status
+// framing); fullbody = tall standing VN sprites; scene = locations/environments;
+// item = objects on a clean background; world-card = the wide world-select cover.
+// (Replaced the old npc-body/npc-portrait/decor vocab — see art-pipeline-v2.md.)
+export const ASSET_KINDS = Object.freeze(["world-card", "scene", "portrait", "fullbody", "item"]);
 export const ASSET_RATINGS = Object.freeze(["keep", "toss", null]);
-// The kinds that carry a FACE and may be checked out to exactly one NPC.
-export const FACE_KINDS = Object.freeze(["npc-body", "npc-portrait"]);
+// The kinds that carry a FACE and may be checked out to exactly one NPC — now
+// BOTH portrait (the bust) AND fullbody (the sprite share one identity).
+export const FACE_KINDS = Object.freeze(["portrait", "fullbody"]);
 
 function ensureRoot() {
   const root = libraryRoot();
@@ -61,10 +66,14 @@ export function buildSidecar(input = {}) {
     creator: input.creator ?? null, // load-bearing for multiplayer economy; null now
     world: isString(input.world) ? input.world : null, // null = world-agnostic
     style: isString(input.style) ? input.style : "",
-    kind, // world-card | scene | npc-body | npc-portrait | item | decor
+    kind, // world-card | scene | portrait | fullbody | item
     tags: Array.isArray(input.tags) ? input.tags.filter(isString) : [],
     checkout: input.checkout && typeof input.checkout === "object" ? input.checkout : null,
     rating: ASSET_RATINGS.includes(input.rating) ? input.rating : null,
+    // TAILOR seam (art-pipeline-v2): the identity reference this asset was
+    // generated FROM — e.g. a fullbody sprite records the portrait assetId whose
+    // face it must match (IP-Adapter identity-reference). null = self-originated.
+    identityRef: isString(input.identityRef) ? input.identityRef : null,
     workflow: isString(input.workflow) ? input.workflow : "",
     promptUsed: isString(input.promptUsed) ? input.promptUsed : ""
   };
@@ -144,7 +153,7 @@ export function tagAsset(id, tags = []) {
 }
 
 // Check a FACE out to an NPC. Enforces Law 5:
-//  - only npc-body / npc-portrait may check out (scenery never does);
+//  - only portrait / fullbody may check out (scenery never does);
 //  - an image holds AT MOST ONE checkout — re-checkout while held throws.
 // Returns the updated sidecar.
 export function checkoutFace(id, { runId, npcId } = {}) {
@@ -186,4 +195,24 @@ export function rateAsset(id, rating) {
   }
   sidecar.rating = rating;
   return writeAsset(sidecar);
+}
+
+// TAILOR seam (art-pipeline-v2): record that `childId` was generated from the
+// identity of `refId` (e.g. a fullbody sprite ← the portrait whose face it must
+// match). Pure data — it stores the link; the consistency engine (IP-Adapter
+// wake-up, gated on the owner's tuned per-lane workflows) reads it later. Both
+// assets must exist. Returns the updated child sidecar.
+export function linkIdentity(childId, refId) {
+  const child = getAsset(childId);
+  if (!child) {
+    throw new Error(`library: no asset ${childId}`);
+  }
+  if (!isString(refId)) {
+    throw new Error("library: linkIdentity requires a reference assetId");
+  }
+  if (!assetExists(refId)) {
+    throw new Error(`library: identity reference ${refId} does not exist`);
+  }
+  child.identityRef = refId;
+  return writeAsset(child);
 }

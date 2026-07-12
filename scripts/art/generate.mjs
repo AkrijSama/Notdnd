@@ -30,42 +30,61 @@ function workflowDir() {
     : path.resolve(process.cwd(), "scripts/art/workflows");
 }
 
-// The recipe taxonomy is coarser than the asset KIND taxonomy: faces (npc-body /
-// npc-portrait) share ONE "entity" recipe; every other kind (world-card / scene /
-// item / decor) shares the "scene" recipe. Per-kind workflow files are named
-// <entity|scene>-<styleSlug>.json (e.g. scene-anime.json, entity-darkfantasy.json).
-const ENTITY_KINDS = new Set(["npc-body", "npc-portrait"]);
-function workflowKindFor(kind) {
-  return ENTITY_KINDS.has(String(kind)) ? "entity" : "scene";
-}
-// Per-kind filenames collapse the style hyphen: "dark-fantasy" -> "darkfantasy",
-// so scene-darkfantasy.json / entity-darkfantasy.json (per the export convention),
-// while the legacy per-style fallback files keep the hyphen (dark-fantasy.json).
+// FOUR-WAITER routing (art-pipeline-v2): each asset KIND routes through one of the
+// four generation-lane recipes, with a legacy fallback FAMILY. portrait/fullbody/
+// item share the legacy "entity" family; scene (and world-card, a wide cover) ride
+// the "scene" family. Per-kind lane files are named <lane>-<styleSlug>.json (e.g.
+// portrait-anime.json, fullbody-darkfantasy.json, item-anime.json, scene-darkfantasy.json).
+const KIND_ROUTING = Object.freeze({
+  portrait: { lane: "portrait", legacy: "entity" },
+  fullbody: { lane: "fullbody", legacy: "entity" },
+  item: { lane: "item", legacy: "entity" },
+  scene: { lane: "scene", legacy: "scene" },
+  "world-card": { lane: "scene", legacy: "scene" }
+});
+
+// Per-kind filenames collapse the style hyphen: "dark-fantasy" -> "darkfantasy"
+// (portrait-darkfantasy.json), while the legacy per-STYLE fallback file keeps the
+// hyphen (dark-fantasy.json).
 function perKindStyleSlug(style) {
   return String(style).replace(/-/g, "");
 }
 
+// The routing ladder for (style, kind), in order, deduped:
+//   1. per-kind LANE file    <lane>-<slug>.json   (portrait-anime.json)
+//   2. legacy FAMILY file    <legacy>-<slug>.json (entity-anime.json / scene-darkfantasy.json)
+//   3. per-STYLE file        <style>.json         (anime.json / dark-fantasy.json)
+// A kind not in KIND_ROUTING (or absent) skips straight to the per-style file.
+// scene's lane == legacy == "scene", so its steps 1 & 2 collapse to one entry.
+export function recipeCandidates(style, kind) {
+  const slug = perKindStyleSlug(style);
+  const route = kind ? KIND_ROUTING[String(kind)] : null;
+  const names = [];
+  if (route) {
+    names.push(`${route.lane}-${slug}.json`);
+    names.push(`${route.legacy}-${slug}.json`);
+  }
+  names.push(`${String(style)}.json`);
+  return names.filter((name, i) => names.indexOf(name) === i);
+}
+
 // ---- recipes --------------------------------------------------------------
-// Routing: per-(kind, style) FIRST (scene-anime.json, entity-darkfantasy.json, …),
-// gracefully falling back to the existing per-style file (anime.json,
-// dark-fantasy.json) when a per-kind file is absent — so the owner can drop tuned
-// per-kind exports in over time with no code change. Returns the resolved absolute
-// path, or null when neither exists.
+// Walk the ladder; return the first existing recipe file (absolute path), or null.
 export function resolveRecipeFile(style, kind) {
   const dir = workflowDir();
-  if (kind) {
-    const perKind = path.join(dir, `${workflowKindFor(kind)}-${perKindStyleSlug(style)}.json`);
-    if (fs.existsSync(perKind)) {
-      return perKind;
+  for (const name of recipeCandidates(style, kind)) {
+    const p = path.join(dir, name);
+    if (fs.existsSync(p)) {
+      return p;
     }
-  }
-  const perStyle = path.join(dir, `${String(style)}.json`);
-  if (fs.existsSync(perStyle)) {
-    return perStyle;
   }
   return null;
 }
 
+// Loads the resolved recipe VERBATIM (JSON.parse). An optional recipe.identity
+// { refImage, weight } block (the IP-Adapter socket, art-pipeline-v2 tailor seam)
+// is preserved untouched here and passed through — buildGraph ignores it this
+// round; workflows that lack the IP-Adapter nodes simply never read it.
 export function loadRecipe(style, kind) {
   const file = resolveRecipeFile(style, kind);
   if (!file) {
@@ -76,9 +95,26 @@ export function loadRecipe(style, kind) {
   return JSON.parse(fs.readFileSync(file, "utf8"));
 }
 
-function dimsFor(recipe, kind) {
-  const d = recipe.dimensions || {};
-  const wh = d[kind] || d.default || [1024, 1024];
+// Per-kind DEFAULT dimensions [w,h] (art-pipeline-v2). A recipe file may override
+// any kind via its own `dimensions` map; these are the fallbacks so a lane always
+// gets the right aspect even from an untuned recipe:
+//   portrait   square-ish 1024      (VN / status face framing)
+//   fullbody   832 x 1216 tall      (standing VN sprite)
+//   scene      1344 x 768 wide      (wide establishing shot — see composition bar)
+//   world-card 1344 x 768 wide      (world-select cover)
+//   item       1024 x 1024 square   (object on clean bg, icon-composable)
+export const KIND_DIMENSIONS = Object.freeze({
+  portrait: [1024, 1024],
+  fullbody: [832, 1216],
+  scene: [1344, 768],
+  "world-card": [1344, 768],
+  item: [1024, 1024],
+  default: [1024, 1024]
+});
+
+export function dimsFor(recipe, kind) {
+  const d = (recipe && recipe.dimensions) || {};
+  const wh = d[kind] || KIND_DIMENSIONS[kind] || d.default || KIND_DIMENSIONS.default;
   return { width: wh[0], height: wh[1] };
 }
 

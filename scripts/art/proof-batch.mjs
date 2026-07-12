@@ -13,11 +13,16 @@
 //    distant town, a FAINT impossible tower on the far horizon (chaos-gradient:
 //    the starter area is NORMAL; the wrongness is distant).
 //  - 6 scene — 3 anime + 3 dark-fantasy of the SAME subjects (the style A/B).
-//  - 4 npc-body, anime, tall — varied adults, distinct faces, neutral standing
+//  - 4 fullbody, anime, tall — varied adults, distinct faces, neutral standing
 //    poses (VN sprites); faces tagged thoroughly to seed the checkout pool.
+//
+// DRY-RUN: `node scripts/art/proof-batch.mjs --plan` prints what WOULD generate
+// per (kind, style) — the resolved recipe file + dimensions — and a four-waiter
+// routing matrix, without touching ComfyUI. Use it to confirm every lane resolves.
 // ---------------------------------------------------------------------------
 
-import { runBatch, comfyReachable } from "./generate.mjs";
+import { runBatch, comfyReachable, resolveRecipeFile, recipeCandidates, loadRecipe, dimsFor } from "./generate.mjs";
+import path from "node:path";
 
 const WORLD = "babel";
 
@@ -64,12 +69,12 @@ function specs() {
       });
     }
   }
-  // 4 npc-bodies (anime, tall) — VN-sprite candidates, faces tagged for checkout.
+  // 4 fullbodies (anime, tall) — VN-sprite candidates, faces tagged for checkout.
   for (const n of NPC_BODIES) {
     out.push({
-      id: `babel-npcbody-${n.key}`,
+      id: `babel-fullbody-${n.key}`,
       style: "anime",
-      kind: "npc-body",
+      kind: "fullbody",
       world: WORLD,
       prompt: n.prompt,
       tags: n.tags
@@ -80,7 +85,60 @@ function specs() {
 
 export const PROOF_SPECS = specs();
 
+// The four generation lanes ("waiters") the dry-run proves resolve, per style.
+const WAITER_LANES = ["portrait", "fullbody", "scene", "item"];
+const PLAN_STYLES = ["anime", "dark-fantasy"];
+
+// Resolve one (style, kind) to { file, dims, candidates, unresolved } WITHOUT
+// touching ComfyUI — pure filesystem routing.
+export function planFor(style, kind) {
+  const abs = resolveRecipeFile(style, kind);
+  const candidates = recipeCandidates(style, kind);
+  if (!abs) {
+    return { file: null, dims: null, candidates, unresolved: true };
+  }
+  const recipe = loadRecipe(style, kind);
+  const { width, height } = dimsFor(recipe, kind);
+  return { file: path.basename(abs), dims: [width, height], candidates, unresolved: false };
+}
+
+// DRY-RUN: print what WOULD generate (per curated spec) + a four-waiter routing
+// matrix, so every lane's resolution is visible without cooking anything.
+export function printPlan() {
+  console.log("=== proof-batch --plan (DRY RUN — nothing generated, ComfyUI untouched) ===\n");
+  console.log(`Curated specs (${PROOF_SPECS.length}):`);
+  for (const s of PROOF_SPECS) {
+    const p = planFor(s.style, s.kind);
+    const where = p.unresolved
+      ? `UNRESOLVED (tried: ${p.candidates.join(" -> ")})`
+      : `${p.file}  ${p.dims[0]}x${p.dims[1]}`;
+    console.log(`  ${s.id.padEnd(34)} ${String(s.kind).padEnd(11)} ${String(s.style).padEnd(13)} -> ${where}`);
+  }
+  console.log("\nFour-waiter routing matrix (lane x style -> resolved recipe file, dims):");
+  let allResolved = true;
+  for (const kind of WAITER_LANES) {
+    for (const style of PLAN_STYLES) {
+      const p = planFor(style, kind);
+      if (p.unresolved) {
+        allResolved = false;
+      }
+      const where = p.unresolved
+        ? `UNRESOLVED (ladder: ${p.candidates.join(" -> ")})`
+        : `${p.file.padEnd(20)} ${p.dims[0]}x${p.dims[1]}   (ladder: ${p.candidates.join(" -> ")})`;
+      console.log(`  ${kind.padEnd(9)} ${style.padEnd(13)} -> ${where}`);
+    }
+  }
+  console.log(
+    `\nAll four lanes resolve for both styles: ${allResolved ? "YES" : "NO (some fell through to null — owner must export a recipe)"}`
+  );
+  return allResolved;
+}
+
 async function main() {
+  if (process.argv.includes("--plan")) {
+    printPlan();
+    return;
+  }
   const list = PROOF_SPECS;
   if (list.length !== 14) {
     throw new Error(`proof-batch: expected 14 specs, built ${list.length}`);

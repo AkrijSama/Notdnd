@@ -16,6 +16,7 @@ const {
   checkoutFace,
   releaseFace,
   rateAsset,
+  linkIdentity,
   buildSidecar,
   ASSET_KINDS,
   FACE_KINDS
@@ -23,13 +24,14 @@ const {
 
 test("buildSidecar carries every Law 5 field, with defaults", () => {
   const s = buildSidecar({ id: "a1" });
-  for (const k of ["id", "createdAt", "origin", "creator", "world", "style", "kind", "tags", "checkout", "rating", "workflow", "promptUsed"]) {
+  for (const k of ["id", "createdAt", "origin", "creator", "world", "style", "kind", "tags", "checkout", "rating", "identityRef", "workflow", "promptUsed"]) {
     assert.ok(k in s, `sidecar has ${k}`);
   }
   assert.equal(s.origin, "generated", "origin defaults to generated");
   assert.equal(s.creator, null, "creator null now (load-bearing later)");
   assert.equal(s.checkout, null);
   assert.equal(s.rating, null);
+  assert.equal(s.identityRef, null, "identityRef null until a tailor link is made");
   assert.deepEqual(s.tags, []);
 });
 
@@ -45,7 +47,7 @@ test("addAsset writes a sidecar readable by getAsset (idempotent by id)", () => 
 });
 
 test("CHECKOUT UNIQUENESS: a face holds at most ONE checkout", () => {
-  addAsset({ id: "face1", kind: "npc-body", style: "anime", tags: ["face", "adult"] });
+  addAsset({ id: "face1", kind: "fullbody", style: "anime", tags: ["face", "adult"] });
   checkoutFace("face1", { runId: "run_A", npcId: "npc_1" });
   assert.deepEqual(getAsset("face1").checkout, { runId: "run_A", npcId: "npc_1" });
   // a second checkout while held is refused
@@ -60,9 +62,35 @@ test("CHECKOUT UNIQUENESS: a face holds at most ONE checkout", () => {
 test("SCENERY NEVER checks out (only face kinds)", () => {
   addAsset({ id: "card1", kind: "world-card", style: "anime" });
   assert.throws(() => checkoutFace("card1", { runId: "r", npcId: "n" }), /never check out/);
-  // and face kinds are exactly npc-body / npc-portrait
-  assert.deepEqual([...FACE_KINDS].sort(), ["npc-body", "npc-portrait"]);
+  // scenes never check out either
+  addAsset({ id: "scenex", kind: "scene", style: "anime" });
+  assert.throws(() => checkoutFace("scenex", { runId: "r", npcId: "n" }), /never check out/);
+  // face kinds are exactly portrait / fullbody (v2 vocab)
+  assert.deepEqual([...FACE_KINDS].sort(), ["fullbody", "portrait"]);
   assert.ok(ASSET_KINDS.includes("world-card"));
+  // the old npc-* / decor vocab is gone
+  assert.ok(!ASSET_KINDS.includes("npc-body") && !ASSET_KINDS.includes("npc-portrait") && !ASSET_KINDS.includes("decor"));
+});
+
+test("portrait AND fullbody both check out (both carry the shared face identity)", () => {
+  addAsset({ id: "port1", kind: "portrait", style: "anime" });
+  addAsset({ id: "body1", kind: "fullbody", style: "anime" });
+  checkoutFace("port1", { runId: "r", npcId: "n" });
+  checkoutFace("body1", { runId: "r", npcId: "n" });
+  assert.deepEqual(getAsset("port1").checkout, { runId: "r", npcId: "n" });
+  assert.deepEqual(getAsset("body1").checkout, { runId: "r", npcId: "n" });
+});
+
+test("TAILOR SEAM: linkIdentity records identityRef; validates both assets exist", () => {
+  addAsset({ id: "id_portrait", kind: "portrait", style: "anime" });
+  addAsset({ id: "id_fullbody", kind: "fullbody", style: "anime" });
+  assert.equal(getAsset("id_fullbody").identityRef, null, "unlinked by default");
+  const linked = linkIdentity("id_fullbody", "id_portrait");
+  assert.equal(linked.identityRef, "id_portrait");
+  assert.equal(getAsset("id_fullbody").identityRef, "id_portrait", "persisted to the sidecar");
+  // a missing child or a dangling reference both throw
+  assert.throws(() => linkIdentity("nope", "id_portrait"), /no asset nope/);
+  assert.throws(() => linkIdentity("id_fullbody", "ghost"), /does not exist/);
 });
 
 test("QUERY excludes TOSS-rated images", () => {
@@ -76,10 +104,10 @@ test("QUERY excludes TOSS-rated images", () => {
 });
 
 test("QUERY available:true returns only un-checked-out faces", () => {
-  addAsset({ id: "poolA", kind: "npc-body", style: "anime" });
-  addAsset({ id: "poolB", kind: "npc-body", style: "anime" });
+  addAsset({ id: "poolA", kind: "fullbody", style: "anime" });
+  addAsset({ id: "poolB", kind: "fullbody", style: "anime" });
   checkoutFace("poolB", { runId: "r", npcId: "n" });
-  const avail = queryAssets({ kind: "npc-body", available: true }).map((a) => a.id);
+  const avail = queryAssets({ kind: "fullbody", available: true }).map((a) => a.id);
   assert.ok(avail.includes("poolA"), "free face is available");
   assert.ok(!avail.includes("poolB"), "checked-out face is not available");
 });
