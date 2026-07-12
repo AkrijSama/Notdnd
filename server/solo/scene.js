@@ -10,6 +10,7 @@ import { generatePlaceholderGmNarration, validateGmSceneOutput } from "./gm.js";
 import { getAvailableMoves } from "./movement.js";
 import { getQuestPayload } from "./quests.js";
 import { getRecentDevelopment } from "./momentum.js";
+import { individualReputation, factionTierForStanding } from "./reputation.js";
 import { buildFallbackSuggestions, sceneSuggestionsKey } from "./suggestions.js";
 import { getUsableInventoryItems } from "./useItem.js";
 import {
@@ -1158,6 +1159,29 @@ function buildThreadsSummary(run) {
   return out;
 }
 
+// reputation-engine-v1 — the player-facing standing summary. VISIBILITY law: an
+// individual tier surfaces only for a MET NPC; a faction tier only once DISCOVERED.
+// Hidden standings still accrue server-side — they just never leave here. Payload
+// only (the meter UI is a later client round).
+function buildReputationSummary(run) {
+  const individuals = [];
+  for (const npc of Object.values(run?.npcs || {})) {
+    if (!isPlainObject(npc)) continue;
+    const view = individualReputation(run, npc.npcId);
+    if (!view || !view.met) continue;
+    const entry = { npcId: view.npcId, name: view.name, tier: view.tier, affinity: view.affinity };
+    if (view.romanceable) entry.romanceTier = view.romanceTier;
+    if (view.factionId) entry.factionId = view.factionId;
+    individuals.push(entry);
+  }
+  const factions = [];
+  for (const f of Object.values(run?.factions || {})) {
+    if (!isPlainObject(f) || f.discovered !== true) continue;
+    factions.push({ factionId: f.factionId, name: f.name || f.factionId, tier: factionTierForStanding(Number(f.standing) || 0), standing: Number(f.standing) || 0 });
+  }
+  return { individuals, factions };
+}
+
 // D.4 — the live combat surface (or null). Emits the committed roster with enemy
 // wound-bands alongside true HP (the client may show numbers; the narrator speaks
 // bands). Player HP/AC are read from the player payload, never duplicated here.
@@ -1306,6 +1330,9 @@ export function buildSoloScenePayload(run, options = {}) {
     // leaves the server. (The load-bearing invariant — hidden threads absent from
     // the GM PROMPT — is enforced in the narrativeDriver fold-in, not here.)
     threads: buildThreadsSummary(run),
+    // reputation-engine-v1: known standings (met NPC tiers + discovered faction
+    // tiers). Visibility-gated; hidden standings accrue but never surface. No UI yet.
+    reputation: buildReputationSummary(run),
     // Open, un-accepted job offers held by PRESENT NPCs (F2: an offer no one can
     // discover is dead content). Server-authored truth: the GM may voice these —
     // accepting one is a real committed transition (resolveQuestAccept).

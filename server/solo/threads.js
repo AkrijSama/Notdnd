@@ -27,6 +27,20 @@
 
 import { validateSoloRun, validateThreadState, createEmptyExpressionVariants } from "./schema.js";
 import { resolveStatBlock } from "../campaign/bestiary.js";
+import { applyReputationEffects } from "./reputation.js";
+
+// reputation-engine-v1: a thread may carry reputationEffects [{target, delta, tags?}]
+// that commit to faction/individual standing WHEN THE THREAD RESOLVES (any outcome).
+// Applied once, idempotently (a flag guards double-firing across the two closers).
+function fireThreadReputation(run, thread, options) {
+  if (thread?.flags?.reputationApplied) return [];
+  const applied = applyReputationEffects(run, thread?.reputationEffects, options);
+  if (applied.length) {
+    thread.flags = thread.flags || {};
+    thread.flags.reputationApplied = true;
+  }
+  return applied;
+}
 
 const MAX_ACTIVE_THREADS = 3; // DW anti-noise cap (scenarios §1.2).
 // item 1: a non-scenario run's danger thread carries a generous world-clock
@@ -430,7 +444,9 @@ export function resolveThreadLifecycle(run, result, options = {}) {
       // world clock (null when no clock has been established yet).
       const atMinutes = Number(run?.world?.time?.minutes);
       thread.resolved = { outcome, atMinutes: Number.isFinite(atMinutes) ? atMinutes : null };
-      resolved.push({ threadId: thread.threadId, outcome });
+      // reputation-engine-v1: the resolution commits its standing effects (once).
+      const rep = fireThreadReputation(run, thread, options);
+      resolved.push({ threadId: thread.threadId, outcome, ...(rep.length ? { reputation: rep } : {}) });
     }
   }
   return resolved;
@@ -529,6 +545,8 @@ export function instantiateThreadFromFront(front, run) {
       expiresAtMinutes: clampExpiry(front.clock?.expiresAtMinutes)
     },
     revealState: front.revealState || "hidden",
+    // reputation-engine-v1: authored/seeded standing effects that commit on resolution.
+    reputationEffects: Array.isArray(front?.reputationEffects) ? front.reputationEffects : [],
     resolution: (Array.isArray(front?.resolution) ? front.resolution : []).map((r) => ({ ...r, questId: r.questRef || r.questId })),
     callbackQuery: {
       entityIds: front.callbackQuery?.entityRefs || front.callbackQuery?.entityIds || [],
@@ -702,7 +720,9 @@ export function enforceThreadDeadlines(run, options = {}) {
     thread.status = "expired"; // the deadline outcome wins the status label
     thread.resolved = thread.resolved || { outcome: "expired", atMinutes };
     thread.clock.expiresAtMinutes = null; // spent — never re-fire
-    out.expired.push({ threadId: thread.threadId, outcome: "expired", atMinutes });
+    // reputation-engine-v1: an expiry is a resolution — its standing effects commit (once).
+    const rep = fireThreadReputation(run, thread, options);
+    out.expired.push({ threadId: thread.threadId, outcome: "expired", atMinutes, ...(rep.length ? { reputation: rep } : {}) });
     if (!out.driver && lastFired) {
       out.driver = lastFired.driver;
       out.firedBeatId = lastFired.beat?.beatId || null;

@@ -18,6 +18,7 @@ import { createMainQuest } from "../solo/quests.js";
 import { buildTrialQuest, TRIAL_QUEST_ID, buildDeliveryOffer } from "./authoredQuests.js";
 import { resolveRequestedScenario, loadScenarioIntoRun } from "./scenarioLoader.js";
 import { seedSandboxThreads } from "../solo/threads.js";
+import { seedFactions, mintNpcReputation, migrateReputation } from "../solo/reputation.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -983,7 +984,17 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
     // through the SAME loader authored fronts use. Deterministic on worldSeed; a
     // no-op if the run already carries threads.
     seedSandboxThreads(run, { worldSeed });
+    // reputation-engine-v1 — mint the world's factions (2-4, with preferences +
+    // relations) then give each NPC its intrinsic reputation traits (1-3 preference
+    // tags, nullable faction membership, sparse romanceable). Deterministic on
+    // worldSeed; authored worlds supply the same as JSON. Order matters: factions
+    // first, so NPC membership can reference a seeded faction.
+    seedFactions(run, { worldSeed });
+    mintNpcReputation(run, { worldSeed });
   }
+  // Migrate any pre-reputation B2 relationships onto the running affinity/tier
+  // (a no-op for a fresh run; the safety net for one carried in from before).
+  migrateReputation(run);
 
   markStage("preIndex");
   await rebuildCampaignIndex(campaignId);

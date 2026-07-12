@@ -15,8 +15,18 @@
 // ---------------------------------------------------------------------------
 
 import crypto from "node:crypto";
+import { applyAffinityToRelationship, recomputeIndividualTiers, aggregateAffinityFromMeters } from "./reputation.js";
 
 const METERS = ["trust", "affection", "fear", "debt", "suspicion", "loyalty", "rivalry"];
+
+// reputation-engine-v1: the base affinity a social band contributes to the running
+// score (before per-target preference weighting). Owner-tunable.
+const SOCIAL_AFFINITY_BASE = { success: 2, cost: 1, failure: -1 };
+// Social intents that read as their own preference tags — a violence-averse NPC
+// resents a "successful" intimidation. Others weight neutrally (1).
+function socialTags(meter) {
+  return meter === "fear" ? ["violence", "intimidation"] : [];
+}
 const METER_MIN = -50;
 const METER_MAX = 50;
 
@@ -112,6 +122,11 @@ function ensureRelationship(run, npcId, { idFactory } = {}) {
   for (const m of METERS) {
     if (!Number.isFinite(rel.meters[m])) rel.meters[m] = 0;
   }
+  // reputation-engine-v1: ensure the running affinity + computed tiers exist,
+  // MIGRATING a legacy B2 record by aggregating its committed trust+affection (no
+  // meter is discarded). Idempotent; recomputes romanceTier off the present NPC.
+  if (!Number.isFinite(rel.affinity)) rel.affinity = aggregateAffinityFromMeters(rel.meters);
+  recomputeIndividualTiers(rel, run.npcs?.[npcId]);
   return rel;
 }
 
@@ -156,6 +171,12 @@ export function commitSocialDisposition(run, { intent, targetId, band, success }
   if (suspicionDelta !== 0) {
     rel.meters.suspicion = clampMeter(rel.meters.suspicion + suspicionDelta);
   }
+  // reputation-engine-v1: the social outcome also moves the RUNNING AFFINITY,
+  // preference-weighted (the "now weighted" B2 path). Intimidation reads as a
+  // violence tag, so a violence-averse target's affinity can drop even on a compliant
+  // win. recompute romanceTier off the (now-moved) affection meter.
+  const bandKey = b.includes("cost") ? "cost" : b.includes("fail") ? "failure" : "success";
+  const affinityChange = applyAffinityToRelationship(rel, npc, SOCIAL_AFFINITY_BASE[bandKey], socialTags(meter));
   return {
     targetNpcId: npc.npcId,
     targetName: npc.generatedName || npc.displayName || npc.role || npc.npcId,
@@ -163,7 +184,47 @@ export function commitSocialDisposition(run, { intent, targetId, band, success }
     delta: primaryDelta,
     suspicionDelta,
     before: beforePrimary,
-    after: rel.meters[meter]
+    after: rel.meters[meter],
+    // running standing surfaced alongside the meter (the GM/scene reads these).
+    affinity: rel.affinity,
+    affinityDelta: affinityChange?.delta ?? 0,
+    tier: rel.tier,
+    romanceTier: rel.romanceTier
+  };
+}
+
+/**
+ * GIFT COMMIT (reputation-engine-v1). Transfer an inventory item to a present/known
+ * NPC; their preference weights PRICE it (Stardew law) into an affinity delta. A
+ * loved-tag gift amplifies, an untagged gift lands base, a hated-tag gift insults.
+ * Consumes one of the item. Returns the committed change, or null when the NPC/item
+ * can't be grounded (no phantom transfer). Server-committed; the GM only narrates it.
+ */
+export function commitGift(run, { npcId, itemId } = {}, options = {}) {
+  if (!isPlainObject(run)) return null;
+  const npc = run.npcs?.[npcId];
+  const item = run.inventory?.[itemId];
+  if (!isPlainObject(npc) || !isPlainObject(item)) return null;
+  const tags = Array.isArray(item.tags) ? item.tags : [];
+  const rel = ensureRelationship(run, npcId, options);
+  const GIFT_BASE = 2;
+  const change = applyAffinityToRelationship(rel, npc, GIFT_BASE, tags);
+  // Transfer: one unit leaves the player's pack (the gift is really given).
+  if (Number.isFinite(item.quantity) && item.quantity > 1) item.quantity -= 1;
+  else delete run.inventory[itemId];
+  return {
+    targetNpcId: npcId,
+    targetName: npc.generatedName || npc.displayName || npc.role || npcId,
+    itemId,
+    itemName: item.name || itemId,
+    itemTags: tags,
+    baseDelta: GIFT_BASE,
+    weight: change.weight,
+    delta: change.delta,
+    before: change.before,
+    after: change.after,
+    tier: change.tier,
+    romanceTier: change.romanceTier
   };
 }
 

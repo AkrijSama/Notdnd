@@ -827,6 +827,15 @@ export function validateRelationship(relationship) {
   validateStringArray(relationship.memoryFactIds, "memoryFactIds", errors);
   validateObject(relationship.flags, "flags", errors);
 
+  // reputation-engine-v1 (optional, additive): the running affinity aggregate + its
+  // computed tier extend B2 without discarding any meter. Tolerant — legacy records
+  // (no affinity) stay valid; a malformed affinity is a real bug.
+  if (relationship.affinity !== undefined) validateNumber(relationship.affinity, "affinity", errors);
+  if (relationship.tier !== undefined) validateOptionalString(relationship.tier, "tier", errors);
+  if (relationship.romanceTier !== undefined && relationship.romanceTier !== null) {
+    validateOptionalString(relationship.romanceTier, "romanceTier", errors);
+  }
+
   return result(errors);
 }
 
@@ -1001,6 +1010,28 @@ export function validateThreadState(thread) {
     push(errors, "resolution", "Expected array");
   }
   validateObject(thread.flags, "flags", errors);
+  return result(errors);
+}
+
+// reputation-engine-v1 — a faction is a first-class validated record (per-world
+// standing). Thin/tolerant like validateThreadState: identity + standing number +
+// array shapes gated; preference/relation content rides freely (authorable data).
+export function validateFactionState(faction) {
+  const errors = [];
+  if (!isPlainObject(faction)) {
+    push(errors, "faction", "Expected object");
+    return result(errors);
+  }
+  validateRequiredString(faction.factionId, "factionId", errors);
+  validateNumber(faction.standing, "standing", errors);
+  if (faction.name !== undefined) validateOptionalString(faction.name, "name", errors);
+  if (faction.preferences !== undefined && !Array.isArray(faction.preferences)) {
+    push(errors, "preferences", "Expected array");
+  }
+  if (faction.relations !== undefined && !Array.isArray(faction.relations)) {
+    push(errors, "relations", "Expected array");
+  }
+  if (faction.flags !== undefined) validateObject(faction.flags, "flags", errors);
   return result(errors);
 }
 
@@ -1227,6 +1258,9 @@ export function validateSoloRun(run) {
   // runs (undefined) stay valid, exactly like run.vn / run.battleMap.
   if (run.threads !== undefined && run.threads !== null) {
     validateRecord(run.threads, "threads", errors, validateThreadState);
+  }
+  if (run.factions !== undefined && run.factions !== null) {
+    validateRecord(run.factions, "factions", errors, validateFactionState);
   }
   if (run.combat !== undefined && run.combat !== null) {
     appendNestedErrors(errors, "combat", validateCombatState(run.combat));
@@ -1561,6 +1595,9 @@ export function createDefaultSoloRun(options = {}) {
     // D.5 narrative substrate (threads) + D.4 combat — first-class additive
     // records; empty/null until a scenario seeds a thread or a fight begins.
     threads: {},
+    // reputation-engine-v1 — per-world faction standings (individual reputation
+    // rides on run.relationships). Additive first-class record like run.threads.
+    factions: {},
     combat: null,
     playerAssets: {},
     imageAssets: {},

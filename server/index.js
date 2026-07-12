@@ -129,6 +129,7 @@ import { enqueueIdentityJob, runIdentityJob, backfillNpcMannerisms } from "./sol
 import { buildNpcIntroDirective, buildSoloScenePayload, collectNpcsWithPendingIntro } from "./solo/scene.js";
 import { buildSystemLoreClause, detectSystemLoreViolations } from "./gm/systemLore.js";
 import { detectDeadlineViolations } from "./gm/deadlineAudit.js";
+import { individualReputation, factionReputation, detectRomanceRegisterViolations } from "./solo/reputation.js";
 import { detectSpitViolations, stripSpitGestures, detectRepeatedGestures } from "./gm/mannerismAudit.js";
 import { buildOocSystemPrompt } from "./gm/oocGrounding.js";
 import { recordGmGeneration } from "./logging/gmTranscript.js";
@@ -929,6 +930,60 @@ function buildPronounDirective(run) {
 // tic (the banned spit). Backfills a mannerism onto any present NPC that predates
 // the field (lazy, on appearance) so the grounding is never empty for legacy cast.
 // Returns the directive text; mutates run.npcs for backfill (persisted with the turn).
+// reputation-engine-v1 — the SFW romance boundary, stated PLAINLY per tier (the
+// enjoy-AI law: the GM must know the current register and its wall). Table-adjacent
+// but prose, so the model reads a rule not a number.
+function buildRomanceBoundaryClause(name, tier) {
+  const permits = {
+    stranger: "polite, guarded warmth only — no romantic register",
+    friendly: "genuine warmth and rapport, but no physical romance",
+    close: "emotional closeness — longing, a charged glance — but still no physical romance",
+    courting: "mutual romantic feeling and light physical affection (a held hand, a first kiss), warm and emotional",
+    partner: "an established, tender romance"
+  };
+  const t = permits[tier] ? tier : "stranger";
+  return (
+    ` ROMANCE BOUNDARY (${name}, current tier: ${t}): ${permits[t]}.` +
+    " SFW HARD RULE — romantic content is warm, emotional, and fades to black at most; EXPLICIT sexual content is BANNED at EVERY tier." +
+    " Do not narrate past this tier's register; the SERVER advances romance as affection is earned, the narration never does."
+  );
+}
+
+// reputation-engine-v1 — present NPCs' committed disposition tier + top preferences
+// (so the GM reacts to standing and knows what each person values), plus faction
+// standing for present members, plus the romance boundary for a present romanceable
+// NPC. Server-owned: the GM reads standing, it never invents or moves it.
+function buildReputationDirective(run) {
+  const here = run?.currentLocationId;
+  const npcs = run && typeof run.npcs === "object" && run.npcs ? Object.values(run.npcs) : [];
+  const present = npcs.filter((n) => n && typeof n === "object" && n.currentLocationId === here && n.status !== "gone");
+  if (!present.length) return "";
+  const lines = [];
+  const factionIds = new Set();
+  let romanceClause = "";
+  for (const npc of present) {
+    const view = individualReputation(run, npc.npcId);
+    if (!view) continue;
+    const prefs = (Array.isArray(view.preferences) ? view.preferences : [])
+      .slice(0, 3)
+      .map((p) => `${(Number(p.weight) || 0) >= 0 ? "values" : "dislikes"} ${p.tag}`)
+      .join(", ");
+    lines.push(`${view.name}: standing ${view.tier}${prefs ? ` (${prefs})` : ""}`);
+    if (view.factionId) factionIds.add(view.factionId);
+    if (view.romanceable && !romanceClause) romanceClause = buildRomanceBoundaryClause(view.name, view.romanceTier);
+  }
+  if (!lines.length) return "";
+  const factionLines = [];
+  for (const fid of factionIds) {
+    const f = factionReputation(run, fid);
+    if (f) factionLines.push(`${f.name}: ${f.tier} (${f.standing >= 0 ? "+" : ""}${f.standing})`);
+  }
+  let out = ` REPUTATION (server-owned committed standing — let it color how these characters treat the player; NEVER invent or change a standing): ${lines.join("; ")}.`;
+  if (factionLines.length) out += ` FACTION STANDING (of present members): ${factionLines.join("; ")}.`;
+  if (romanceClause) out += romanceClause;
+  return out;
+}
+
 function buildMannerismDirective(run) {
   const present = Object.values(run?.npcs || {}).filter(
     (npc) => npc && npc.currentLocationId === run?.currentLocationId && npc.status !== "gone"
@@ -1137,6 +1192,9 @@ async function narrateActionWithGm(run, resolved, user) {
   // COMMITTED MANNERISMS (spit-ban vacuum fill): present NPCs' committed physical
   // tells ride the context so the model voices those instead of a stock spit.
   message += buildMannerismDirective(run);
+  // REPUTATION (reputation-engine-v1): present NPCs' committed disposition tier + top
+  // preferences + faction standing + the SFW romance boundary — beside pronouns/mannerisms.
+  message += buildReputationDirective(run);
   // SYSTEM LORE (item 1): the WINDOW/VOICE world-law facts ground every turn, so
   // the model never invents system capabilities ("the window will remember…").
   message += buildSystemLoreClause();
@@ -2012,6 +2070,16 @@ async function handleApi(req, res) {
           logTurnEvent(
             responseRun.runId,
             `deadline-referent VIOLATION: ${deadlineViolations.map((v) => `"${v.phrase}" — ${v.sentence}`).join(" | ")} (no committed deadline backs this countdown) user=${user?.id || "anon"}`
+          );
+        }
+        // ROMANCE/SFW AUDITOR (reputation-engine-v1): romance register above the
+        // present romanceable NPC's committed tier — or explicit content at any tier
+        // (the SFW wall) — is flagged, same severity family as narrated-state drift.
+        const romanceViolations = detectRomanceRegisterViolations(gmNarration, responseRun);
+        if (romanceViolations.length > 0) {
+          logTurnEvent(
+            responseRun.runId,
+            `romance-register VIOLATION: ${romanceViolations.map((v) => `[${v.kind}${v.tier ? `@${v.tier}` : ""}] "${v.phrase}" — ${v.sentence}`).join(" | ")} user=${user?.id || "anon"}`
           );
         }
       }

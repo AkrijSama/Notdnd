@@ -100,6 +100,24 @@ export function buildOocGroundingContext(run) {
     parts.push(`ONGOING THREADS (committed — the real answer to "what should I be worried about"):\n- ${lines.join("\n- ")}`);
   }
 
+  // 7b) STANDINGS (reputation-engine-v1) — the committed answer to "where do I stand
+  //     with X". Met individuals' disposition tier + discovered factions' standing
+  //     tier, from real numbers. Hidden standings never appear (visibility law).
+  const rep = scene && typeof scene.reputation === "object" && scene.reputation ? scene.reputation : null;
+  const repLines = [];
+  for (const ind of Array.isArray(rep?.individuals) ? rep.individuals : []) {
+    if (!ind?.name || !ind.tier) continue;
+    const romance = ind.romanceTier ? `, romance: ${ind.romanceTier}` : "";
+    repLines.push(`${clamp(ind.name, 40)} — ${ind.tier} (${ind.affinity >= 0 ? "+" : ""}${ind.affinity}${romance})`);
+  }
+  for (const f of Array.isArray(rep?.factions) ? rep.factions : []) {
+    if (!f?.name || !f.tier) continue;
+    repLines.push(`${clamp(f.name, 40)} [faction] — ${f.tier} (${f.standing >= 0 ? "+" : ""}${f.standing})`);
+  }
+  if (repLines.length) {
+    parts.push(`STANDINGS (committed — the real answer to "where do I stand with X"):\n- ${repLines.join("\n- ")}`);
+  }
+
   // 8) PRESENT NPCS
   const cast = (Array.isArray(scene?.cast) ? scene.cast : []).filter((c) => c && c.present !== false && (c.displayName || c.name));
   if (cast.length) {
