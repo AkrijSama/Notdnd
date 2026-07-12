@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { generateWithProvider } from "../ai/providers.js";
 import { sanitizePlayerText } from "./safety.js";
+import { ENGINE_STYLES, stampArtStyle } from "./artStyle.js";
 
 // Player-supplied world fields that flow into the AI prompt (and into stored
 // world state). Sanitized at generateWorld's entry so injection-shaped text
@@ -47,7 +48,9 @@ export const LOCATION_TYPE_PRESETS = [
   "camp",
   "crossroads"
 ];
-export const ART_STYLES = ["illustrated", "anime", "cinematic"];
+// The locked engine art styles live in ONE place (solo/artStyle.js); re-exported
+// here for back-compat with existing importers.
+export const ART_STYLES = ENGINE_STYLES;
 
 const CORE_FIELDS = ["name", "tone", "startingLocationName", "startingLocationType", "flavor"];
 
@@ -467,7 +470,9 @@ function synthesize(def, parsed, seed) {
   if (!startNameGiven) {
     merged.startingLocationName = defaultStart.name;
   }
-  merged.artStyle = ART_STYLES.includes(def.artStyle) ? def.artStyle : "illustrated";
+  // Stamp BOTH the new primary (artStyleOptions.default) and the legacy string
+  // (artStyle) so new saves exercise the reconciliation flag's primary path.
+  stampArtStyle(merged, ART_STYLES.includes(def.artStyle) ? def.artStyle : "illustrated");
   // Tone-derived prose phrases for the fallback templates (keyed off the
   // resolved tone, so they fit the setting even for free-text custom tones).
   const arch = toneArchetype(merged.tone);

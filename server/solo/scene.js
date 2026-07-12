@@ -1,4 +1,5 @@
 import { providerSupportsReference, resolveImageProvider } from "../ai/providers.js";
+import { resolveSceneArtForRun } from "./artLibrary.js";
 import { getAvailableSoloActions } from "./actions.js";
 import { MILESTONE_MAX, RANK_LADDER, tierForMilestone, displayLevelFor, rankForPlayer } from "./progression.js";
 import { babelStatBlock } from "./babelStats.js";
@@ -1068,13 +1069,24 @@ function locationImageAssetId(location) {
   return location?.imageAssetId || (location?.locationId ? `img_location_${location.locationId}` : null);
 }
 
-// Pure. Resolves a location's generated background-image URI from run.imageAssets,
-// or null when it has not been generated yet.
+// Resolves the location's stage background URI. Order (art-plumbing item 3):
+//  1) a LOCKED generated image is the owner's explicit choice for THIS location
+//     and always wins;
+//  2) otherwise the curated library is consulted FIRST — a world-level "scene"
+//     keep in the run's art style — so a rated keep appears in game with no
+//     further generation dispatch (locationNeedsImage keys off this too);
+//  3) otherwise the generated per-location image, or null when none exists yet.
+// With zero scene keeps for the run's world this is byte-for-byte the old result.
 export function resolveLocationImageUri(run, location) {
   const assets = isPlainObject(run?.imageAssets) ? run.imageAssets : {};
   const assetId = locationImageAssetId(location);
   const asset = assetId ? assets[assetId] : null;
-  return asset && asset.status === "generated" && isString(asset.uri) ? asset.uri : null;
+  const generated = asset && asset.status === "generated" && isString(asset.uri) ? asset.uri : null;
+  if (asset && asset.locked && generated) {
+    return generated;
+  }
+  const libraryScene = resolveSceneArtForRun(run);
+  return libraryScene || generated;
 }
 
 // Pure. The active VN speaker's full-body sprite URI from run.imageAssets, or

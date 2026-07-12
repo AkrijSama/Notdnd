@@ -16,6 +16,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { validateScenario } from "./scenarioSchema.js";
 import { validateSoloRun, createEmptyExpressionVariants } from "../solo/schema.js";
+import { resolveWorldArtStyle, stampArtStyle } from "../solo/artStyle.js";
 
 const SCENARIO_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "scenarios");
 
@@ -144,8 +145,18 @@ export function loadScenarioIntoRun(run, scenario, options = {}) {
     for (const k of ["name", "tone", "flavor", "artStyle", "variant"]) {
       if (isString(scenario.world[k])) run.world[k] = scenario.world[k];
     }
-    if (isString(scenario.world.artStyle)) {
-      run.flags = { ...(run.flags || {}), artStyle: scenario.world.artStyle };
+    // Carry the scenario's engine art style into BOTH the new primary
+    // (artStyleOptions.default) and the legacy string + flags mirror. A scenario
+    // may author either the new artStyleOptions object or the legacy artStyle
+    // string; resolveWorldArtStyle reads whichever is present.
+    const scenarioDeclaresStyle =
+      isString(scenario.world.artStyle) ||
+      (scenario.world.artStyleOptions &&
+        typeof scenario.world.artStyleOptions === "object" &&
+        isString(scenario.world.artStyleOptions.default));
+    if (scenarioDeclaresStyle) {
+      stampArtStyle(run.world, resolveWorldArtStyle(scenario.world));
+      run.flags = { ...(run.flags || {}), artStyle: run.world.artStyle };
     }
   }
 

@@ -615,7 +615,10 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
     startingLocationName: resolvedWorld.startingLocationName,
     startingLocationType: resolvedWorld.startingLocationType,
     flavor: resolvedWorld.flavor,
-    artStyle: resolvedWorld.artStyle
+    // artStyleOptions.default is the new primary; artStyle stays as the legacy
+    // resume-safety fallback (both stamped by worldGen via stampArtStyle).
+    artStyle: resolvedWorld.artStyle,
+    artStyleOptions: resolvedWorld.artStyleOptions
   };
   run.flags = { ...(run.flags || {}), artStyle: resolvedWorld.artStyle };
 

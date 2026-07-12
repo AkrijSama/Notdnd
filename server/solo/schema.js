@@ -612,6 +612,12 @@ export function validateWorldState(world) {
   validateOptionalString(world.startingLocationType, "startingLocationType", errors);
   validateOptionalString(world.flavor, "flavor", errors);
   validateOptionalString(world.artStyle, "artStyle", errors);
+  // artStyleOptions is the new primary art-style carrier (reconciliation flag);
+  // an optional object whose optional `default` is an engine art-style string.
+  validateOptionalObject(world.artStyleOptions, "artStyleOptions", errors);
+  if (isPlainObject(world.artStyleOptions)) {
+    validateOptionalString(world.artStyleOptions.default, "artStyleOptions.default", errors);
+  }
 
   return result(errors);
 }

@@ -22,13 +22,56 @@ import { addAsset, assetExists, libraryRoot } from "./library.mjs";
 
 const COMFY = process.env.COMFY_URL || "http://127.0.0.1:8188";
 const PLAY_STATUS = process.env.PLAY_STATUS_URL || "http://localhost:4173/api/debug/status";
-const WORKFLOW_DIR = path.resolve(process.cwd(), "scripts/art/workflows");
+// Resolved at call time (not module load) and env-overridable so tests can point
+// routing at a temp dir of mock workflow files.
+function workflowDir() {
+  return process.env.NOTDND_ART_WORKFLOW_DIR
+    ? path.resolve(process.env.NOTDND_ART_WORKFLOW_DIR)
+    : path.resolve(process.cwd(), "scripts/art/workflows");
+}
+
+// The recipe taxonomy is coarser than the asset KIND taxonomy: faces (npc-body /
+// npc-portrait) share ONE "entity" recipe; every other kind (world-card / scene /
+// item / decor) shares the "scene" recipe. Per-kind workflow files are named
+// <entity|scene>-<styleSlug>.json (e.g. scene-anime.json, entity-darkfantasy.json).
+const ENTITY_KINDS = new Set(["npc-body", "npc-portrait"]);
+function workflowKindFor(kind) {
+  return ENTITY_KINDS.has(String(kind)) ? "entity" : "scene";
+}
+// Per-kind filenames collapse the style hyphen: "dark-fantasy" -> "darkfantasy",
+// so scene-darkfantasy.json / entity-darkfantasy.json (per the export convention),
+// while the legacy per-style fallback files keep the hyphen (dark-fantasy.json).
+function perKindStyleSlug(style) {
+  return String(style).replace(/-/g, "");
+}
 
 // ---- recipes --------------------------------------------------------------
-export function loadRecipe(style) {
-  const file = path.join(WORKFLOW_DIR, `${String(style)}.json`);
-  if (!fs.existsSync(file)) {
-    throw new Error(`generate: no workflow recipe for style "${style}" (${file})`);
+// Routing: per-(kind, style) FIRST (scene-anime.json, entity-darkfantasy.json, …),
+// gracefully falling back to the existing per-style file (anime.json,
+// dark-fantasy.json) when a per-kind file is absent — so the owner can drop tuned
+// per-kind exports in over time with no code change. Returns the resolved absolute
+// path, or null when neither exists.
+export function resolveRecipeFile(style, kind) {
+  const dir = workflowDir();
+  if (kind) {
+    const perKind = path.join(dir, `${workflowKindFor(kind)}-${perKindStyleSlug(style)}.json`);
+    if (fs.existsSync(perKind)) {
+      return perKind;
+    }
+  }
+  const perStyle = path.join(dir, `${String(style)}.json`);
+  if (fs.existsSync(perStyle)) {
+    return perStyle;
+  }
+  return null;
+}
+
+export function loadRecipe(style, kind) {
+  const file = resolveRecipeFile(style, kind);
+  if (!file) {
+    throw new Error(
+      `generate: no workflow recipe for (kind "${kind || "-"}", style "${style}") in ${workflowDir()}`
+    );
   }
   return JSON.parse(fs.readFileSync(file, "utf8"));
 }
@@ -45,40 +88,76 @@ function seedFromId(id) {
   return crypto.createHash("sha256").update(String(id)).digest().readUInt32BE(0);
 }
 
-// Build a ComfyUI API prompt graph (SDXL txt2img) from a recipe. LoRA slots are
-// intentionally empty this round; recipe.lora entries would chain LoraLoader
-// nodes between the checkpoint and the sampler/clip (left as a documented seam).
+// Chain recipe.lora entries as LoraLoader nodes between the checkpoint (node "4")
+// and the sampler/clip. Each entry is { name, strength } (strength defaults to
+// 1.0 and applies to BOTH model and clip; an optional strengthClip overrides the
+// clip strength). Node ids start at 10 so the fixed txt2img nodes ("3".."9") keep
+// their ids. Returns the model/clip refs the downstream nodes must read (the last
+// LoRA's outputs, or the checkpoint's when no LoRA is present). Mutates `graph`.
+function buildLoraChain(graph, loras) {
+  let modelRef = ["4", 0];
+  let clipRef = ["4", 1];
+  let nodeId = 10;
+  for (const entry of Array.isArray(loras) ? loras : []) {
+    const name = entry && (entry.name || entry.lora_name);
+    if (!name) {
+      continue; // a malformed entry (no name) is skipped, not wired
+    }
+    const strength = Number.isFinite(Number(entry.strength)) ? Number(entry.strength) : 1.0;
+    const strengthClip = Number.isFinite(Number(entry.strengthClip)) ? Number(entry.strengthClip) : strength;
+    const id = String(nodeId);
+    nodeId += 1;
+    graph[id] = {
+      class_type: "LoraLoader",
+      inputs: {
+        lora_name: String(name),
+        strength_model: strength,
+        strength_clip: strengthClip,
+        model: modelRef,
+        clip: clipRef
+      }
+    };
+    modelRef = [id, 0];
+    clipRef = [id, 1];
+  }
+  return { modelRef, clipRef };
+}
+
+// Build a ComfyUI API prompt graph (SDXL txt2img) from a recipe. When the recipe
+// declares a non-empty `lora` list, LoraLoader nodes are chained between the
+// checkpoint and the sampler/clip; otherwise the sampler/clip read the checkpoint
+// directly (the graph is byte-for-byte the pre-LoRA shape).
 export function buildGraph(recipe, { kind, prompt, seed }) {
   const { width, height } = dimsFor(recipe, kind);
   const s = recipe.sampler || {};
   const positive = [String(prompt || "").trim(), recipe.positiveSuffix].filter(Boolean).join(", ");
-  if (Array.isArray(recipe.lora) && recipe.lora.length > 0) {
-    // Owner tests LoRA combos himself later; this round the slot is empty.
-    throw new Error("generate: LoRA chaining not wired this round (recipe.lora must be empty)");
-  }
-  return {
+  const graph = {
     "4": { class_type: "CheckpointLoaderSimple", inputs: { ckpt_name: recipe.checkpoint } },
-    "5": { class_type: "EmptyLatentImage", inputs: { width, height, batch_size: 1 } },
-    "6": { class_type: "CLIPTextEncode", inputs: { text: positive, clip: ["4", 1] } },
-    "7": { class_type: "CLIPTextEncode", inputs: { text: recipe.negative || "", clip: ["4", 1] } },
-    "3": {
-      class_type: "KSampler",
-      inputs: {
-        seed: Number.isFinite(seed) ? seed : 0,
-        steps: s.steps ?? 28,
-        cfg: s.cfg ?? 5,
-        sampler_name: s.sampler_name || "euler_ancestral",
-        scheduler: s.scheduler || "normal",
-        denoise: s.denoise ?? 1,
-        model: ["4", 0],
-        positive: ["6", 0],
-        negative: ["7", 0],
-        latent_image: ["5", 0]
-      }
-    },
-    "8": { class_type: "VAEDecode", inputs: { samples: ["3", 0], vae: ["4", 2] } },
-    "9": { class_type: "SaveImage", inputs: { filename_prefix: "inkborne", images: ["8", 0] } }
+    "5": { class_type: "EmptyLatentImage", inputs: { width, height, batch_size: 1 } }
   };
+  // VAE always comes off the checkpoint (LoRAs don't replace it); model + clip
+  // come off the end of the LoRA chain (or the checkpoint when there is none).
+  const { modelRef, clipRef } = buildLoraChain(graph, recipe.lora);
+  graph["6"] = { class_type: "CLIPTextEncode", inputs: { text: positive, clip: clipRef } };
+  graph["7"] = { class_type: "CLIPTextEncode", inputs: { text: recipe.negative || "", clip: clipRef } };
+  graph["3"] = {
+    class_type: "KSampler",
+    inputs: {
+      seed: Number.isFinite(seed) ? seed : 0,
+      steps: s.steps ?? 28,
+      cfg: s.cfg ?? 5,
+      sampler_name: s.sampler_name || "euler_ancestral",
+      scheduler: s.scheduler || "normal",
+      denoise: s.denoise ?? 1,
+      model: modelRef,
+      positive: ["6", 0],
+      negative: ["7", 0],
+      latent_image: ["5", 0]
+    }
+  };
+  graph["8"] = { class_type: "VAEDecode", inputs: { samples: ["3", 0], vae: ["4", 2] } };
+  graph["9"] = { class_type: "SaveImage", inputs: { filename_prefix: "inkborne", images: ["8", 0] } };
+  return graph;
 }
 
 // ---- ComfyUI HTTP ---------------------------------------------------------
@@ -155,7 +234,7 @@ export async function generateImage(spec) {
   if (fs.existsSync(pngPath) && assetExists(id)) {
     return { id, skipped: true, ms: 0, pngPath };
   }
-  const recipe = loadRecipe(style);
+  const recipe = loadRecipe(style, kind);
   const seed = seedFromId(id);
   const positive = [String(prompt).trim(), recipe.positiveSuffix].filter(Boolean).join(", ");
   const graph = buildGraph(recipe, { kind, prompt, seed });

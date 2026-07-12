@@ -862,6 +862,26 @@ export function bindOnboardingFlow(root, handlers = {}) {
   root.querySelectorAll("[data-world-scenario]").forEach((button) => {
     button.addEventListener("click", () => handlers.onWorldField?.("scenarioId", button.getAttribute("data-world-scenario")));
   });
+  // Library-first world-card art (art-plumbing item 3): consult the curated
+  // library for a rated "keep" for this world and swap the static placeholder in
+  // when one exists. Zero keeps (or any error) -> the committed static art stays
+  // (zero behavior change until the owner rates a keep). Custom worlds (empty
+  // scenarioId) have no library world to look up, so they are skipped.
+  root.querySelectorAll("[data-world-scenario]").forEach((button) => {
+    const world = button.getAttribute("data-world-scenario");
+    const img = button.querySelector(".onb-world-card-art");
+    if (!world || !img || typeof fetch !== "function") {
+      return;
+    }
+    fetch(`/api/art/library?world=${encodeURIComponent(world)}&kind=world-card`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && typeof data.uri === "string" && data.uri) {
+          img.src = data.uri;
+        }
+      })
+      .catch(() => { /* keep the static placeholder on any error */ });
+  });
   root.querySelectorAll("[data-world-field]").forEach((field) => {
     if (typeof field.addEventListener === "function") {
       field.addEventListener("input", () => handlers.onWorldFieldInput?.(field.getAttribute("data-world-field"), field.value));

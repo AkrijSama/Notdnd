@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { editImage, generateImage } from "../ai/providers.js";
+import { resolveWorldArtStyle, runArtStyle } from "./artStyle.js";
 import { detectImageExt } from "../api/http.js";
 import {
   ensureLocationImageAsset,
@@ -264,6 +265,9 @@ function raceVisualDescriptor(race) {
 export function buildPlayerPortraitPrompt(character = {}, world = {}) {
   const c = normalizePortraitCharacter(character);
   const tone = isStr(world.tone) ? world.tone.trim() : "dark fantasy";
+  // Engine art style via the ONE reconciliation reader (artStyleOptions.default
+  // first, legacy world.artStyle as fallback) — never compare the legacy string here.
+  const engineStyle = resolveWorldArtStyle(world);
   // Canon-origin override: The Beckoned is a modern-Earth human champion, not a
   // fantasy race. Frame a present-day person "out of place" in the fantasy tone
   // and hard-negate the elf/fantasy default (which the medium framing otherwise
@@ -287,7 +291,7 @@ export function buildPlayerPortraitPrompt(character = {}, world = {}) {
         .join(" ") || MODERN_EARTH_SUBJECT;
     return (
       `character portrait of ${beckonedSubject}, a modern-day person newly pulled into a ${tone} world, ` +
-      `${artStyleDirection(world.artStyle, "player")}, ${MODERN_EARTH_NEGATION}`
+      `${artStyleDirection(engineStyle, "player")}, ${MODERN_EARTH_NEGATION}`
     );
   }
   // Express the race's visual identity, not just its name, so uncommon races
@@ -312,7 +316,7 @@ export function buildPlayerPortraitPrompt(character = {}, world = {}) {
   const earEmphasis = !POINTED_EAR_RACES.has(raceKey)
     ? ", human rounded ears, absolutely NOT pointed elf ears, NOT fantasy elf features"
     : "";
-  return `character portrait of ${subject}, ${tone}, ${artStyleDirection(world.artStyle, "player")}${earEmphasis}`;
+  return `character portrait of ${subject}, ${tone}, ${artStyleDirection(engineStyle, "player")}${earEmphasis}`;
 }
 
 // Deterministic seed from name+race+class+artStyle so identical core choices
@@ -321,7 +325,7 @@ export function buildPlayerPortraitPrompt(character = {}, world = {}) {
 // image). Independent of the draft-namespace id below.
 function playerPortraitSeed(character = {}, world = {}) {
   const c = normalizePortraitCharacter(character);
-  const style = isStr(world?.artStyle) ? world.artStyle.trim().toLowerCase() : "illustrated";
+  const style = resolveWorldArtStyle(world);
   // Include origin: switching to/from The Beckoned changes the prompt materially,
   // so it must yield a different seed (deterministic providers key off the seed).
   return hashOf(`${c.name || ""}|${c.race || ""}|${c.characterClass || ""}|${c.origin || ""}|${style}`);
@@ -337,7 +341,7 @@ export function computeDraftPortraitId(character = {}, nonce = 0, world = {}, ed
   // for the same character resolves to the SAME draftId and serves the stale
   // image generated for the previous style — the "picked Anime, got dark fantasy"
   // bug. Defaulting style to "illustrated" matches buildPlayerPortraitPrompt.
-  const style = isStr(world?.artStyle) ? world.artStyle.trim().toLowerCase() : "illustrated";
+  const style = resolveWorldArtStyle(world);
   const tone = isStr(world?.tone) ? world.tone.trim().toLowerCase() : "";
   // An edit instruction (conversational portrait editor) is part of the produced
   // image, so it joins the cache namespace — two different tweaks at the same
@@ -593,7 +597,7 @@ export async function runPlayerImageJob(job = {}) {
   }
 
   const character = player.character || {};
-  const style = run.world?.artStyle || "illustrated";
+  const style = resolveWorldArtStyle(run.world);
 
   // Merge the full character record with the mirrored run.player.* fallbacks,
   // then build the prompt + seed via the shared player-portrait helpers (same
@@ -670,7 +674,7 @@ export async function runDraftPortraitJob(job = {}) {
 
   draftPortraits.set(draftId, { status: "generating", uri: null });
   const prompt = buildPlayerPortraitPrompt(character, world);
-  const style = isStr(world.artStyle) ? world.artStyle : "illustrated";
+  const style = resolveWorldArtStyle(world);
   // Offset the deterministic seed by the redo nonce so a reroll produces a
   // genuinely different image (not the same one under a fresh id). Seed also
   // varies by art style so a style change yields a different image.
@@ -794,15 +798,12 @@ export async function runLocationImageJob(job = {}) {
   }
 
   const location = run?.locations?.[locationId] || null;
-  // The run's selected art style (C.6): prefer the job's style, else read it off
-  // the run (world.artStyle is the authoritative source delivered to this worker;
-  // flags.artStyle is the enqueue mirror). Drives BOTH the location art direction
-  // and generateImage's medium cue, so an anime run yields an anime scene image.
-  const style =
-    (job.style && String(job.style).trim()) ||
-    (isStr(run?.world?.artStyle) ? run.world.artStyle.trim() : "") ||
-    (isStr(run?.flags?.artStyle) ? run.flags.artStyle.trim() : "") ||
-    "illustrated";
+  // The run's selected art style (C.6): prefer an explicit job.style, else resolve
+  // it off the run via the ONE reconciliation reader (run.world's
+  // artStyleOptions.default -> legacy artStyle -> flags.artStyle mirror). Drives
+  // BOTH the location art direction and generateImage's medium cue, so an anime
+  // run yields an anime scene image.
+  const style = (job.style && String(job.style).trim()) || runArtStyle(run);
   const seed = Number.isFinite(Number(job.seed)) ? Number(job.seed) : null;
   // Compose FOR the wide banner: the subject (caller prompt or fallback) plus the
   // STYLE-AWARE location art direction (per-style aesthetic + establishing-shot
