@@ -14,7 +14,7 @@
   ],
   "negative": [
     { "block": "negativeBase" },
-    { "literal": "multiple views, multiple heads, extra heads, extra limbs, character sheet, reference sheet, cropped face, disembodied" }
+    { "literal": "multiple views, multiple heads, extra heads, extra limbs, full body, hands, character sheet, reference sheet, cropped face, disembodied" }
   ],
   "laneRules": [
     "portrait is ONE face, head-and-shoulders framing — never a multi-view sheet or extra limbs.",

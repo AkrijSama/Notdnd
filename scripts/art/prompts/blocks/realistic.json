@@ -1,8 +1,8 @@
 {
-  "blockVersion": 1,
+  "blockVersion": 2,
   "style": "realistic",
-  "_TODO": "PLACEHOLDER vocab. OWNER: fill quality/styleVocab/negativeBase from the Juggernaut Chunk-1 realistic findings (this lane shares Juggernaut with dark-fantasy but must read photoreal, NOT painterly), then bump blockVersion. Every future generation inherits it — no code change.",
-  "quality": "masterpiece, best quality, highly detailed, sharp focus, high resolution",
-  "styleVocab": "photorealistic, realistic, natural lighting, photography, lifelike, detailed skin texture",
-  "negativeBase": "lowres, worst quality, bad anatomy, bad hands, extra fingers, deformed, blurry, jpeg artifacts, watermark, signature, text, cartoon, anime, illustration, painting, 3d render"
+  "_note": "realistic lane requires no quality block — Juggernaut-XI-byRunDiffusion produces keeper portraits in its native register (owner Chunk-1/2 verified, 4 subjects). quality + styleVocab are intentionally EMPTY. Only universal negatives live here; framing negatives (multiple views / extra heads / full body / hands) live in the portrait template's negative literals, not the style block.",
+  "quality": "",
+  "styleVocab": "",
+  "negativeBase": "text, watermark"
 }
