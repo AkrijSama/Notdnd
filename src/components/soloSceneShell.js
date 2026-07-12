@@ -2261,7 +2261,14 @@ export function renderSoloDialogueOverlay(state = {}) {
   // than fabricating a "nothing to say" line the NPC never spoke.
   const line = typeof talk.line === "string" ? talk.line : "";
   const typed = state.dialogueTyped === true;
-  const initial = String(speaker).trim().slice(0, 1).toUpperCase() || "?";
+  // VN SPRITE SOURCE: prefer the committed full-body sprite (scene.vnBodyUri — the
+  // 832x1216 2:3 fullbody keyed to this speaker, null until the art pipeline mints
+  // it). Fall back to the bust portrait (also 2:3, so object-fit:contain fits
+  // either). When BOTH are absent — the case today for every NPC — the slot renders
+  // NOTHING (no glyph, no placeholder): an empty sprite surface shows nothing.
+  const spriteUri = (typeof scene.vnBodyUri === "string" && scene.vnBodyUri.trim())
+    ? scene.vnBodyUri.trim()
+    : portraitUri;
   // The reply TEXT INPUT is intentionally never disabled — the player must always
   // be able to type. The global busy flag is held by the outer action that opens
   // this overlay (the freeform "speak to X" attempt), so gating the input on it
@@ -2272,12 +2279,13 @@ export function renderSoloDialogueOverlay(state = {}) {
   const busy = Boolean(state.busy);
   const replyDraft = typeof state.dialogueReplyDraft === "string" ? state.dialogueReplyDraft : "";
 
-  const portraitInner = portraitUri
-    ? `<img class="solo-vn-portrait-img" src="${escapeHtml(portraitUri)}" alt="${escapeHtml(speaker)} portrait" />`
-    : `<div class="solo-vn-portrait-placeholder">
-        <span>${escapeHtml(initial)}</span>
-        <small>Portrait incoming…</small>
-      </div>`;
+  // The sprite surface renders ONLY when there is an image. Empty state = the whole
+  // container is omitted (truly nothing on screen), not an empty box. The
+  // data-solo-vn-sprite hook lets bindSoloSceneShell fade the sprite in on load and
+  // fall back to the empty state on a failed load (never a broken-image icon).
+  const spriteBlock = spriteUri
+    ? `<div class="solo-vn-sprite" data-portrait-key="${escapeHtml(spriteUri)}" aria-hidden="true"><img class="solo-vn-sprite-img" data-solo-vn-sprite src="${escapeHtml(spriteUri)}" alt="${escapeHtml(speaker)}" /></div>`
+    : "";
 
   // The conversation scrollback now lives in the persistent narration log (each
   // beat is a logged turn with speaker attribution), so the in-stage textbox shows
@@ -2291,9 +2299,7 @@ export function renderSoloDialogueOverlay(state = {}) {
   // when the expression changes; the data-solo-dialogue-* hooks are unchanged so
   // the typewriter / reply / end bindings in bindSoloSceneShell keep working.
   return `
-    <div class="solo-vn-sprite" data-expression="${escapeHtml(expression)}" data-portrait-key="${escapeHtml(portraitUri || expression)}" aria-hidden="true">
-      ${portraitInner}
-    </div>
+    ${spriteBlock}
     <div class="solo-vn-box" data-solo-dialogue-panel role="group" aria-label="Dialogue with ${escapeHtml(speaker)}">
       <div class="solo-vn-box-head">
         <span class="solo-vn-box-speaker" data-textfit>${escapeHtml(speaker)}</span>
@@ -2317,6 +2323,29 @@ export function renderSoloDialogueOverlay(state = {}) {
       </div>
     </div>
   `;
+}
+
+// Wire a VN sprite <img> (data-solo-vn-sprite): fade it in once it loads, and on a
+// FAILED load remove it so the slot degrades to the empty state — never a broken-
+// image icon. Idempotent per element (guarded by a flag). Exported for the binding
+// and directly unit-testable with a minimal mock element.
+export function wireVnSpriteImage(img) {
+  if (!img || typeof img.addEventListener !== "function" || img.dataset?.vnWired === "1") {
+    return;
+  }
+  if (img.dataset) img.dataset.vnWired = "1";
+  const reveal = () => {
+    if (img.classList && typeof img.classList.add === "function") img.classList.add("is-loaded");
+  };
+  img.addEventListener("load", reveal);
+  img.addEventListener("error", () => {
+    // Failed load → empty state: drop the whole sprite container (no broken icon).
+    const host = typeof img.closest === "function" ? img.closest(".solo-vn-sprite") : null;
+    if (host && typeof host.remove === "function") host.remove();
+    else if (typeof img.remove === "function") img.remove();
+  });
+  // A cached image may already be complete before listeners attach — reveal now.
+  if (img.complete && (img.naturalWidth === undefined || img.naturalWidth > 0)) reveal();
 }
 
 // ---------------------------------------------------------------------------
@@ -2740,6 +2769,8 @@ export function bindSoloSceneShell(root, handlers = {}) {
 
   // Only querySelectorAll is used (test mocks expose no querySelector); unknown
   // selectors return [] in the browser and in the lightweight mount test mocks.
+  // VN sprite: fade in on load; a failed load degrades to the empty state.
+  root.querySelectorAll("[data-solo-vn-sprite]").forEach(wireVnSpriteImage);
   const dialogueTextEl = root.querySelectorAll("[data-solo-dialogue-text]")[0] || null;
   if (dialogueTextEl && typeof dialogueTextEl.getAttribute === "function") {
     const tw = bindTypewriter(dialogueTextEl, { onDone: () => handlers.onDialogueTyped?.() });

@@ -77,9 +77,16 @@ test("VN overlay falls back to the base portrait when the variant is missing", (
   assert.doesNotMatch(html, /Portrait incoming/);
 });
 
-test("VN overlay shows the placeholder only when neither variant nor base exists", () => {
+test("VN overlay renders an EMPTY sprite slot (no glyph, no placeholder) when there is no image", () => {
   const html = renderSoloDialogueOverlay(dialogueState({ expressionVariants: {} }, []));
-  assert.match(html, /Portrait incoming/);
+  // vn-sprite-slot: the "S" glyph + "Portrait incoming…" placeholder are gone — an
+  // empty slot shows nothing (no glyph, no grey box), and the container is omitted.
+  assert.doesNotMatch(html, /Portrait incoming/);
+  assert.doesNotMatch(html, /solo-vn-portrait-placeholder/);
+  assert.doesNotMatch(html, /solo-vn-sprite-img/);
+  assert.doesNotMatch(html, /class="solo-vn-sprite"/);
+  // …but the dialogue textbox itself is unchanged.
+  assert.match(html, /class="solo-vn-box"/);
 });
 
 // #49: the VN layer is now IN-STAGE (sprite + textbox), not a floating modal.

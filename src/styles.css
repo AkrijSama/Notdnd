@@ -2562,6 +2562,10 @@ button:disabled {
   /* #49: positioning context + clip for the in-stage VN sprite / textbox. */
   position: relative;
   overflow: hidden;
+  /* Reserved height of the VN dialogue textbox band. The sprite's bottom clears
+     this so the two never overlap; the box text is capped (below) to keep the
+     band no taller than this. The geometry test reads this value. */
+  --vn-box-h: 150px;
 }
 /* #49 VN LAYER — the NPC renders as a sprite anchored to the right of the stage,
    with a classic textbox banded across the stage bottom, over the location art.
@@ -2569,33 +2573,37 @@ button:disabled {
 .solo-vn-sprite {
   position: absolute;
   right: 10px;
-  bottom: 0;
+  /* Bottom-anchored to the TOP of the dialogue textbox band — the character stands
+     ON the textbox and never overlaps it (+6px is a hairline clearance). */
+  bottom: calc(var(--vn-box-h, 150px) + 6px);
   top: 8px;
   z-index: 2;
   display: flex;
-  align-items: flex-end;
+  align-items: flex-end;      /* feet on the floor */
+  justify-content: flex-end;
   pointer-events: none;
+  /* drop-shadow follows a transparent PNG's alpha silhouette — right for cut-outs. */
   filter: drop-shadow(0 6px 18px rgba(0, 0, 0, 0.55));
   animation: soloVnSpriteIn 0.32s ease both;
 }
-.solo-vn-sprite .solo-vn-portrait-img {
+.solo-vn-sprite-img {
   height: 100%;
   width: auto;
-  max-width: 46%;
-  object-fit: contain;
-  object-position: bottom;
-  border-radius: 8px 8px 0 0;
+  /* 2:3 source (832x1216 fullbody / 512x768 bust) fills the height; width follows
+     the ratio, capped so a tall stage can't push the sprite across the textbox. */
+  max-width: min(40vw, 420px);
+  object-fit: contain;          /* never crop a sprite mid-face (unlike the portrait crop) */
+  object-position: bottom center;
+  background: transparent;      /* PNG alpha cut-outs: no card, no fill */
+  opacity: 0;                   /* fade in on load (bindSoloSceneShell adds is-loaded) */
+  transition: opacity 0.32s ease;
 }
-.solo-vn-sprite .solo-vn-portrait-placeholder {
-  align-self: center;
-  padding: 10px 16px;
-  border-radius: 8px;
-  background: rgba(10, 10, 12, 0.72);
-  color: var(--text-2, #b0b3bb);
-  text-align: center;
-}
+.solo-vn-sprite-img.is-loaded { opacity: 1; }
 @keyframes soloVnSpriteIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
-@media (prefers-reduced-motion: reduce) { .solo-vn-sprite { animation: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .solo-vn-sprite { animation: none; }
+  .solo-vn-sprite-img { transition: none; opacity: 1; }
+}
 .solo-vn-box {
   position: absolute;
   left: 0;
@@ -2633,6 +2641,11 @@ button:disabled {
   /* The VN textbox line IS NPC speech — light blue like all NPC dialogue. */
   color: #9ed6ff;
   min-height: 1.5em;
+  /* Cap the current-line height so the textbox band stays within --vn-box-h (the
+     sprite clears that reserve). The full line is always in the narration log; a
+     rare long line scrolls here rather than growing the band under the sprite. */
+  max-height: 4em;
+  overflow-y: auto;
   margin-bottom: 8px;
 }
 .solo-vn-box-reply { display: flex; gap: 8px; }
