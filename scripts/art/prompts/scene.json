@@ -1,0 +1,22 @@
+{
+  "templateVersion": 1,
+  "lane": "scene",
+  "positive": [
+    { "block": "quality" },
+    { "literal": "wide establishing shot, full scene composition, ground plane visible, environment" },
+    { "slot": "subject", "required": true },
+    { "slot": "setting", "required": false },
+    { "slot": "timeOfDay", "required": false, "default": "daylight" },
+    { "slot": "weatherHint", "required": false },
+    { "block": "styleVocab" }
+  ],
+  "negative": [
+    { "block": "negativeBase" },
+    { "literal": "closeup, macro, cropped, people, characters, crowd" }
+  ],
+  "laneRules": [
+    "scene is a WIDE establishing shot with a visible ground/floor plane and horizon — the space the action sits INSIDE, not a zoomed-in texture. The 14/14 toss failed on over-zoom + void floors.",
+    "scenes are UNPOPULATED (no people/characters) per current tags — the negative asserts it.",
+    "CANON LAW — DIEGETIC ART OBEYS WORLD GEOGRAPHY: starter-zone scenes NEVER include the Tower. The slot filler injects 'tower' into the NEGATIVE for any scene whose context tags include 'starter' or 'distant-from-tower'. In-world locations render what a person standing there would actually see."
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "templateVersion": 1,
+  "lane": "worldcard",
+  "positive": [
+    { "block": "quality" },
+    { "literal": "wide establishing shot, cover art, key art composition, ground plane visible" },
+    { "slot": "subject", "required": true },
+    { "slot": "setting", "required": false },
+    { "slot": "timeOfDay", "required": false, "default": "daylight" },
+    { "slot": "horizon", "required": false, "default": "" },
+    { "block": "styleVocab" }
+  ],
+  "negative": [
+    { "block": "negativeBase" },
+    { "literal": "closeup, macro, cropped, watermark, text" }
+  ],
+  "laneRules": [
+    "CANON LAW — DIEGETIC vs PROMOTIONAL: the world-card is COVER ART, exempt from the starter-zone tower ban. The Tower IS allowed/encouraged here — set the `horizon` slot to the canonical 'distant impossible tower on the horizon' literal. Posters obey the PROMISE of the world, not the viewpoint of a person standing in the starter zone; scene art (diegetic) obeys the viewpoint.",
+    "world-card rides the scene RECIPE lane for routing but uses THIS template for prompt assembly (cover framing, tower-permitted)."
+  ]
+}

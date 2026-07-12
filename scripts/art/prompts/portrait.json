@@ -1,0 +1,24 @@
+{
+  "templateVersion": 1,
+  "lane": "portrait",
+  "positive": [
+    { "block": "quality" },
+    { "literal": "solo, portrait, face focus, single character, head and shoulders" },
+    { "slot": "gender", "required": true },
+    { "slot": "age", "required": false, "default": "adult" },
+    { "slot": "hair", "required": false },
+    { "slot": "expression", "required": false, "default": "neutral expression" },
+    { "slot": "attire", "required": false },
+    { "literal": "plain neutral background" },
+    { "block": "styleVocab" }
+  ],
+  "negative": [
+    { "block": "negativeBase" },
+    { "literal": "multiple views, multiple heads, extra heads, extra limbs, character sheet, reference sheet, cropped face, disembodied" }
+  ],
+  "laneRules": [
+    "portrait is ONE face, head-and-shoulders framing — never a multi-view sheet or extra limbs.",
+    "The portrait is the identity ANCHOR: the fullbody sprite references it (identityRef) so the face stays the same character across appearances.",
+    "Slots are plain words only; structure lives in this template."
+  ]
+}

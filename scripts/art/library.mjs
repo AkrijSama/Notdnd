@@ -75,7 +75,12 @@ export function buildSidecar(input = {}) {
     // face it must match (IP-Adapter identity-reference). null = self-originated.
     identityRef: isString(input.identityRef) ? input.identityRef : null,
     workflow: isString(input.workflow) ? input.workflow : "",
-    promptUsed: isString(input.promptUsed) ? input.promptUsed : ""
+    promptUsed: isString(input.promptUsed) ? input.promptUsed : "",
+    // PROMPT-CONTRACT audit (art-pipeline-v2): the template + block versions and
+    // the slot values this image was assembled from, so a bad image points at a
+    // specific slot/template, not an opaque freehand sentence. null for assets
+    // predating the contract (or added without an assembly meta).
+    meta: input.meta && typeof input.meta === "object" ? input.meta : null
   };
 }
 

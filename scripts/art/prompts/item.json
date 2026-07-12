@@ -1,0 +1,20 @@
+{
+  "templateVersion": 1,
+  "lane": "item",
+  "positive": [
+    { "block": "quality" },
+    { "literal": "single object, centered, clean plain background, no characters, product shot" },
+    { "slot": "itemType", "required": true },
+    { "slot": "materials", "required": false },
+    { "slot": "styleHint", "required": false },
+    { "block": "styleVocab" }
+  ],
+  "negative": [
+    { "block": "negativeBase" },
+    { "literal": "people, characters, hands, cluttered background, scene, multiple objects" }
+  ],
+  "laneRules": [
+    "item is a SINGLE object on a clean plain background — an icon that composites later. No characters, no hands, no scene.",
+    "Covers weapons / armor / materials / clothing / decor (decor folded into item in v2)."
+  ]
+}

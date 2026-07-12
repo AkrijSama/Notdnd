@@ -19,6 +19,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { addAsset, assetExists, libraryRoot } from "./library.mjs";
+import { buildPrompt, laneForKind } from "./promptAssembly.js";
 
 const COMFY = process.env.COMFY_URL || "http://127.0.0.1:8188";
 const PLAY_STATUS = process.env.PLAY_STATUS_URL || "http://localhost:4173/api/debug/status";
@@ -163,10 +164,18 @@ function buildLoraChain(graph, loras) {
 // declares a non-empty `lora` list, LoraLoader nodes are chained between the
 // checkpoint and the sampler/clip; otherwise the sampler/clip read the checkpoint
 // directly (the graph is byte-for-byte the pre-LoRA shape).
-export function buildGraph(recipe, { kind, prompt, seed }) {
+export function buildGraph(recipe, { kind, prompt, positive, negative, seed }) {
   const { width, height } = dimsFor(recipe, kind);
   const s = recipe.sampler || {};
-  const positive = [String(prompt || "").trim(), recipe.positiveSuffix].filter(Boolean).join(", ");
+  // Prefer an explicitly ASSEMBLED prompt (the prompt-contract path via
+  // buildPrompt); fall back to the legacy freehand `prompt` + recipe.positiveSuffix
+  // only for a direct low-level caller (tests). Same for the negative.
+  const positiveText = typeof positive === "string" && positive.trim()
+    ? positive.trim()
+    : [String(prompt || "").trim(), recipe.positiveSuffix].filter(Boolean).join(", ");
+  const negativeText = typeof negative === "string" && negative.trim()
+    ? negative.trim()
+    : String(recipe.negative || "");
   const graph = {
     "4": { class_type: "CheckpointLoaderSimple", inputs: { ckpt_name: recipe.checkpoint } },
     "5": { class_type: "EmptyLatentImage", inputs: { width, height, batch_size: 1 } }
@@ -174,8 +183,8 @@ export function buildGraph(recipe, { kind, prompt, seed }) {
   // VAE always comes off the checkpoint (LoRAs don't replace it); model + clip
   // come off the end of the LoRA chain (or the checkpoint when there is none).
   const { modelRef, clipRef } = buildLoraChain(graph, recipe.lora);
-  graph["6"] = { class_type: "CLIPTextEncode", inputs: { text: positive, clip: clipRef } };
-  graph["7"] = { class_type: "CLIPTextEncode", inputs: { text: recipe.negative || "", clip: clipRef } };
+  graph["6"] = { class_type: "CLIPTextEncode", inputs: { text: positiveText, clip: clipRef } };
+  graph["7"] = { class_type: "CLIPTextEncode", inputs: { text: negativeText, clip: clipRef } };
   graph["3"] = {
     class_type: "KSampler",
     inputs: {
@@ -262,9 +271,12 @@ async function fetchImageBytes({ filename, subfolder, type }) {
 // if <id>.png already exists, it is skipped (resumed batch). Returns
 // { id, skipped, ms, pngPath }.
 export async function generateImage(spec) {
-  const { id, style, kind, prompt, world = null, tags = [], origin = "generated" } = spec;
-  if (!id || !style || !kind || !prompt) {
-    throw new Error("generateImage requires { id, style, kind, prompt }");
+  const { id, style, kind, slotValues, world = null, tags = [], origin = "generated", context = {} } = spec;
+  // PROMPT CONTRACT: no freehand `prompt`. Every image is assembled from its lane
+  // template + model blocks + committed slot values (buildPrompt), which throws on
+  // a missing required slot or injection punctuation before any GPU time is spent.
+  if (!id || !style || !kind || !slotValues || typeof slotValues !== "object") {
+    throw new Error("generateImage requires { id, style, kind, slotValues } (prompt-contract: freehand prompts are not accepted)");
   }
   const pngPath = path.join(libraryRoot(), `${id}.png`);
   if (fs.existsSync(pngPath) && assetExists(id)) {
@@ -272,8 +284,9 @@ export async function generateImage(spec) {
   }
   const recipe = loadRecipe(style, kind);
   const seed = seedFromId(id);
-  const positive = [String(prompt).trim(), recipe.positiveSuffix].filter(Boolean).join(", ");
-  const graph = buildGraph(recipe, { kind, prompt, seed });
+  // Lane rules (e.g. the starter-zone tower ban) read the asset tags as context.
+  const { positive, negative, meta } = buildPrompt(laneForKind(kind), style, slotValues, { tags, ...context });
+  const graph = buildGraph(recipe, { kind, positive, negative, seed });
   const clientId = `inkborne-art-${id}`;
   const t0 = Date.now();
   const promptId = await queuePrompt(graph, clientId);
@@ -281,7 +294,9 @@ export async function generateImage(spec) {
   const bytes = await fetchImageBytes(image);
   fs.mkdirSync(libraryRoot(), { recursive: true });
   fs.writeFileSync(pngPath, bytes);
-  addAsset({ id, origin, world, style, kind, tags, workflow: recipe.name, promptUsed: positive });
+  // meta records templateVersion + blockVersions + slotValues so a tossed image
+  // points at a specific slot/template, not an opaque sentence.
+  addAsset({ id, origin, world, style, kind, tags, workflow: recipe.name, promptUsed: positive, meta });
   return { id, skipped: false, ms: Date.now() - t0, pngPath };
 }
 

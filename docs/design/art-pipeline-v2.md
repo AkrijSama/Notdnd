@@ -122,7 +122,87 @@ table, then recipe `default`, then the global `1024²`).
 
 ## Dry-run
 
-`node scripts/art/proof-batch.mjs --plan` prints what WOULD generate per curated
-spec (resolved recipe file + dims) plus a four-waiter routing matrix — without
-touching ComfyUI (port 8188). Use it to confirm every lane resolves before a
-real GPU window.
+`node scripts/art/proof-batch.mjs --plan` prints the **assembled positive+negative
+prompt** per curated spec AND one exemplar per lane per style (10 plans), plus the
+resolved recipe file + dims — without touching ComfyUI (port 8188). The owner
+reviews the prompts as text before any batch spends GPU time.
+
+---
+
+# Prompt Contract (templated generation)
+
+> Landed after four-waiter-routing. **Prompts are never freehand sentences.**
+> Every generation is assembled from a versioned TEMPLATE with named SLOTS filled
+> from committed state or explicit parameters. This is the image pipeline's style
+> contract — the enforcement point for the discipline the 14/14 toss batch failed
+> (duplicate heads, void floors, framing).
+
+## Rationale
+
+Freehand prompt strings drift: each caller re-improvises framing, quality tags,
+and negatives, and a bad image is an opaque sentence with no audit trail. The
+contract replaces them with **template + blocks + slots**, so framing/quality/
+negatives are fixed once per lane/model and a tossed image points at a specific
+slot or template version.
+
+## File layout
+
+```
+scripts/art/prompts/
+  <lane>.json              portrait | fullbody | scene | item | worldcard
+  blocks/<styleSlug>.json  anime | darkfantasy   (per-model tuned vocabulary)
+```
+
+**Template** (`<lane>.json`) — `templateVersion`, `lane`, ordered `positive` and
+`negative` segment lists, and documented `laneRules`. Each segment is one of:
+
+- `{ "literal": "..." }` — a fixed invariant (lane rules baked as text);
+- `{ "block": "<name>" }` — resolved against the active style's block file
+  (`quality` | `styleVocab` | `negativeBase`);
+- `{ "slot": "<name>", "required": bool, "default"?: "..." }` — a named hole.
+
+**Block** (`blocks/<styleSlug>.json`) — `blockVersion` + the three OWNER-OWNED
+vocab strings (`quality`, `styleVocab`, `negativeBase`). Shipped as honest
+PLACEHOLDERS (seeded from the legacy recipes) with a `_TODO` marker.
+
+## Assembly — `buildPrompt(lane, style, slotValues, context)`
+
+Returns `{ positive, negative, meta }`. Rules:
+
+- a **required** slot with no value **throws** (never generate underspecified);
+- slot values are **plain words** — any prompt-weight / embedding punctuation
+  (`()`, `[]`, `<>`, `:digit`) is **rejected**; structure lives in templates only;
+- **deterministic**: identical inputs assemble byte-for-byte identically;
+- `meta = { templateVersion, blockVersions, slotValues, … }` is written into the
+  sidecar alongside `promptUsed`, so a tossed image is auditable to a slot/template.
+
+Callers map **committed state** into slots — never hand-write prose:
+`mapNpcToSlots(npc)` (gender ← committed gender/pronouns; hair/build/attire ←
+appearance parse-or-passthrough; poseHint ← mannerism) and
+`mapLocationToSlots(location)` (timeOfDay ← committed clock phase).
+
+## CANON LAW — diegetic vs promotional
+
+**Diegetic art obeys world geography.** A starter-zone scene renders what a person
+standing there would actually see — and in Babel that **never includes the Tower**.
+The assembler injects `tower` into the **negative** for any scene whose context
+tags include `starter` or `distant-from-tower`.
+
+**The world-card is exempt.** Cover art is *promotional* — it obeys the promise of
+the world, not the viewpoint of a person in the starter zone. The Tower is
+allowed/encouraged on the cover via the worldcard `horizon` slot (canonical
+literal: `"distant impossible tower on the horizon"`). Posters get the Tower;
+in-world scenes do not.
+
+## Owner workflow
+
+**Tune blocks in ComfyUI → paste into `blocks/<style>.json` → every future
+generation inherits it** — no code change. The three block strings per style are
+the only owner-owned surface; templates + assembly are fixed contract.
+
+### Block placeholders awaiting the owner's workbench values
+
+Both `blocks/anime.json` and `blocks/darkfantasy.json` ship placeholder
+`quality` / `styleVocab` / `negativeBase` (seeded from the legacy per-style
+recipes) marked with `_TODO`. Replace each with the workbench-tuned value and bump
+`blockVersion`; the template literals + lane invariants stay put.

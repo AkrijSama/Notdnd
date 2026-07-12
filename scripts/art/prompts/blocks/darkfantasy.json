@@ -1,0 +1,8 @@
+{
+  "blockVersion": 1,
+  "style": "dark-fantasy",
+  "_TODO": "PLACEHOLDER vocab seeded from the legacy dark-fantasy.json recipe. OWNER: replace these three strings with the values you tune in the ComfyUI workbench, then bump blockVersion. Every future generation inherits them — no code change.",
+  "quality": "masterpiece, best quality, highly detailed, sharp focus",
+  "styleVocab": "dark fantasy, painterly, cinematic lighting, dramatic, moody, artstation",
+  "negativeBase": "lowres, worst quality, bad anatomy, bad hands, extra fingers, deformed, blurry, jpeg artifacts, watermark, signature, text, cartoon, flat colors"
+}

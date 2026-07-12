@@ -1,0 +1,25 @@
+{
+  "templateVersion": 1,
+  "lane": "fullbody",
+  "positive": [
+    { "block": "quality" },
+    { "literal": "solo, full body, standing, single character, feet on ground" },
+    { "slot": "gender", "required": true },
+    { "slot": "age", "required": false, "default": "adult" },
+    { "slot": "build", "required": false },
+    { "slot": "hair", "required": false },
+    { "slot": "attire", "required": false },
+    { "slot": "poseHint", "required": false, "default": "neutral standing pose" },
+    { "literal": "plain neutral background" },
+    { "block": "styleVocab" }
+  ],
+  "negative": [
+    { "block": "negativeBase" },
+    { "literal": "multiple views, multiple heads, extra heads, character sheet, reference sheet, floating, cropped feet, disembodied" }
+  ],
+  "laneRules": [
+    "fullbody is ONE figure, head-to-feet, feet planted on the ground — never a turnaround or reference sheet (the 14/14 toss failed on duplicate heads + floating figures).",
+    "The bust and the sprite share one identity (both are FACE kinds and check out together); the tailor keeps the face consistent via identityRef.",
+    "Slots are plain words only; no weight/embedding syntax reaches the model — structure lives in this template."
+  ]
+}
