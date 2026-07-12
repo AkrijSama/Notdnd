@@ -17,6 +17,7 @@ import { buildFarLocation, buildSecondLocation, generateWorld } from "../solo/wo
 import { createMainQuest } from "../solo/quests.js";
 import { buildTrialQuest, TRIAL_QUEST_ID, buildDeliveryOffer } from "./authoredQuests.js";
 import { resolveRequestedScenario, loadScenarioIntoRun } from "./scenarioLoader.js";
+import { seedSandboxThreads } from "../solo/threads.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -975,6 +976,13 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
   // hand-wired campaign block skipped above. Fail-loud on a dangling ref.
   if (scenarioActive) {
     loadScenarioIntoRun(run, scenario, { worldSeed });
+  } else {
+    // D.5 WORLDGEN SEEDING (item 1) — a non-scenario run's narrative momentum comes
+    // from the server, not an author: 1-3 threads grounded in the generated graph (a
+    // danger near the start with a world-clock deadline, a secret further out),
+    // through the SAME loader authored fronts use. Deterministic on worldSeed; a
+    // no-op if the run already carries threads.
+    seedSandboxThreads(run, { worldSeed });
   }
 
   markStage("preIndex");

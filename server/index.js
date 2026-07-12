@@ -870,6 +870,40 @@ function buildClockDirective(resolved) {
   );
 }
 
+// D.5 item 4 — the STANDING THREADS directive. The server owns thread state; the
+// narrator may DESCRIBE and FORESHADOW an active thread but never invent, advance,
+// or resolve one (that is the tick's job). Reveal-gated so the prompt can only
+// carry what the player has earned: a REVEALED thread rides with its agenda in
+// full; a RUMORED (suspected) thread rides as title-only tension; HIDDEN threads
+// NEVER leave the server — they collapse to a single pressure-only hint that leaks
+// no title, count, or specifics. This is a standing awareness directive, distinct
+// from the fired-beat narrativeDriver (which narrates a thread that MOVED this turn).
+function buildThreadsDirective(run) {
+  const threads = run && typeof run.threads === "object" && run.threads ? Object.values(run.threads) : [];
+  const active = threads.filter((t) => t && typeof t === "object" && t.status === "active");
+  if (!active.length) return "";
+  const agendaOf = (t) => (typeof t.agenda === "string" ? t.agenda.trim() : "");
+  const titleOf = (t) => (typeof t.title === "string" ? t.title.trim() : "");
+  const revealed = active.filter((t) => t.revealState === "revealed" && agendaOf(t));
+  const rumored = active.filter((t) => t.revealState === "rumored" && titleOf(t));
+  const hidden = active.filter((t) => (t.revealState || "hidden") === "hidden");
+  const parts = [];
+  if (revealed.length) {
+    parts.push(`Ongoing situations the player understands (you may name and reference these): ${revealed.map(agendaOf).join(" | ")}.`);
+  }
+  if (rumored.length) {
+    parts.push(`The player suspects, but has not confirmed (foreshadow the tension; do NOT confirm specifics they have not earned): ${rumored.map(titleOf).join("; ")}.`);
+  }
+  if (hidden.length) {
+    parts.push("Something here is unresolved beneath the surface; you may let a quiet unease color the scene, but reveal NOTHING specific about it.");
+  }
+  if (!parts.length) return "";
+  return (
+    " ONGOING THREADS (server-owned narrative agenda — you may weave and foreshadow these, but NEVER invent a new one" +
+    ` and NEVER advance or resolve an existing one; the server decides when a thread moves): ${parts.join(" ")}`
+  );
+}
+
 // PRONOUN GROUNDING (item 6). Lists every present NPC's committed pronouns so the
 // narration model reads them as truth instead of guessing off the name — half of
 // the enforcement pair (repairNarrationPronouns is the post-narration back-stop).
@@ -1106,6 +1140,9 @@ async function narrateActionWithGm(run, resolved, user) {
   // SYSTEM LORE (item 1): the WINDOW/VOICE world-law facts ground every turn, so
   // the model never invents system capabilities ("the window will remember…").
   message += buildSystemLoreClause();
+  // ONGOING THREADS (D.5 item 4): the server-owned narrative agenda, reveal-gated —
+  // the narrator foreshadows active threads but never invents/advances/resolves one.
+  message += buildThreadsDirective(run);
   // COMPOUND ACTION (#6): a multi-part intent resolved on ONE roll — constrain the
   // prose to that single committed outcome so it can't narrate every part landing.
   message += buildCompoundDirective(resolved);

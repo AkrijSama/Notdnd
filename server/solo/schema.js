@@ -991,6 +991,11 @@ export function validateThreadState(thread) {
   }
   if (thread.clock !== undefined) {
     validateObject(thread.clock, "clock", errors);
+    // v1 world-clock deadline (item 3): optional, but when present it must be a real
+    // minute value (or null = no deadline) — a malformed deadline is an author bug.
+    if (isPlainObject(thread.clock) && thread.clock.expiresAtMinutes !== undefined && thread.clock.expiresAtMinutes !== null) {
+      validateNumber(thread.clock.expiresAtMinutes, "clock.expiresAtMinutes", errors);
+    }
   }
   if (thread.resolution !== undefined && !Array.isArray(thread.resolution)) {
     push(errors, "resolution", "Expected array");

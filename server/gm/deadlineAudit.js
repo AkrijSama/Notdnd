@@ -4,11 +4,12 @@
 // deadline backs it; pressure without a referent must be qualitative ("the smoke
 // is thickening") with no invented countdown.
 //
-// COMMITTED DEADLINE REFERENTS (what exists in run state today): a timed player
-// condition (finite expiresAtMinutes) — the only clock-backed countdown the
-// engine currently commits. Threads and momentum objectStates carry NO expiry
-// fields yet (surveyed 2026-07-11); when the momentum engine commits real
-// deadlines with its stakes, hasCommittedDeadlineReferent picks them up here.
+// COMMITTED DEADLINE REFERENTS (what exists in run state): (a) a timed player
+// condition (finite expiresAtMinutes); (b) an ACTIVE THREAD carrying a committed
+// world-clock deadline (thread.clock.expiresAtMinutes) — the momentum engine now
+// commits the deadline WITH the stakes (D.5 item 3), so time-boxed narration bound
+// to a thread's clock ("before the danger breaks") is lawful. Momentum objectStates
+// still carry no expiry (they escalate qualitatively, not on a countdown).
 //
 // The live auditor is the same severity class as narrated-state drift /
 // system-lore violations: detect -> flag loudly in the turn log. Same shape as
@@ -38,17 +39,19 @@ const TIME_BOX_RES = [
 // Does committed state back a countdown right now? Timed player conditions are
 // the engine's only clock-backed deadline today (see header note).
 export function hasCommittedDeadlineReferent(run) {
+  const now = Number(run?.world?.time?.minutes);
+  // A future expiry is a live countdown; without a readable clock, any finite expiry
+  // counts (it is still committed, ticking state).
+  const isLiveExpiry = (exp) => (typeof exp === "number" && Number.isFinite(exp) ? (Number.isFinite(now) ? exp > now : true) : false);
+
+  // (a) timed player conditions.
   const player = run && isPlainObject(run.player) ? run.player : null;
   const conditions = player && Array.isArray(player.conditions) ? player.conditions : [];
-  const now = Number(run?.world?.time?.minutes);
-  return conditions.some((entry) => {
-    if (!isPlainObject(entry)) return false;
-    const exp = entry.expiresAtMinutes;
-    if (typeof exp !== "number" || !Number.isFinite(exp)) return false;
-    // A future expiry is a live countdown; without a readable clock, any finite
-    // expiry counts (it is still committed, ticking state).
-    return Number.isFinite(now) ? exp > now : true;
-  });
+  if (conditions.some((entry) => isPlainObject(entry) && isLiveExpiry(entry.expiresAtMinutes))) return true;
+
+  // (b) active thread deadlines (D.5 item 3) — the momentum engine's committed clock.
+  const threads = isPlainObject(run?.threads) ? Object.values(run.threads) : [];
+  return threads.some((t) => isPlainObject(t) && t.status === "active" && isLiveExpiry(t.clock?.expiresAtMinutes));
 }
 
 /**

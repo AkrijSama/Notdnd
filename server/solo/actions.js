@@ -44,7 +44,7 @@ import {
 import { advanceQuests, capturePlayerObjective } from "./quests.js";
 import { advanceMomentum } from "./momentum.js";
 import { combatActive, detectAttackIntent, enterCombatFromAttackIntent, resolveCombatInput, getCombatActionMenu } from "./combat.js";
-import { advanceThreads, fireDueThreadBeatOnClock, resolveThreadLifecycle } from "./threads.js";
+import { advanceThreads, fireDueThreadBeatOnClock, resolveThreadLifecycle, enforceThreadDeadlines } from "./threads.js";
 import { createDefaultVnState, validateSoloRun } from "./schema.js";
 import {
   applyDamage,
@@ -554,8 +554,23 @@ function finalizeQuestProgress(originalRun, result, options = {}) {
     const threadsResolved = resolveThreadLifecycle(result.run, result, options);
     if (threadsResolved.length) result.threadsResolved = threadsResolved;
 
+    // DEADLINES (D.5 item 3): a thread whose committed world-clock deadline has now
+    // passed (this action's own clock advance carried the world past it) auto-advances
+    // its ladder — the consequence lands as committed state — and resolves as expired.
+    // Deterministic; no LLM. Every due thread's consequence commits (state truth), but
+    // at most ONE deadline drives the narration, and only if a player-earned quest
+    // advance did not already claim the turn's driver slot (≤1 driver per turn).
+    const deadlineFire = enforceThreadDeadlines(result.run, options);
+    if (deadlineFire.expired.length) result.threadsExpired = deadlineFire.expired;
+
     const questAdvanced = Boolean(result.questJustAdvanced);
     let driverFired = questAdvanced;
+
+    if (!driverFired && deadlineFire.driver) {
+      result.narrativeDriver = deadlineFire.driver;
+      result.threadBeatFired = { threadId: deadlineFire.driver.threadId, beatId: deadlineFire.firedBeatId };
+      driverFired = true;
+    }
 
     // DESCRIPTIVE advancement — fires on the player's OWN action, regardless of
     // tension (never starves a busy player). Yields to a quest advance.

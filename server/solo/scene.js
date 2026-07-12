@@ -1145,6 +1145,14 @@ function buildThreadsSummary(run) {
     const entry = { threadId: thread.threadId, kind: thread.kind, status: thread.status, revealState };
     if (revealState !== "hidden" && typeof thread.title === "string") entry.title = thread.title;
     if (revealState === "revealed" && typeof thread.agenda === "string") entry.agenda = thread.agenda;
+    // v1 item 7 — deadline-if-known: a committed world-clock deadline surfaces once the
+    // thread is no longer hidden (for a future journal). A hidden thread's clock never
+    // leaves the server, exactly like its agenda.
+    const exp = thread.clock?.expiresAtMinutes;
+    if (revealState !== "hidden" && typeof exp === "number" && Number.isFinite(exp)) {
+      const nowMin = Number(run?.world?.time?.minutes);
+      entry.deadline = { atMinutes: exp, inMinutes: Number.isFinite(nowMin) ? Math.max(0, exp - nowMin) : null };
+    }
     out.push(entry);
   }
   return out;

@@ -87,10 +87,17 @@ export function buildOocGroundingContext(run) {
     );
   }
 
-  // 7) KNOWN THREADS (non-hidden only — a hidden thread never leaves the server)
+  // 7) KNOWN THREADS (non-hidden only — a hidden thread never leaves the server).
+  //    The committed answer to "what should I be worried about": the title, plus the
+  //    agenda once revealed, plus a known deadline. A hidden thread is absent.
   const threads = (Array.isArray(scene?.threads) ? scene.threads : []).filter((t) => t && t.revealState !== "hidden" && t.title);
   if (threads.length) {
-    parts.push(`KNOWN THREADS: ${threads.map((t) => clamp(t.title, 60)).join("; ")}`);
+    const lines = threads.map((t) => {
+      const agenda = t.revealState === "revealed" && typeof t.agenda === "string" && t.agenda ? ` — ${clamp(t.agenda, 160)}` : "";
+      const dl = t.deadline && Number.isFinite(t.deadline.inMinutes) ? ` (comes due in ~${t.deadline.inMinutes} min of world time)` : "";
+      return `${clamp(t.title, 60)}${agenda}${dl}`;
+    });
+    parts.push(`ONGOING THREADS (committed — the real answer to "what should I be worried about"):\n- ${lines.join("\n- ")}`);
   }
 
   // 8) PRESENT NPCS
