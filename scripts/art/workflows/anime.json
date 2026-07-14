@@ -1,6 +1,7 @@
 {
   "name": "anime",
-  "checkpoint": "Illustrious-XL-v2.0.safetensors",
+  "_note": "Chunk-6: anime lane rescued — checkpoint JANKUTrainedChenkinNoobai_v777 replaced Illustrious (bare-checkpoint beat tuned Illustrious, owner-verified live). Proven quality vocab lives in blocks/anime.json. Sampler below is the LEGACY coarse fallback (28/5.0); the proven JANKU tune (26/cfg 5.2) rides the owner's exported portrait-anime.json.",
+  "checkpoint": "JANKUTrainedChenkinNoobai_v777.safetensors",
   "lora": [],
   "sampler": { "sampler_name": "euler_ancestral", "scheduler": "normal", "steps": 28, "cfg": 5.0, "denoise": 1.0 },
   "positiveSuffix": "masterpiece, best quality, very aesthetic, highly detailed, anime illustration, clean line art, vibrant",

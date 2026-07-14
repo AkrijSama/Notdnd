@@ -1,8 +1,9 @@
 {
-  "blockVersion": 1,
+  "blockVersion": 2,
   "style": "anime",
-  "_TODO": "PLACEHOLDER vocab seeded from the legacy anime.json recipe. OWNER: replace these three strings with the values you tune in the ComfyUI workbench, then bump blockVersion. Every future generation inherits them — no code change.",
-  "quality": "masterpiece, best quality, very aesthetic, highly detailed",
+  "_note": "quality is the JANKU-family TRAINED quality vocabulary (owner Chunk-6 verified, live): checkpoint JANKUTrainedChenkinNoobai_v777 replaced Illustrious and beat tuned Illustrious bare-checkpoint. WITH this vocab: full saturation/punch; WITHOUT it: soft/muted. Same sampler as the house standard (euler_ancestral/normal/26/cfg 5.2).",
+  "_TODO": "styleVocab is STILL an unproven placeholder (seeded from the legacy anime recipe). OWNER: tune it in the ComfyUI workbench and bump blockVersion. quality is now PROVEN (see _note) — do not treat it as a placeholder.",
+  "quality": "amazing quality, extremely detailed, very detailed",
   "styleVocab": "anime illustration, clean line art, cel shaded, vibrant",
   "negativeBase": "lowres, worst quality, bad anatomy, bad hands, extra fingers, deformed, blurry, jpeg artifacts, watermark, signature, text, 3d, photorealistic"
 }

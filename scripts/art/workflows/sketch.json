@@ -1,0 +1,18 @@
+{
+  "name": "sketch",
+  "_TODO": "PLACEHOLDER recipe — sketch lane NOT ratified. Checkpoint = Juggernaut-XI (base); the lane is LoRA-DRIVEN (Grainyboyz) but the LoRA is intentionally OMITTED pending the owner's test. Do NOT generate until ratified.",
+  "_note": "Pending owner ratification: Grainyboyz LoRA @ 1.0 on Juggernaut. Trigger words REQUIRED in the positive — 'DnD_Grainyboyz, grainy, noise, 1970's dark fantasy book cover paper art dungeons and dragons style drawing'. On ratification: add lora [{ name: <the Grainyboyz .safetensors filename>, strength: 1.0 }] here and fill blocks/sketch.json styleVocab with the trigger words, then bump both versions.",
+  "checkpoint": "Juggernaut-XI-byRunDiffusion.safetensors",
+  "lora": [],
+  "sampler": { "sampler_name": "euler_ancestral", "scheduler": "normal", "steps": 26, "cfg": 5.2, "denoise": 1.0 },
+  "positiveSuffix": "",
+  "negative": "lowres, worst quality, bad anatomy, bad hands, extra fingers, deformed, blurry, jpeg artifacts, watermark, signature, text",
+  "dimensions": {
+    "world-card": [1344, 768],
+    "scene": [1344, 768],
+    "fullbody": [832, 1216],
+    "portrait": [1024, 1024],
+    "item": [1024, 1024],
+    "default": [1024, 1024]
+  }
+}

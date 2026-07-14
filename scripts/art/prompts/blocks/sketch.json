@@ -1,0 +1,9 @@
+{
+  "blockVersion": 0,
+  "style": "sketch",
+  "_TODO": "PLACEHOLDER — sketch lane NOT ratified. All vocab fields intentionally EMPTY pending the owner's Grainyboyz test. Do NOT generate this lane until the owner ratifies it, fills these strings, and bumps blockVersion.",
+  "_note": "Known trigger-word requirement (owner, pending ratification): Grainyboyz LoRA @ 1.0 on Juggernaut. Trigger words REQUIRED in the positive — 'DnD_Grainyboyz, grainy, noise, 1970's dark fantasy book cover paper art dungeons and dragons style drawing'. Slot values are plain-word only and blocks are the tuned surface, so on ratification the trigger words go in styleVocab here.",
+  "quality": "",
+  "styleVocab": "",
+  "negativeBase": ""
+}

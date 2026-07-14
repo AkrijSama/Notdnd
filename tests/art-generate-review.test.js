@@ -17,12 +17,16 @@ test("all three style recipes load and name their checkpoints (realistic is firs
   const anime = loadRecipe("anime");
   const dark = loadRecipe("dark-fantasy");
   const realistic = loadRecipe("realistic");
-  assert.match(anime.checkpoint, /Illustrious-XL/);
-  assert.match(dark.checkpoint, /Juggernaut-XI/);
-  // realistic shares the Juggernaut cookbook with dark-fantasy (for now)
+  // Chunk-6 registry: anime rescued to JANKU; dark-fantasy is the painted YamerMIX
+  // (nihilmania) lane + its LoRA stack; realistic still shares Juggernaut.
+  assert.match(anime.checkpoint, /JANKUTrainedChenkinNoobai/);
+  assert.match(dark.checkpoint, /nihilmania/);
   assert.match(realistic.checkpoint, /Juggernaut-XI/);
-  assert.deepEqual(anime.lora, [], "LoRA slot present and empty");
-  assert.deepEqual(dark.lora, [], "LoRA slot present and empty");
+  assert.deepEqual(anime.lora, [], "anime LoRA slot present and empty (JANKU is bare-checkpoint)");
+  assert.deepEqual(dark.lora, [
+    { name: "hkstyleV5.safetensors", strength: 0.5 },
+    { name: "add-detail-xl.safetensors", strength: 0.74 }
+  ], "dark-fantasy carries the painted LoRA stack");
 });
 
 test("realistic routing resolves via the ladder for every lane", async () => {

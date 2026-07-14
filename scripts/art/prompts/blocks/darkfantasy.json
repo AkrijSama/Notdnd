@@ -1,8 +1,9 @@
 {
-  "blockVersion": 1,
+  "blockVersion": 2,
   "style": "dark-fantasy",
-  "_TODO": "PLACEHOLDER vocab seeded from the legacy dark-fantasy.json recipe. OWNER: replace these three strings with the values you tune in the ComfyUI workbench, then bump blockVersion. Every future generation inherits them — no code change.",
-  "quality": "masterpiece, best quality, highly detailed, sharp focus",
-  "styleVocab": "dark fantasy, painterly, cinematic lighting, dramatic, moody, artstation",
-  "negativeBase": "lowres, worst quality, bad anatomy, bad hands, extra fingers, deformed, blurry, jpeg artifacts, watermark, signature, text, cartoon, flat colors"
+  "_note": "PAINTED dark-fantasy lane (owner Chunk-6 verified, live). Checkpoint sdxlUnstableDiffusers_nihilmania (YamerMIX) + LoRA hkstyleV5 + LoRA add-detail-xl. quality intentionally EMPTY — YamerMIX needs no quality block. Paint words LEAD the positive via styleVocab; the weighted photo-ban lives in negativeBase.",
+  "laneRule": "AGE LAW (nihilmania/YamerMIX): age must be stated WITH WEIGHT or the model defaults to ~22yo — e.g. '(middle-aged woman:1.3), (aged face:1.2)' in the positive PLUS 'young, youthful' in the negative. Slot values are plain-word only (no weights allowed), so this weighting is carried in the owner's exported graph and in this block's negativeBase, not via a template slot.",
+  "quality": "",
+  "styleVocab": "oil painting, painterly, fantasy illustration, visible brushstrokes, traditional media",
+  "negativeBase": "lowres, worst quality, bad anatomy, bad hands, extra fingers, deformed, blurry, jpeg artifacts, watermark, signature, text, cartoon, flat colors, (photograph:1.3), (photorealistic:1.3), photo, dslr, skin pores, glossy, young, youthful"
 }

@@ -338,3 +338,86 @@ drives the owner's real ComfyUI graphs is built.**
 - **TAILOR (Chunk 7)** — IP-Adapter identity seams already in place (`identityRef` on
   the sidecar, `linkIdentity`); the consistency engine wakes when the per-lane
   workflows carry the IP-Adapter nodes. Not built this round.
+
+---
+
+# Session state — Chunk-6 intake: anime rescued, painted lane born (2026-07-13)
+
+**Status: two lanes advanced to owner-verified cookbooks; two utility-LoRA laws
+ruled; sketch lane staged as a placeholder pending ratification.** All results below
+are owner-verified LIVE this session. Zero LLM / zero generation spent by the intake.
+
+## The four verdicts (owner-verified live)
+
+1. **ANIME LANE RESCUED** — new checkpoint `JANKUTrainedChenkinNoobai_v777.safetensors`
+   replaces Illustrious as the anime cookbook. Bare-checkpoint output beat *tuned*
+   Illustrious decisively. Sampler = the house standard
+   (`euler_ancestral` / `normal` / **26** / **cfg 5.2**).
+2. **PAINTED DARK-FANTASY LANE BORN** — checkpoint
+   `sdxlUnstableDiffusers_nihilmania.safetensors` (YamerMIX) + LoRA
+   `hkstyleV5.safetensors` (XL Fantasy Knights) + LoRA `add-detail-xl.safetensors`
+   (Detail Tweaker XL).
+3. **DETAIL TWEAKER XL CONFIRMED KEEP** for realistic PORTRAITS @ **0.75** (sharper
+   hair/skin/fabric, owner-verified side-by-side).
+4. **SKETCH LANE PENDING** — Grainyboyz @ 1.0 on Juggernaut, trigger words required;
+   owner test not yet ratified. Staged as a placeholder only (block + recipe, both
+   `blockVersion: 0` / `_TODO`).
+
+## Proven prompt requirements per lane (verbatim — never re-learn)
+
+### anime (JANKU)
+- **Quality vocab (TRAINED family vocab):** `amazing quality, extremely detailed,
+  very detailed`. WITH it → full saturation/punch; WITHOUT it → soft/muted.
+- Lives in `blocks/anime.json` (`quality`, `blockVersion` 2). `styleVocab` remains an
+  unproven placeholder (owner to tune).
+
+### dark-fantasy (nihilmania / YamerMIX)
+- **(a) Paint words LEAD the positive:** `oil painting, painterly, fantasy
+  illustration, visible brushstrokes, traditional media` (in `blocks/darkfantasy.json`
+  `styleVocab`).
+- **(b) Photo-ban WITH WEIGHTS in the negative:** `(photograph:1.3),
+  (photorealistic:1.3), photo, dslr, skin pores, glossy` (appended to the block
+  `negativeBase`; weights are legal in a block — the injection guard applies to
+  template *slots* only, not blocks).
+- **(c) AGE LAW (this checkpoint):** age must be stated WITH WEIGHT or the model
+  defaults to ~22yo — `(middle-aged woman:1.3), (aged face:1.2)` in the positive plus
+  `young, youthful` in the negative. Documented as a lane rule in the block
+  (`laneRule`). NOTE: template slots are plain-word only, so the weighting is carried
+  in the owner's exported graph and the block negative, not via a slot.
+
+## Two laws ruled this session
+
+- **PER-LANE OPT-IN for utility LoRAs (owner law):** a utility LoRA proven in one lane
+  is adopted in that lane ONLY. Every other lane tests it independently before adoption
+  — never assume. (Detail Tweaker XL is confirmed for realistic PORTRAIT; it is NOT
+  applied to realistic fullbody/scene/item until each is tested.)
+- **AGE LAW** (dark-fantasy / nihilmania) — see (c) above.
+
+## Registry changes (committed, tracked recipes)
+
+| lane | checkpoint | lora | note |
+|---|---|---|---|
+| anime (`workflows/anime.json`) | `JANKUTrainedChenkinNoobai_v777` (was Illustrious) | — | coarse fallback; proven tune rides `portrait-anime.json` |
+| dark-fantasy (`workflows/dark-fantasy.json`) | `sdxlUnstableDiffusers_nihilmania` (was Juggernaut) | `hkstyleV5 @0.5`, `add-detail-xl @0.74` | coarse fallback; proven portrait tune rides `portrait-darkfantasy.json` |
+| realistic (`workflows/realistic.json`) | `Juggernaut-XI` (unchanged) | — | — |
+| sketch (`workflows/sketch.json`, NEW) | `Juggernaut-XI` | — (Grainyboyz pending) | placeholder, unratified |
+
+## FLAGGED / STOPPED (owner's hands)
+
+- **realistic PORTRAIT add-detail-xl @0.75** — has NO committable home. The only
+  portrait-scoped target is `portrait-realistic.json`, which is **git-ignored**
+  (`*-realistic.json`, machine-specific owner export). Per the per-lane-opt-in law it
+  must NOT go into the legacy `realistic.json` fallback (that would leak the LoRA to
+  fullbody/scene/item, and the export wins for portrait anyway). **Owner: bake one
+  `LoraLoader` (add-detail-xl, strength_model/clip 0.75) into your local
+  `portrait-realistic.json`** — wire it exactly as `portrait-darkfantasy.json` does
+  (checkpoint → LoraLoader → CLIP encodes + sampler read the LoRA's model/clip; VAE
+  stays on the checkpoint).
+- **dark-fantasy fallback LoRA strengths** — the legacy `dark-fantasy.json` uses the
+  dispatch values (hkstyleV5 @0.5); the owner's `portrait-darkfantasy.json` export uses
+  hkstyleV5 @0.68/0.70. Owner to confirm whether the coarse fallback should mirror the
+  export.
+- **Coarse-fallback samplers unchanged** — the legacy per-style recipes keep their
+  prior samplers (anime 28/5.0, dark-fantasy dpmpp_2m/karras/30/6.0); the proven
+  26/cfg-5.2 tune lives in the tracked exports. Retune the fallbacks only if you want
+  them to mirror.
