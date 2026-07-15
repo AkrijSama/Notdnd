@@ -1,12 +1,13 @@
 {
   "name": "sketch",
-  "_TODO": "PLACEHOLDER recipe — sketch lane NOT ratified. Checkpoint = Juggernaut-XI (base); the lane is LoRA-DRIVEN (Grainyboyz) but the LoRA is intentionally OMITTED pending the owner's test. Do NOT generate until ratified.",
-  "_note": "Pending owner ratification: Grainyboyz LoRA @ 1.0 on Juggernaut. Trigger words REQUIRED in the positive — 'DnD_Grainyboyz, grainy, noise, 1970's dark fantasy book cover paper art dungeons and dragons style drawing'. On ratification: add lora [{ name: <the Grainyboyz .safetensors filename>, strength: 1.0 }] here and fill blocks/sketch.json styleVocab with the trigger words, then bump both versions.",
+  "_note": "Chunk-6 RATIFIED sketch lane — Juggernaut-XI base + LoRA 'DnD_Grainyboyz SDXL Lora.safetensors' (strength_model 1.02 / strength_clip 0.97, owner's live export values). Trigger words are MANDATORY for the LoRA to fire — they live in blocks/sketch.json styleVocab and enter every assembled sketch prompt. This is the coarse per-style FALLBACK; the proven portrait tune rides the owner's exported portrait-sketch.json.",
   "checkpoint": "Juggernaut-XI-byRunDiffusion.safetensors",
-  "lora": [],
+  "lora": [
+    { "name": "DnD_Grainyboyz SDXL Lora.safetensors", "strength": 1.02, "strengthClip": 0.97 }
+  ],
   "sampler": { "sampler_name": "euler_ancestral", "scheduler": "normal", "steps": 26, "cfg": 5.2, "denoise": 1.0 },
   "positiveSuffix": "",
-  "negative": "lowres, worst quality, bad anatomy, bad hands, extra fingers, deformed, blurry, jpeg artifacts, watermark, signature, text",
+  "negative": "lowres, worst quality, low quality, bad anatomy, bad hands, extra fingers, blurry, watermark, text",
   "dimensions": {
     "world-card": [1344, 768],
     "scene": [1344, 768],
