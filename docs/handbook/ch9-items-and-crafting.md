@@ -18,6 +18,8 @@ Every item, in every world, is exactly this:
 > **item = slot + a bounded stat-mod package + at most one granted
 > ability + tags + flavor**
 
+> Rarity tiers (Common→God) and the provenance log on items of power: see [economy-law.md, Law 7](../design/economy-law.md).
+
 - **Slot** — where it sits (below). One item, one slot.
 - **Stat-mod package** — bonuses to stats or derived stats, bounded by the
   item's rarity budget. The validator enforces the budget; a world book

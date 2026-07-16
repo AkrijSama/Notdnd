@@ -1,6 +1,6 @@
 # Inkborne Economy Law — v1
 
-**Status:** DRAFT — Laws 1–6 owner-approved in structure; three PENDING confirms noted inline.
+**Status:** DRAFT — Laws 1–6 owner-approved in structure; the three PENDING confirms (Gaps 1–3) RESOLVED by owner ruling 2026-07-16; Law 7 (Rarity & Provenance) added 2026-07-16.
 **Ratified:** 2026-07-11
 **Owner:** Akrij
 
@@ -14,7 +14,7 @@
 - **Ink (hard, name provisional):** earned slowly in-world (achievements, milestones, earn-loop mini-game) OR purchased with real money. Buys generation-time only: custom image generation, SPOT touch-ups, premium cosmetic slots.
 - **No exchange in either direction, ever.** Gold cannot buy Ink; Ink cannot buy gold or anything gold buys.
 
-**PENDING (Gap 2):** whether gold buys existing in-world cosmetics (artisan stock) while Ink buys only custom/generated — owner confirm outstanding.
+**RESOLVED 2026-07-16 (owner) (Gap 2):** Gold buys existing in-world cosmetics (artisan/library stock). Ink buys custom/generated cosmetics only. Fiction may present tiered precious metals (bronze through platinum; coins, nuggets, ingots) but the system tracks a single GOLD ledger — metal tiers are presentation only.
 
 ---
 
@@ -30,7 +30,7 @@ Nothing purchasable with Ink or real money may alter any mechanical value: stats
 
 *(Reaffirms existing rulebook chapter.)* Schematics define WHAT can be made; materials + workstation/artisan + three-band resolution define WHETHER and HOW WELL. Crafted mechanical items obey the item law (slot + bounded stat-mods + one ability).
 
-**PENDING (Gap 3):** schematics tradeable vs bind-on-find — owner deferred.
+**RESOLVED 2026-07-16 (owner) (Gap 3):** Schematics are SOULBOUND (bind-on-find; never player-to-player tradeable, including future multiplayer) but VENDORABLE (sellable to NPC vendors for gold). Duplicate/off-class finds retain gold value; rarity is protected permanently.
 
 ---
 
@@ -50,7 +50,20 @@ Every generated image persists, part-tagged (subject, pose, expression, hair, st
 
 All rates, prices, costs, grind lengths, and drop tables are owner-tunable data — never hardcoded, never spec-fixed. Laws constrain structure; Akrij constrains numbers.
 
-**PENDING (Gap 1):** formal confirm that mechanism-is-law / numbers-are-owner-table is the intended split.
+**RESOLVED 2026-07-16 (owner) (Gap 1):** CONFIRMED. Mechanism-is-law / numbers-are-owner-table is the intended split. Laws constrain structure; all rates, prices, grind lengths, and drop tables are owner-tunable data, never hardcoded.
+
+---
+
+## LAW 7 — RARITY & PROVENANCE
+
+*(Added 2026-07-16 by owner ruling.)*
+
+- **Rarity tiers (canonical, ordered):** Common, Uncommon, Rare, Legendary, Artifact, God. Six tiers. Rarity is a **required item field in canon** (schema adoption may be additive/optional for legacy saves per the resume-safe law).
+- **Items of power** = rarity **Rare or above**.
+- **PROVENANCE LAW:** Items of power carry a **committed history log (provenance) from creation**: the acquisition event, creator/source, and major committed events involving the item. Mundane items (Common/Uncommon) carry no log.
+- **VISION** *(multiplayer-gated, design-locked, BUILD-FORBIDDEN — same standing as the Future Ecosystem section)*: another player may inspect an item of power and receive a "vision" — a narrative summary (≤1000 words) of how it was obtained, compiled ONLY from the item's committed provenance log (server-owned truth; the narrator may not invent provenance).
+- **Schema rides from day one** (same principle as Law 5's creator/origin fields): provenance recording begins at item creation NOW, even though the vision feature is multiplayer-gated. Items created before the provenance schema exists are exempt (no retroactive fabrication).
+- The provenance threshold (Rare+) is **owner-set data per Law 6**.
 
 ---
 
