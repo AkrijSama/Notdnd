@@ -1077,6 +1077,50 @@ export function validateCombatState(combat) {
   return result(errors);
 }
 
+// EQUIP-SLOTS LAYER (locked rulebook design: item = slot + bounded stat-mods +
+// one ability). Four bounded slots; accessory is doubled. An item declares the
+// slot KIND it fits (weapon/armor/accessory); run.equipment pins an itemId into a
+// concrete slot (accessory1/accessory2). This layer covers schema + persistence +
+// equip/unequip + read only — stat-mod application, item abilities, and tiered
+// stat budgets are separate rulebook work and are NOT implemented here.
+export const EQUIP_SLOT_KINDS = ["weapon", "armor", "accessory"];
+export const EQUIP_SLOTS = ["weapon", "armor", "accessory1", "accessory2"];
+export const EQUIP_SLOT_KIND_BY_SLOT = Object.freeze({
+  weapon: "weapon",
+  armor: "armor",
+  accessory1: "accessory",
+  accessory2: "accessory"
+});
+const EQUIP_SLOT_KIND_SET = new Set(EQUIP_SLOT_KINDS);
+
+// A fresh, all-empty equipment map. New mints carry it explicitly; legacy runs
+// (undefined) lazily gain it via ensureEquipment() with zero behavior change.
+export function createDefaultEquipment() {
+  return { weapon: null, armor: null, accessory1: null, accessory2: null };
+}
+
+// run.equipment — the equip-slots map. Optional/additive: legacy runs omit it and
+// load unchanged. Only the four known slot keys are allowed; each holds a
+// non-empty itemId string (a reference into run.inventory) or null (empty slot).
+// Migration-safe: an empty or partial object is valid.
+export function validateEquipment(equipment) {
+  const errors = [];
+  if (!isPlainObject(equipment)) {
+    push(errors, "equipment", "Expected object");
+    return result(errors);
+  }
+  for (const [slot, value] of Object.entries(equipment)) {
+    if (!EQUIP_SLOT_KIND_BY_SLOT[slot]) {
+      push(errors, slot, `Unknown equipment slot (expected one of: ${EQUIP_SLOTS.join(", ")})`);
+      continue;
+    }
+    if (value !== null && !(typeof value === "string" && value.trim().length > 0)) {
+      push(errors, slot, "Expected itemId string or null");
+    }
+  }
+  return result(errors);
+}
+
 export function validateInventoryItem(item) {
   const errors = [];
   if (!isPlainObject(item)) {
@@ -1115,6 +1159,14 @@ export function validateInventoryItem(item) {
   validateStringArray(item.tags, "tags", errors);
   validateObject(item.flags, "flags", errors);
   validateOptionalString(item.imageAssetId, "imageAssetId", errors);
+  // Equip-slots layer: an item MAY declare the slot KIND it fits and a `visual`
+  // fragment the tailor prefers over the name. Both optional/additive — legacy
+  // items lack them and stay valid. Any statMods/ability (locked rulebook shape)
+  // ride as tolerated extra fields; this layer stores but does not apply them.
+  if (item.slot !== undefined && item.slot !== null) {
+    validateEnum(item.slot, EQUIP_SLOT_KIND_SET, "slot", errors);
+  }
+  validateOptionalString(item.visual, "visual", errors);
   validateContentMetadata(item, errors);
 
   return result(errors);
@@ -1264,6 +1316,12 @@ export function validateSoloRun(run) {
   }
   if (run.combat !== undefined && run.combat !== null) {
     appendNestedErrors(errors, "combat", validateCombatState(run.combat));
+  }
+  // Equip-slots layer — optional/additive record; legacy runs (undefined) stay
+  // valid exactly like run.threads / run.combat. Persistence needs no change: the
+  // whole run blob round-trips through saveSoloRun/getSoloRun.
+  if (run.equipment !== undefined && run.equipment !== null) {
+    appendNestedErrors(errors, "equipment", validateEquipment(run.equipment));
   }
 
   if (!Array.isArray(run.memoryFacts)) {
@@ -1638,6 +1696,8 @@ export function createDefaultSoloRun(options = {}) {
     flags: {},
     // Current VN scene state — starts ambient (theatre-of-the-mind prose).
     vn: createDefaultVnState(),
+    // Equip-slots layer — all four slots start empty (equip-slots-v1).
+    equipment: createDefaultEquipment(),
     version: SOLO_RUN_VERSION
   };
 }

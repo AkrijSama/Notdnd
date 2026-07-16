@@ -305,7 +305,10 @@ export async function comfyReachable() {
   }
 }
 
-async function queuePrompt(graph, clientId) {
+// Exported (additive) so the game-server tailor service reuses the exact same
+// ComfyUI job contract (POST /prompt → poll /history → GET /view) instead of
+// standing up a parallel client. Behavior unchanged for existing callers.
+export async function queuePrompt(graph, clientId) {
   const out = await comfyPost("/prompt", { prompt: graph, client_id: clientId });
   if (!out.prompt_id) {
     throw new Error(`comfy /prompt returned no prompt_id: ${JSON.stringify(out).slice(0, 200)}`);
@@ -313,7 +316,7 @@ async function queuePrompt(graph, clientId) {
   return out.prompt_id;
 }
 
-async function waitForOutput(promptId, { timeoutMs = 180000, pollMs = 1500 } = {}) {
+export async function waitForOutput(promptId, { timeoutMs = 180000, pollMs = 1500 } = {}) {
   const started = Date.now();
   // eslint-disable-next-line no-constant-condition
   while (true) {
@@ -336,7 +339,7 @@ async function waitForOutput(promptId, { timeoutMs = 180000, pollMs = 1500 } = {
   }
 }
 
-async function fetchImageBytes({ filename, subfolder, type }) {
+export async function fetchImageBytes({ filename, subfolder, type }) {
   const qs = new URLSearchParams({ filename, subfolder: subfolder || "", type: type || "output" });
   const res = await fetch(`${COMFY}/view?${qs.toString()}`);
   if (!res.ok) {
