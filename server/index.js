@@ -125,7 +125,8 @@ import { interpretAttemptWithGm } from "./gm/attemptInterpreter.js";
 import { attributeSceneDialogue, resolveGmNarration } from "./solo/gmProvider.js";
 import { buildGmRuntimeStatus } from "./solo/gmSmoke.js";
 import { enqueueDraftPortrait, enqueueImageJob, enqueueLocationImageJob, enqueuePlayerImageJob, enqueueVnBodyImageJob, getDraftPortrait, writeUploadedBasePortrait } from "./solo/imageWorker.js";
-import { enqueueIdentityJob, runIdentityJob, backfillNpcMannerisms } from "./solo/npcIdentity.js";
+import { enqueueIdentityJob, runIdentityJob, backfillNpcMannerisms, buildVoiceDirective } from "./solo/npcIdentity.js";
+import { buildDisagreementDirective, detectComplianceViolations } from "./gm/disagreementAudit.js";
 import { buildNpcIntroDirective, buildSoloScenePayload, collectNpcsWithPendingIntro } from "./solo/scene.js";
 import { buildSystemLoreClause, detectSystemLoreViolations } from "./gm/systemLore.js";
 import { detectDeadlineViolations } from "./gm/deadlineAudit.js";
@@ -1192,9 +1193,29 @@ async function narrateActionWithGm(run, resolved, user) {
   // COMMITTED MANNERISMS (spit-ban vacuum fill): present NPCs' committed physical
   // tells ride the context so the model voices those instead of a stock spit.
   message += buildMannerismDirective(run);
+  // VOICE CONTRACT (vn-dialogue-hardening law 2): each present NPC's committed
+  // voice spec (register / sentence length / talkativeness) is law for every
+  // spoken line — the spoken twin of the mannerism directive above.
+  const voiceDirective = buildVoiceDirective(run);
+  message += voiceDirective;
   // REPUTATION (reputation-engine-v1): present NPCs' committed disposition tier + top
   // preferences + faction standing + the SFW romance boundary — beside pronouns/mannerisms.
   message += buildReputationDirective(run);
+  // DISAGREEMENT LAW (vn-dialogue-hardening law 1): present low-standing NPCs
+  // (hostile tier / fearful / distrustful / wary) may not simply agree with
+  // player requests — refusal, deflection, a lie, or hard terms only. Derived
+  // from committed reputation values; paired with the compliance auditor below.
+  const disagreementDirective = buildDisagreementDirective(run);
+  message += disagreementDirective;
+  // Transcript observability: the run log records which dialogue laws rode this
+  // turn's prompt (the transcript is the causal chain; a hard law silently in
+  // force is exactly the class of thing it exists to make auditable).
+  if (voiceDirective || disagreementDirective) {
+    logTurnEvent(
+      run.runId,
+      `dialogue-laws ACTIVE:${disagreementDirective ? ` disagreement[${disagreementDirective.slice(0, 120).replace(/^.*?: /, "").trim()}…]` : ""}${voiceDirective ? " voice" : ""}`
+    );
+  }
   // SYSTEM LORE (item 1): the WINDOW/VOICE world-law facts ground every turn, so
   // the model never invents system capabilities ("the window will remember…").
   message += buildSystemLoreClause();
@@ -2080,6 +2101,17 @@ async function handleApi(req, res) {
           logTurnEvent(
             responseRun.runId,
             `romance-register VIOLATION: ${romanceViolations.map((v) => `[${v.kind}${v.tier ? `@${v.tier}` : ""}] "${v.phrase}" — ${v.sentence}`).join(" | ")} user=${user?.id || "anon"}`
+          );
+        }
+        // DISAGREEMENT AUDITOR (vn-dialogue-hardening law 1): a quoted line
+        // grounded to a hostile/fearful/distrustful/wary NPC that reads as
+        // simple compliance violates the committed standing — same severity
+        // family as romance-register. Log-only; the directive is the contract.
+        const complianceViolations = detectComplianceViolations(gmNarration, responseRun);
+        if (complianceViolations.length > 0) {
+          logTurnEvent(
+            responseRun.runId,
+            `disagreement-law VIOLATION: ${complianceViolations.map((v) => `${v.name}[${v.reason}@${v.tier}] complied: "${v.line}"`).join(" | ")} user=${user?.id || "anon"}`
           );
         }
       }

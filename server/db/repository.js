@@ -1330,6 +1330,22 @@ export function updateNpcIdentity(runId, npcId, identity = {}) {
   if (typeof identity.mannerism === "string" && identity.mannerism.trim() && !(typeof npc.mannerism === "string" && npc.mannerism.trim())) {
     npc.mannerism = identity.mannerism.trim();
   }
+  // Committed voice spec (vn-dialogue-hardening law 2): set once, like the
+  // mannerism — a stable spoken register across the run. Shape is enforced by
+  // schema.validateNpc; here we only require the three fields to be present.
+  if (
+    identity.voice && typeof identity.voice === "object" &&
+    typeof identity.voice.register === "string" &&
+    typeof identity.voice.sentenceLength === "string" &&
+    typeof identity.voice.talkativeness === "string" &&
+    !(npc.voice && typeof npc.voice === "object")
+  ) {
+    npc.voice = {
+      register: identity.voice.register,
+      sentenceLength: identity.voice.sentenceLength,
+      talkativeness: identity.voice.talkativeness
+    };
+  }
   // #50: gender + pronouns feed the portrait prompt (groundNpcPortrait). Only set
   // when not ALREADY committed — a value inferred from the narration on commit
   // (npcCommit.inferNpcGenderFromNarration) is authoritative over a later guess.

@@ -566,6 +566,14 @@ export function renderNarrationLog(entries = []) {
       if (entry.kind === "ooc") {
         return `<aside class="solo-log-entry solo-measure solo-log-ooc" role="note" style="border-left:3px solid var(--muted,#8b8e96);background:var(--inset,#070708);padding:10px 14px;border-radius:8px;margin:0 auto 34px;font-style:italic;color:var(--text-2,#b0b3bb);"><span style="display:block;text-transform:uppercase;letter-spacing:.1em;font-size:10px;font-weight:800;font-style:normal;color:var(--muted,#8b8e96);margin-bottom:6px;">GM · out of character</span><div>${escapeHtml(String(entry.text || ""))}</div></aside>`;
       }
+      // VN TRANSCRIPT ENTRY (vn-dialogue-hardening, table stakes): a spoken VN
+      // line preserved VERBATIM in the backlog — speaker plate + the quoted line,
+      // compact, so a finished conversation is replayable from the log. Pushed as
+      // each line lands (chronological with the turn's non-dialogue remainder).
+      if (entry.kind === "vn") {
+        const plate = entry.role === "player" ? "You" : String(entry.speaker || "NPC");
+        return `<article class="solo-log-entry solo-measure solo-log-vn"><div class="solo-log-speaker">${escapeHtml(plate)}</div><div class="solo-log-prose solo-log-vn-line">“${escapeHtml(String(entry.text || ""))}”</div></article>`;
+      }
       const cr = entry.checkResult || null;
       const hasRoll = cr && cr.total != null;
       // #33: band-code the log roll tag (success / cost / failure), matching the
@@ -1229,6 +1237,16 @@ export function normalizeFontSet(fontSet) {
 }
 
 
+// VN TEXT SPEED (vn-dialogue-hardening, table stakes): the per-character reveal
+// rate of the VN typewriter, player-tunable like the narration text size (#48
+// pattern: normalize + localStorage persist + one delegated control). "instant"
+// skips the reveal entirely.
+export const VN_TEXT_SPEEDS = Object.freeze({ slow: 45, normal: 30, fast: 15, instant: 0 });
+export const VN_TEXT_SPEED_ORDER = Object.freeze(["slow", "normal", "fast", "instant"]);
+export function normalizeTextSpeed(value) {
+  return Object.prototype.hasOwnProperty.call(VN_TEXT_SPEEDS, value) ? value : "normal";
+}
+
 // #48: narration text-size multiplier, clamped to a sane readable band and
 // quantized to 0.1 steps. Non-numeric / out-of-range falls back to 1.0.
 export const SOLO_LOG_SCALE_MIN = 0.8;
@@ -1826,6 +1844,11 @@ export function renderSoloSceneInputBar(state = {}) {
           <button type="button" class="solo-fontsize-btn" data-solo-logfont="down" title="Smaller narration text" aria-label="Smaller narration text">A−</button>
           <button type="button" class="solo-fontsize-btn" data-solo-logfont="up" title="Larger narration text" aria-label="Larger narration text">A+</button>
         </span>
+        <!-- VN text speed (table stakes): cycles slow → normal → fast → instant;
+             persisted like the sizer; the typewriter reads it on every bind. -->
+        <span class="solo-log-fontsize solo-textspeed" role="group" aria-label="Dialogue text speed">
+          <button type="button" class="solo-fontsize-btn" data-solo-textspeed title="Dialogue text speed (click to cycle)" aria-label="Dialogue text speed: ${escapeHtml(normalizeTextSpeed(state.textSpeed))}">Aa·${escapeHtml(normalizeTextSpeed(state.textSpeed))}</button>
+        </span>
       </div>
       ${confirmation ? `<div class="solo-npc-confirm" role="status">${escapeHtml(confirmation)}</div>` : ""}
     </div>
@@ -2238,6 +2261,42 @@ export function renderSoloRightRail(state = {}) {
 // when the server has generated it (Part 1), otherwise an atmospheric
 // placeholder stands in until the image worker finishes. The typewriter reveal
 // itself runs in bindSoloSceneShell against live DOM, not in this string.
+// VISIBLE CONSEQUENCE (vn-dialogue-hardening, law 3): a one-line diegetic cue
+// derived from the COMMITTED disposition delta the server returned for this turn
+// (attemptResult.dispositionChange — meter, delta, suspicionDelta, targetName).
+// Pure text mapping over committed data; the narrator never writes this line.
+// Returns "" when the change carries no name or no visible movement.
+const DISPOSITION_CUE_PHRASES = Object.freeze({
+  trust: ["seems to trust you a little more", "seems to trust you less"],
+  affection: ["seems to warm to you", "seems cooler toward you"],
+  fear: ["seems warier of you", "seems less afraid of you"],
+  suspicion: ["eyes you with fresh suspicion", "seems to relax their guard"],
+  debt: ["seems to feel they owe you", "seems to feel the debt is settled"],
+  loyalty: ["seems firmer at your side", "seems less bound to you"],
+  rivalry: ["seems to bristle at you", "seems less set against you"]
+});
+export function dispositionCueText(change) {
+  if (!change || typeof change !== "object") {
+    return "";
+  }
+  const name = typeof change.targetName === "string" && change.targetName.trim() ? change.targetName.trim() : "";
+  if (!name) {
+    return "";
+  }
+  const meter = typeof change.meter === "string" ? change.meter : "";
+  const delta = Number(change.delta) || 0;
+  const suspicionDelta = Number(change.suspicionDelta) || 0;
+  const phrases = DISPOSITION_CUE_PHRASES[meter];
+  if (phrases && delta !== 0) {
+    return `${name} ${delta > 0 ? phrases[0] : phrases[1]}.`;
+  }
+  // No primary movement but suspicion rose (the at-cost / failure shapes).
+  if (suspicionDelta > 0) {
+    return `${name} ${DISPOSITION_CUE_PHRASES.suspicion[0]}.`;
+  }
+  return "";
+}
+
 export function renderSoloDialogueOverlay(state = {}) {
   if (!state.dialogueActive || !state.talkResult) {
     return "";
@@ -2246,10 +2305,20 @@ export function renderSoloDialogueOverlay(state = {}) {
   const scene = state.scene || {};
   const expression = typeof talk.expression === "string" && talk.expression ? talk.expression : "neutral";
   const variants = talk.expressionVariants && typeof talk.expressionVariants === "object" ? talk.expressionVariants : {};
+  // SPRITE IDENTITY IS COMMITTED-STATE-DRIVEN (vn-live law A.2): while the server
+  // says VN is active, the sprite belongs to scene.speakerId — the COMMITTED
+  // active speaker (run.vn.speakerId) — never a stale client-side talk target.
+  // Outside VN mode (manual Talk overlay before the scene refresh) talk.npcId is
+  // itself the server's resolved talk target, so it remains the fallback.
+  const committedSpeakerId =
+    scene.vnMode === true && typeof scene.speakerId === "string" && scene.speakerId.trim()
+      ? bareNpcId(scene.speakerId)
+      : null;
+  const spriteNpcId = committedSpeakerId || talk.npcId;
   // Fallback chain: requested expression variant -> the NPC's base portrait
   // (from the cast roster) -> atmospheric placeholder. Never a broken image.
   const castMember = (Array.isArray(scene.cast) ? scene.cast : []).find(
-    (member) => member && member.npcId === talk.npcId
+    (member) => member && bareNpcId(member.npcId) === String(spriteNpcId || "")
   ) || null;
   const baseUri = castMember && typeof castMember.portraitUri === "string" ? castMember.portraitUri : "";
   const variantUri = typeof variants[expression] === "string" && variants[expression] ? variants[expression] : "";
@@ -2278,6 +2347,16 @@ export function renderSoloDialogueOverlay(state = {}) {
   // request timeout) so submit can never wedge permanently.
   const busy = Boolean(state.busy);
   const replyDraft = typeof state.dialogueReplyDraft === "string" ? state.dialogueReplyDraft : "";
+  // VISIBLE CONSEQUENCE (law 3): the committed-delta cue for THIS speaker, set by
+  // the submit path from attemptResult.dispositionChange and cleared with the
+  // other per-turn results. Never rendered for a different NPC than the sprite.
+  const cue =
+    state.dispositionCue &&
+    typeof state.dispositionCue.text === "string" &&
+    state.dispositionCue.text &&
+    String(state.dispositionCue.npcId || "") === String(spriteNpcId || "")
+      ? state.dispositionCue.text
+      : "";
 
   // The sprite surface renders ONLY when there is an image. Empty state = the whole
   // container is omitted (truly nothing on screen), not an empty box. The
@@ -2311,6 +2390,7 @@ export function renderSoloDialogueOverlay(state = {}) {
         data-typed="${typed ? "true" : "false"}"
         data-fulltext="${escapeHtml(line)}"
       >${typed ? escapeHtml(line) : ""}</div>
+      ${cue ? `<div class="solo-vn-cue" data-solo-vn-cue role="status">${escapeHtml(cue)}</div>` : ""}
       <div class="solo-vn-box-reply">
         <input
           type="text"
@@ -2651,6 +2731,7 @@ export function dispatchSoloClick(target, handlers = {}) {
   if ((el = closest("button[data-solo-skin]"))) { handlers.onSkin?.({ skin: el.getAttribute("data-solo-skin") }); return true; }
   if ((el = closest("button[data-solo-font]"))) { handlers.onFont?.({ fontSet: el.getAttribute("data-solo-font") }); return true; }
   if ((el = closest("[data-solo-logfont]"))) { handlers.onLogFontScale?.({ dir: el.getAttribute("data-solo-logfont") }); return true; }
+  if ((el = closest("[data-solo-textspeed]"))) { handlers.onTextSpeed?.(); return true; }
   if ((el = closest("[data-solo-dialogue-end]"))) { handlers.onDialogueEnd?.(); return true; }
   if ((el = closest("[data-solo-dialogue-reply-submit]"))) { handlers.onDialogueReply?.(); return true; }
   if ((el = closest("[data-solo-dialogue-close]"))) { handlers.onDialogueClose?.(); return true; }
@@ -2719,7 +2800,10 @@ export function bindSoloSceneShell(root, handlers = {}) {
   // delta, the elapsed time keeps counting while hidden and the owed characters
   // appear the moment the tab is visible again. Any click/tap on the textbox
   // completes the reveal instantly (standard VN convention).
-  const VN_CHAR_MS = 30;
+  // Per-character reveal rate — player-tunable (vn-dialogue-hardening, table
+  // stakes): reads the persisted text-speed setting each bind, so a changed
+  // setting applies from the very next line. 0 (instant) skips the reveal.
+  const vnCharMs = () => VN_TEXT_SPEEDS[normalizeTextSpeed(readSoloThemePref(SOLO_TEXT_SPEED_STORAGE_KEY, "normal"))];
   function bindTypewriter(el, { onDone } = {}) {
     const fullText = el.getAttribute("data-fulltext") || "";
     const alreadyTyped = el.getAttribute("data-typed") === "true";
@@ -2737,12 +2821,16 @@ export function bindSoloSceneShell(root, handlers = {}) {
       el.classList?.add("is-complete");
       onDone?.();
     };
-    if (!alreadyTyped && fullText) {
+    const charMs = vnCharMs();
+    if (!alreadyTyped && fullText && charMs <= 0) {
+      // Instant: no reveal loop at all — the full line lands immediately.
+      finish();
+    } else if (!alreadyTyped && fullText) {
       el.textContent = "";
       const t0 = Date.now();
       const step = () => {
         if (done) return;
-        const chars = Math.min(fullText.length, Math.floor((Date.now() - t0) / VN_CHAR_MS) + 1);
+        const chars = Math.min(fullText.length, Math.floor((Date.now() - t0) / charMs) + 1);
         el.textContent = fullText.slice(0, chars);
         if (chars >= fullText.length) {
           finish();
@@ -2754,7 +2842,7 @@ export function bindSoloSceneShell(root, handlers = {}) {
         raf = requestAnimationFrame(step);
       } else if (typeof setInterval === "function") {
         // No rAF (test mocks / odd embeds): same wall-clock math on an interval.
-        fallbackTimer = setInterval(step, VN_CHAR_MS);
+        fallbackTimer = setInterval(step, charMs);
       } else {
         finish();
       }
@@ -2922,6 +3010,7 @@ export function bindSoloSceneShell(root, handlers = {}) {
 export const SOLO_SKIN_STORAGE_KEY = "notdnd.solo.skin";
 export const SOLO_FONT_STORAGE_KEY = "notdnd.solo.fontSet";
 export const SOLO_LOG_SCALE_STORAGE_KEY = "notdnd.solo.logScale";
+export const SOLO_TEXT_SPEED_STORAGE_KEY = "notdnd.solo.textSpeed";
 
 export function readSoloThemePref(key, fallback) {
   try {
@@ -3097,6 +3186,11 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     // #48: self-healing read — a stale/invalid persisted multiplier is clamped
     // AND written back, so a bad value can never wedge the sizer across reloads.
     logScale: readHealedLogScale(),
+    // VN text speed (table stakes): persisted reveal rate for the typewriter.
+    textSpeed: normalizeTextSpeed(readSoloThemePref(SOLO_TEXT_SPEED_STORAGE_KEY, "normal")),
+    // VISIBLE CONSEQUENCE (law 3): { npcId, text } derived from THIS turn's
+    // committed dispositionChange; cleared with the other per-turn results.
+    dispositionCue: null,
     // Guest play: when the player has no real account, the shell offers a
     // persistent "save your adventure" affordance. Registering upgrades the
     // guest identity in place server-side, so the run is never lost.
@@ -3319,6 +3413,7 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       onSkin: handleSkin,
       onFont: handleFont,
       onLogFontScale: handleLogFontScale,
+      onTextSpeed: handleTextSpeed,
       onAttempt: handleAttempt,
       onAttemptDraft: handleAttemptDraft,
       onDialogueClose: handleDialogueClose,
@@ -3947,6 +4042,17 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     target.style?.setProperty?.("--solo-log-scale", String(state.logScale));
   }
 
+  // VN text speed (table stakes): cycle slow → normal → fast → instant, persist
+  // (font-sizer pattern), re-render so the control label updates; the typewriter
+  // reads the persisted value on its next bind.
+  function handleTextSpeed() {
+    const order = VN_TEXT_SPEED_ORDER;
+    const current = normalizeTextSpeed(state.textSpeed);
+    state.textSpeed = order[(order.indexOf(current) + 1) % order.length];
+    writeSoloThemePref(SOLO_TEXT_SPEED_STORAGE_KEY, state.textSpeed);
+    render();
+  }
+
   function handleAttemptDraft({ value }) {
     state.attemptDraft = String(value || "");
   }
@@ -3995,6 +4101,14 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       }
       state.pendingPlayerAction = submittedText;
       state.attemptResult = response.attemptResult || response.latestAttemptResult || null;
+      // VISIBLE CONSEQUENCE (law 3): derive the diegetic cue from the COMMITTED
+      // disposition delta this turn returned (never narrator text). Turn-scoped:
+      // replaced (or nulled) on every submit, cleared by the dialogue handlers.
+      {
+        const dc = state.attemptResult?.dispositionChange || null;
+        const cueText = dc ? dispositionCueText(dc) : "";
+        state.dispositionCue = cueText ? { npcId: dc.targetNpcId, text: cueText } : null;
+      }
       // #20-full: capture the server's per-line speaker attribution for this turn
       // so logNarration can nameplate each grounded NPC line (cross-wire to #20).
       state.dialogueLines = Array.isArray(response.dialogueLines) ? response.dialogueLines : [];
@@ -4284,6 +4398,38 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     }
   }
 
+  // VN TRANSCRIPT (vn-dialogue-hardening, table stakes): every spoken VN line is
+  // ALSO preserved verbatim in the persistent narration log as a compact
+  // speaker-attributed entry (kind:"vn"), so a finished conversation replays
+  // from the backlog — the VN box remains the live presentation surface, the log
+  // the durable one. Consecutive-duplicate guard mirrors logNarration's.
+  function pushVnLogEntry({ role, speaker, text }) {
+    const line = String(text || "").trim();
+    if (!line) {
+      return;
+    }
+    const last = state.narrationLog[state.narrationLog.length - 1];
+    if (last && last.kind === "vn" && last.text === line && last.speaker === (speaker || null)) {
+      return;
+    }
+    state.narrationLog.push({
+      id: `n${state.narrationLog.length + 1}`,
+      kind: "vn",
+      role: role === "player" ? "player" : "npc",
+      intent: "",
+      checkResult: null,
+      success: undefined,
+      band: null,
+      outcomeLabel: null,
+      text: line,
+      speaker: speaker || null,
+      dialogueLines: []
+    });
+    if (state.narrationLog.length > 200) {
+      state.narrationLog.splice(0, state.narrationLog.length - 200);
+    }
+  }
+
   // VN QUOTE SPLIT for the talk-button / reply paths (which reload via
   // refreshSceneAfterAction, bypassing logNarration). Splits the NPC's full turn
   // narration: returns the addressed speaker's quoted lines for the VN box and
@@ -4467,6 +4613,12 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       // Open the visual-novel dialogue overlay and restart the typewriter.
       state.dialogueActive = Boolean(state.talkResult);
       state.dialogueTyped = false;
+      // A manual Talk opens a fresh exchange — a prior turn's cue never carries over.
+      state.dispositionCue = null;
+      // Table stakes: the spoken line lands verbatim in the backlog too.
+      if (state.talkResult && vnLine) {
+        pushVnLogEntry({ role: "npc", speaker: state.talkResult.speakerName || "NPC", text: vnLine });
+      }
       // Start a fresh conversation: remember who we're talking to (so replies
       // re-target them through the same talk pipeline) and seed the history with
       // the NPC's opening line.
@@ -4524,6 +4676,10 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     state.dialogueTargetEntityId = entityId;
     state.dialogueReplyDraft = "";
     state.dialogueHistory = vnLine ? [{ role: "npc", speaker: speakerName, text: vnLine }] : [];
+    // Table stakes: the spoken line lands verbatim in the backlog too.
+    if (vnLine) {
+      pushVnLogEntry({ role: "npc", speaker: speakerName, text: vnLine });
+    }
   }
 
   function handleDialogueReplyDraft({ value }) {
@@ -4545,7 +4701,11 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       // actually said — not a re-run of the intro beat.
       if (reply) {
         state.dialogueHistory = [...priorHistory, { role: "player", speaker: "You", text: reply }];
+        // Table stakes: the player's spoken line is part of the replayable transcript.
+        pushVnLogEntry({ role: "player", speaker: "You", text: reply });
       }
+      // A new exchange supersedes the previous turn's committed-delta cue.
+      state.dispositionCue = null;
       state.dialogueReplyDraft = "";
       const response = await postAction(createTalkAction({ entityId: target, message: reply, history: priorHistory }));
       const next = response.talkResult || null;
@@ -4561,6 +4721,10 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
         state.dialogueHistory = vnLine
           ? [...(state.dialogueHistory || []), { role: "npc", speaker: next.speakerName || "NPC", text: vnLine }]
           : (state.dialogueHistory || []);
+        // Table stakes: the NPC's reply lands verbatim in the backlog too.
+        if (vnLine) {
+          pushVnLogEntry({ role: "npc", speaker: next.speakerName || "NPC", text: vnLine });
+        }
       } else {
         // The NPC has nothing more to add — note it but keep the overlay open so
         // the exit stays explicit (the player clicks "End conversation").
@@ -4579,11 +4743,13 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
   function handleDialogueEnd() {
     // Explicit exit: leave the VN overlay back to the ambient scene. The server's
     // vnMode returns to ambient on the player's next (non-talk) action; the
-    // overlay closes immediately so the player is back in the scene.
+    // overlay closes immediately so the player is back in the scene. The spoken
+    // lines survive in the narration log (vn transcript entries) — replayable.
     state.dialogueActive = false;
     state.dialogueReplyDraft = "";
     state.dialogueHistory = [];
     state.dialogueTargetEntityId = null;
+    state.dispositionCue = null;
     render();
   }
 

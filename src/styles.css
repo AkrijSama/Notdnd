@@ -2661,6 +2661,21 @@ button:disabled {
   overflow-y: auto;
   margin-bottom: 8px;
 }
+/* VISIBLE CONSEQUENCE (vn-dialogue-hardening law 3): the one-line diegetic cue
+   derived from a committed relationship delta ("Mira seems warier of you.").
+   Quiet italic — a stage direction, not dialogue. */
+.solo-vn-cue {
+  font-family: var(--font-body, Georgia, serif);
+  font-size: calc(0.85rem * var(--solo-log-scale, 1));
+  font-style: italic;
+  color: var(--text-2, #b0b3bb);
+  opacity: 0.85;
+  margin: -2px 0 8px;
+}
+/* VN TRANSCRIPT entries (table stakes): a spoken line preserved in the backlog —
+   compact speaker plate + quoted line, tighter rhythm than a story beat. */
+.solo-log-entry.solo-log-vn { margin-bottom: 10px; }
+.solo-log-vn .solo-log-vn-line { color: #9ed6ff; font-style: italic; }
 .solo-vn-box-reply { display: flex; gap: 8px; }
 .solo-vn-box-reply-input {
   flex: 1 1 auto;

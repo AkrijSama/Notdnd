@@ -213,21 +213,111 @@ export function pickUniqueMannerism(takenMannerisms = [], seed = 0) {
 
 // BACKFILL (item 3d, the gender-backfill pattern): give any committed NPC in
 // `npcIds` that predates the mannerism field one now, unique across the roster.
-// Mutates run.npcs in place; returns the ids backfilled (empty when none). The
-// caller persists the run. Pure aside from the in-place assignment.
+// vn-dialogue-hardening law 2 rides the SAME pass: an NPC lacking a committed
+// voice spec gets a deterministic one from its identitySeed — one backfill, one
+// persist, no parallel system. Mutates run.npcs in place; returns the ids
+// touched (empty when none). The caller persists the run.
 export function backfillNpcMannerisms(run, npcIds = []) {
   const ids = Array.isArray(npcIds) ? npcIds : [];
   const done = [];
   for (const npcId of ids) {
     const npc = run?.npcs?.[npcId];
-    if (!npc || (isString(npc.mannerism))) {
+    if (!npc) {
       continue;
     }
     const seed = Number.isFinite(npc.identitySeed) ? npc.identitySeed : indexFromNpcId(npcId);
-    npc.mannerism = pickUniqueMannerism(npcTakenMannerisms(run, npcId), seed);
-    done.push(npcId);
+    let touched = false;
+    if (!isString(npc.mannerism)) {
+      npc.mannerism = pickUniqueMannerism(npcTakenMannerisms(run, npcId), seed);
+      touched = true;
+    }
+    if (!normalizeVoiceSpec(npc.voice)) {
+      npc.voice = pickVoiceSpec(seed);
+      touched = true;
+    }
+    if (touched) {
+      done.push(npcId);
+    }
   }
   return done;
+}
+
+// --- Committed per-NPC VOICE spec (vn-dialogue-hardening, law 2) --------------
+// The mannerism gave each NPC a committed PHYSICAL tell; the voice spec gives
+// them a committed SPOKEN one: vocabulary register, sentence-length tendency,
+// talkativeness. Same machinery, same lifecycle — deterministic from the
+// identitySeed at mint, backfilled for legacy NPCs by the same backfill pass,
+// injected into the GM context as law for every VN line. Never model-invented.
+export const NPC_VOICE_REGISTERS = Object.freeze(["rough", "plain", "learned"]);
+export const NPC_VOICE_LENGTHS = Object.freeze(["clipped", "middling", "rambling"]);
+export const NPC_VOICE_TALKATIVENESS = Object.freeze(["taciturn", "measured", "chatty"]);
+
+// Pure + deterministic: the three axes stride the seed at co-prime divisors so
+// nearby seeds land different combinations (27 distinct voices).
+export function pickVoiceSpec(seed = 0) {
+  const s = Math.abs(Number(seed) || 0);
+  return {
+    register: NPC_VOICE_REGISTERS[s % 3],
+    sentenceLength: NPC_VOICE_LENGTHS[Math.floor(s / 3) % 3],
+    talkativeness: NPC_VOICE_TALKATIVENESS[Math.floor(s / 9) % 3]
+  };
+}
+
+// A committed voice object, or null when the value is absent/malformed (a
+// malformed voice is treated as missing and re-minted — never half-applied).
+export function normalizeVoiceSpec(voice) {
+  if (!voice || typeof voice !== "object") return null;
+  if (
+    NPC_VOICE_REGISTERS.includes(voice.register) &&
+    NPC_VOICE_LENGTHS.includes(voice.sentenceLength) &&
+    NPC_VOICE_TALKATIVENESS.includes(voice.talkativeness)
+  ) {
+    return { register: voice.register, sentenceLength: voice.sentenceLength, talkativeness: voice.talkativeness };
+  }
+  return null;
+}
+
+const VOICE_REGISTER_TEXT = {
+  rough: "rough, blunt vocabulary",
+  plain: "plain everyday vocabulary",
+  learned: "learned, precise vocabulary"
+};
+const VOICE_LENGTH_TEXT = {
+  clipped: "short clipped sentences",
+  middling: "unhurried, middling sentences",
+  rambling: "long, winding sentences"
+};
+const VOICE_TALK_TEXT = {
+  taciturn: "says as little as possible",
+  measured: "speaks only when it serves them",
+  chatty: "talks readily, offers more than was asked"
+};
+
+/** One NPC's committed voice as prompt prose ("rough, blunt vocabulary; short clipped sentences; says as little as possible"). */
+export function describeVoice(voice) {
+  const v = normalizeVoiceSpec(voice);
+  if (!v) return "";
+  return `${VOICE_REGISTER_TEXT[v.register]}; ${VOICE_LENGTH_TEXT[v.sentenceLength]}; ${VOICE_TALK_TEXT[v.talkativeness]}`;
+}
+
+// VOICE CONTRACT directive — the per-NPC spoken law fed to the narrator beside
+// the mannerism directive. "" when no present NPC carries a voice yet.
+export function buildVoiceDirective(run) {
+  const present = Object.values(run?.npcs || {}).filter(
+    (npc) => npc && npc.currentLocationId === run?.currentLocationId && npc.status !== "gone"
+  );
+  const lines = present
+    .map((npc) => {
+      const desc = describeVoice(npc.voice);
+      if (!desc) return null;
+      return `${npc.generatedName || npc.displayName || npc.role} — ${desc}`;
+    })
+    .filter(Boolean);
+  if (!lines.length) return "";
+  return (
+    ` COMMITTED VOICES (per-NPC law — every spoken line MUST match its speaker's committed voice): ${lines.join("; ")}.` +
+    ` A taciturn speaker never monologues; a clipped speaker never delivers long flowing sentences; never swap registers between characters.`
+  );
 }
 
 // --- Per-run first-name uniqueness (the two-Maras bug) -----------------------
@@ -327,7 +417,10 @@ function synthesizeIdentity(parsed, role, identitySeed, existing = {}, takenName
   const mannerism = isString(existing.mannerism) && existing.mannerism.trim()
     ? existing.mannerism.trim()
     : pickUniqueMannerism(takenMannerisms, identitySeed);
-  return { generatedName, gender, pronouns, appearance, personality, portraitPrompt, mannerism };
+  // Committed voice spec (vn-dialogue-hardening law 2): user-set wins; otherwise
+  // deterministic from the identitySeed — same lifecycle as the mannerism.
+  const voice = normalizeVoiceSpec(existing.voice) || pickVoiceSpec(identitySeed);
+  return { generatedName, gender, pronouns, appearance, personality, portraitPrompt, mannerism, voice };
 }
 
 /**

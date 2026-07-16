@@ -53,6 +53,12 @@ const NPC_EXPRESSION_SET = new Set(NPC_EXPRESSIONS);
 // user-seeded with AI filling the gaps.
 export const NPC_ORIGINS = ["procedural", "user", "hybrid"];
 const NPC_ORIGIN_SET = new Set(NPC_ORIGINS);
+// Committed per-NPC voice spec (vn-dialogue-hardening law 2). Enum values are
+// owned by npcIdentity.js's pools; mirrored here as frozen sets so the core
+// contract module stays self-contained (house style — cf. THREAD_KINDS below).
+const NPC_VOICE_REGISTER_SET = new Set(["rough", "plain", "learned"]);
+const NPC_VOICE_LENGTH_SET = new Set(["clipped", "middling", "rambling"]);
+const NPC_VOICE_TALKATIVENESS_SET = new Set(["taciturn", "measured", "chatty"]);
 
 // D.5 narrative-substrate: run.threads is a first-class validated record, like
 // run.quests (front:thread :: questTemplate:questState). These enum sets mirror
@@ -776,6 +782,19 @@ export function validateNpc(npc) {
   validateOptionalString(npc.pronouns, "pronouns", errors);
   validateOptionalString(npc.portraitPrompt, "portraitPrompt", errors);
   validateOptionalNumber(npc.identitySeed, "identitySeed", errors);
+  // Committed mannerism + voice spec (vn-dialogue-hardening law 2). Both
+  // optional/additive — legacy NPCs predate them and stay valid. A present
+  // voice must be the full typed triple (register/sentenceLength/talkativeness).
+  validateOptionalString(npc.mannerism, "mannerism", errors);
+  if (npc.voice !== undefined && npc.voice !== null) {
+    if (!isPlainObject(npc.voice)) {
+      push(errors, "voice", "Expected object");
+    } else {
+      validateEnum(npc.voice.register, NPC_VOICE_REGISTER_SET, "voice.register", errors);
+      validateEnum(npc.voice.sentenceLength, NPC_VOICE_LENGTH_SET, "voice.sentenceLength", errors);
+      validateEnum(npc.voice.talkativeness, NPC_VOICE_TALKATIVENESS_SET, "voice.talkativeness", errors);
+    }
+  }
   // Origin + memory-graph bridge (all nullable — existing NPCs stay valid).
   if (npc.origin !== undefined && npc.origin !== null) {
     validateEnum(npc.origin, NPC_ORIGIN_SET, "origin", errors);
