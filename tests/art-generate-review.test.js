@@ -24,9 +24,9 @@ test("all three style recipes load and name their checkpoints (realistic is firs
   assert.match(realistic.checkpoint, /Juggernaut-XI/);
   assert.deepEqual(anime.lora, [], "anime LoRA slot present and empty (JANKU is bare-checkpoint)");
   assert.deepEqual(dark.lora, [
-    { name: "hkstyleV5.safetensors", strength: 0.5 },
+    { name: "hkstyleV5.safetensors", strength: 0.68, strengthClip: 0.7 },
     { name: "add-detail-xl.safetensors", strength: 0.74 }
-  ], "dark-fantasy carries the painted LoRA stack");
+  ], "dark-fantasy carries the painted LoRA stack (strengths mirror the validated export)");
 });
 
 test("realistic routing resolves via the ladder for every lane", async () => {

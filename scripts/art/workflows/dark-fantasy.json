@@ -1,9 +1,9 @@
 {
   "name": "dark-fantasy",
-  "_note": "Chunk-6: painted dark-fantasy lane born — checkpoint sdxlUnstableDiffusers_nihilmania (YamerMIX) + LoRA hkstyleV5 + add-detail-xl. Proven paint-lead / photo-ban / AGE LAW vocab live in blocks/darkfantasy.json. This is the LEGACY coarse FALLBACK (dark-fantasy fullbody/scene/item have no export yet); the proven portrait tune rides the owner's exported portrait-darkfantasy.json. FLAG: lora strengths here (0.5 / 0.74) follow the dispatch; the owner's portrait-darkfantasy export uses hkstyleV5 @ 0.68/0.70 — owner to confirm which the fallback should mirror. Sampler below is the pre-Chunk-6 coarse fallback.",
+  "_note": "Chunk-6: painted dark-fantasy lane born — checkpoint sdxlUnstableDiffusers_nihilmania (YamerMIX) + LoRA hkstyleV5 + add-detail-xl. Proven paint-lead / photo-ban / AGE LAW vocab live in blocks/darkfantasy.json. This is the LEGACY coarse FALLBACK (dark-fantasy fullbody/scene/item have no export yet); the proven portrait tune rides the owner's exported portrait-darkfantasy.json. LoRA strengths mirror the owner's validated export (hkstyleV5 sm 0.68 / sc 0.70; add-detail-xl 0.74). Sampler below is the pre-Chunk-6 coarse fallback.",
   "checkpoint": "sdxlUnstableDiffusers_nihilmania.safetensors",
   "lora": [
-    { "name": "hkstyleV5.safetensors", "strength": 0.5 },
+    { "name": "hkstyleV5.safetensors", "strength": 0.68, "strengthClip": 0.7 },
     { "name": "add-detail-xl.safetensors", "strength": 0.74 }
   ],
   "sampler": { "sampler_name": "dpmpp_2m", "scheduler": "karras", "steps": 30, "cfg": 6.0, "denoise": 1.0 },
