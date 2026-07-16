@@ -14,7 +14,7 @@ import { getUsableInventoryItems } from "./useItem.js";
 import { POLICY_VIOLATION_NARRATION, screenPlayerIntent } from "./safety.js";
 import { applyDamage, isIncapacitated } from "./death.js";
 import { advanceClock, ensureClock, sanitizeDurationMinutes, DEFAULT_OBSERVE_MINUTES, DEFAULT_ACTION_MINUTES, DEFAULT_CHECK_MINUTES } from "./worldClock.js";
-import { commitSocialDisposition } from "./relationships.js";
+import { commitSocialDisposition, commitGift, resolveSocialTarget } from "./relationships.js";
 import { applyCondition, tickConditions } from "./conditions.js";
 
 const PROVIDER_OUTPUT_FIELDS = new Set([
@@ -1766,6 +1766,60 @@ function buildPolicyViolationAttempt(run, action, reason) {
   };
 }
 
+// ── GIFT INTENT (romance-live wiring) ─────────────────────────────────────────
+// "give/hand/offer/gift/present <item> to <npc>" grounds DETERMINISTICALLY to a
+// present NPC (resolveSocialTarget — same grounding as the social gate) and a
+// COMMITTED inventory item (quantity > 0) matched by salient intent words. Fails
+// OPEN: no gift verb / no groundable NPC / no held-item match → null and the turn
+// proceeds as a normal attempt (a specifically-NAMED unheld item is still refused
+// pre-roll by the existing possession gate, which runs before this). "give ME the
+// key" (the NPC giving) is excluded — direction matters.
+const GIFT_VERB_RE = /\b(give|hand|offer|gift|present)s?\b/i;
+const GIFT_INVERTED_RE = /\b(give|hand|offer|gift|present)s?\s+(?:it\s+to\s+)?(me|us)\b/i;
+
+export function resolveGiftIntent(run, { intent, targetId } = {}) {
+  const text = String(intent || "");
+  if (!GIFT_VERB_RE.test(text) || GIFT_INVERTED_RE.test(text)) {
+    return null;
+  }
+  const npc = resolveSocialTarget(run, { intent, targetId });
+  if (!npc) {
+    return null;
+  }
+  // Salient intent words, minus the NPC's own name (a name never matches an item).
+  const words = new Set(itemContentWords(text));
+  for (const w of itemContentWords(npc.generatedName || npc.displayName || "")) {
+    words.delete(w);
+  }
+  const inv = isPlainObject(run?.inventory) ? Object.values(run.inventory) : [];
+  let best = null;
+  let bestScore = 0;
+  for (const item of inv) {
+    if (!isPlainObject(item) || !isString(item.itemId)) continue;
+    if (typeof item.quantity === "number" && item.quantity <= 0) continue;
+    const itemWords = itemContentWords(`${item.name || ""} ${item.itemId}`);
+    const score = itemWords.filter((w) => words.has(w)).length;
+    if (score > bestScore) {
+      best = item;
+      bestScore = score;
+    }
+  }
+  return best ? { npc, item: best } : null;
+}
+
+// A gift is CONTESTED (rolls through the normal gate) only against a hostile
+// target: a "hostile" NPC tag or a committed player→NPC standing tier of
+// "hostile". Reads committed state only — never mutates (no ensureRelationship).
+export function giftIsContested(run, npc) {
+  if (!isPlainObject(npc)) return false;
+  const tags = Array.isArray(npc.tags) ? npc.tags.map((t) => String(t).toLowerCase()) : [];
+  if (tags.includes("hostile")) return true;
+  const rel = Object.values(run?.relationships || {}).find(
+    (r) => isPlainObject(r) && r.sourceEntityId === "player" && r.targetEntityId === npc.npcId
+  );
+  return rel?.tier === "hostile";
+}
+
 export function resolveAttemptAction(run, action, options = {}) {
   const validation = validateAttemptAction(run, action);
   if (!validation.ok) {
@@ -1838,9 +1892,17 @@ export function resolveAttemptAction(run, action, options = {}) {
     return buildUnpossessedAttempt(updatedRun, safeAction, context, claimedItem, options);
   }
 
+  // GIFT INTENT (romance-live wiring): resolve a "give <item> to <npc>" against
+  // committed inventory + a present NPC BEFORE the roll gate. NO-STAKES-NO-ROLL:
+  // giving to a non-hostile NPC is a safe social action (automatic tier — a
+  // provider-proposed check is overridden, same law as safe conversation); only a
+  // contested case (hostile target) routes through the normal gate.
+  const giftIntent = resolveGiftIntent(updatedRun, context);
+  const giftIsSafe = Boolean(giftIntent) && !giftIsContested(updatedRun, giftIntent.npc);
+
   // Roll gate (FIX H): only genuinely uncertain/contested actions roll a d20.
   // Pure movement/travel/observation resolves narratively — no dice, no "vs DC".
-  const needsCheck = attemptNeedsCheck(context.intent, providerOutput);
+  const needsCheck = giftIsSafe ? false : attemptNeedsCheck(context.intent, providerOutput);
 
   const now = isoFromOption(options.now ?? safeAction.createdAt);
   let checkResult = null;
@@ -1993,6 +2055,15 @@ export function resolveAttemptAction(run, action, options = {}) {
     ? commitSocialDisposition(updatedRun, { intent: context.intent, targetId: context.targetId, band, success }, options)
     : null;
 
+  // GIFT COMMIT (romance-live wiring): a grounded gift on a SUCCESSFUL turn
+  // (automatic / success / at-a-cost) transfers the item and prices it through
+  // commitGift's preference weighting — one committed transaction (the item leaves
+  // inventory inside commitGift, never here). A FAILED contested gift commits
+  // nothing: no transfer, no dupe, no item loss.
+  const giftChange = giftIntent && success === true
+    ? commitGift(updatedRun, { npcId: giftIntent.npc.npcId, itemId: giftIntent.item.itemId }, options)
+    : null;
+
   // WORLD CLOCK (#14). Commit the in-fiction time this action cost. The GM proposes
   // durationMinutes (its narrative discretion); the server sanity-bounds it and
   // advances world.time, re-deriving day / time-of-day / phase. When the GM omitted
@@ -2068,7 +2139,11 @@ export function resolveAttemptAction(run, action, options = {}) {
     // SOCIAL DISPOSITION (B2): the committed meter change against a present NPC on a
     // social attempt ({ targetNpcId, targetName, meter, delta, before, after }), or
     // null. The narrator acknowledges the shift; nothing downstream re-decides it.
-    dispositionChange: dispositionChange || null
+    dispositionChange: dispositionChange || null,
+    // GIFT (romance-live wiring): the committed preference-priced transfer
+    // ({ targetNpcId, targetName, itemId, itemName, delta, romanceTierBefore,
+    // romanceTier, … }), or null. Same contract: server commits, narrator reads.
+    giftChange: giftChange || null
   };
 
   const memoryEffect = (providerOutput.proposedEffects || []).find((effect) => effect.type === "memory_fact" && isString(effect.text));

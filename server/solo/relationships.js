@@ -176,6 +176,9 @@ export function commitSocialDisposition(run, { intent, targetId, band, success }
   // violence tag, so a violence-averse target's affinity can drop even on a compliant
   // win. recompute romanceTier off the (now-moved) affection meter.
   const bandKey = b.includes("cost") ? "cost" : b.includes("fail") ? "failure" : "success";
+  // Captured BEFORE the affinity apply so the client can detect a tier CROSSING
+  // (romanceTierBefore !== romanceTier) and cue it distinctly (vn tier-cue).
+  const romanceTierBefore = rel.romanceTier ?? null;
   const affinityChange = applyAffinityToRelationship(rel, npc, SOCIAL_AFFINITY_BASE[bandKey], socialTags(meter));
   return {
     targetNpcId: npc.npcId,
@@ -189,6 +192,7 @@ export function commitSocialDisposition(run, { intent, targetId, band, success }
     affinity: rel.affinity,
     affinityDelta: affinityChange?.delta ?? 0,
     tier: rel.tier,
+    romanceTierBefore,
     romanceTier: rel.romanceTier
   };
 }
@@ -208,6 +212,7 @@ export function commitGift(run, { npcId, itemId } = {}, options = {}) {
   const tags = Array.isArray(item.tags) ? item.tags : [];
   const rel = ensureRelationship(run, npcId, options);
   const GIFT_BASE = 2;
+  const romanceTierBefore = rel.romanceTier ?? null;
   const change = applyAffinityToRelationship(rel, npc, GIFT_BASE, tags);
   // Transfer: one unit leaves the player's pack (the gift is really given).
   if (Number.isFinite(item.quantity) && item.quantity > 1) item.quantity -= 1;
@@ -224,6 +229,7 @@ export function commitGift(run, { npcId, itemId } = {}, options = {}) {
     before: change.before,
     after: change.after,
     tier: change.tier,
+    romanceTierBefore,
     romanceTier: change.romanceTier
   };
 }

@@ -2275,6 +2275,11 @@ const DISPOSITION_CUE_PHRASES = Object.freeze({
   loyalty: ["seems firmer at your side", "seems less bound to you"],
   rivalry: ["seems to bristle at you", "seems less set against you"]
 });
+// Display order of the server's ROMANCE_TIERS (reputation.js) — used ONLY to pick
+// the promotion-vs-demotion phrasing direction; the tier VALUES themselves are
+// server truth carried on the commit payload, never recomputed here.
+const ROMANCE_TIER_ORDER = ["stranger", "friendly", "close", "courting", "partner"];
+
 export function dispositionCueText(change) {
   if (!change || typeof change !== "object") {
     return "";
@@ -2282,6 +2287,18 @@ export function dispositionCueText(change) {
   const name = typeof change.targetName === "string" && change.targetName.trim() ? change.targetName.trim() : "";
   if (!name) {
     return "";
+  }
+  // ROMANCE TIER CROSSING (vn tier-cue): when this turn's commit moved the
+  // committed romanceTier across a threshold, the crossing cue SUPERSEDES the
+  // generic warmth line for the turn. Generic two-line vocabulary (SFW,
+  // neutral-warm) — per-tier phrasing is spec-pending, owner rules later.
+  const tierBefore = typeof change.romanceTierBefore === "string" ? change.romanceTierBefore : null;
+  const tierAfter = typeof change.romanceTier === "string" ? change.romanceTier : null;
+  if (tierBefore && tierAfter && tierBefore !== tierAfter) {
+    const up = ROMANCE_TIER_ORDER.indexOf(tierAfter) > ROMANCE_TIER_ORDER.indexOf(tierBefore);
+    return up
+      ? `Something has shifted between you and ${name}.`
+      : `Something has cooled between you and ${name}.`;
   }
   const meter = typeof change.meter === "string" ? change.meter : "";
   const delta = Number(change.delta) || 0;
@@ -4105,7 +4122,9 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       // disposition delta this turn returned (never narrator text). Turn-scoped:
       // replaced (or nulled) on every submit, cleared by the dialogue handlers.
       {
-        const dc = state.attemptResult?.dispositionChange || null;
+        // A committed GIFT rides the same cue surface (its payload carries the
+        // same targetName/romanceTier fields); disposition wins when both exist.
+        const dc = state.attemptResult?.dispositionChange || state.attemptResult?.giftChange || null;
         const cueText = dc ? dispositionCueText(dc) : "";
         state.dispositionCue = cueText ? { npcId: dc.targetNpcId, text: cueText } : null;
       }
