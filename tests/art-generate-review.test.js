@@ -101,11 +101,13 @@ test("planFor resolves all four waiter lanes to a recipe + dims (dry-run routing
       assert.ok(Array.isArray(p.dims) && p.dims.length === 2, `${kind}/${style} has [w,h] dims`);
     }
   }
-  // lane-specific aspects: fullbody tall, scene wide, item square, portrait square-ish
+  // lane-specific aspects (owner-validated): portrait tall 896x1152, fullbody tall,
+  // scene wide, item square. Portrait resolves the committed portrait-anime.json
+  // export (KIND_DIMENSIONS spec), not the legacy anime.json 1024² fallback.
   assert.deepEqual(planFor("anime", "fullbody").dims, [832, 1216]);
   assert.deepEqual(planFor("anime", "scene").dims, [1344, 768]);
   assert.deepEqual(planFor("anime", "item").dims, [1024, 1024]);
-  assert.deepEqual(planFor("anime", "portrait").dims, [1024, 1024]);
+  assert.deepEqual(planFor("anime", "portrait").dims, [896, 1152]);
 });
 
 test("loadRecipe passes a recipe.identity block through untouched (tailor socket)", () => {
