@@ -138,8 +138,16 @@ generated prose. (Auditor check queued as code work.)
 
 ---
 
+## ADS LAW (ratified 2026-07-16)
+
+Ad-free at launch is a marketing pillar ("play now while the game is ad-free").
+Ads activate at a PUBLIC roadmap milestone of 20,000 players. When active:
+rewarded-video ONLY (interstitials/banners banned forever); reward = Ink drip;
+free tier only; Mainline only (never Forbidden: ad-network content walls);
+paying subscribers never see ads.
+
+---
+
 ## OPEN AGENDA (recorded, unruled)
 
-- ADS: rewarded-video sentiment data noted; forced interstitials rejected by
-  market data.
 - Art-style-switch price: Law 2 PENDING, deliberate.
