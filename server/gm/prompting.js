@@ -10,7 +10,7 @@ import { getPlayerContext, updatePlayerProfile } from "./playerMemory.js";
 import { getProfile } from "./promptProfiles.js";
 import { buildStylePromptBlock, getStyleConfig } from "./styleConfig.js";
 import { executeTriggers as executeParsedTriggers, parseTriggers as parseResponseTriggers } from "./triggerParser.js";
-import { INKBORNE_GM_VOICE } from "./voice.js";
+import { INKBORNE_GM_VOICE, detectEmDashViolations, stripAiTells } from "./voice.js";
 
 const CONTEXT_BUDGET = Number(process.env.NOTDND_CONTEXT_BUDGET || 1500);
 
@@ -474,7 +474,22 @@ export async function runGmPipeline({
   // Runs on the handles-RETRY generation too (it re-enters this pipeline), and the
   // retry itself is bounded to one by enforceHandles — so trim -> detectHandles ->
   // (retry -> trim) can never loop beyond that single retry.
-  const rawNarrative = trimToCompleteSentence(String(aiResult.content || "").trim(), aiResult.finishReason);
+  const trimmedNarrative = trimToCompleteSentence(String(aiResult.content || "").trim(), aiResult.finishReason);
+  // EM-DASH BAN (narration law, romance-legacy-law.md): this is THE chokepoint —
+  // narration, opening, talk, ooc, and the handles-retry all flow through here —
+  // so detection + substitution at this line makes the ban universal. The auditor
+  // half FLAGS what the model produced (a drifting model stays visible); the
+  // stripAiTells half is the enforcement backstop (a comma replaces the clause
+  // break) so a banned dash can never reach any downstream surface.
+  const emDashViolations = detectEmDashViolations(trimmedNarrative);
+  if (emDashViolations.length > 0) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[em-dash] BAN violation: ${emDashViolations.length} banned dash(es) in generated ${transcript.callType || "narration"} ` +
+        `(run ${transcript.runId || campaignKey}), stripped. First: "${emDashViolations[0].context}"`
+    );
+  }
+  const rawNarrative = emDashViolations.length > 0 ? stripAiTells(trimmedNarrative) : trimmedNarrative;
 
   // GM-TRANSCRIPT CAPTURE (single chokepoint — narration, opening, talk, ooc all
   // flow through here, and the handles-RETRY re-enters this pipeline as its own

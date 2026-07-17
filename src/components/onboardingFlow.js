@@ -102,7 +102,7 @@ function renderWorldStep(state) {
       <header class="onboarding-header">
         <div class="tag">${authored ? "A World Awaits" : "World Builder"}</div>
         <h2>${authored ? "Choose Your World" : "Define Your World"}</h2>
-        <p class="onb-disclaimer">${authored ? "This world is ready to play — everything is set up for you. Just make your character and step in." : "Fields you leave blank will be imagined by the AI."}</p>
+        <p class="onb-disclaimer">${authored ? "This world is ready to play. Everything is set up for you. Just make your character and step in." : "Fields you leave blank will be imagined by the AI."}</p>
       </header>
 
       <div class="onb-field onb-featured-world">
@@ -138,8 +138,8 @@ function renderWorldStep(state) {
       <div class="onb-field">
         <label>How do you want to play?</label>
         <div class="onb-chips">
-          ${renderChip("Open sandbox — a pure open world; your goals are your own", (def.startMode || "sandbox") === "sandbox", `data-world-mode="sandbox"`)}
-          ${renderChip("Guided adventure — a main quest, work to take on, and a destination", def.startMode === "guided", `data-world-mode="guided"`)}
+          ${renderChip("Open sandbox: a pure open world; your goals are your own", (def.startMode || "sandbox") === "sandbox", `data-world-mode="sandbox"`)}
+          ${renderChip("Guided adventure: a main quest, work to take on, and a destination", def.startMode === "guided", `data-world-mode="guided"`)}
         </div>
       </div>
 
@@ -179,7 +179,7 @@ const AUTHORED_ORIGIN_INFO = {
     name: "The Beckoned",
     feat: "The STATUS WINDOW",
     stats: "STR · DEX · VIT · SPIRIT · INT · LUCK",
-    blurb: "You wake on the fringe of the Green Static, granted a WINDOW that does not lie. In this world capability comes from your origin and what you earn in play — there are no classes, no armor class, and no ability point-buy. Your rank begins UNASSESSED and rises as you gain skills."
+    blurb: "You wake on the fringe of the Green Static, granted a WINDOW that does not lie. In this world capability comes from your origin and what you earn in play. There are no classes, no armor class, and no ability point-buy. Your rank begins UNASSESSED and rises as you gain skills."
   }
 };
 
@@ -195,7 +195,7 @@ function renderAuthoredOrigin(c, scenarioId) {
         <div class="cw-card-meta">Origin feat: ${esc(o.feat)} · ${esc(o.stats)}</div>
         <div class="cw-card-sub">${esc(o.blurb)}</div>
       </div>
-      <p class="onb-disclaimer">This is the world's reserved origin for you — nothing to choose here. Continue to review and enter.</p>
+      <p class="onb-disclaimer">This is the world's reserved origin for you, nothing to choose here. Continue to review and enter.</p>
     </div>`;
 }
 
@@ -325,7 +325,7 @@ function renderPortraitEditor(portrait = {}) {
   const inputRow = `
     <div class="onb-portrait-edit-row">
       <input type="text" class="onb-portrait-edit-input" data-cw-portrait-edit-input
-        placeholder="Describe a change — “longer hair”, “a scar over the left eye”…"
+        placeholder="Describe a change: “longer hair”, “a scar over the left eye”…"
         value="${esc(draft)}" ${disabled} aria-label="Describe a change to the portrait" />
       <button type="button" class="onb-portrait-edit-send" data-cw-portrait-edit-send ${disabled}>${pending ? "Applying…" : "Apply"}</button>
     </div>`;
@@ -338,7 +338,7 @@ function renderPortraitEditor(portrait = {}) {
         <span>Upgrade for unlimited portrait refinement.</span>
       </div>`;
   } else if (portrait.editError === "failed") {
-    foot = `<div class="onb-portrait-edit-error" role="status">That edit didn't complete — try rephrasing.</div>`;
+    foot = `<div class="onb-portrait-edit-error" role="status">That edit didn't complete. Try rephrasing.</div>`;
   } else if (portrait.consistentEdit === false && versions.length > 1) {
     // Honest about the degraded path when no funded edit key is configured.
     foot = `<div class="onb-portrait-edit-hint">Edits regenerate the portrait with your change folded in.</div>`;
@@ -367,10 +367,10 @@ export function validatePortraitUpload(file) {
   }
   const type = String(file.type || "").toLowerCase();
   if (!PORTRAIT_UPLOAD_TYPES.has(type)) {
-    return { ok: false, error: "That file type isn't supported — use a PNG, JPG, or WEBP image." };
+    return { ok: false, error: "That file type isn't supported. Use a PNG, JPG, or WEBP image." };
   }
   if (Number(file.size) > PORTRAIT_UPLOAD_MAX_BYTES) {
-    return { ok: false, error: "That image is over the 5MB limit — pick a smaller file." };
+    return { ok: false, error: "That image is over the 5MB limit. Pick a smaller file." };
   }
   return { ok: true };
 }
@@ -398,7 +398,7 @@ function renderCharIdentity(c, portrait = {}) {
                  </label>
                  ${uploadError ? `<small class="onb-upload-error" role="alert">${esc(uploadError)}</small>` : ""}
                  <small class="onb-hint">Your uploaded image will be your portrait.</small>`
-              : `<small class="onb-hint">Your portrait is crafted from your race and class — it appears here as you choose them.</small>`
+              : `<small class="onb-hint">Your portrait is crafted from your race and class. It appears here as you choose them.</small>`
           }
         </div>
       </div>
@@ -434,7 +434,7 @@ function backgroundCard(bg, active, isCustom) {
   return `<button type="button" class="cw-card ${active ? "active" : ""}${isCustom ? " cw-card--homebrew" : ""}" data-cw-background="${esc(bg.name)}">
       <div class="cw-card-title">${esc(bg.name)}${isCustom ? ` ${HOMEBREW_TAG}` : ""}</div>
       <div class="cw-card-meta">Skills: ${esc((bg.skillProficiencies || []).join(", "))}</div>
-      <div class="cw-card-sub"><strong>${esc(bg.feature?.name || "")}</strong>${bg.feature?.description ? ` — ${esc(bg.feature.description)}` : ""}</div>
+      <div class="cw-card-sub"><strong>${esc(bg.feature?.name || "")}</strong>${bg.feature?.description ? `: ${esc(bg.feature.description)}` : ""}</div>
     </button>`;
 }
 
@@ -487,7 +487,7 @@ function renderCharAbilities(c, customContent = {}) {
     const poolNote = pool.length ? `<div class="cw-pool">Values: ${pool.join(", ")}</div>` : `<div class="cw-pool">Click Roll to generate your scores.</div>`;
     editor = `${rollBtn}${poolNote}` + ABILITIES.map((a) => {
       const cur = scores[a];
-      const opts = [`<option value="">—</option>`, ...pool.map((v) => `<option value="${v}" ${cur === v ? "selected" : ""}>${v}</option>`)].join("");
+      const opts = [`<option value="">·</option>`, ...pool.map((v) => `<option value="${v}" ${cur === v ? "selected" : ""}>${v}</option>`)].join("");
       return `<div class="cw-ability-row"><span class="cw-ab">${ABILITY_LABELS[a]}</span>
         <select data-cw-assign="${a}" ${pool.length ? "" : "disabled"}>${opts}</select>
         <span class="cw-mod">${cur != null ? formatModifier(abilityModifier(cur)) : ""}</span></div>`;
@@ -535,7 +535,7 @@ function renderCharReview(c, portrait = {}, customContent = {}) {
       <div class="cw-review-portrait">
         ${renderPortraitPreview(portrait, { charName: c.name, variant: "review" })}
         <div class="cw-review-name">${esc(sheet.name || "Unnamed")}</div>
-        <div class="cw-review-sub">${esc([sheet.race, sheet.class, sheet.background].filter(Boolean).join(" · ") || "—")} · Level ${sheet.level}</div>
+        <div class="cw-review-sub">${esc([sheet.race, sheet.class, sheet.background].filter(Boolean).join(" · ") || "·")} · Level ${sheet.level}</div>
         ${renderPortraitEditor(portrait)}
       </div>
       <div class="cw-ability-grid">${abilityCells}</div>
@@ -545,9 +545,9 @@ function renderCharReview(c, portrait = {}, customContent = {}) {
       </div>
       <div class="cw-review-block"><div class="onb-kicker">Saving Throws</div><div class="cw-review-row">${saves}</div></div>
       <div class="cw-review-block"><div class="onb-kicker">Skill Proficiencies</div><div class="cw-review-row">${skills}</div></div>
-      <div class="cw-review-block"><div class="onb-kicker">Class Features</div><div class="cw-review-row">${(sheet.classFeatures || []).map((f) => `<span>${esc(f)}</span>`).join("") || "<span class='small'>—</span>"}</div></div>
-      <div class="cw-review-block"><div class="onb-kicker">Racial Traits</div><div class="cw-review-row">${(sheet.racialTraits || []).map((t) => `<span>${esc(t)}</span>`).join("") || "<span class='small'>—</span>"}</div></div>
-      <div class="cw-review-block"><div class="onb-kicker">Starting Equipment</div><div class="cw-review-row">${(sheet.startingEquipment || []).map((e) => `<span>${esc(e)}</span>`).join("") || "<span class='small'>—</span>"}</div></div>
+      <div class="cw-review-block"><div class="onb-kicker">Class Features</div><div class="cw-review-row">${(sheet.classFeatures || []).map((f) => `<span>${esc(f)}</span>`).join("") || "<span class='small'>·</span>"}</div></div>
+      <div class="cw-review-block"><div class="onb-kicker">Racial Traits</div><div class="cw-review-row">${(sheet.racialTraits || []).map((t) => `<span>${esc(t)}</span>`).join("") || "<span class='small'>·</span>"}</div></div>
+      <div class="cw-review-block"><div class="onb-kicker">Starting Equipment</div><div class="cw-review-row">${(sheet.startingEquipment || []).map((e) => `<span>${esc(e)}</span>`).join("") || "<span class='small'>·</span>"}</div></div>
     </div>`;
 }
 
@@ -668,7 +668,7 @@ function renderWorldPreviewStep(state) {
       </div>
 
       <div class="onb-actions">
-        <button class="onb-primary" data-action="confirm-world" ${loading ? "disabled" : ""}>Looks good — Create my character</button>
+        <button class="onb-primary" data-action="confirm-world" ${loading ? "disabled" : ""}>Looks good, create my character</button>
         <button class="ghost" data-action="regenerate-world" ${loading ? "disabled" : ""}>Regenerate blanks</button>
       </div>
       ${state.error ? `<div class="onboarding-error">${esc(state.error)}</div>` : ""}

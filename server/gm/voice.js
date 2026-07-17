@@ -38,3 +38,28 @@ export function stripAiTells(text) {
     .replace(/[ \t]{2,}/g, " ")
     .trim();
 }
+
+// EM-DASH BAN AUDITOR (narration law, ratified 2026-07-16 — docs/design/
+// romance-legacy-law.md "NARRATION LAW — EM-DASH BAN"). The detector half of the
+// stripAiTells pair: it FLAGS every banned dash (em —, en –, or double-hyphen
+// standing in for one) in generated prose so a drifting model is visible in the
+// logs, while stripAiTells remains the substitution backstop. Pure; returns one
+// finding per occurrence with a short context window for the log line.
+const BANNED_DASH_RE = /—|–|--/g;
+export function detectEmDashViolations(text) {
+  const source = typeof text === "string" ? text : "";
+  if (!source) {
+    return [];
+  }
+  const out = [];
+  let m;
+  BANNED_DASH_RE.lastIndex = 0;
+  while ((m = BANNED_DASH_RE.exec(source)) !== null) {
+    out.push({
+      dash: m[0],
+      index: m.index,
+      context: source.slice(Math.max(0, m.index - 30), m.index + m[0].length + 30).replace(/\s+/g, " ").trim()
+    });
+  }
+  return out;
+}

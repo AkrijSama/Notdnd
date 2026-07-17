@@ -444,7 +444,7 @@ export function renderSoloUpgradePrompt(scene = {}) {
     ? "You've reached your free daily session limit — upgrade to Adventurer for unlimited play."
     : remaining <= 0
       ? "You've used your free images today — upgrade to Adventurer for unlimited portraits and scenes."
-      : `Only ${remaining} free image${remaining === 1 ? "" : "s"} left today — upgrade to Adventurer for unlimited portraits and scenes.`;
+      : `Only ${remaining} free image${remaining === 1 ? "" : "s"} left today. Upgrade to Adventurer for unlimited portraits and scenes.`;
   return `
     <aside class="solo-upgrade-prompt" role="note" aria-label="Upgrade prompt" data-solo-upgrade-prompt>
       <span class="solo-upgrade-prompt-msg">${escapeHtml(message)}</span>
@@ -1326,9 +1326,9 @@ function formatMod(mod) {
 // lowercase names the server emits in player.skills.
 const SKILL_INFO = {
   acrobatics: { ability: "DEX", desc: "Stay on your feet: balancing, tumbling, flips, and slipping free of a grapple." },
-  "animal handling": { ability: "WIS", desc: "Calm, read, or direct animals — soothe a spooked mount, sense a beast's intent." },
+  "animal handling": { ability: "WIS", desc: "Calm, read, or direct animals: soothe a spooked mount, sense a beast's intent." },
   arcana: { ability: "INT", desc: "Recall lore about spells, magic items, planes, and magical phenomena." },
-  athletics: { ability: "STR", desc: "Climb, jump, swim, grapple — raw physical effort under pressure." },
+  athletics: { ability: "STR", desc: "Climb, jump, swim, grapple: raw physical effort under pressure." },
   deception: { ability: "CHA", desc: "Convince someone of a falsehood: lies, disguises, misdirection, bluffs." },
   history: { ability: "INT", desc: "Recall lore about past events, people, kingdoms, wars, and old customs." },
   insight: { ability: "WIS", desc: "Read intentions: detect lies, predict a move, sense what someone really wants." },
@@ -1444,7 +1444,7 @@ export function characterFromScenePlayer(player, world = null) {
     region: "Ashenmoor",
     saves,
     skills,
-    proficiencies: "—",
+    proficiencies: "·",
     portraitUri: typeof player.portraitUri === "string" ? player.portraitUri : ""
   };
 }
@@ -1528,7 +1528,7 @@ export function renderBabelStatusWindow(character = SOLO_SAMPLE_CHARACTER) {
           const qty = Number(item?.qty ?? item?.quantity);
           const qtyTag = Number.isFinite(qty) && qty > 1 ? `<span class="solo-inv-qty">×${qty}</span>` : "";
           const itemId = typeof item?.id === "string" && item.id ? item.id : (typeof item?.itemId === "string" ? item.itemId : "");
-          const description = typeof item?.description === "string" && item.description ? item.description : "No further detail — examine it in play.";
+          const description = typeof item?.description === "string" && item.description ? item.description : "No further detail. Examine it in play.";
           const usable = item?.usable === true;
           return `<li class="solo-inv-item">
             <details class="solo-inv-detail">
@@ -1562,7 +1562,7 @@ export function renderBabelStatusWindow(character = SOLO_SAMPLE_CHARACTER) {
     ? `<ul class="solo-skill-list">${skillDetails
         .map((skill) => {
           const name = typeof skill?.name === "string" && skill.name ? skill.name : "Unnamed skill";
-          const rank = typeof skill?.rank === "string" && skill.rank ? skill.rank : "—";
+          const rank = typeof skill?.rank === "string" && skill.rank ? skill.rank : "·";
           const facts = [
             skill?.stat ? `Keyed to ${String(skill.stat).toUpperCase()}` : "",
             typeof skill?.acquiredAtMilestone === "number" ? `Awakened at milestone ${skill.acquiredAtMilestone}` : "",
@@ -1580,7 +1580,7 @@ export function renderBabelStatusWindow(character = SOLO_SAMPLE_CHARACTER) {
           </li>`;
         })
         .join("")}</ul>`
-    : `<div class="solo-skill-empty">none — skills are earned in play, and they define your RANK.</div>`;
+    : `<div class="solo-skill-empty">none yet. Skills are earned in play, and they define your RANK.</div>`;
   return `
     <aside class="solo-game-sidebar solo-babel-window" data-window="babel">
       <div class="solo-portrait" data-portrait-for="player" data-portrait-img-class="solo-portrait-img">${character.portraitUri ? `<img class="solo-portrait-img" src="${escapeHtml(character.portraitUri)}" alt="${escapeHtml(character.name || "Character")} portrait" />` : `<div class="solo-portrait-pending"><span class="solo-portrait-spinner" aria-hidden="true"></span><small>Crafting your portrait… (~20s)</small></div>`}</div>
@@ -1656,7 +1656,7 @@ export function renderSoloCharacterSidebar(character = SOLO_SAMPLE_CHARACTER) {
           const qty = Number(item?.qty ?? item?.quantity);
           const qtyTag = Number.isFinite(qty) && qty > 1 ? `<span class="solo-inv-qty">×${qty}</span>` : "";
           const itemId = typeof item?.id === "string" && item.id ? item.id : (typeof item?.itemId === "string" ? item.itemId : "");
-          const description = typeof item?.description === "string" && item.description ? item.description : "No further detail — examine it in play.";
+          const description = typeof item?.description === "string" && item.description ? item.description : "No further detail. Examine it in play.";
           const usable = item?.usable === true;
           return `<li class="solo-inv-item">
             <details class="solo-inv-detail">
@@ -1699,7 +1699,7 @@ export function renderSoloCharacterSidebar(character = SOLO_SAMPLE_CHARACTER) {
         </div>
         <div class="solo-gauge-track"><div class="solo-gauge-fill solo-hp-fill" style="width:${hpPct}%;"></div></div>
         <div class="solo-gauge-row solo-mp-row${hasMana ? "" : " is-muted"}">
-          <span class="solo-stat-kicker">${hasMana ? "Mana" : "Mana — none"}</span>
+          <span class="solo-stat-kicker">${hasMana ? "Mana" : "Mana: none"}</span>
           <span class="solo-hp-value">${escapeHtml(mp.current)} <span>/ ${escapeHtml(mp.max)}</span></span>
         </div>
         <div class="solo-gauge-track"><div class="solo-gauge-fill solo-mp-fill" style="width:${mpPct}%;"></div></div>
@@ -2130,7 +2130,7 @@ export function renderSoloClock(scene = {}) {
   }
   const phase = typeof wt.phase === "string" && CLOCK_PHASE_META[wt.phase] ? wt.phase : "day";
   const meta = CLOCK_PHASE_META[phase];
-  const clock = typeof wt.clock === "string" && wt.clock ? wt.clock : "—";
+  const clock = typeof wt.clock === "string" && wt.clock ? wt.clock : "·";
   const day = Number.isFinite(wt.day) ? wt.day : null;
   const dayPart = day ? ` · Day ${escapeHtml(day)}` : "";
   const aria = `Time ${clock}, ${meta.label}${day ? `, day ${day}` : ""}`;
@@ -2166,7 +2166,7 @@ export function renderSoloRightRail(state = {}) {
     ? roster
         .map((member) => {
           const name = member.displayName || "Unknown";
-          const role = member.role || "—";
+          const role = member.role || "·";
           const entityId = member.entityId || (member.npcId ? `npc:${member.npcId}` : "");
           const portraitUri = typeof member.portraitUri === "string" ? member.portraitUri : "";
           const initial = String(name).trim().slice(0, 1).toUpperCase() || "?";
@@ -2211,8 +2211,8 @@ export function renderSoloRightRail(state = {}) {
           const cr = entry.checkResult || {};
           const intent = String(entry.intent || "Check");
           const label = intent.length > 26 ? `${intent.slice(0, 26)}…` : intent;
-          const total = cr.total ?? "—";
-          const dc = cr.dc ?? "—";
+          const total = cr.total ?? "·";
+          const dc = cr.dc ?? "·";
           const cls = cr.success ? "good" : "accent";
           return `<div class="solo-roll"><div><div class="solo-roll-name">${escapeHtml(label)}</div><div class="solo-roll-detail">vs DC ${escapeHtml(dc)}</div></div><span class="solo-roll-total ${cls}" data-textfit>${escapeHtml(total)}</span></div>`;
         })
@@ -2413,7 +2413,7 @@ export function renderSoloDialogueOverlay(state = {}) {
           type="text"
           class="solo-vn-box-reply-input"
           data-solo-dialogue-reply-input
-          placeholder="Say something — or describe what you do…"
+          placeholder="Say something, or describe what you do…"
           value="${escapeHtml(replyDraft)}"
         />
         <button type="button" class="solo-vn-box-reply-submit" data-solo-dialogue-reply-submit ${busy ? "disabled" : ""}>${busy ? "…" : "Reply ›"}</button>
@@ -2493,7 +2493,7 @@ export function renderNpcCreatorModal(state = {}) {
 
         <div class="solo-npc-field">
           <label class="solo-npc-label">Who they are</label>
-          <input type="text" class="solo-npc-input" data-solo-npc-name placeholder="Name (optional — the GM can name them)" value="${escapeHtml(creator.name || "")}" />
+          <input type="text" class="solo-npc-input" data-solo-npc-name placeholder="Name (optional, the GM can name them)" value="${escapeHtml(creator.name || "")}" />
           <input type="text" class="solo-npc-input" data-solo-npc-desc placeholder="a scarred mercenary with a secret" value="${escapeHtml(creator.description || "")}" />
         </div>
 
@@ -2517,7 +2517,7 @@ export function renderNpcCreatorModal(state = {}) {
 // Formats a run duration (ms) as a compact "Xh Ym" / "Xm Ys" / "Xs" string.
 export function formatRunDuration(ms) {
   if (!Number.isFinite(ms) || ms < 0) {
-    return "—";
+    return "·";
   }
   const totalSeconds = Math.floor(ms / 1000);
   const h = Math.floor(totalSeconds / 3600);
@@ -2651,7 +2651,7 @@ export function renderSoloSceneShell(state = {}) {
       ${
         state.isGuest
           ? `<div class="solo-guest-banner">
-              <span>Playing as guest — your progress lives in this browser until you save it.</span>
+              <span>Playing as guest. Your progress lives in this browser until you save it.</span>
               <button type="button" class="solo-guest-banner-save" data-solo-guest-save>Save your adventure</button>
             </div>`
           : ""
@@ -3837,7 +3837,7 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       return;
     }
     state.banner =
-      "Your world is being illustrated. Portraits and scenes appear as they're ready — usually within 30 seconds.";
+      "Your world is being illustrated. Portraits and scenes appear as they're ready, usually within 30 seconds.";
     state.bannerKind = "info";
     try {
       ss.setItem(IMAGE_WAIT_BANNER_KEY, "true");
@@ -3907,7 +3907,7 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
         // reconcile failed too — keep the hard error below
       }
       state.banner = resynced
-        ? "That turn took a while — caught up to the latest."
+        ? "That turn took a while. Caught up to the latest."
         : String(error?.message || error || "Something went wrong. Try again.");
       state.bannerKind = resynced ? "info" : "error";
     } finally {
@@ -4078,7 +4078,7 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
   // note. NOT a story beat — no YOU header, no roll, no turn cost. A failed/empty
   // reply shows an explicit retry prompt: silence is never an acceptable outcome.
   function appendOocNote({ reply } = {}) {
-    const body = String(reply || "").trim() || "The GM couldn't answer that — try again.";
+    const body = String(reply || "").trim() || "The GM couldn't answer that. Try again.";
     state.narrationLog.push({ id: `ooc${state.narrationLog.length + 1}`, kind: "ooc", text: body });
     if (state.narrationLog.length > 200) {
       state.narrationLog.splice(0, state.narrationLog.length - 200);

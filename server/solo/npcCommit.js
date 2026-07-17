@@ -536,13 +536,29 @@ export function commitNarratedLoreFact(run, name, options = {}) {
 const AGENT_NOUNS = [
   "creature", "scavenger", "drone", "guard", "soldier", "sentry", "warden", "watcher",
   "merchant", "thief", "hunter", "raider", "bandit", "assailant", "attacker", "rider",
-  "beast", "wolf", "hound", "robot", "android", "automaton", "enemy", "foe", "figure", "stranger"
+  "beast", "wolf", "hound", "robot", "android", "automaton", "enemy", "foe", "figure", "stranger",
+  // v2 (harness-parity): an ANSWERING VOICE with no committed speaker is an
+  // invented agent (the ARC-7 class: "a static-laden voice sputters from the
+  // wall"). "voice" also sits in the paraphrase set, so with cast present it is
+  // vouched as an existing speaker and never committed.
+  "voice"
 ];
 const AGENT_PARAPHRASE_NOUNS = new Set(["figure", "stranger", "voice", "someone", "somebody"]);
+// v2 (phantom-agent upgrade): the v1 verb list carried social/movement agency
+// only, so an agent whose agency was expressed through COMBAT/DESTRUCTION
+// OUTCOMES slipped the net — the documented maintenance-drone case ("your blade
+// shatters a rusted maintenance drone's chassis. The dying drone clatters to
+// the floor") never committed live even though the offline harness flagged it.
+// The second alternation is the harness's combat/outcome verb set, closing the
+// live/offline divergence. Ambience stays safe: the noun allowlist still gates
+// every flag ("the fire crackles" / "a cold wind screams" name no agent noun).
 const AGENT_AGENCY_VERB_RE = new RegExp(
   "\\b(?:answers?|answered|replies|replied|responds?|responded|speaks?|spoke|says?|said|whispers?|calls?|called|shouts?|mutters?|growls?|hisses|" +
     "steps?|stepped|moves?|moved|emerges?|emerged|appears?|appeared|approaches|approached|arrives?|arrived|lunges?|lunged|attacks?|attacked|strikes?|struck|" +
-    "watches|watched|turns?|turned|hovers?|slides?|crawls?|leaps?|circles?|stalks?|follows?|followed|blocks?|blocked|grabs?|grabbed|reaches|beckons?|nods?|stares?|demands?|demanded)\\b",
+    "watches|watched|turns?|turned|hovers?|slides?|crawls?|leaps?|circles?|stalks?|follows?|followed|blocks?|blocked|grabs?|grabbed|reaches|beckons?|nods?|stares?|demands?|demanded|" +
+    "shatters?|shattered|clatters?|clattered|crashes?|crashed|collapses?|collapsed|snarls?|snarled|roars?|roared|bites?|bit|claws?|clawed|" +
+    "fires?|fired|shoots?|shot|swings?|swung|charges?|charged|flees?|fled|screams?|screamed|dives?|dove|slams?|slammed|drags?|dragged|" +
+    "hurls?|hurled|pounces?|pounced|springs?|sprang|bursts?|sputters?|crackles?|dies|dying)\\b",
   "i"
 );
 
@@ -560,8 +576,13 @@ export function detectInventedAgents(text, { knownAgentTokens = new Set(), hasCa
   const found = new Map();
   const sentences = source.split(/(?<=[.!?])\s+/).filter((s) => s.trim().length > 0);
   for (const sentence of sentences) {
-    // Never treat the player's own body/voice as an agent.
-    const lower = sentence.toLowerCase().replace(/\b(?:your|my)\s+(?:own\s+)?\w+/g, " ");
+    // Never treat the player's own body/voice as an agent, and never scan inside
+    // bracketed system/state tags ("[UPDATE_ENTITY …]", "[GM VOICE]") — leaked
+    // markup is the state-tag auditor's beat, not an acting entity (v2 guard).
+    const lower = sentence
+      .toLowerCase()
+      .replace(/\[[^\]]*\]/g, " ")
+      .replace(/\b(?:your|my)\s+(?:own\s+)?\w+/g, " ");
     if (!AGENT_AGENCY_VERB_RE.test(sentence)) continue;
     for (const noun of AGENT_NOUNS) {
       if (knownAgentTokens.has(noun)) continue;

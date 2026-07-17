@@ -75,7 +75,7 @@ export function createApiClient(baseUrl = "") {
       return payload;
     } catch (error) {
       if (error && error.name === "AbortError") {
-        const timeoutError = new Error("The request timed out — the server did not respond. Please try again.");
+        const timeoutError = new Error("The request timed out. The server did not respond, please try again.");
         timeoutError.code = "TIMEOUT";
         throw timeoutError;
       }

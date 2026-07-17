@@ -44,11 +44,11 @@ function storeVisibility(visible) {
 
 function ageLabel(iso) {
   if (!iso) {
-    return "—";
+    return "·";
   }
   const then = Date.parse(iso);
   if (!Number.isFinite(then)) {
-    return "—";
+    return "·";
   }
   const secs = Math.max(0, Math.round((Date.now() - then) / 1000));
   if (secs < 60) {
@@ -85,7 +85,7 @@ function renderBody(status) {
       diverged ? ` <span class="dbg-tag">${served.local ? "LOCAL FALLBACK" : "FALLBACK"}</span>` : ""
     }<br/>${via}`;
   } else {
-    gmValue = `<span class="dbg-muted">${escape(gm.configuredModel || "—")}</span> <span class="dbg-sub">(configured — no turn served yet)</span>`;
+    gmValue = `<span class="dbg-muted">${escape(gm.configuredModel || "·")}</span> <span class="dbg-sub">(configured, no turn served yet)</span>`;
   }
 
   // Image: provider + checkpoint (comfyui) or model, what actually rendered.
@@ -96,7 +96,7 @@ function renderBody(status) {
     const mockTag = imgServed.mock ? ` <span class="dbg-tag">MOCK</span>` : "";
     imgValue = `<span class="dbg-ok">${escape(imgServed.provider)}</span>${detailText}${mockTag} <span class="dbg-sub">· ${escape(ageLabel(imgServed.at))}</span>`;
   } else {
-    imgValue = `<span class="dbg-muted">${escape(img.configuredProvider || "—")}</span> <span class="dbg-sub">(configured — none rendered yet)</span>`;
+    imgValue = `<span class="dbg-muted">${escape(img.configuredProvider || "·")}</span> <span class="dbg-sub">(configured, none rendered yet)</span>`;
   }
 
   const dirty = b.dirty ? ` <span class="dbg-tag">dirty</span>` : "";
@@ -107,8 +107,8 @@ function renderBody(status) {
     row("BUILD", buildValue),
     row("GM MODEL", gmValue),
     row("IMAGE", imgValue),
-    row("CLOUD CHAIN", `<span class="dbg-sub">${escape(status.cloudChain || "—")}</span>`),
-    row("NODE_ENV", `<span class="${envClass}">${escape(b.nodeEnv || "—")}</span>`)
+    row("CLOUD CHAIN", `<span class="dbg-sub">${escape(status.cloudChain || "·")}</span>`),
+    row("NODE_ENV", `<span class="${envClass}">${escape(b.nodeEnv || "·")}</span>`)
   ].join("");
 }
 

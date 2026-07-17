@@ -148,7 +148,7 @@ function relativeTime(iso) {
 function defaultRunTitle(run) {
   const charName = run?.player?.displayName || "Adventurer";
   const worldName = run?.world?.name || "Untitled World";
-  return `${charName} — ${worldName}`;
+  return `${charName} · ${worldName}`;
 }
 
 // The shown title: a player-chosen `run.title` if present, else the default.
@@ -321,7 +321,7 @@ function renderSoloHome(state) {
       <div class="solo-home-dashboard">
         <aside class="solo-home-zone solo-home-zone-rail solo-home-zone-left" aria-hidden="true">
           <span class="solo-home-zone-kicker">Featured Worlds</span>
-          <span class="solo-home-zone-note">Curated worlds to drop straight into — coming soon.</span>
+          <span class="solo-home-zone-note">Curated worlds to drop straight into. Coming soon.</span>
         </aside>
         <section class="solo-home">
           <div class="solo-home-hero">
@@ -349,11 +349,11 @@ function renderSoloHome(state) {
         </section>
         <aside class="solo-home-zone solo-home-zone-rail solo-home-zone-right" aria-hidden="true">
           <span class="solo-home-zone-kicker">Dispatches</span>
-          <span class="solo-home-zone-note">Release notes and world news — coming soon.</span>
+          <span class="solo-home-zone-note">Release notes and world news. Coming soon.</span>
         </aside>
         <div class="solo-home-zone solo-home-zone-shelf" aria-hidden="true">
           <span class="solo-home-zone-kicker">Story Templates</span>
-          <span class="solo-home-zone-note">Ready-made premises and one-shots to spin up fast — coming soon.</span>
+          <span class="solo-home-zone-note">Ready-made premises and one-shots to spin up fast. Coming soon.</span>
         </div>
       </div>
     </main>
@@ -728,7 +728,7 @@ async function handlePortraitFile(file) {
     recordPortraitVersion(res.draftId, res.uri);
   } catch (error) {
     uiState.onboarding.draftPortraitStatus = "failed";
-    uiState.onboarding.portraitUploadError = String(error?.message || "Upload failed — try again.");
+    uiState.onboarding.portraitUploadError = String(error?.message || "Upload failed. Try again.");
   }
   scheduleRender();
 }
@@ -1298,7 +1298,7 @@ async function handleAuthSubmit(form) {
     }
     await loadCampaignMembers();
     uiState.authMessage = wasGuest
-      ? `Adventure saved — signed in as ${me.user.displayName}`
+      ? `Adventure saved. Signed in as ${me.user.displayName}`
       : `Signed in as ${me.user.displayName}`;
     uiState.showAuthPanel = false;
     scheduleRender();
@@ -1679,7 +1679,7 @@ function renderApp() {
           <section class="module-card solo-login-card">
             <h2>Inkborne</h2>
             <p class="solo-login-tagline">An atmospheric solo RPG with an AI game master that remembers every choice you make.</p>
-            <button class="solo-guest-play-btn" data-action="guest-play">Play now — no account needed</button>
+            <button class="solo-guest-play-btn" data-action="guest-play">Play now, no account needed</button>
             <p class="small">Free to start. Your adventure saves automatically.</p>
           </section>
           ${renderAuthPanel(state)}

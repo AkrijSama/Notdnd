@@ -107,7 +107,9 @@ const ASSENT_OPEN_RE = /^(?:yes|sure|of course|certainly|gladly|absolutely|very 
 const SERVICE_RE = /\b(?:i(?:'|’)?d be happy to|happy to help|no problem|it(?:'|’)?s yours|here you go|take (?:it|whatever you need)|i(?:'|’)?ll (?:get|fetch|bring|show|help|do) (?:it|that|you)\b)/i;
 const NEGATION_RE = /\b(?:not|no\b|never|nothing|can't|cannot|won't|wouldn't|refuse|unless|until|if you|once you|first|prove|pay)\b|\bbut\b/i;
 
-function isSimpleCompliance(line) {
+// Exported for offline replay/calibration and tests; the live path uses it via
+// detectComplianceViolations only.
+export function isSimpleCompliance(line) {
   const text = String(line || "").trim();
   if (!text) return false;
   if (NEGATION_RE.test(text)) return false;

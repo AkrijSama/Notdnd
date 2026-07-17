@@ -233,7 +233,7 @@ export function renderHomebrewManager(state = {}) {
           <div>
             <div class="tag">Homebrew</div>
             <h2>Manage Custom Content</h2>
-            <p class="hb-sub">Author your own races, classes, backgrounds, subclasses, and feats — no source document needed. They appear in the character creator alongside the SRD options.</p>
+            <p class="hb-sub">Author your own races, classes, backgrounds, subclasses, and feats, no source document needed. They appear in the character creator alongside the SRD options.</p>
           </div>
           <button type="button" class="ghost" data-hb-close>Done</button>
         </header>

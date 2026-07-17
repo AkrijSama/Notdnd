@@ -127,6 +127,7 @@ import { buildGmRuntimeStatus } from "./solo/gmSmoke.js";
 import { enqueueDraftPortrait, enqueueImageJob, enqueueLocationImageJob, enqueuePlayerImageJob, enqueueVnBodyImageJob, getDraftPortrait, writeUploadedBasePortrait } from "./solo/imageWorker.js";
 import { enqueueIdentityJob, runIdentityJob, backfillNpcMannerisms, buildVoiceDirective } from "./solo/npcIdentity.js";
 import { buildDisagreementDirective, detectComplianceViolations } from "./gm/disagreementAudit.js";
+import { enforceRomanceRegister, ROMANCE_CORRECTIVE_CLAUSE } from "./gm/romanceEnforcement.js";
 import { buildNpcIntroDirective, buildSoloScenePayload, collectNpcsWithPendingIntro } from "./solo/scene.js";
 import { buildSystemLoreClause, detectSystemLoreViolations } from "./gm/systemLore.js";
 import { detectDeadlineViolations } from "./gm/deadlineAudit.js";
@@ -1305,6 +1306,43 @@ async function narrateActionWithGm(run, resolved, user) {
   } catch {
     // enforcement must never break a turn
   }
+  // LAW R10 (romance-legacy-law.md): Mainline romance-register violations are
+  // BLOCKED, not log-only. Runs on the FINAL draft (after the handles pass, so
+  // a handles-retry rewrite is audited too). One corrective regeneration through
+  // the same generateOnce plumbing; if that draft still violates (or fails),
+  // narration:null sends the caller to the deterministic committed-fact template
+  // — the player never sees the violating prose. Personal-Forbidden runs stay
+  // log-only per law. Non-fatal: an enforcement crash keeps the current draft
+  // (the downstream log-only auditor still flags it).
+  try {
+    const r10 = await enforceRomanceRegister(narrative, {
+      run,
+      regenerate: async () => {
+        const retry = await generateOnce(`${message}${ROMANCE_CORRECTIVE_CLAUSE}`);
+        return !retry.timedOut && !retry.error && retry.value && typeof retry.value.narrative === "string"
+          ? stripAiTells(retry.value.narrative.trim())
+          : "";
+      }
+    });
+    if (r10.action === "regenerated") {
+      logTurnEvent(
+        run.runId,
+        `romance-register R10: draft BLOCKED (${r10.violations.map((v) => v.kind).join(",")}); corrective regeneration passed clean`
+      );
+      narrative = r10.narrative;
+    } else if (r10.action === "blocked") {
+      logTurnEvent(
+        run.runId,
+        `romance-register R10: draft BLOCKED (${r10.violations.map((v) => `[${v.kind}${v.tier ? `@${v.tier}` : ""}] "${v.phrase}"`).join(" | ")}); ` +
+          `${r10.retryViolations ? "retry still violated" : "no clean retry"} — deterministic template stands in`
+      );
+      return { narration: null, source: "romance-blocked", provider, model, latencyMs: Date.now() - t0, handlesRetry };
+    }
+    // "clean" and "log-only" (Personal-Forbidden) pass through; the downstream
+    // auditor block logs forbidden-lane violations as before.
+  } catch {
+    // enforcement must never break a turn
+  }
   return { narration: narrative, source: "provider", provider, model, latencyMs: Date.now() - t0, handlesRetry };
 }
 
@@ -2093,9 +2131,11 @@ async function handleApi(req, res) {
             `deadline-referent VIOLATION: ${deadlineViolations.map((v) => `"${v.phrase}" — ${v.sentence}`).join(" | ")} (no committed deadline backs this countdown) user=${user?.id || "anon"}`
           );
         }
-        // ROMANCE/SFW AUDITOR (reputation-engine-v1): romance register above the
-        // present romanceable NPC's committed tier — or explicit content at any tier
-        // (the SFW wall) — is flagged, same severity family as narrated-state drift.
+        // ROMANCE/SFW AUDITOR (reputation-engine-v1 + LAW R10): Mainline
+        // violations are now BLOCKED upstream in narrateActionWithGm
+        // (enforceRomanceRegister), so on Mainline this is a residual check that
+        // should never fire; on Personal-Forbidden it remains the law's log-only
+        // record. Same severity family as narrated-state drift.
         const romanceViolations = detectRomanceRegisterViolations(gmNarration, responseRun);
         if (romanceViolations.length > 0) {
           logTurnEvent(
