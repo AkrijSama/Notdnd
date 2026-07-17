@@ -2428,6 +2428,11 @@ button:disabled {
 .solo-clock-dawn { color: #e0894c; }
 .solo-clock-dusk { color: #b877c2; }
 .solo-clock-night { color: #86a0da; }
+/* Derived-weather glyph (owner checklist item 1): sits beside the phase icon,
+   slightly smaller, muted steel so the phase tint stays the loudest signal.
+   The has-wx modifier tightens the gap so icon-pair + text read as one unit. */
+.solo-clock-has-wx { gap: 8px; }
+.solo-clock-wx { width: 24px; height: 24px; color: var(--text-2, #b0b3bb); }
 .solo-clock-text { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; }
 .solo-clock-time { font-family: var(--font-body, Georgia, serif); font-size: 1.5rem; color: var(--text, #d9dbe0); }
 .solo-clock-phase { font-size: 0.8rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-label, #8a7c68); }

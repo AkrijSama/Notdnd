@@ -2121,6 +2121,38 @@ function clockPhaseIcon(phase) {
   return `<svg class="solo-clock-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="4.5"/><g class="solo-clock-rays">${rays}</g></svg>`;
 }
 
+// DERIVED WEATHER glyph (owner checklist item 1) — sits beside the phase icon.
+// "clear" renders NO extra glyph (the sun/moon phase icon already says clear
+// sky); every other committed weather adds a small inline SVG in the phase-icon
+// idiom. The value is the server's derived read (sky hazard overlaying the
+// persistent world.weather) — the client never derives weather itself.
+const CLOCK_WEATHER_META = {
+  cloudy: { label: "Cloudy" },
+  rain: { label: "Rain" },
+  storm: { label: "Storm" },
+  snow: { label: "Snow" },
+  fog: { label: "Fog" }
+};
+// One shared cloud path; rain/storm/snow decorate under it, fog is layered lines.
+const WX_CLOUD = `<path d="M7 17a4 4 0 1 1 .6-7.96A5.5 5.5 0 0 1 18 10.5 3.5 3.5 0 0 1 17.5 17z"/>`;
+function clockWeatherIcon(weather) {
+  const w = CLOCK_WEATHER_META[weather] ? weather : null;
+  if (!w) {
+    return "";
+  }
+  let art = WX_CLOUD;
+  if (w === "rain") {
+    art += `<line x1="9" y1="19" x2="8" y2="22"/><line x1="13" y1="19" x2="12" y2="22"/><line x1="17" y1="19" x2="16" y2="22"/>`;
+  } else if (w === "storm") {
+    art += `<path d="M12 18l-2.5 4h3l-1.5 3 4-5h-3l1.8-2z"/>`;
+  } else if (w === "snow") {
+    art += `<circle cx="9" cy="20.5" r="0.9"/><circle cx="13" cy="22" r="0.9"/><circle cx="16.5" cy="20" r="0.9"/>`;
+  } else if (w === "fog") {
+    art = `<line x1="3" y1="9" x2="21" y2="9"/><line x1="5" y1="13" x2="19" y2="13"/><line x1="3" y1="17" x2="21" y2="17"/>`;
+  }
+  return `<svg class="solo-clock-icon solo-clock-wx solo-clock-wx-${w}" viewBox="0 0 24 24" aria-hidden="true" focusable="false" data-solo-weather="${w}">${art}</svg>`;
+}
+
 export function renderSoloClock(scene = {}) {
   const wt = (scene.player && typeof scene.player.worldTime === "object" && scene.player.worldTime)
     || (typeof scene.worldTime === "object" && scene.worldTime)
@@ -2133,13 +2165,16 @@ export function renderSoloClock(scene = {}) {
   const clock = typeof wt.clock === "string" && wt.clock ? wt.clock : "·";
   const day = Number.isFinite(wt.day) ? wt.day : null;
   const dayPart = day ? ` · Day ${escapeHtml(day)}` : "";
-  const aria = `Time ${clock}, ${meta.label}${day ? `, day ${day}` : ""}`;
+  // Server-derived weather; "clear" (or absent on a legacy payload) adds nothing.
+  const weather = typeof wt.weather === "string" && CLOCK_WEATHER_META[wt.weather] ? wt.weather : null;
+  const weatherAria = weather ? `, ${CLOCK_WEATHER_META[weather].label.toLowerCase()}` : "";
+  const aria = `Time ${clock}, ${meta.label}${weatherAria}${day ? `, day ${day}` : ""}`;
   return `
-    <div class="solo-clock ${meta.cls}" role="group" aria-label="${escapeHtml(aria)}" data-solo-clock>
-      ${clockPhaseIcon(phase)}
+    <div class="solo-clock ${meta.cls}${weather ? ` solo-clock-has-wx` : ""}" role="group" aria-label="${escapeHtml(aria)}" data-solo-clock>
+      ${clockPhaseIcon(phase)}${weather ? clockWeatherIcon(weather) : ""}
       <div class="solo-clock-text">
         <span class="solo-clock-time">${escapeHtml(clock)}</span>
-        <span class="solo-clock-phase">${escapeHtml(meta.label)}${dayPart}</span>
+        <span class="solo-clock-phase">${escapeHtml(meta.label)}${weather ? ` · ${escapeHtml(CLOCK_WEATHER_META[weather].label)}` : ""}${dayPart}</span>
       </div>
     </div>`;
 }

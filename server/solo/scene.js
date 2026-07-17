@@ -3,7 +3,7 @@ import { resolveSceneArtForRun, resolveNpcFaceFromLibrary } from "./artLibrary.j
 import { getAvailableSoloActions } from "./actions.js";
 import { MILESTONE_MAX, RANK_LADDER, tierForMilestone, displayLevelFor, rankForPlayer } from "./progression.js";
 import { babelStatBlock } from "./babelStats.js";
-import { deriveClock } from "./worldClock.js";
+import { deriveClock, deriveWeather } from "./worldClock.js";
 import { conditionStatusPayload } from "./conditions.js";
 import { getVisibleEntities, validateVisibleEntity } from "./entities.js";
 import { generatePlaceholderGmNarration, validateGmSceneOutput } from "./gm.js";
@@ -791,7 +791,10 @@ export function buildPlayerPayload(run) {
     worldTime: (() => {
       const minutes = run?.world?.time?.minutes;
       const c = deriveClock(typeof minutes === "number" ? minutes : (typeof run?.world?.time?.day === "number" ? (run.world.time.day - 1) * 1440 + 7 * 60 : 7 * 60));
-      return { day: c.day, clock: c.hhmm, phase: c.phase, isNight: c.isNight, isDark: c.isDark, minuteOfDay: c.minuteOfDay };
+      // weather: the DERIVED read (active sky hazard overlays persistent
+      // world.weather; legacy saves read "clear") — rides the same object the
+      // time icon consumes so phase + weather render as one truth.
+      return { day: c.day, clock: c.hhmm, phase: c.phase, isNight: c.isNight, isDark: c.isDark, minuteOfDay: c.minuteOfDay, weather: deriveWeather(run) };
     })(),
     // Death state (STEP 0.5): 5e death-save tally, defaulted for legacy runs.
     deathSaves: {

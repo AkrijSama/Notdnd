@@ -89,6 +89,46 @@ export function deriveClock(totalMinutes) {
   };
 }
 
+// ── DERIVED WEATHER (owner checklist item 1) ─────────────────────────────────
+// The single derived current-weather read: an ACTIVE sky-family hazard
+// objectState on the current location OVERLAYS the persistent world.weather
+// while it stands ("the-sky" is the committed momentum convention —
+// hazard_storm writes objectStates["the-sky"].state = "storm-breaking").
+// Recognized transient sky states map onto the weather enum; an unrecognized
+// sky state (or none) falls through to the persistent value; a legacy save
+// with no world.weather reads "clear" (resume-safe law). Server-owned end to
+// end — the narrator may describe this value, never set it.
+const WEATHER_DEFAULT = "clear";
+const WEATHER_VALUES = new Set(["clear", "cloudy", "rain", "storm", "snow", "fog"]);
+const SKY_STATE_TO_WEATHER = {
+  "storm-breaking": "storm",
+  storm: "storm",
+  storming: "storm",
+  rain: "rain",
+  raining: "rain",
+  snow: "snow",
+  snowing: "snow",
+  fog: "fog",
+  fogbound: "fog",
+  "fog-bound": "fog",
+  overcast: "cloudy",
+  cloudy: "cloudy",
+  clearing: "clear",
+  clear: "clear"
+};
+
+export function deriveWeather(run) {
+  const sky = run?.locations?.[run?.currentLocationId]?.flags?.objectStates?.["the-sky"];
+  if (sky && typeof sky.state === "string") {
+    const mapped = SKY_STATE_TO_WEATHER[sky.state.toLowerCase()];
+    if (mapped) {
+      return mapped;
+    }
+  }
+  const persistent = run?.world?.weather;
+  return typeof persistent === "string" && WEATHER_VALUES.has(persistent) ? persistent : WEATHER_DEFAULT;
+}
+
 // Ensure run.world.time is a plain object carrying a numeric `minutes`. Migrates a
 // legacy { day, tick } (no minutes) by seeding minutes from day: an existing day N
 // with no minute detail lands at the start of that day (07:00, mid-morning, so an

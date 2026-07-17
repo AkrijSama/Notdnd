@@ -53,6 +53,11 @@ const NPC_EXPRESSION_SET = new Set(NPC_EXPRESSIONS);
 // user-seeded with AI filling the gaps.
 export const NPC_ORIGINS = ["procedural", "user", "hybrid"];
 const NPC_ORIGIN_SET = new Set(NPC_ORIGINS);
+// Persistent world weather (owner checklist item 1). "clear" is the universal
+// default; transient sky-family hazard objectStates OVERLAY the persistent value
+// while active (worldClock.deriveWeather is the single derived read).
+export const WORLD_WEATHER_VALUES = ["clear", "cloudy", "rain", "storm", "snow", "fog"];
+const WORLD_WEATHER_SET = new Set(WORLD_WEATHER_VALUES);
 // Committed per-NPC voice spec (vn-dialogue-hardening law 2). Enum values are
 // owned by npcIdentity.js's pools; mirrored here as frozen sets so the core
 // contract module stays self-contained (house style — cf. THREAD_KINDS below).
@@ -610,6 +615,15 @@ export function validateWorldState(world) {
 
   validateObject(world.flags, "flags", errors);
   validateStringArray(world.tags, "tags", errors);
+
+  // Persistent world weather (owner checklist item 1). Optional/additive —
+  // legacy saves omit it and stay valid (the derived read defaults to "clear").
+  // Server-owned: worldgen seeds it; the sky-hazard system overlays it; the
+  // narrator may DESCRIBE committed weather but never sets it. Enum kept in
+  // lockstep with WORLD_WEATHER_VALUES (world-book extensibility comes later).
+  if (world.weather !== undefined && world.weather !== null) {
+    validateEnum(world.weather, WORLD_WEATHER_SET, "weather", errors);
+  }
 
   // Optional world-generator definition fields (Ticket 39). All nullable so
   // existing/default worlds stay valid.
@@ -1636,6 +1650,8 @@ export function createDefaultSoloRun(options = {}) {
         clock: "07:00",
         phase: "day"
       },
+      // Persistent weather — server-owned; hazards overlay it transiently.
+      weather: "clear",
       flags: {},
       tags: []
     },

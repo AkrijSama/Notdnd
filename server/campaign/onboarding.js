@@ -618,6 +618,10 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
     startingLocationName: resolvedWorld.startingLocationName,
     startingLocationType: resolvedWorld.startingLocationType,
     flavor: resolvedWorld.flavor,
+    // Persistent weather seed (owner checklist item 1): worldgen may author it
+    // (world-book extensibility later); default clear. Server-owned from here —
+    // only the sky-hazard system overlays it, never the narrator.
+    weather: resolvedWorld.weather || "clear",
     // artStyleOptions.default is the new primary; artStyle stays as the legacy
     // resume-safety fallback (both stamped by worldGen via stampArtStyle).
     artStyle: resolvedWorld.artStyle,

@@ -641,3 +641,139 @@ export function auditAndCommitNarratedLore(run, narrationText, knownNames = [], 
   }
   return committed;
 }
+
+// FOUND-OBJECT DETECTION (the strongbox gap) — the moat, discovered-OBJECT side.
+// Documented crime: a no-stakes move turn narrated "you find a rusted iron
+// strongbox, its lid pried open and empty" with zero committed backing, and the
+// model then carried its own invention across 5 turns via conversation context.
+// It slipped every existing family: phantom-proper-nouns anchors on NAMES,
+// invented-agents on ACTORS, state-drift on CONDITION claims — a common-noun
+// object DISCOVERY was unwatched. Same doctrine as #27/B2: commit-or-strip → we
+// COMMIT. The discovery becomes a real objectState on the current location
+// (the exact record shape attempt.markObjectDegraded writes), so the world owns
+// what the narrator said and the next turn's state can vouch or contradict it.
+//
+// False-positive walls (calibrated like phantom-agent v2):
+//   - noun ALLOWLIST of discrete interactable object classes (containers /
+//     portables / documents / devices) — scenery and ambience mass nouns
+//     (mud, brush, mist, light) can never match by construction;
+//   - the finder must be the PLAYER ("you find/discover/uncover/unearth …") —
+//     figurative "you find yourself/peace/a way" never names an object noun;
+//   - negation guard ("you find nothing", "you find no key");
+//   - quoted speech + bracketed protocol tags are stripped before the scan (an
+//     NPC's spoken hypothetical is not a world assertion);
+//   - already-committed guard: a token vouched by inventory / the location's
+//     objectStates / known names is a re-description, not a discovery.
+const FOUND_OBJECT_NOUNS = [
+  // containers
+  "strongbox", "lockbox", "chest", "crate", "coffer", "casket", "trunk", "satchel",
+  "pouch", "purse", "pack", "urn", "jar", "barrel", "sack",
+  // documents
+  "ledger", "journal", "diary", "note", "letter", "map", "scroll", "book", "tome", "manifest",
+  // portables / valuables
+  "key", "dagger", "knife", "blade", "sword", "axe", "hammer", "coin", "amulet",
+  "ring", "pendant", "talisman", "charm", "locket", "medallion", "idol", "figurine",
+  // devices / fixtures
+  "lever", "switch", "mechanism", "device", "contraption", "console", "terminal",
+  "lantern", "torch", "lamp", "bottle", "vial", "flask", "hatch", "trapdoor", "grate"
+];
+const FOUND_VERB = "(?:finds?|found|discovers?|discovered|uncovers?|uncovered|unearths?|unearthed|digs? up|dug up|comes? across|came across|stumbles? (?:upon|across|onto|on)|stumbled (?:upon|across|onto|on))";
+const FOUND_OBJECT_RE = new RegExp(
+  `\\byou\\s+(?:\\w+\\s+)?${FOUND_VERB}\\s+(a|an|some|the)\\s+((?:[a-z][a-z-]*\\s+){0,3}?)(${FOUND_OBJECT_NOUNS.join("|")})s?\\b`,
+  "i"
+);
+const FOUND_NEGATION_RE = new RegExp(`\\byou\\w*\\s+${FOUND_VERB}\\s+(?:nothing|no\\b|not\\b|only\\s+(?:emptiness|silence|dust))`, "i");
+
+function foundObjectTokens(label) {
+  return String(label || "")
+    .toLowerCase()
+    .split(/[\s-]+/)
+    .map((t) => t.replace(/[^a-z']/g, ""))
+    .filter((t) => t.length >= 3);
+}
+
+/**
+ * Pure. Scan narration for the player DISCOVERING a discrete interactable object
+ * with no committed backing. `committedTokens` is the lowercased token set the
+ * committed state vouches (inventory names, objectState labels/matchTokens,
+ * entity names). Returns [{ noun, label, sentence }] — one per distinct noun.
+ */
+export function detectFoundObjects(text, { committedTokens = new Set() } = {}) {
+  const source = String(text || "");
+  if (!source.trim()) {
+    return [];
+  }
+  const found = new Map();
+  const sentences = source.split(/(?<=[.!?])\s+/).filter((s) => s.trim().length > 0);
+  for (const sentence of sentences) {
+    // Spoken hypotheticals and protocol tags are not world assertions.
+    const scannable = sentence.replace(/["“][^"“”]*["”]/g, " ").replace(/\[[^\]]*\]/g, " ");
+    if (FOUND_NEGATION_RE.test(scannable)) continue;
+    const m = FOUND_OBJECT_RE.exec(scannable);
+    if (!m) continue;
+    const noun = m[3].toLowerCase();
+    if (committedTokens.has(noun)) continue; // re-described committed object
+    const label = `${m[2] || ""}${m[3]}`.trim().replace(/\s+/g, " ").toLowerCase();
+    if (!found.has(noun)) {
+      found.set(noun, { noun, label, sentence: sentence.trim().slice(0, 200) });
+    }
+  }
+  return [...found.values()];
+}
+
+// LIVE moat-closer (strongbox gap). Commit every narrated found-object as an
+// objectState on the CURRENT location — the same persisted record shape the
+// failure-consequence writer uses (attempt.markObjectDegraded), with discovery
+// provenance — so the discovery is world-owned from the turn it was narrated.
+// Returns the labels committed.
+export function auditAndCommitFoundObjects(run, narrationText, knownNames = []) {
+  const location = run?.locations?.[run?.currentLocationId];
+  if (!isPlainObject(location)) {
+    return [];
+  }
+  const committedTokens = new Set();
+  for (const item of Object.values(run?.inventory || {})) {
+    for (const tok of foundObjectTokens(item?.name)) committedTokens.add(tok);
+  }
+  const objectStates = isPlainObject(location.flags?.objectStates) ? location.flags.objectStates : {};
+  for (const entry of Object.values(objectStates)) {
+    for (const tok of [...foundObjectTokens(entry?.label), ...(Array.isArray(entry?.matchTokens) ? entry.matchTokens : [])]) {
+      committedTokens.add(tok);
+    }
+  }
+  for (const name of knownNames) {
+    for (const tok of foundObjectTokens(name)) committedTokens.add(tok);
+  }
+  const discoveries = detectFoundObjects(narrationText, { committedTokens });
+  if (!discoveries.length) {
+    return [];
+  }
+  if (!isPlainObject(location.flags)) {
+    location.flags = {};
+  }
+  if (!isPlainObject(location.flags.objectStates)) {
+    location.flags.objectStates = {};
+  }
+  const now = new Date().toISOString();
+  const committed = [];
+  for (const d of discoveries) {
+    const objectId = `found-${d.noun}`;
+    if (location.flags.objectStates[objectId]) continue; // already owned
+    location.flags.objectStates[objectId] = {
+      objectId,
+      label: d.label,
+      state: "discovered",
+      retryEffect: "none",
+      reason: "narrated discovery committed by the found-object auditor",
+      matchTokens: foundObjectTokens(d.label),
+      targetId: null,
+      sourceIntent: "",
+      since: now,
+      // Discovery provenance (this auditor's mark, tolerated free-form field —
+      // threads.js writes setBy the same way).
+      setBy: "found-object-auditor"
+    };
+    committed.push(d.label);
+  }
+  return committed;
+}

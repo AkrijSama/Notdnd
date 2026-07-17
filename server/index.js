@@ -136,7 +136,7 @@ import { detectSpitViolations, stripSpitGestures, detectRepeatedGestures } from 
 import { buildOocSystemPrompt } from "./gm/oocGrounding.js";
 import { recordGmGeneration } from "./logging/gmTranscript.js";
 import { enforceHandles, HANDLES_CORRECTIVE_CLAUSE } from "./gm/handlesEnforcement.js";
-import { auditAndCommitNarratedNpcs, auditAndCommitNarratedLore, auditAndCommitInventedAgents, backfillNpcGenderFromNarration, repairNarrationPronouns } from "./solo/npcCommit.js";
+import { auditAndCommitNarratedNpcs, auditAndCommitNarratedLore, auditAndCommitInventedAgents, auditAndCommitFoundObjects, backfillNpcGenderFromNarration, repairNarrationPronouns } from "./solo/npcCommit.js";
 import { refreshSceneSuggestions } from "./solo/suggestions.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -2273,6 +2273,12 @@ async function handleApi(req, res) {
             // instead of a phantom the next turn can contradict — the class that
             // scored a grading session F/0.
             const committedLore = auditAndCommitNarratedLore(freshForNpc, gmNarration, knownNames);
+            // FOUND OBJECTS (the strongbox gap): a narrated discovery of a
+            // discrete object ("you find a rusted iron strongbox") with no
+            // committed backing becomes a real objectState on the current
+            // location, so the world owns it from the turn it was narrated —
+            // same commit-not-strip doctrine as #27/B2/#41.
+            const committedObjects = auditAndCommitFoundObjects(freshForNpc, gmNarration, knownNames);
             // #50: backfill gender onto committed NPCs the narration genders but that
             // were minted ungendered (starting/identity cast) — so their portrait
             // matches the text (write-female/render-male fix).
@@ -2289,10 +2295,11 @@ async function handleApi(req, res) {
             const gestureMerged = detectRepeatedGestures(gmNarration, priorSigs).signatures;
             const sigsChanged = gestureMerged.length !== priorSigs.length;
             freshForNpc.flags = { ...(freshForNpc.flags || {}), gestureSignatures: gestureMerged };
-            if (committedNpcs.length > 0 || committedAgents.length > 0 || committedLore.length > 0 || genderedNpcs.length > 0 || manneredNpcs.length > 0 || sigsChanged) {
+            if (committedNpcs.length > 0 || committedAgents.length > 0 || committedLore.length > 0 || committedObjects.length > 0 || genderedNpcs.length > 0 || manneredNpcs.length > 0 || sigsChanged) {
               saveSoloRun(freshForNpc);
               responseRun.npcs = freshForNpc.npcs;
               responseRun.memoryFacts = freshForNpc.memoryFacts;
+              responseRun.locations = freshForNpc.locations;
               responseRun.flags = freshForNpc.flags;
               const committedCast = [...committedNpcs, ...committedAgents];
               if (committedCast.length > 0) {
@@ -2300,6 +2307,9 @@ async function handleApi(req, res) {
               }
               if (committedLore.length > 0) {
                 logTurnEvent(responseRun.runId, `#41 committed ${committedLore.length} narrated place/lore fact(s): ${committedLore.join(", ")}`);
+              }
+              if (committedObjects.length > 0) {
+                logTurnEvent(responseRun.runId, `found-object committed ${committedObjects.length} narrated discover(ies): ${committedObjects.join(", ")} (objectState on ${freshForNpc.currentLocationId})`);
               }
             }
           }
