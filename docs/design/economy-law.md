@@ -1,6 +1,6 @@
 # Inkborne Economy Law — v1
 
-**Status:** DRAFT — Laws 1–6 owner-approved in structure; the three PENDING confirms (Gaps 1–3) RESOLVED by owner ruling 2026-07-16; Law 7 (Rarity & Provenance) added 2026-07-16.
+**Status:** DRAFT — Laws 1–6 owner-approved in structure; the three PENDING confirms (Gaps 1–3) RESOLVED by owner ruling 2026-07-16; Law 7 (Rarity & Provenance) added 2026-07-16; Law 2 AMENDED 2026-07-16 by the Breeding Carve-out (romance-legacy-law.md, LAW L3).
 **Ratified:** 2026-07-11
 **Owner:** Akrij
 
@@ -21,6 +21,8 @@
 ## LAW 2 — COSMETIC-ONLY MONETIZATION
 
 Nothing purchasable with Ink or real money may alter any mechanical value: stats, rolls, DCs, XP, milestones, item abilities, crafting outcomes, turn economy. No convenience carve-outs touching mechanics (inventory slots, XP boosts, reroll tokens — banned). Power is earned in-world only, forever, in every world and every tier.
+
+**AMENDED by the Breeding Carve-out — see [romance-legacy-law.md](romance-legacy-law.md) LAW L3.**
 
 **Cosmetic catalog — art-style switch (Ink-priced):** Art style is chosen at run creation and **LOCKED for the campaign** (see art-pipeline-v2.md, Style Lock Law). Mid-campaign style switching is a premium (Ink-priced) service; the repricing reflects real cost — a switch invalidates the run's cached art and face-checkouts and triggers regeneration. Purely cosmetic (no mechanical value changes), so it is Law-2-clean. **PENDING: price = owner table (Law 6).**
 

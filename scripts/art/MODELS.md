@@ -10,7 +10,7 @@ the re-download map. Discovered from the live installation + `grep` of
 | file | size | referenced by | source |
 |---|---|---|---|
 | `Juggernaut-XI-byRunDiffusion.safetensors` | 7.11 GB | portrait/fullbody/item/landscape-realistic, fullbody-realistic-tailor, portrait-sketch, realistic.json, sketch.json (realistic + sketch lanes) | CivitAI — "Juggernaut XI" by RunDiffusion |
-| `JANKUTrainedChenkinNoobai_v777.safetensors` | 6.94 GB | portrait-anime, anime.json (anime lane) | source: UNVERIFIED — owner confirm (CivitAI-style filename; JANKU / NoobAI family) |
+| `JANKUTrainedChenkinNoobai_v777.safetensors` | 6.94 GB | portrait-anime, anime.json (anime lane) | CivitAI (owner-confirmed 2026-07-16) |
 | `sdxlUnstableDiffusers_nihilmania.safetensors` | 6.94 GB | portrait-darkfantasy, dark-fantasy.json (painted dark-fantasy lane) | CivitAI — "SDXL Unstable Diffusers (YamerMIX)" by Yamer, Nihilmania version |
 
 Present in the directory but NOT referenced by any pipeline workflow (no recovery
@@ -23,7 +23,7 @@ JANKU in Chunk-6), `sd_xl_base_1.0.safetensors`, `wildcardxXLFusion_fusionOG.saf
 |---|---|---|---|---|
 | `add-detail-xl.safetensors` | 228 MB | portrait-darkfantasy (0.74), portrait-realistic (0.75), fullbody-realistic-tailor, dark-fantasy.json | 0.74–0.75 | CivitAI — "Detail Tweaker XL". Per-lane OPT-IN law: adopted per lane only after an owner side-by-side. |
 | `hkstyleV5.safetensors` | 228 MB | portrait-darkfantasy (0.68/0.70), dark-fantasy.json | sm 0.68 / sc 0.70 | CivitAI — "XL Fantasy Knights" (hkstyle) |
-| `DnD_Grainyboyz SDXL Lora.safetensors` | 85 MB | portrait-sketch (1.02/0.97), sketch.json | sm 1.02 / sc 0.97 | source: UNVERIFIED — owner confirm. Trigger words MANDATORY (see blocks/sketch.json). |
+| `DnD_Grainyboyz SDXL Lora.safetensors` | 85 MB | portrait-sketch (1.02/0.97), sketch.json | sm 1.02 / sc 0.97 | CivitAI (owner-confirmed 2026-07-16). Trigger words MANDATORY (see blocks/sketch.json). |
 
 Other files in the LoRA directory are unrelated to this pipeline (video/WAN
 experiments) and are not recovery-critical for art generation.
