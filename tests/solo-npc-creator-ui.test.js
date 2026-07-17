@@ -5,6 +5,8 @@ import {
   renderNpcCreatorModal,
   renderSoloDialogueOverlay,
   renderSoloRightRail,
+  renderSoloRollBanner,
+  renderSoloRollHistory,
   renderSoloSceneInputBar,
   renderSoloSceneShell
 } from "../src/components/soloSceneShell.js";
@@ -37,16 +39,22 @@ test("characterFromScenePlayer maps run.player into the sidebar shape", () => {
   assert.equal(characterFromScenePlayer(null), null);
 });
 
-test("right rail Recent Rolls uses real attempt history (or shows empty state)", () => {
-  const withRolls = renderSoloRightRail({
+test("rolls surface via the banner + history, not the right rail (ui restructure)", () => {
+  // The recent-rolls RAIL panel was removed; the rail must no longer carry rolls.
+  const rail = renderSoloRightRail({
     scene: { attemptHistory: [{ intent: "pick the lock", success: true, checkResult: { total: 17, dc: 14, success: true } }] }
   });
-  assert.match(withRolls, /pick the lock/);
-  assert.match(withRolls, /vs DC 14/);
-  assert.match(withRolls, /17/);
+  assert.ok(!rail.includes("Recent Rolls"), "the rail no longer holds a Recent Rolls panel");
+  assert.ok(!/pick the lock/.test(rail), "roll intents don't render in the rail");
 
-  const noRolls = renderSoloRightRail({ scene: {} });
-  assert.match(noRolls, /No rolls yet/);
+  // The banner surfaces the latest roll; the history drawer lists them.
+  const banner = renderSoloRollBanner({ attemptHistory: [{ intent: "pick the lock", checkResult: { total: 17, dc: 14, success: true } }] });
+  assert.match(banner, /pick the lock/);
+  assert.match(banner, /17/);
+  const history = renderSoloRollHistory({ attemptHistory: [{ intent: "pick the lock", checkResult: { total: 17, dc: 14, success: true } }] }, true);
+  assert.match(history, /pick the lock/);
+  assert.match(history, /vs DC 14/);
+  assert.match(renderSoloRollBanner({}), /^$/, "no rolls yet → no banner");
 });
 
 const dialogueState = (talkOverrides, cast = []) => ({

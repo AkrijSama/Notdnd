@@ -2475,6 +2475,186 @@ button:disabled {
 .solo-roll-total { font-family: var(--font-body, Georgia, serif); font-size: 1.5rem; }
 .solo-roll-total.good { color: #6b9a3e; }
 .solo-roll-total.accent { color: var(--accent, #a9adb6); }
+
+/* ===================================================================
+   UI RESTRUCTURE (owner order): full-bleed prose, compact portrait dock
+   with a character-tab drawer, roll banner + history drawer, conditions
+   overlaid ON the portrait. The prose main (flex:1) reclaims the space
+   the old character column held, so the reading column is the centerpiece.
+   =================================================================== */
+
+/* Compact portrait dock — overrides the wide sidebar clamp (2-class win).
+   position:relative anchors the character-tab drawer that overlays out of it. */
+.solo-game-sidebar.solo-portrait-dock-aside {
+  width: clamp(116px, 11vw, 168px);
+  position: relative;
+  overflow: visible;
+}
+.solo-portrait-dock-aside .solo-portrait {
+  position: relative;
+  border-bottom: none;
+}
+/* Character-tab trigger badge, on the portrait's top-right corner. */
+.solo-portrait-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: 1px solid var(--border, #202024);
+  background: color-mix(in srgb, var(--panel, #171009) 82%, transparent);
+  color: var(--accent, #c2c6cf);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.solo-portrait-badge:hover,
+.solo-portrait-badge:focus-visible { background: var(--panel, #171009); color: var(--accent-bright, #e7e9ee); }
+/* Conditions overlaid on the portrait's bottom edge (buffs/debuffs law). */
+.solo-portrait-conds {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 4px;
+  display: flex;
+}
+.solo-conditions-portrait {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  justify-content: center;
+  width: 100%;
+}
+.solo-cond-chip.is-compact {
+  padding: 2px 5px;
+  gap: 0;
+  font-size: 12px;
+  background: color-mix(in srgb, var(--inset, #070708) 78%, transparent);
+}
+.solo-dock-identity { padding: 10px 8px 12px; text-align: center; }
+.solo-dock-identity .solo-char-name { font-size: 15px; }
+
+/* Character-tab drawer: overlays out of the compact dock, hidden until open. */
+.solo-char-tab {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: min(340px, 84vw);
+  max-height: 100%;
+  overflow-y: auto;
+  z-index: 40;
+  background: var(--panel, #171009);
+  background-image: var(--texture, none);
+  border-right: 1px solid var(--border, #202024);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
+  display: none;
+  flex-direction: column;
+  padding-bottom: 10px;
+}
+.solo-char-tab.is-open { display: flex; }
+.solo-char-tab-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border, #202024);
+  position: sticky;
+  top: 0;
+  background: var(--panel, #171009);
+}
+.solo-char-tab-close,
+.solo-roll-history-close {
+  background: none;
+  border: none;
+  color: var(--text-2, #b0b3bb);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+}
+.solo-char-tab-backdrop,
+.solo-roll-history-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 39;
+  background: rgba(0, 0, 0, 0.28);
+}
+
+/* Roll banner — one compact line in the input dock. */
+.solo-roll-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  margin-bottom: 6px;
+  background: var(--inset, #070708);
+  border: 1px solid var(--border, #202024);
+  border-radius: 6px;
+  font-size: 0.9rem;
+}
+.solo-roll-banner-outcome { flex: none; font-weight: 700; }
+.solo-roll-banner-outcome.good { color: #6b9a3e; }
+.solo-roll-banner-outcome.accent { color: var(--accent, #a9adb6); }
+.solo-roll-banner-label { flex: 1 1 auto; min-width: 0; color: var(--text-2, #b0b3bb); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.solo-roll-banner-total { flex: none; font-family: var(--font-body, Georgia, serif); }
+.solo-roll-banner-total.good { color: #6b9a3e; }
+.solo-roll-banner-total.accent { color: var(--accent, #a9adb6); }
+.solo-roll-banner-dc { color: var(--text-faint, #6e6150); font-size: 0.8rem; }
+.solo-roll-history-btn {
+  flex: none;
+  background: none;
+  border: 1px solid var(--border, #202024);
+  border-radius: 6px;
+  color: var(--text-2, #b0b3bb);
+  cursor: pointer;
+  padding: 2px 6px;
+  font-size: 13px;
+}
+.solo-roll-history-btn:hover,
+.solo-roll-history-btn:focus-visible { color: var(--accent-bright, #e7e9ee); }
+
+/* Roll-history drawer — right-anchored overlay in the log idiom. */
+.solo-roll-history-layer { display: none; }
+.solo-roll-history-layer.is-open { display: block; }
+.solo-roll-history-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(360px, 88vw);
+  z-index: 40;
+  overflow-y: auto;
+  background: var(--panel, #171009);
+  background-image: var(--texture, none);
+  border-left: 1px solid var(--border, #202024);
+  box-shadow: -18px 0 50px rgba(0, 0, 0, 0.5);
+}
+.solo-roll-history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border, #202024);
+  position: sticky;
+  top: 0;
+  background: var(--panel, #171009);
+}
+.solo-roll-hist-list { list-style: none; margin: 0; padding: 8px 12px; display: flex; flex-direction: column; gap: 8px; }
+.solo-roll-hist-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border, #202024);
+}
+.solo-roll-hist-intent { min-width: 0; color: var(--text-2, #b0b3bb); }
+.solo-roll-hist-detail { color: var(--text-faint, #6e6150); font-size: 0.85rem; }
 .solo-relationship {
   background: var(--inset, #070708);
   border: 1px solid var(--border, #202024);

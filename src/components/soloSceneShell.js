@@ -1502,7 +1502,7 @@ function gaugePct(gauge) {
 // Rank (UNASSESSED until a ranked skill is held), the Awakening Origin, and HP.
 // No AC/Speed/Mana/D&D readouts — those are a different world's chassis dressing.
 // "THE WINDOW DOES NOT LIE."
-export function renderBabelStatusWindow(character = SOLO_SAMPLE_CHARACTER) {
+export function renderBabelStatusWindow(character = SOLO_SAMPLE_CHARACTER, { open = false, scene = {} } = {}) {
   const b = character.babel || {};
   const hp = character.hitPoints || { current: 0, max: 0 };
   const hpPct = gaugePct(hp);
@@ -1582,49 +1582,51 @@ export function renderBabelStatusWindow(character = SOLO_SAMPLE_CHARACTER) {
         .join("")}</ul>`
     : `<div class="solo-skill-empty">none yet. Skills are earned in play, and they define your RANK.</div>`;
   return `
-    <aside class="solo-game-sidebar solo-babel-window" data-window="babel">
-      <div class="solo-portrait" data-portrait-for="player" data-portrait-img-class="solo-portrait-img">${character.portraitUri ? `<img class="solo-portrait-img" src="${escapeHtml(character.portraitUri)}" alt="${escapeHtml(character.name || "Character")} portrait" />` : `<div class="solo-portrait-pending"><span class="solo-portrait-spinner" aria-hidden="true"></span><small>Crafting your portrait… (~20s)</small></div>`}</div>
-      <div class="solo-sidebar-identity">
+    <aside class="solo-game-sidebar solo-babel-window solo-portrait-dock-aside" data-window="babel">
+      ${portraitDockHtml(character, scene)}
+      <div class="solo-sidebar-identity solo-dock-identity">
         <div class="solo-stat-kicker">◄ STATUS ►</div>
-        <div class="solo-char-name">${escapeHtml(character.name)}</div>
+        <div class="solo-char-name" data-textfit>${escapeHtml(character.name)}</div>
         <div class="solo-char-sub">Level ${escapeHtml(b.displayLevel)} · ${escapeHtml(b.milestoneTier || "")}</div>
       </div>
-      <div class="solo-sidebar-block">
-        <div class="solo-passive-row"><span>RANK</span><span data-textfit>${escapeHtml(b.rank || "UNASSESSED")}</span></div>
-        <div class="solo-passive-row"><span>ORIGIN</span><span data-textfit>${escapeHtml(b.origin || "The Beckoned")}</span></div>
-      </div>
-      <div class="solo-sidebar-block">
-        <div class="solo-gauge-row">
-          <span class="solo-stat-kicker">Vitality</span>
-          <span class="solo-hp-value">${escapeHtml(hp.current)} <span>/ ${escapeHtml(hp.max)}</span></span>
+      ${characterTabHtml(open, `
+        <div class="solo-sidebar-block">
+          <div class="solo-passive-row"><span>RANK</span><span data-textfit>${escapeHtml(b.rank || "UNASSESSED")}</span></div>
+          <div class="solo-passive-row"><span>ORIGIN</span><span data-textfit>${escapeHtml(b.origin || "The Beckoned")}</span></div>
         </div>
-        <div class="solo-gauge-track"><div class="solo-gauge-fill solo-hp-fill" style="width:${hpPct}%;"></div></div>
-      </div>
-      <div class="solo-sidebar-block">
-        <div class="solo-stat-kicker">Attributes</div>
-        <div class="solo-ability-grid">${stats}</div>
-      </div>
-      <div class="solo-sidebar-block">
-        <div class="solo-passive-row"><span>Skills</span><span>${skillCount > 0 ? escapeHtml(skillCount) : "none"}</span></div>
-        ${skillsHtml}
-      </div>
-      <div class="solo-sidebar-block solo-inventory-block">
-        <div class="solo-stat-kicker">Inventory</div>
-        <ul class="solo-inv-list">${inventoryHtml}</ul>
-      </div>
-      <div class="solo-sidebar-block solo-conditions-block">
-        <div class="solo-stat-kicker">Conditions</div>
-        ${conditionsHtml}
-      </div>
-      <div class="solo-sidebar-block solo-window-motto">[ THE WINDOW DOES NOT LIE. ]</div>
+        <div class="solo-sidebar-block">
+          <div class="solo-gauge-row">
+            <span class="solo-stat-kicker">Vitality</span>
+            <span class="solo-hp-value">${escapeHtml(hp.current)} <span>/ ${escapeHtml(hp.max)}</span></span>
+          </div>
+          <div class="solo-gauge-track"><div class="solo-gauge-fill solo-hp-fill" style="width:${hpPct}%;"></div></div>
+        </div>
+        <div class="solo-sidebar-block">
+          <div class="solo-stat-kicker">Attributes</div>
+          <div class="solo-ability-grid">${stats}</div>
+        </div>
+        <div class="solo-sidebar-block">
+          <div class="solo-passive-row"><span>Skills</span><span>${skillCount > 0 ? escapeHtml(skillCount) : "none"}</span></div>
+          ${skillsHtml}
+        </div>
+        <div class="solo-sidebar-block solo-inventory-block">
+          <div class="solo-stat-kicker">Inventory</div>
+          <ul class="solo-inv-list">${inventoryHtml}</ul>
+        </div>
+        <div class="solo-sidebar-block solo-conditions-block">
+          <div class="solo-stat-kicker">Conditions</div>
+          ${conditionsHtml}
+        </div>
+        <div class="solo-sidebar-block solo-window-motto">[ THE WINDOW DOES NOT LIE. ]</div>
+      `)}
     </aside>
   `;
 }
 
-export function renderSoloCharacterSidebar(character = SOLO_SAMPLE_CHARACTER) {
+export function renderSoloCharacterSidebar(character = SOLO_SAMPLE_CHARACTER, { open = false, scene = {} } = {}) {
   // BABEL: the diegetic STATUS WINDOW replaces the D&D sheet entirely (§2.3).
   if (character && character.babel) {
-    return renderBabelStatusWindow(character);
+    return renderBabelStatusWindow(character, { open, scene });
   }
   const hp = character.hitPoints || { current: 0, max: 0 };
   const mp = character.mana || { current: 0, max: 0 };
@@ -1685,48 +1687,67 @@ export function renderSoloCharacterSidebar(character = SOLO_SAMPLE_CHARACTER) {
     : `<div class="solo-condition-empty">No active conditions.</div>`;
 
   return `
-    <aside class="solo-game-sidebar">
-      <div class="solo-portrait" data-portrait-for="player" data-portrait-img-class="solo-portrait-img">${character.portraitUri ? `<img class="solo-portrait-img" src="${escapeHtml(character.portraitUri)}" alt="${escapeHtml(character.name || "Character")} portrait" />` : `<div class="solo-portrait-pending"><span class="solo-portrait-spinner" aria-hidden="true"></span><small>Crafting your portrait… (~20s)</small></div>`}</div>
-      <div class="solo-sidebar-identity">
-        <div class="solo-char-name">${escapeHtml(character.name)}</div>
+    <aside class="solo-game-sidebar solo-portrait-dock-aside">
+      ${portraitDockHtml(character, scene)}
+      <div class="solo-sidebar-identity solo-dock-identity">
+        <div class="solo-char-name" data-textfit>${escapeHtml(character.name)}</div>
         <div class="solo-char-sub">${escapeHtml(character.className)} · Level ${escapeHtml(character.level)}</div>
-        <div class="solo-xp-row"><span class="solo-stat-kicker">XP</span><span class="solo-xp-value">${escapeHtml(xp)}</span></div>
       </div>
-      <div class="solo-sidebar-block">
-        <div class="solo-gauge-row">
-          <span class="solo-stat-kicker">Hit Points</span>
-          <span class="solo-hp-value">${escapeHtml(hp.current)} <span>/ ${escapeHtml(hp.max)}</span></span>
+      ${characterTabHtml(open, `
+        <div class="solo-sidebar-block">
+          <div class="solo-xp-row"><span class="solo-stat-kicker">XP</span><span class="solo-xp-value">${escapeHtml(xp)}</span></div>
         </div>
-        <div class="solo-gauge-track"><div class="solo-gauge-fill solo-hp-fill" style="width:${hpPct}%;"></div></div>
-        <div class="solo-gauge-row solo-mp-row${hasMana ? "" : " is-muted"}">
-          <span class="solo-stat-kicker">${hasMana ? "Mana" : "Mana: none"}</span>
-          <span class="solo-hp-value">${escapeHtml(mp.current)} <span>/ ${escapeHtml(mp.max)}</span></span>
+        <div class="solo-sidebar-block">
+          <div class="solo-gauge-row">
+            <span class="solo-stat-kicker">Hit Points</span>
+            <span class="solo-hp-value">${escapeHtml(hp.current)} <span>/ ${escapeHtml(hp.max)}</span></span>
+          </div>
+          <div class="solo-gauge-track"><div class="solo-gauge-fill solo-hp-fill" style="width:${hpPct}%;"></div></div>
+          <div class="solo-gauge-row solo-mp-row${hasMana ? "" : " is-muted"}">
+            <span class="solo-stat-kicker">${hasMana ? "Mana" : "Mana: none"}</span>
+            <span class="solo-hp-value">${escapeHtml(mp.current)} <span>/ ${escapeHtml(mp.max)}</span></span>
+          </div>
+          <div class="solo-gauge-track"><div class="solo-gauge-fill solo-mp-fill" style="width:${mpPct}%;"></div></div>
+          <div class="solo-mini-stats">
+            <div class="solo-mini-stat"><div class="solo-mini-val">${escapeHtml(character.armorClass)}</div><div class="solo-mini-label">Armor</div></div>
+            <div class="solo-mini-stat"><div class="solo-mini-val">${escapeHtml(character.speed)}</div><div class="solo-mini-label">Speed</div></div>
+          </div>
         </div>
-        <div class="solo-gauge-track"><div class="solo-gauge-fill solo-mp-fill" style="width:${mpPct}%;"></div></div>
-        <div class="solo-mini-stats">
-          <div class="solo-mini-stat"><div class="solo-mini-val">${escapeHtml(character.armorClass)}</div><div class="solo-mini-label">Armor</div></div>
-          <div class="solo-mini-stat"><div class="solo-mini-val">${escapeHtml(character.speed)}</div><div class="solo-mini-label">Speed</div></div>
+        <div class="solo-sidebar-block">
+          <div class="solo-stat-kicker">Abilities</div>
+          <div class="solo-ability-grid">${abilities}</div>
         </div>
-      </div>
-      <div class="solo-sidebar-block">
-        <div class="solo-stat-kicker">Abilities</div>
-        <div class="solo-ability-grid">${abilities}</div>
-      </div>
-      <div class="solo-sidebar-block solo-inventory-block">
-        <div class="solo-stat-kicker">Inventory</div>
-        <ul class="solo-inv-list">${inventoryHtml}</ul>
-      </div>
-      <div class="solo-sidebar-block solo-passive-block">
-        <div class="solo-passive-row"><span>Passive Perception</span><span>${escapeHtml(character.passivePerception)}</span></div>
-        <div class="solo-passive-row"><span>Initiative</span><span>${escapeHtml(character.initiative)}</span></div>
-        <div class="solo-passive-row"><span>Proficiency</span><span>${escapeHtml(character.proficiency)}</span></div>
-      </div>
-      <div class="solo-sidebar-block solo-conditions-block">
-        <div class="solo-stat-kicker">Conditions</div>
-        ${conditionsHtml}
-      </div>
+        <div class="solo-sidebar-block solo-inventory-block">
+          <div class="solo-stat-kicker">Inventory</div>
+          <ul class="solo-inv-list">${inventoryHtml}</ul>
+        </div>
+        <div class="solo-sidebar-block solo-passive-block">
+          <div class="solo-passive-row"><span>Passive Perception</span><span>${escapeHtml(character.passivePerception)}</span></div>
+          <div class="solo-passive-row"><span>Initiative</span><span>${escapeHtml(character.initiative)}</span></div>
+          <div class="solo-passive-row"><span>Proficiency</span><span>${escapeHtml(character.proficiency)}</span></div>
+        </div>
+        <div class="solo-sidebar-block solo-conditions-block">
+          <div class="solo-stat-kicker">Conditions</div>
+          ${conditionsHtml}
+        </div>
+      `)}
     </aside>
   `;
+}
+
+// The CHARACTER TAB drawer (ui restructure): wraps the full sheet body so it
+// overlays out of the compact portrait dock. Hidden unless `open`; a backdrop +
+// close button dismiss it. Shared by the D&D sidebar and the Babel window.
+function characterTabHtml(open, bodyHtml) {
+  return `
+    <div class="solo-char-tab${open ? " is-open" : ""}" data-solo-char-tab-panel role="dialog" aria-label="Character sheet" aria-hidden="${open ? "false" : "true"}">
+      <div class="solo-char-tab-head">
+        <span class="solo-stat-kicker">Character</span>
+        <button type="button" class="solo-char-tab-close" data-solo-char-tab-close aria-label="Close character sheet">×</button>
+      </div>
+      <div class="solo-char-tab-body">${bodyHtml}</div>
+    </div>
+    ${open ? `<div class="solo-char-tab-backdrop" data-solo-char-tab-close aria-hidden="true"></div>` : ""}`;
 }
 
 
@@ -1764,7 +1785,11 @@ export function formatConditionDuration(remainingMinutes) {
   return `≈${Math.round(m / 1440)}d`;
 }
 
-export function renderSoloConditionsHud(scene = {}) {
+// `compact` (buffs/debuffs-on-portrait law): drops the full-bleed measure column
+// and the inline name/time, leaving glyph-only chips sized to sit on the portrait
+// edge — the name/effect/duration stay in the tooltip + aria label (unchanged
+// detail on hover/focus). Default false keeps the legacy HUD shape for callers.
+export function renderSoloConditionsHud(scene = {}, { compact = false } = {}) {
   const conditions = (Array.isArray(scene.player?.conditions) ? scene.player.conditions : Array.isArray(scene.conditions) ? scene.conditions : [])
     .filter((c) => c && (c.name || c.id));
   if (!conditions.length) {
@@ -1787,17 +1812,34 @@ export function renderSoloConditionsHud(scene = {}) {
           : "";
       const tipBody = [String(c.effect || "").trim(), remainText].filter(Boolean).join(" ");
       return `
-        <span class="solo-cond-chip cond-${kind}" tabindex="0" data-cond-id="${escapeHtml(c.id || name)}" aria-label="${escapeHtml(`${name}. ${meta.word}. ${tipBody}`)}">
+        <span class="solo-cond-chip cond-${kind}${compact ? " is-compact" : ""}" tabindex="0" data-cond-id="${escapeHtml(c.id || name)}" aria-label="${escapeHtml(`${name}. ${meta.word}. ${tipBody}`)}">
           <span class="solo-cond-glyph" aria-hidden="true">${meta.glyph}</span>
-          <span class="solo-cond-name">${escapeHtml(name)}</span>
-          ${duration ? `<span class="solo-cond-time">${escapeHtml(duration)}</span>` : ""}
+          ${compact ? "" : `<span class="solo-cond-name">${escapeHtml(name)}</span>`}
+          ${!compact && duration ? `<span class="solo-cond-time">${escapeHtml(duration)}</span>` : ""}
           <span class="solo-cond-tip" role="tooltip">
             <strong>${escapeHtml(name)} · ${meta.word}</strong>${tipBody ? `<span>${escapeHtml(tipBody)}</span>` : ""}
           </span>
         </span>`;
     })
     .join("");
-  return `<div class="solo-conditions solo-measure" role="group" aria-label="Active conditions">${chips}</div>`;
+  return `<div class="solo-conditions${compact ? " solo-conditions-portrait" : " solo-measure"}" role="group" aria-label="Active conditions">${chips}</div>`;
+}
+
+// Shared compact PORTRAIT DOCK (ui restructure): the portrait stays visible and
+// compact; a badge ON it opens the character tab; committed conditions render as
+// glyph chips overlaid on the portrait edge (tooltip carries the detail). Reused
+// by both the D&D sidebar and the Babel status window. `data-solo-conditions` is
+// the fast-path patch target, so the turn fast-path repaints these chips in place.
+function portraitDockHtml(character = {}, scene = {}) {
+  const img = character.portraitUri
+    ? `<img class="solo-portrait-img" src="${escapeHtml(character.portraitUri)}" alt="${escapeHtml(character.name || "Character")} portrait" />`
+    : `<div class="solo-portrait-pending"><span class="solo-portrait-spinner" aria-hidden="true"></span><small>Crafting your portrait… (~20s)</small></div>`;
+  return `
+    <div class="solo-portrait" data-portrait-for="player" data-portrait-img-class="solo-portrait-img">
+      ${img}
+      <button type="button" class="solo-portrait-badge" data-solo-char-tab aria-haspopup="dialog" aria-label="Open character sheet" title="Character sheet">☰</button>
+      <div class="solo-portrait-conds" data-solo-conditions>${renderSoloConditionsHud(scene, { compact: true })}</div>
+    </div>`;
 }
 
 // Past this elapsed time a pending turn shows a live seconds counter instead of a
@@ -2265,6 +2307,69 @@ export function renderSoloClock(scene = {}) {
     </div>`;
 }
 
+// Roll entries (most-recent-first) from the scene's attempt history — the shared
+// source for the compact roll BANNER and the roll HISTORY drawer.
+function rollEntriesFromScene(scene = {}) {
+  return (Array.isArray(scene.attemptHistory) ? scene.attemptHistory : [])
+    .filter((entry) => entry && entry.checkResult)
+    .slice()
+    .reverse();
+}
+
+// ROLL BANNER (ui restructure): the recent-rolls RAIL panel is gone; the latest
+// roll surfaces as one compact inline line, with a magnifying-glass that opens
+// the roll HISTORY drawer. "" when no roll has happened yet.
+export function renderSoloRollBanner(scene = {}) {
+  const entries = rollEntriesFromScene(scene);
+  if (!entries.length) {
+    return "";
+  }
+  const entry = entries[0];
+  const cr = entry.checkResult || {};
+  const intent = String(entry.intent || "Check");
+  const label = intent.length > 32 ? `${intent.slice(0, 32)}…` : intent;
+  const total = cr.total ?? "·";
+  const dc = cr.dc ?? "·";
+  const cls = cr.success ? "good" : "accent";
+  const outcome = cr.success ? "✓" : "✕";
+  return `
+    <div class="solo-roll-banner" role="status" aria-label="Most recent roll: ${escapeHtml(label)}, rolled ${escapeHtml(total)} versus DC ${escapeHtml(dc)}, ${cr.success ? "success" : "failure"}">
+      <span class="solo-roll-banner-outcome ${cls}" aria-hidden="true">${outcome}</span>
+      <span class="solo-roll-banner-label" data-textfit>${escapeHtml(label)}</span>
+      <span class="solo-roll-banner-total ${cls}" data-textfit>${escapeHtml(total)}<span class="solo-roll-banner-dc"> / DC ${escapeHtml(dc)}</span></span>
+      <button type="button" class="solo-roll-history-btn" data-solo-roll-history aria-haspopup="dialog" aria-label="Open roll history" title="Roll history">🔍</button>
+    </div>`;
+}
+
+// ROLL HISTORY drawer (ui restructure): the full recent-roll list, in the log
+// drawer idiom. Rendered at shell level; hidden unless `open`.
+export function renderSoloRollHistory(scene = {}, open = false) {
+  const entries = rollEntriesFromScene(scene);
+  const rows = entries.length
+    ? entries
+        .map((entry) => {
+          const cr = entry.checkResult || {};
+          const intent = String(entry.intent || "Check");
+          const total = cr.total ?? "·";
+          const dc = cr.dc ?? "·";
+          const cls = cr.success ? "good" : "accent";
+          return `<li class="solo-roll-hist-row"><span class="solo-roll-hist-intent">${escapeHtml(intent)}</span><span class="solo-roll-hist-detail">vs DC ${escapeHtml(dc)}</span><span class="solo-roll-total ${cls}" data-textfit>${escapeHtml(total)}</span></li>`;
+        })
+        .join("")
+    : `<li class="solo-empty-state">No rolls yet.</li>`;
+  return `
+    <div class="solo-roll-history-layer${open ? " is-open" : ""}" data-solo-roll-history-layer aria-hidden="${open ? "false" : "true"}">
+      ${open ? `<div class="solo-roll-history-backdrop" data-solo-roll-history-close aria-hidden="true"></div>` : ""}
+      <div class="solo-roll-history-drawer" role="dialog" aria-label="Roll history">
+        <div class="solo-roll-history-head">
+          <span class="solo-stat-kicker">Roll History</span>
+          <button type="button" class="solo-roll-history-close" data-solo-roll-history-close aria-label="Close roll history">×</button>
+        </div>
+        <ul class="solo-roll-hist-list">${rows}</ul>
+      </div>
+    </div>`;
+}
+
 export function renderSoloRightRail(state = {}) {
   const scene = state.scene || {};
   // Prefer the full server-side cast roster (all run.npcs with portrait URIs);
@@ -2322,24 +2427,8 @@ export function renderSoloRightRail(state = {}) {
         .join("")
     : `<div class="solo-empty-state">No one is here yet. Use “Bring someone in” to add a character.</div>`;
 
-  const rollEntries = (Array.isArray(scene.attemptHistory) ? scene.attemptHistory : [])
-    .filter((entry) => entry && entry.checkResult)
-    .slice(-3)
-    .reverse();
-  const recentRolls = rollEntries.length
-    ? rollEntries
-        .map((entry) => {
-          const cr = entry.checkResult || {};
-          const intent = String(entry.intent || "Check");
-          const label = intent.length > 26 ? `${intent.slice(0, 26)}…` : intent;
-          const total = cr.total ?? "·";
-          const dc = cr.dc ?? "·";
-          const cls = cr.success ? "good" : "accent";
-          return `<div class="solo-roll"><div><div class="solo-roll-name">${escapeHtml(label)}</div><div class="solo-roll-detail">vs DC ${escapeHtml(dc)}</div></div><span class="solo-roll-total ${cls}" data-textfit>${escapeHtml(total)}</span></div>`;
-        })
-        .join("")
-    : `<div class="solo-empty-state">No rolls yet.</div>`;
-
+  // Recent-rolls RAIL panel removed (ui restructure): rolls now surface as the
+  // compact banner in the input dock + the roll-history drawer.
   return `
     <aside class="solo-game-rail solo-scene-side">
       ${(() => {
@@ -2353,10 +2442,6 @@ export function renderSoloRightRail(state = {}) {
         const goals = renderSoloGoals(scene);
         return goals ? `<div class="solo-rail-block solo-rail-goals">${goals}</div>` : "";
       })()}
-      <div class="solo-rail-block">
-        <div class="solo-stat-kicker">Recent Rolls</div>
-        ${recentRolls}
-      </div>
       <div class="solo-rail-block">
         <div class="solo-stat-kicker">Cast</div>
         <div class="solo-cast-list">${cast}</div>
@@ -2783,7 +2868,7 @@ export function renderSoloSceneShell(state = {}) {
       }
       <div class="solo-game-layout">
       <div class="solo-game-frame solo-scene-grid">
-        ${renderSoloCharacterSidebar(character)}
+        ${renderSoloCharacterSidebar(character, { open: state.characterTabOpen, scene })}
         <main class="solo-game-main solo-scene-main">
           <!-- Fable: all non-functional chrome above the scene (breadcrumb, title,
                objective, and the entire tab bar + its placeholder panels) removed.
@@ -2821,10 +2906,11 @@ export function renderSoloSceneShell(state = {}) {
                 </div>
                 <!-- ZONE 3 — INPUT DOCK -->
                 <div class="solo-input-dock">
-                  <!-- CONDITIONS HUD (#26 made visible): committed buffs/debuffs as
-                       chips adjacent to the input — in view while choosing the next
-                       action. Stable wrapper so the fast-path patches it in place. -->
-                  <div data-solo-conditions>${renderSoloConditionsHud(scene)}</div>
+                  <!-- ROLL BANNER (ui restructure): the latest roll surfaces here
+                       as one compact line; the magnifier opens the roll-history
+                       drawer. Conditions moved ONTO the portrait (buffs/debuffs
+                       law), so the old conditions bar above the input is gone. -->
+                  <div data-solo-roll-banner>${renderSoloRollBanner(scene)}</div>
                   <div data-solo-dock-status>${renderSoloThinkingIndicator(state)}</div>
                   <div data-solo-turn-lifecycle>${renderSoloTurnLifecycle(state)}</div>
                   ${renderSoloSceneInputBar(state)}
@@ -2838,6 +2924,7 @@ export function renderSoloSceneShell(state = {}) {
       </div>
       <!-- #49: the VN dialogue layer moved INTO the pinned stage (above); it is no
            longer a full-screen modal appended here. -->
+      ${renderSoloRollHistory(scene, state.rollHistoryOpen)}
       ${renderNpcCreatorModal(state)}
     </section>
   `;
@@ -2890,6 +2977,10 @@ export function dispatchSoloClick(target, handlers = {}) {
   if ((el = closest("[data-solo-exit]"))) { handlers.onExit?.(); return true; }
   if ((el = closest("[data-solo-guest-save]"))) { handlers.onGuestSave?.(); return true; }
   if ((el = closest("[data-solo-menu-toggle]"))) { handlers.onMenuToggle?.(); return true; }
+  if ((el = closest("[data-solo-char-tab-close]"))) { handlers.onCharTabClose?.(); return true; }
+  if ((el = closest("[data-solo-char-tab]"))) { handlers.onCharTab?.(); return true; }
+  if ((el = closest("[data-solo-roll-history-close]"))) { handlers.onRollHistoryClose?.(); return true; }
+  if ((el = closest("[data-solo-roll-history]"))) { handlers.onRollHistory?.(); return true; }
   return false;
 }
 
@@ -3372,6 +3463,10 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     victoryTyped: false,
     runSummary: null,
     menuOpen: false,
+    // UI restructure: the character-sheet tab (opened from the portrait badge)
+    // and the roll-history drawer (opened from the roll banner's magnifier).
+    characterTabOpen: false,
+    rollHistoryOpen: false,
     dialogueActive: false,
     dialogueTyped: false,
     dialogueHistory: [],
@@ -3447,7 +3542,11 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
         dlg: Boolean(state.dialogueActive),
         npc: Boolean(state.npcCreator && state.npcCreator.open),
         art: [scene.locationImageUri || null, Boolean(scene.locationImageLocked)],
-        sidebar: renderSoloCharacterSidebar(character),
+        // The drawer toggles (character tab / roll history) are full-render
+        // triggers so opening/closing them repaints, never a stage fast-path.
+        charTab: Boolean(state.characterTabOpen),
+        rollHist: Boolean(state.rollHistoryOpen),
+        sidebar: renderSoloCharacterSidebar(character, { open: state.characterTabOpen, scene }),
         // #15-full: the rail (rolls / clock / cast / exits) is NO LONGER a
         // full-render trigger — the turn fast-path repaints it in place (its
         // handlers are delegated on root), so a within-location turn never
@@ -3530,12 +3629,18 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       lifecycleEl.innerHTML = renderSoloTurnLifecycle(state);
     }
 
-    // CONDITIONS HUD: chips appear on commit and vanish on shed via BOTH render
-    // paths (one policy — the scroll-fix precedent). Tolerates absence in the
-    // lightweight test mocks.
+    // CONDITIONS chips (now overlaid ON the portrait, ui restructure): appear on
+    // commit and vanish on shed via BOTH render paths (one policy — the scroll-fix
+    // precedent). Compact form to match the portrait-edge overlay. Tolerates
+    // absence in the lightweight test mocks.
     const conditionsEl = root.querySelector("[data-solo-conditions]");
     if (conditionsEl && "innerHTML" in conditionsEl) {
-      conditionsEl.innerHTML = renderSoloConditionsHud(state.scene || {});
+      conditionsEl.innerHTML = renderSoloConditionsHud(state.scene || {}, { compact: true });
+    }
+    // ROLL BANNER: the latest roll updates in place on the fast path too.
+    const rollBannerEl = root.querySelector("[data-solo-roll-banner]");
+    if (rollBannerEl && "innerHTML" in rollBannerEl) {
+      rollBannerEl.innerHTML = renderSoloRollBanner(state.scene || {});
     }
 
     // #15-full: repaint the right rail in place (rolls / clock / cast / exits).
@@ -3614,6 +3719,10 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       onGuestSave: handleGuestSave,
       onDismissBanner: handleDismissBanner,
       onMenuToggle: handleMenuToggle,
+      onCharTab: handleCharTabToggle,
+      onCharTabClose: handleCharTabClose,
+      onRollHistory: handleRollHistoryToggle,
+      onRollHistoryClose: handleRollHistoryClose,
       onMove: handleMove,
       onInspect: handleInspect,
       onTalk: handleTalk,
@@ -4002,6 +4111,27 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
 
   function handleMenuToggle() {
     state.menuOpen = !state.menuOpen;
+    render();
+  }
+
+  // Character-sheet tab (portrait badge) + roll-history drawer (banner magnifier).
+  // Each is a single-open drawer: opening one closes the other so they never stack.
+  function handleCharTabToggle() {
+    state.characterTabOpen = !state.characterTabOpen;
+    if (state.characterTabOpen) state.rollHistoryOpen = false;
+    render();
+  }
+  function handleCharTabClose() {
+    state.characterTabOpen = false;
+    render();
+  }
+  function handleRollHistoryToggle() {
+    state.rollHistoryOpen = !state.rollHistoryOpen;
+    if (state.rollHistoryOpen) state.characterTabOpen = false;
+    render();
+  }
+  function handleRollHistoryClose() {
+    state.rollHistoryOpen = false;
     render();
   }
 
@@ -4651,9 +4781,10 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     const tick = async () => {
       castPollTimer = null;
       castPollAttempts += 1;
-      // Never tear down the DOM while the cog menu is open — a full re-render
-      // would destroy the open menu and eat in-flight clicks.
-      if (state.menuOpen) {
+      // Never tear down the DOM while the cog menu OR a drawer (character tab /
+      // roll history) is open — a full re-render would destroy the open overlay
+      // and eat in-flight clicks.
+      if (state.menuOpen || state.characterTabOpen || state.rollHistoryOpen) {
         if (sceneArtPending() && castPollAttempts < SOLO_ART_POLL_MAX_ATTEMPTS) {
           arm();
         }
