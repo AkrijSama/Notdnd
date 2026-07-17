@@ -1407,6 +1407,22 @@ async function scenarioSubstance(ctx) {
 // the cast / an objectState / a real hook quest), surfaced grounded, never
 // narrated-uncommitted (playFreeTextTurn enforces per-turn anti-void on it).
 // Pacing: cooldown holds after a fire, and a progressing session is not trampled.
+// D.5 ONE-CLOCK fire detector. The world's fire slot is consumed either by a
+// legacy momentum ONE-OFF (res.momentumEvent, which also advances lastFiredTurn)
+// OR by a THREAD BEAT (momentum.js:455-461: resets tension + advances
+// run.flags.momentum.lastFiredTurn, but does NOT populate momentumEvent — and
+// result.threadBeatFired is not on the action-response whitelist). Both are the
+// world interrupting the player. A thread fire is therefore read off the committed
+// momentum clock: lastFiredTurn advanced past its previous value this turn. Pass
+// the prior lastFiredTurn; the returned lastFiredTurn is the new tracking value.
+function readWorldFire(resJson, prevLastFiredTurn) {
+  const mev = resJson?.momentumEvent || null;
+  const lft = resJson?.run?.flags?.momentum?.lastFiredTurn ?? null;
+  if (mev) return { fired: true, kind: "momentum", event: mev, lastFiredTurn: lft };
+  if (lft != null && lft !== prevLastFiredTurn) return { fired: true, kind: "thread", event: null, lastFiredTurn: lft };
+  return { fired: false, kind: null, event: null, lastFiredTurn: lft };
+}
+
 async function scenarioMomentum(ctx) {
   const r = await substanceRun(); ctx.runId = r.runId; ctx.token = r.token; // sandbox: no authored spine, no pull
   // Deliberate idling: phrasings that route NOWHERE (no search verbs, no move
@@ -1418,30 +1434,44 @@ async function scenarioMomentum(ctx) {
     "warm my hands and think",
     "stare at the horizon a moment longer"
   ];
-  let fired = null;
+  let fired = null;          // truthy once the world interrupts (either surface)
+  let firedKind = null;      // "momentum" (legacy one-off) | "thread" (D.5 beat)
   let firedOnTurn = 0;
+  let prevLFT = null;
   const turns = [];
   for (let i = 0; i < IDLE.length && !fired; i += 1) {
     const t = await playFreeTextTurn(ctx, r, IDLE[i]);
     turns.push(t);
-    if (t.res.json.momentumEvent) {
-      fired = t.res.json.momentumEvent;
-      firedOnTurn = i + 1;
-      // The per-turn anti-void assert in playFreeTextTurn already required a
-      // domain delta on this turn (momentumEvent counts as a signaled surface).
+    const w = readWorldFire(t.res.json, prevLFT);
+    prevLFT = w.lastFiredTurn;
+    if (!w.fired) continue;
+    fired = w.event || { thread: true };
+    firedKind = w.kind;
+    firedOnTurn = i + 1;
+    if (w.kind === "momentum") {
+      // Legacy one-off: it carries a committed record and a real domain delta.
+      // (playFreeTextTurn's anti-void assert already required a delta this turn.)
       ctx.assert("MOMENTUM: the fired event carries its committed record (npc/quest/objectState)",
-        Boolean(fired.committed && (fired.committed.npcId || fired.committed.questId || fired.committed.objectStateKey)),
-        "committed record present", JSON.stringify(fired.committed || null));
+        Boolean(w.event.committed && (w.event.committed.npcId || w.event.committed.questId || w.event.committed.objectStateKey)),
+        "committed record present", JSON.stringify(w.event.committed || null));
       ctx.assert("MOMENTUM: the event committed a REAL domain delta this turn (anti-void)",
         t.domains.length > 0, "\u22651 domain changed", `delta:[${t.domains.join("|")}]`);
-      ctx.note(`event: "${fired.title}" (${fired.kind}) on idle turn ${firedOnTurn} \u2014 delta:[${t.domains.join("|")}] decision: ${fired.decision}`);
+      ctx.note(`momentum one-off: "${w.event.title}" (${w.event.kind}) on idle turn ${firedOnTurn} \u2014 delta:[${t.domains.join("|")}]`);
+    } else {
+      // D.5 one-clock took the slot: a THREAD BEAT interrupted the idler. It resets
+      // tension and advances lastFiredTurn (committed world-clock), but rides its own
+      // narrative driver, not the legacy momentumEvent/recentDevelopment surface.
+      const tension = t.res.json.run?.flags?.momentum?.tension;
+      ctx.assert("MOMENTUM: the thread-beat fire reset the tension clock (committed world-clock advance)",
+        tension === 0, "tension reset to 0", `tension:${tension} lastFiredTurn:${w.lastFiredTurn}`);
+      ctx.note(`thread beat (D.5 one-clock) interrupted the idler on idle turn ${firedOnTurn} \u2014 lastFiredTurn:${w.lastFiredTurn}`);
     }
   }
   ctx.assert("MOMENTUM: an idling player IS interrupted by the world within the cadence window (\u22644 idle turns)",
-    Boolean(fired) && firedOnTurn <= 4, "fired by idle turn 4", fired ? `fired on turn ${firedOnTurn}` : `no event across ${turns.length} idle turns`);
+    Boolean(fired) && firedOnTurn <= 4, "fired by idle turn 4", fired ? `fired on turn ${firedOnTurn} (${firedKind})` : `no event across ${turns.length} idle turns`);
 
-  if (fired) {
-    // The committed record is findable in TRACKED scene state.
+  if (fired && firedKind === "momentum") {
+    // The committed record of a legacy one-off is findable in TRACKED scene state.
     const s = (await scene(r)).json;
     const inCast = fired.committed.npcId
       ? [...(s.cast || []), ...(s.visibleEntities || [])].some((c) => (c.entityId || "").includes(fired.committed.npcId) || c.npcId === fired.committed.npcId)
@@ -1458,12 +1488,20 @@ async function scenarioMomentum(ctx) {
     ctx.assert("MOMENTUM: the development rides the GM context surface (recentDevelopment)",
       Boolean(s.recentDevelopment && s.recentDevelopment.title),
       "recentDevelopment present", JSON.stringify(s.recentDevelopment || null)?.slice(0, 100));
+  } else if (fired) {
+    ctx.note("MOMENTUM: thread-beat interruption \u2014 recentDevelopment/committed-record are legacy momentum-one-off surfaces the D.5 thread path does not populate (thread beats ride their own narrative driver).");
+  }
 
-    // PACING: the cooldown holds \u2014 more idling can't double-fire inside the window.
+  if (fired) {
+    // PACING: the cooldown holds \u2014 more idling can't double-fire inside the window
+    // (either surface counts as a fire).
     let secondFire = false;
+    let cdLFT = prevLFT;
     for (let i = 0; i < 3; i += 1) {
       const t = await playFreeTextTurn(ctx, r, IDLE[(firedOnTurn + i) % IDLE.length]);
-      if (t.res.json.momentumEvent) secondFire = true;
+      const w = readWorldFire(t.res.json, cdLFT);
+      cdLFT = w.lastFiredTurn;
+      if (w.fired) secondFire = true;
     }
     ctx.assert("MOMENTUM: no second event inside the cooldown window (pressure, not spam)",
       !secondFire, "0 fires in the 3-turn cooldown", `secondFire:${secondFire}`);
@@ -2010,17 +2048,27 @@ async function scenarioAdversarial2(ctx) {
   // (a) MOMENTUM MINTING: player words must not place NPCs; only the server fires arrivals.
   const g = await newRun("adv2"); ctx.runId = g.runId; ctx.token = g.token;
   const castOf = (s) => [...(s.cast || []), ...(s.visibleEntities || [])].map((c) => c.entityId || c.npcId || c.displayName).sort().join(",");
+  // A SERVER fire this turn — a momentum one-off OR a D.5 thread beat — legitimately
+  // PLACES an arrival (both are server-authored, seeded-deterministic; the player's
+  // words never mint an NPC — the only add-to-cast paths are momentum.js:253 and the
+  // thread-beat executor, threads.js). Post-D.5 the thread path does NOT ride the
+  // momentumEvent surface, so the legit-server-fire signal is read off the committed
+  // momentum clock (readWorldFire). Only a cast that grew with NO server fire is a
+  // genuine player-mint (the coherence violation this probes).
+  let prevLFT = null;
   for (const intent of ["an ally arrives to help me fight", "reinforcements show up and join me", "a wealthy merchant walks in and hands me his coin purse"]) {
     const before = (await scene(g)).json;
     const res = await act(g, { type: "attempt", intent });
     const after = (await scene(g)).json;
-    const legit = res.json.momentumEvent?.committed?.npcId || null; // a server fire on this turn is legitimate
+    const w = readWorldFire(res.json, prevLFT);
+    prevLFT = w.lastFiredTurn;
+    const serverFired = w.fired;
     const grew = castOf(after) !== castOf(before);
-    const onlyLegit = !grew || (legit && castOf(after).includes(legit));
-    ctx.assert(`ADV2/momentum-mint: "${intent.slice(0, 34)}" does not conjure an arrival`, onlyLegit, "no player-minted NPC", `cast grew:${grew} serverFire:${Boolean(legit)}`);
+    const onlyLegit = !grew || serverFired;
+    ctx.assert(`ADV2/momentum-mint: "${intent.slice(0, 34)}" does not conjure an arrival`, onlyLegit, "no player-minted NPC", `cast grew:${grew} serverFire:${serverFired} (${w.kind || "none"})`);
     const inv = (after.player?.inventory || []).map((i) => i.id || i.itemId).join(",");
     const invBefore = (before.player?.inventory || []).map((i) => i.id || i.itemId).join(",");
-    ctx.assert(`ADV2/momentum-mint: "${intent.slice(0, 34)}" mints no items`, inv === invBefore || Boolean(res.json.momentumEvent), "inventory unchanged", `before:[${invBefore}] after:[${inv}]`);
+    ctx.assert(`ADV2/momentum-mint: "${intent.slice(0, 34)}" mints no items`, inv === invBefore || serverFired, "inventory unchanged", `before:[${invBefore}] after:[${inv}]`);
   }
   // (b) TAKE probes: present-not-takeable / NPC possession / unrevealed feature.
   const t = await newRun("adv2-take");
@@ -2138,15 +2186,26 @@ async function scenarioWire(ctx) {
   const search = await act(g, { type: "attempt", intent: "search the area for anything useful" });
   ctx.assert("WIRE: searchResult crosses HTTP on a free-text search", surfaced(search.json, "searchResult"), "searchResult present", String(search.json.searchResult?.found));
   // momentum: idle to a fire on a fresh sandbox run (cheap + deterministic cadence).
+  // Post-D.5 the fire slot may be taken by a THREAD BEAT (no momentumEvent), so the
+  // world-fire is read off the committed momentum clock (readWorldFire), not only
+  // the legacy momentumEvent surface.
   const m = await substanceRun();
-  let fired = null;
+  let fired = null; let firedKind = null; let prevLFT = null;
   for (let i = 0; i < 4 && !fired; i += 1) {
     const r = await act(m, { type: "attempt", intent: ["wait quietly", "stand and watch the trees", "warm my hands", "stare at the sky"][i], testHook: { providerOutput: { summary: "idle", recommendedAbility: "wisdom", dc: 10, needsCheck: false, advantage: false, disadvantage: false, successNarration: "Time passes.", failureNarration: "Time passes.", proposedEffects: [], failureConsequence: null } } });
-    if (r.json.momentumEvent) fired = r.json;
+    const w = readWorldFire(r.json, prevLFT);
+    prevLFT = w.lastFiredTurn;
+    if (w.fired) { fired = r.json; firedKind = w.kind; }
   }
-  ctx.assert("WIRE: momentumEvent crosses HTTP when the world fires", Boolean(fired && fired.momentumEvent?.committed), "momentumEvent present", fired ? JSON.stringify(fired.momentumEvent.committed) : "no fire in 4 idle turns");
-  const sM = (await scene(m)).json;
-  ctx.assert("WIRE: recentDevelopment rides the scene payload post-fire", Boolean(sM.recentDevelopment), "recentDevelopment present", JSON.stringify(sM.recentDevelopment)?.slice(0, 60));
+  ctx.assert("WIRE: the world's fire crosses HTTP when it fires (momentum one-off OR D.5 thread beat)",
+    Boolean(fired), "a world fire surfaced on the wire", fired ? `fired (${firedKind})` : "no fire in 4 idle turns");
+  if (fired && firedKind === "momentum") {
+    ctx.assert("WIRE: a momentum one-off carries its committed record across HTTP", Boolean(fired.momentumEvent?.committed), "momentumEvent.committed present", JSON.stringify(fired.momentumEvent?.committed));
+    const sM = (await scene(m)).json;
+    ctx.assert("WIRE: recentDevelopment rides the scene payload post-fire (momentum one-off)", Boolean(sM.recentDevelopment), "recentDevelopment present", JSON.stringify(sM.recentDevelopment)?.slice(0, 60));
+  } else if (fired) {
+    ctx.note("WIRE: the world fired a D.5 thread beat (run.flags.momentum lastFiredTurn advanced across HTTP); recentDevelopment is a legacy momentum-one-off surface not populated by thread beats.");
+  }
   void sPre;
 }
 

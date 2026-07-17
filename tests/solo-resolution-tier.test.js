@@ -5,6 +5,7 @@ import {
   resolveAttemptAction,
   attemptNeedsCheck,
   isSafeConversation,
+  isFalseClaimForBenefit,
   isObservationQuery
 } from "../server/solo/attempt.js";
 import { buildActionGmMessage } from "../server/gm/actionNarration.js";
@@ -42,6 +43,54 @@ test("TIER: stakes / opposition / danger DO need a check", () => {
   assert.equal(attemptNeedsCheck("force the rusted door open"), true);
   // safe-talk verb + adversarial intent stays a check (not swept into automatic)
   assert.equal(isSafeConversation("intimidate the guard into leaving"), false);
+});
+
+// ── G6 MOAT: false-identity/authority claim to extract a benefit ROLLS ────────
+// (Regression: the "I tell the guard I am a god so he lets me pass" loophole —
+// SAFE_TALK_RE matched "tell" and ADVERSARIAL_SOCIAL_RE saw no explicit deception
+// verb, so a deception auto-succeeded as safe talk. See auto-grade-2026-07-17.)
+test("G6: a false-identity/authority claim made to extract a benefit is NOT safe talk", () => {
+  // the exact failing battery probes
+  assert.equal(isSafeConversation("I tell the gullible guard I am a god so he lets me pass"), false);
+  assert.equal(isSafeConversation("I tell the guard I am the queen's envoy so he lets me pass"), false);
+  assert.equal(isFalseClaimForBenefit("I tell the gullible guard I am a god so he lets me pass"), true);
+  assert.equal(isFalseClaimForBenefit("I tell the guard I am the queen's envoy so he lets me pass"), true);
+  // variants: claimed relationship / authority / debt leveraged for a benefit
+  assert.equal(isFalseClaimForBenefit("the captain is my brother and will let me through"), true);
+  assert.equal(isFalseClaimForBenefit("I am the guildmaster here, so open the vault"), true);
+  assert.equal(isFalseClaimForBenefit("the queen owes me a favor, so hand over the key"), true);
+  // and the interpreter's needsCheck:true is now honored (no longer overridden)
+  assert.equal(attemptNeedsCheck("I tell the gullible guard I am a god so he lets me pass", { needsCheck: true }), true);
+  assert.equal(attemptNeedsCheck("I tell the guard I am the queen's envoy so he lets me pass", { needsCheck: true }), true);
+});
+
+test("G6 GUARD: genuine safe talk is NOT swept into a roll by the false-claim rule", () => {
+  // honest tells, greetings, flavor, and requests with no status-claim-for-benefit
+  for (const s of [
+    "talk to Vesa",
+    "greet the guard and ask directions",
+    "I tell him my name is Bram",
+    "I tell the guard the truth about the theft",
+    "I tell him a story about my long journey",
+    "I tell the guard I am looking for the market",
+    "I tell the guard I am here to help",
+    "introduce myself to the innkeeper"
+  ]) {
+    assert.equal(isFalseClaimForBenefit(s), false, `false-claim must be false for: ${s}`);
+    assert.equal(isSafeConversation(s), true, `safe talk must stay safe for: ${s}`);
+  }
+});
+
+test("G6: a false-claim-for-benefit ROLLS end-to-end (band is not automatic)", () => {
+  const run = createDefaultSoloRun({ now: NOW });
+  const result = resolveAttemptAction(
+    run,
+    { type: "attempt", actorId: "player", intent: "I tell the gullible guard I am a god so he lets me pass" },
+    { attemptProviderFn: () => ({ ...PROVIDER(), recommendedAbility: "charisma", needsCheck: true }) }
+  );
+  assert.equal(result.ok, true);
+  assert.notEqual(result.attemptResult.band, "automatic", "a leveraged false claim must roll, not auto-succeed");
+  assert.notEqual(result.attemptResult.checkResult, null, "a real d20 was rolled");
 });
 
 // ── automatic tier commits no roll and no rolled band ────────────────────────

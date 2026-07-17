@@ -251,6 +251,34 @@ const SAFE_TALK_RE =
 const ADVERSARIAL_SOCIAL_RE =
   /\b(persuade|persuading|convince|convincing|deceive|deceiving|lie|lying|bluff|bluffing|charm|charming|seduce|seducing|intimidate|intimidating|threaten|threatening|menace|menacing|coerce|coercing|manipulate|manipulating|negotiate|negotiating|barter|bartering|haggle|haggling|bribe|bribing|interrogate|interrogating|con|conning|trick|tricking|swindle|swindling|extort|extorting|blackmail|blackmailing|goad|provoke|provoking|demand|demanding|command|order\b|browbeat|pressure|pressuring|flatter\s+into|talk\s+(?:him|her|them|it)\s+into|argue\s+(?:down|into))\b/i;
 
+// FALSE-CLAIM-FOR-BENEFIT (coherence moat, G6) — asserting an identity, rank,
+// authority, or useful relationship IN ORDER TO EXTRACT a mechanical benefit
+// (passage, access, goods, compliance) is a deception the target is rolled
+// against — never safe talk, even phrased with a plain "tell/say" (the
+// "I tell the guard I am a god so he lets me pass" loophole, where SAFE_TALK_RE
+// matched "tell" and ADVERSARIAL_SOCIAL_RE saw no explicit deception verb). The
+// con leans on a status CLAIM; the leverage is the BENEFIT clause. BOTH are
+// required, so an honest "I tell him my name", a greeting, flavor with no benefit
+// sought, or a plain request with no status claim all stay no-roll.
+const CLAIMABLE_STATUS_TERMS =
+  "god|goddess|deity|divine|chosen\\s+one|prophet|saint|messiah|king|queen|prince|princess|emperor|empress|lord|lady|baron(?:ess)?|duke|duchess|count(?:ess)?|earl|noble|royalty|royal|heir(?:ess)?|regent|envoy|emissary|ambassador|herald|official|inspector|marshal|captain|commander|general|knight|priest(?:ess)?|bishop|cardinal|guild\\s*master|guildmaster|magistrate|governor|mayor|sheriff|warden|constable|chieftain|elder|brother|sister|cousin|kinsman|nephew|niece|friend|ally|agent|owner|proprietor";
+const IDENTITY_STATUS_CLAIM_RE = new RegExp(
+  `\\b(?:i\\s*am|i'?m|i\\s+was|call\\s+me|is\\s+my|are\\s+my|sent\\s+by|owes?\\s+me|promised\\s+me)\\b[^.?!]*\\b(?:${CLAIMABLE_STATUS_TERMS})\\b` +
+    `|\\bmy\\s+(?:${CLAIMABLE_STATUS_TERMS})\\b[^.?!]*\\bis\\b` +
+    `|\\b(?:${CLAIMABLE_STATUS_TERMS})\\b[^.?!]*\\b(?:owes?|promised)\\s+me\\b`,
+  "i"
+);
+const BENEFIT_EXTRACTION_RE =
+  /\b(?:so|so\s+that|to)\b[^.?!]*\b(?:lets?|allows?|pass(?:es)?|through|enters?|admits?|gives?|hands?|grants?|opens?|obeys?|complies|comply|surrender|releases?|lower|steps?\s+aside|stands?\s+aside|make\s+way|bows?|kneels?|serves?|follow)\b|\blet\s+me\s+(?:pass|through|in|by|enter|go)\b|\bget(?:s)?\s+(?:me\s+)?(?:in|through|past|access|inside)\b|\bhands?\s+(?:me|over)\b/i;
+
+// True when the intent claims a false identity/authority/relationship to extract a
+// mechanical benefit — a deception that must be rolled, not swept into safe talk.
+export function isFalseClaimForBenefit(intent) {
+  const t = String(intent || "");
+  if (!t.trim()) return false;
+  return IDENTITY_STATUS_CLAIM_RE.test(t) && BENEFIT_EXTRACTION_RE.test(t);
+}
+
 // True when the intent is safe conversation (automatic tier) — a conversational
 // verb with NO adversarial-social or contested/manipulation verb present. This
 // OVERRIDES a provider that mis-classified safe talk as a check.
@@ -259,6 +287,8 @@ export function isSafeConversation(intent) {
   if (!t.trim()) return false;
   if (!SAFE_TALK_RE.test(t)) return false;
   if (ADVERSARIAL_SOCIAL_RE.test(t)) return false;
+  // A status claim made to extract a benefit is a deception, not safe talk.
+  if (isFalseClaimForBenefit(t)) return false;
   if (CONTESTED_INTENT_RE.test(t.toLowerCase())) return false;
   return true;
 }
@@ -277,6 +307,9 @@ export function isPlainQuestion(intent) {
   if (!t.trim()) return false;
   if (!PLAIN_QUESTION_RE.test(t)) return false;
   if (ADVERSARIAL_SOCIAL_RE.test(t)) return false;
+  // A status claim leveraged for a benefit ("won't you let me pass, I am the
+  // baron?") is contested even in question form.
+  if (isFalseClaimForBenefit(t)) return false;
   if (CONTESTED_INTENT_RE.test(t.toLowerCase())) return false;
   return true;
 }
