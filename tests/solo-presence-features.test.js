@@ -36,10 +36,14 @@ test("projects each searchDetail into a positioned, named, kind-typed feature", 
 });
 
 test("positions are deterministic (stable across rebuilds — no flicker)", () => {
+  // Map-layout law: positions are committed per-run (location seed), so the
+  // stability contract is same RUN -> same map on every rebuild. (Two different
+  // runs now legitimately differ — each world mints its own layout.)
   const details = [{ detailId: "d1", label: "Old Well" }, { detailId: "d2", label: "Buried Cache" }];
-  const a = buildBattleMapPayload(runWithSearchDetails(details)).features;
-  const b = buildBattleMapPayload(runWithSearchDetails(details)).features;
-  assert.deepEqual(a, b, "same searchDetails -> identical feature positions");
+  const run = runWithSearchDetails(details);
+  const a = buildBattleMapPayload(run).features;
+  const b = buildBattleMapPayload(run).features;
+  assert.deepEqual(a, b, "same run -> identical feature positions on every rebuild");
 });
 
 test("HONEST to state: feature count mirrors searchDetails exactly (none invented, none dropped)", () => {

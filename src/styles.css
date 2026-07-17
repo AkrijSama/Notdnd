@@ -2282,6 +2282,31 @@ button:disabled {
   border: 1px dashed var(--border, #202024);
   border-radius: 10px;
 }
+
+/* Map-layout law: committed terrain/structure cells (server-minted layouts,
+   scene.battleMap.terrain) — the ground truth of the place, drawn beneath the
+   marker/token layers. Kind-tinted glyphs; walls read as solid mass. */
+.solo-presence-terrainfeat {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  line-height: 1;
+  pointer-events: none;
+  color: var(--muted, #8b8e96);
+}
+.solo-terrainfeat-tree { color: #4d7c4f; }
+.solo-terrainfeat-rock,
+.solo-terrainfeat-rubble { color: #7d7668; }
+.solo-terrainfeat-wall { color: #a89f8d; font-size: 12px; }
+.solo-terrainfeat-gate,
+.solo-terrainfeat-door { color: #d4b45a; font-size: 11px; }
+.solo-terrainfeat-road { color: #b8a888; font-size: 12px; }
+.solo-terrainfeat-water { color: #5a8fb8; }
+.solo-terrainfeat-building { color: #b09a6e; font-size: 11px; }
+.solo-terrainfeat-exit { color: #9ac1d9; pointer-events: auto; }
 /* Procedural local-area map (home base + discovered POIs, fog over the rest). */
 .solo-area { display: flex; flex-direction: column; gap: 8px; }
 .solo-area-grid {

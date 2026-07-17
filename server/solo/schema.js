@@ -678,6 +678,21 @@ export function validateLocation(location) {
   validateOptionalString(location.imageAssetId, "imageAssetId", errors);
   validateStringArray(location.tags, "tags", errors);
   validateObject(location.flags, "flags", errors);
+  // Map-layout law: committed spatial layout (minted on first need) + optional
+  // authored template pin. Additive/optional — legacy locations stay valid and
+  // mint lazily on first map view.
+  validateOptionalString(location.layoutTemplate, "layoutTemplate", errors);
+  if (location.layout !== undefined && location.layout !== null) {
+    if (!isPlainObject(location.layout)) {
+      push(errors, "layout", "Expected object");
+    } else {
+      validateOptionalNumber(location.layout.width, "layout.width", errors);
+      validateOptionalNumber(location.layout.height, "layout.height", errors);
+      if (location.layout.cells !== undefined && !Array.isArray(location.layout.cells)) {
+        push(errors, "layout.cells", "Expected array");
+      }
+    }
+  }
   validateContentMetadata(location, errors);
   if (location.rest !== undefined) {
     appendNestedErrors(errors, "rest", validateRestMetadata(location.rest));

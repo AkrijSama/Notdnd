@@ -7,6 +7,7 @@ import {
 } from "./schema.js";
 import { advanceClock } from "./worldClock.js";
 import { tickConditions } from "./conditions.js";
+import { ensureLocationLayout } from "./layout.js";
 
 // WORLD CLOCK (#14): in-fiction minutes a single location move costs.
 const TRAVEL_MINUTES = 10;
@@ -391,6 +392,11 @@ export function resolveMovementAction(run, action, options = {}) {
     discovered: true
   };
   destination.memoryFactIds = [...new Set([...(destination.memoryFactIds || []), memoryFact.factId])];
+
+  // Map-layout law: arrival is a "layout needed" moment — mint-and-commit the
+  // destination's spatial layout on first visit (deterministic; no-op when the
+  // location already carries one). The caller persists the returned run.
+  ensureLocationLayout(updatedRun, action.toLocationId, { now });
 
   if (updatedRun.world?.time && typeof updatedRun.world.time.tick === "number") {
     updatedRun.world.time.tick += 1;

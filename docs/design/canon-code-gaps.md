@@ -19,6 +19,7 @@ docs/design/romance-legacy-law.md (R-laws, economy laws, narration law, ads law)
 | Goals as D.5 thread sources (Project beats, Ambition arcs) | Player-goals law (honor machinery 3) | NOT BUILT: Tasks honor through the attempt pipeline; Projects/Ambitions do not yet register as thread sources (threads engine read-only this pass) | **HIGH** |
 | Goal STATUS-WINDOW surface (goals list + Project pips) | Player-goals law (honor machinery 4) | NOT BUILT: goals are committed + ride the prompt, but not yet drawn in the status/VN UI | TBD by owner |
 | Goal lifecycle: neglect check-in → archive | Player-goals law (lifecycle) | PARTIAL: state machine + stated-abandon + achieve/fail states exist; the neglect → ONE diegetic check-in → archive path is not wired | TBD by owner |
+| Geometry-contradiction auditor (narration places a committed feature somewhere the committed layout doesn't) | Map-layout law (narrator consumes layout) | NOT BUILT: layout rides the prompt as SCENE GEOMETRY facts (`buildLayoutDirective`); the auditor-family detector that flags narrated contradictions is ledgered, not built | TBD by owner |
 
 ## Closed
 

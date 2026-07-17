@@ -21,6 +21,7 @@
 
 import crypto from "node:crypto";
 import { validateNpc } from "./schema.js";
+import { detectDirectionHint } from "./layout.js";
 
 function isPlainObject(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -769,6 +770,10 @@ export function auditAndCommitFoundObjects(run, narrationText, knownNames = []) 
       targetId: null,
       sourceIntent: "",
       since: now,
+      // Map-layout law: a directional hint in the narrated sentence ("half-
+      // buried to the north") is committed with the discovery, so the map
+      // marker places itself on that side of the layout.
+      direction: detectDirectionHint(d.sentence),
       // Discovery provenance (this auditor's mark, tolerated free-form field —
       // threads.js writes setBy the same way).
       setBy: "found-object-auditor"

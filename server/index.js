@@ -128,6 +128,7 @@ import { enqueueDraftPortrait, enqueueImageJob, enqueueLocationImageJob, enqueue
 import { enqueueIdentityJob, runIdentityJob, backfillNpcMannerisms, buildVoiceDirective } from "./solo/npcIdentity.js";
 import { buildDisagreementDirective, detectComplianceViolations } from "./gm/disagreementAudit.js";
 import { captureDeclaredGoal, honorGoalsOnAttempt, buildGoalsDirective, detectGoalIgnored } from "./solo/goals.js";
+import { buildLayoutDirective, ensureLocationLayout } from "./solo/layout.js";
 import { enforceRomanceRegister, stripRomanceRegister, ROMANCE_CORRECTIVE_CLAUSE } from "./gm/romanceEnforcement.js";
 import { buildNpcIntroDirective, buildSoloScenePayload, collectNpcsWithPendingIntro } from "./solo/scene.js";
 import { buildSystemLoreClause, detectSystemLoreViolations } from "./gm/systemLore.js";
@@ -1227,6 +1228,10 @@ async function narrateActionWithGm(run, resolved, user) {
   // redirect away), and committed achievements ride so the world references what
   // the player has built. Paired with the goal-ignored auditor below.
   message += buildGoalsDirective(run);
+  // MAP-LAYOUT LAW: the committed scene geometry rides every prompt — the
+  // narrator describes the clearing where the clearing IS, and never invents
+  // placement the map would contradict.
+  message += buildLayoutDirective(run);
   // SYSTEM LORE (item 1): the WINDOW/VOICE world-law facts ground every turn, so
   // the model never invents system capabilities ("the window will remember…").
   message += buildSystemLoreClause();
@@ -2771,6 +2776,13 @@ async function handleApi(req, res) {
         });
       }
       assertSoloRunAccess(user, run);
+      // MAP-LAYOUT LAW: first map view is a "layout needed" moment — mint the
+      // current location's layout deterministically and COMMIT it (resume-safe;
+      // legacy runs lazy-mint here). No-op when the layout already exists.
+      const layoutMint = ensureLocationLayout(run, run.currentLocationId);
+      if (layoutMint.minted) {
+        saveSoloRun(run);
+      }
       // Entitlement gate: a free user past their daily image quota (and without a
       // BYOK key) stops triggering new image generation — the scene still renders
       // fully, just with placeholder art until the cap resets. Degrades softly; it

@@ -1,0 +1,86 @@
+{
+  "version": 1,
+  "_comment": "Map-layout law: type templates for the spatial mint engine (server/solo/layout.js). World-book DATA — a world author can add/override templates here or hand-place a full set-piece layout on a scenario location (`layout`), or pin a template (`layoutTemplate`). Ops run in order on a square grid; all randomness is drawn from the location seed, so the same seed mints the same layout forever. Op vocabulary: clearing (reserve open ground), scatter (strew terrain cells), perimeter (wall the bounds, opening on the approach side), road (lay a path from the approach edge), buildings (rect blocks flanking the center), pond (small water blob), posts (named work-spots for keeper-role NPCs).",
+  "templates": {
+    "forest": {
+      "size": 12,
+      "ground": "forest",
+      "playerAnchor": "center",
+      "ops": [
+        { "op": "clearing", "radius": 2 },
+        { "op": "scatter", "kind": "tree", "count": 24, "clearRadius": 3 },
+        { "op": "scatter", "kind": "rock", "count": 2, "clearRadius": 3 }
+      ]
+    },
+    "clearing": {
+      "size": 12,
+      "ground": "forest",
+      "playerAnchor": "center",
+      "ops": [
+        { "op": "clearing", "radius": 4 },
+        { "op": "scatter", "kind": "tree", "count": 14, "clearRadius": 4 },
+        { "op": "scatter", "kind": "rock", "count": 3, "clearRadius": 4 }
+      ]
+    },
+    "road": {
+      "size": 12,
+      "ground": "stone",
+      "playerAnchor": "center",
+      "ops": [
+        { "op": "road", "through": true },
+        { "op": "scatter", "kind": "tree", "count": 10, "clearRadius": 2 },
+        { "op": "scatter", "kind": "rock", "count": 3, "clearRadius": 2 }
+      ]
+    },
+    "town-approach": {
+      "size": 12,
+      "ground": "stone",
+      "playerAnchor": "entry",
+      "ops": [
+        { "op": "perimeter", "kind": "wall", "opening": "gate", "inset": 1, "sides": "far" },
+        { "op": "road", "to": "gate" },
+        { "op": "scatter", "kind": "tree", "count": 6, "outsideWallsOnly": true },
+        { "op": "posts", "at": "gate", "count": 1 }
+      ]
+    },
+    "town-street": {
+      "size": 12,
+      "ground": "stone",
+      "playerAnchor": "center",
+      "ops": [
+        { "op": "road", "through": true },
+        { "op": "buildings", "count": 4 },
+        { "op": "posts", "at": "buildings", "count": 3 }
+      ]
+    },
+    "interior": {
+      "size": 12,
+      "ground": "stone",
+      "playerAnchor": "entry",
+      "ops": [
+        { "op": "perimeter", "kind": "wall", "opening": "door", "inset": 0 },
+        { "op": "posts", "at": "counter", "count": 2 }
+      ]
+    },
+    "ruin": {
+      "size": 12,
+      "ground": "ruins",
+      "playerAnchor": "center",
+      "ops": [
+        { "op": "perimeter", "kind": "wall", "opening": "gap", "inset": 2, "ruined": 0.45 },
+        { "op": "scatter", "kind": "rubble", "count": 6, "clearRadius": 2 },
+        { "op": "scatter", "kind": "tree", "count": 4, "outsideWallsOnly": true }
+      ]
+    },
+    "cave": {
+      "size": 12,
+      "ground": "ruins",
+      "playerAnchor": "entry",
+      "ops": [
+        { "op": "perimeter", "kind": "rock", "opening": "gap", "inset": 0, "ruined": 0.2 },
+        { "op": "pond", "radius": 1 },
+        { "op": "scatter", "kind": "rock", "count": 5, "clearRadius": 2 }
+      ]
+    }
+  }
+}

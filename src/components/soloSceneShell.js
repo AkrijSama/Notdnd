@@ -2102,6 +2102,31 @@ const PRESENCE_FEATURE_GLYPH = {
   cover: "▮",
   loot: "✚"
 };
+// Map-layout law: glyphs for COMMITTED terrain/structure cells (the server-
+// minted location layout riding scene.battleMap.terrain). Distinct from the
+// marker glyphs above: terrain is the ground truth of the place itself.
+const PRESENCE_TERRAIN_GLYPH = {
+  tree: "♣",
+  rock: "▲",
+  rubble: "▒",
+  wall: "█",
+  gate: "∩",
+  door: "▢",
+  road: "·",
+  water: "≈",
+  building: "⌂",
+  exit: "⤳"
+};
+// Committed ground kind -> terrain skin class. When the server mints a layout
+// its `ground` field wins over the legacy name/tag regex guess.
+const PRESENCE_GROUND_CLASS = {
+  forest: "terrain-forest",
+  grass: "terrain-forest",
+  water: "terrain-water",
+  sand: "terrain-sand",
+  ruins: "terrain-ruins",
+  stone: "terrain-stone"
+};
 export function renderSoloPresenceMap(scene = {}) {
   const bm = scene && typeof scene.battleMap === "object" && scene.battleMap ? scene.battleMap : {};
   const tokens = Array.isArray(bm.tokens) ? bm.tokens : [];
@@ -2113,7 +2138,8 @@ export function renderSoloPresenceMap(scene = {}) {
   const width = Number.isFinite(bm.width) && bm.width > 0 ? Math.min(24, Math.trunc(bm.width)) : 12;
   const height = Number.isFinite(bm.height) && bm.height > 0 ? Math.min(24, Math.trunc(bm.height)) : 12;
   const clampTo = (n, max) => Math.max(0, Math.min(max - 1, Math.trunc(Number(n) || 0)));
-  const terrainClass = presenceTerrainClass(scene);
+  const terrainClass =
+    (typeof bm.ground === "string" && PRESENCE_GROUND_CLASS[bm.ground]) || presenceTerrainClass(scene);
 
   // Terrain layer: one background cell per grid coordinate (explicitly placed so
   // it never collides with the explicitly-placed tokens). Each cell carries a
@@ -2128,6 +2154,26 @@ export function renderSoloPresenceMap(scene = {}) {
       );
     }
   }
+
+  // COMMITTED LAYOUT layer (map-layout law): the server-minted location layout —
+  // terrain and structures (trees, walls, the gate, roads, water) riding
+  // scene.battleMap.terrain. Drawn between the ground and the marker/token
+  // layers. Honest to state: when the server commits no layout, nothing draws.
+  const terrain = Array.isArray(bm.terrain) ? bm.terrain : [];
+  const terrainCells = terrain
+    .filter((c) => c && typeof c === "object" && Number.isFinite(Number(c.x)) && Number.isFinite(Number(c.y)))
+    .map((cell) => {
+      const kind = typeof cell.kind === "string" && cell.kind ? cell.kind : "rock";
+      const glyph = PRESENCE_TERRAIN_GLYPH[kind] || "▲";
+      const x = clampTo(cell.x, width);
+      const y = clampTo(cell.y, height);
+      const label =
+        typeof cell.name === "string" && cell.name
+          ? ` title="${escapeHtml(cell.name)}" aria-label="${escapeHtml(cell.name)}"`
+          : "";
+      return `<span class="solo-presence-terrainfeat solo-terrainfeat-${escapeHtml(kind)}" style="grid-column:${x + 1};grid-row:${y + 1};"${label}>${glyph}</span>`;
+    })
+    .join("");
 
   // Area-feature layer (POIs / landmarks / exits / the ruins structure) — drawn
   // BENEATH the tokens so the player/NPCs stay on top. PURELY state-driven: read
@@ -2152,6 +2198,12 @@ export function renderSoloPresenceMap(scene = {}) {
   // or otherwise). Honest to state: only features actually placed are listed,
   // deduped by name — nothing invented. Renders only when features exist.
   const seenFeatureNames = new Set();
+  const namedTerrainLegend = terrain
+    .filter((c) => c && typeof c === "object" && typeof c.name === "string" && c.name)
+    .map((cell) => {
+      const kind = typeof cell.kind === "string" && cell.kind ? cell.kind : "rock";
+      return { kind: `terrain-${kind}`, glyph: PRESENCE_TERRAIN_GLYPH[kind] || "▲", name: cell.name };
+    });
   const featureLegend = features
     .filter((f) => f && typeof f === "object" && Number.isFinite(Number(f.x)) && Number.isFinite(Number(f.y)))
     .map((feature) => {
@@ -2162,6 +2214,7 @@ export function renderSoloPresenceMap(scene = {}) {
         name: typeof feature.name === "string" && feature.name ? feature.name : kind
       };
     })
+    .concat(namedTerrainLegend)
     .filter((f) => (seenFeatureNames.has(f.name) ? false : (seenFeatureNames.add(f.name), true)))
     .map(
       (f) =>
@@ -2180,7 +2233,7 @@ export function renderSoloPresenceMap(scene = {}) {
       return `<span class="solo-presence-token solo-token-${escapeHtml(kind)}" style="grid-column:${x + 1};grid-row:${y + 1};" title="${escapeHtml(name)}" aria-label="${escapeHtml(name)}">${escapeHtml(initial)}</span>`;
     })
     .join("");
-  return `<div class="solo-presence">${head}<div class="solo-presence-grid ${terrainClass}" style="grid-template-columns:repeat(${width},1fr);grid-template-rows:repeat(${height},1fr);" role="img" aria-label="Presence map of ${escapeHtml(locationName)}">${ground.join("")}${featureCells}${cells}</div>${legendBlock}</div>`;
+  return `<div class="solo-presence">${head}<div class="solo-presence-grid ${terrainClass}" style="grid-template-columns:repeat(${width},1fr);grid-template-rows:repeat(${height},1fr);" role="img" aria-label="Presence map of ${escapeHtml(locationName)}">${ground.join("")}${terrainCells}${featureCells}${cells}</div>${legendBlock}</div>`;
 }
 
 // #40 — surface the committed world clock (#14). The server derives

@@ -8,6 +8,11 @@ import { conditionStatusPayload } from "./conditions.js";
 import { getVisibleEntities, validateVisibleEntity } from "./entities.js";
 import { generatePlaceholderGmNarration, validateGmSceneOutput } from "./gm.js";
 import { getAvailableMoves } from "./movement.js";
+import {
+  placeEntities as placeLayoutEntities,
+  placeMarkers as placeLayoutMarkers,
+  resolveLocationLayout
+} from "./layout.js";
 import { getQuestPayload } from "./quests.js";
 import { getRecentDevelopment } from "./momentum.js";
 import { individualReputation, factionTierForStanding } from "./reputation.js";
@@ -902,17 +907,74 @@ export function buildBattleMapPayload(run) {
   const currentLocationId = run?.currentLocationId;
   const centre = Math.floor(BATTLE_MAP_SIZE / 2);
 
-  // The player anchors the centre; co-located NPCs then items fill the ring.
   const members = [{ entityId: `player:${player.playerId ?? "player"}`, kind: "player" }];
   for (const npc of Object.values(run?.npcs || {})) {
     if (npc && npc.currentLocationId === currentLocationId) {
-      members.push({ entityId: `npc:${npc.npcId}`, kind: "npc" });
+      members.push({ entityId: `npc:${npc.npcId}`, kind: "npc", role: npc.role });
     }
   }
   for (const asset of Object.values(run?.playerAssets || {})) {
     if (asset && asset.locationId === currentLocationId) {
       members.push({ entityId: `player_asset:${asset.assetId}`, kind: "item" });
     }
+  }
+
+  const currentLocation = isPlainObject(run?.locations) ? run.locations[currentLocationId] : null;
+
+  // Map-layout law: the committed (or deterministically minted) layout is the
+  // one truth the map draws — terrain, structures, committed markers, and
+  // entity positions all come from it. The legacy centre-huddle below survives
+  // only for degenerate runs with no resolvable location at all.
+  const layout = resolveLocationLayout(run, currentLocationId);
+  if (layout) {
+    // Committed markers: in-location searchDetails plus every DISCOVERED
+    // objectState (the found-object auditor's commits) — a directional hint
+    // committed with the discovery places the marker on that side.
+    const details = (Array.isArray(currentLocation?.searchDetails) ? currentLocation.searchDetails : [])
+      .filter((detail) => isPlainObject(detail) && (isString(detail.label) || isString(detail.detailId)))
+      .map((detail) => ({
+        id: `detail:${detail.detailId || detail.label}`,
+        direction: null,
+        kind: presenceFeatureKind(detail.detailId, detail.label),
+        name: isString(detail.label) ? detail.label : detail.detailId
+      }));
+    const discoveries = Object.values(
+      isPlainObject(currentLocation?.flags?.objectStates) ? currentLocation.flags.objectStates : {}
+    )
+      .filter((entry) => isPlainObject(entry) && entry.state === "discovered" && isString(entry.label))
+      .map((entry) => ({
+        id: entry.objectId,
+        direction: isString(entry.direction) ? entry.direction : null,
+        kind: presenceFeatureKind(entry.objectId, entry.label),
+        name: entry.label
+      }));
+    const markerItems = [...details, ...discoveries];
+    const anchorCells = [
+      layout.anchors?.center,
+      layout.anchors?.entry,
+      ...(Array.isArray(layout.anchors?.posts) ? layout.anchors.posts : [])
+    ].filter(Boolean);
+    const markerPositions = placeLayoutMarkers(layout, markerItems, anchorCells);
+    const features = markerItems.map((item) => {
+      const cell = markerPositions.get(item.id);
+      return { kind: item.kind, x: cell.x, y: cell.y, name: item.name };
+    });
+
+    const entityPositions = placeLayoutEntities(layout, members, savedPositions, [...markerPositions.values()]);
+    const tokens = members.map((member) => {
+      const cell = entityPositions.get(member.entityId);
+      return { entityId: member.entityId, kind: member.kind, x: cell.x, y: cell.y };
+    });
+
+    return {
+      width: typeof persisted.width === "number" ? persisted.width : layout.width,
+      height: typeof persisted.height === "number" ? persisted.height : layout.height,
+      ground: layout.ground,
+      templateId: layout.templateId,
+      terrain: layout.cells,
+      tokens,
+      features
+    };
   }
 
   const tokens = members.map((member, index) => {
@@ -927,7 +989,6 @@ export function buildBattleMapPayload(run) {
     return { entityId: member.entityId, kind: member.kind, x: clampCell(centre + dx), y: clampCell(centre + dy) };
   });
 
-  const currentLocation = isPlainObject(run?.locations) ? run.locations[currentLocationId] : null;
   const features = buildPresenceFeatures(currentLocation, centre);
 
   return {

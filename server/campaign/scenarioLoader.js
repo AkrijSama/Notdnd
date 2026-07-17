@@ -187,6 +187,12 @@ export function loadScenarioIntoRun(run, scenario, options = {}) {
     if (isString(loc.description)) target.description = loc.description;
     // Drop stale worldgen flavor tags (ruins/features) that contradict the scene.
     if (Array.isArray(loc.tags)) target.tags = [...loc.tags];
+    // Map-layout law: a scenario may pin a layout template or hand-place a full
+    // set-piece layout (world-book data) — the mint engine adopts it verbatim.
+    if (isString(loc.layoutTemplate)) target.layoutTemplate = loc.layoutTemplate.trim();
+    if (loc.layout && typeof loc.layout === "object" && Array.isArray(loc.layout.cells)) {
+      target.layout = JSON.parse(JSON.stringify(loc.layout));
+    }
   }
 
   // RESIDUAL 2 — NO WORLDGEN LOCATION IDENTITY may persist. run.world still carries
