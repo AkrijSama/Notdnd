@@ -141,12 +141,12 @@ function renderWorldStep(state) {
           ${renderChip("Open sandbox: a pure open world; your goals are your own", (def.startMode || "sandbox") === "sandbox", `data-world-mode="sandbox"`)}
           ${renderChip("Guided adventure: a main quest, work to take on, and a destination", def.startMode === "guided", `data-world-mode="guided"`)}
         </div>
-      </div>
+      </div>`}
 
       <div class="onb-field">
         <label>Art style</label>
-        <div class="onb-art-grid">${artCards}</div>
-      </div>`}
+        <div class="onb-art-grid" data-onb-art-picker>${artCards}</div>
+      </div>
 
       <button class="onb-primary" data-action="generate-world" ${loading ? "disabled" : ""}>${authored ? "Continue to character creation" : (loading ? "Generating…" : "Generate World")}</button>
       ${state.error ? `<div class="onboarding-error">${esc(state.error)}</div>` : ""}

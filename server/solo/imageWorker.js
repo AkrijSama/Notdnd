@@ -229,9 +229,14 @@ function isBeckonedOrigin(origin) {
 }
 const MODERN_EARTH_SUBJECT =
   "a present-day modern Earth human, ordinary contemporary real-world person, modern casual clothing";
-const MODERN_EARTH_NEGATION =
-  "ordinary human, human rounded ears, absolutely NOT pointed elf ears, NOT a fantasy elf, " +
-  "NOT high-fantasy costume, NOT medieval armor, NOT a fantasy native";
+// POSITIVE identity emphasis (NOT a negation). The live image path serves through
+// pollinations/flux, which is POSITIVE-PROMPT-ONLY — it has no negative-prompt
+// field, so a "NOT pointed elf ears" clause fed here renders the literal words
+// "elf ears" as tokens and BACKFIRES (the 2026-07-17 elf-ears report). Canon must
+// therefore reach the image as POSITIVE assertions: state the human/contemporary
+// identity plainly, no "NOT …" phrasing, no "elf" token.
+const MODERN_EARTH_EMPHASIS =
+  "ordinary human with naturally rounded ears, natural human face, plain contemporary real-world appearance";
 
 // Shared prompt for the player + draft full-body character-sheet portrait.
 // Visual descriptors for the 10 creator races. Naming a race alone (e.g.
@@ -239,19 +244,21 @@ const MODERN_EARTH_NEGATION =
 // distinctive VISUAL traits makes uncommon races render true to type. Keyed by
 // lowercased race name (Human is intentionally empty — already the default).
 const RACE_VISUAL_DESCRIPTORS = {
-  // Only Elf and Half-Elf have pointed ears. Every other race explicitly states
-  // "rounded human ears, NOT pointed elf ears" — the base model defaults humanoid
-  // fantasy faces to elf ears otherwise (e.g. Aasimar rendering with elf ears).
-  human: "ordinary human person, human rounded ears, absolutely NOT pointed elf ears, NOT fantasy elf features, natural human face",
+  // Only Elf and Half-Elf have pointed ears. Every other race states "rounded human
+  // ears" POSITIVELY — the live path is pollinations (positive-prompt-only), so a
+  // "NOT pointed elf ears" clause would render the "elf" token literally and
+  // backfire (the 2026-07-17 elf-ears report). Assert the rounded-ear trait, never
+  // negate the elf trait.
+  human: "ordinary human person, naturally rounded human ears, natural human face",
   elf: "pointed ears, slender graceful build, ageless angular face",
-  dwarf: "short and stocky, thick braided beard, broad rugged features, rounded human ears (NOT pointed elf ears)",
-  halfling: "small in stature, youthful round face, curly hair, rounded human ears (NOT pointed elf ears)",
-  gnome: "small in stature, large bright eyes, oversized expressive features, rounded ears (NOT pointed elf ears)",
-  "half-orc": "muscular build, greenish-grey skin, jutting lower tusks, heavy brow, rounded ears (NOT pointed elf ears)",
-  tiefling: "curved horns, long pointed tail, red or violet skin, solid glowing eyes, rounded human-like ears (NOT pointed elf ears)",
-  dragonborn: "draconic scaled head, reptilian snout, hairless, scaled skin, no external ears, NOT pointed elf ears",
+  dwarf: "short and stocky, thick braided beard, broad rugged features, rounded human ears",
+  halfling: "small in stature, youthful round face, curly hair, rounded human ears",
+  gnome: "small in stature, large bright eyes, oversized expressive features, rounded ears",
+  "half-orc": "muscular build, greenish-grey skin, jutting lower tusks, heavy brow, rounded ears",
+  tiefling: "curved horns, long pointed tail, red or violet skin, solid glowing eyes, rounded human-like ears",
+  dragonborn: "draconic scaled head, reptilian snout, hairless, scaled skin, no external ears",
   "half-elf": "subtly pointed ears, a refined blend of human and elven features",
-  aasimar: "celestial human, rounded human ears (NOT pointed elf ears), luminous glowing eyes, radiant otherworldly skin, faint halo of light, human facial structure"
+  aasimar: "celestial human, rounded human ears, luminous glowing eyes, radiant otherworldly skin, faint halo of light, human facial structure"
 };
 
 // The only races that should render with pointed ears. Every other race gets a
@@ -291,7 +298,7 @@ export function buildPlayerPortraitPrompt(character = {}, world = {}) {
         .join(" ") || MODERN_EARTH_SUBJECT;
     return (
       `character portrait of ${beckonedSubject}, a modern-day person newly pulled into a ${tone} world, ` +
-      `${artStyleDirection(engineStyle, "player")}, ${MODERN_EARTH_NEGATION}`
+      `${artStyleDirection(engineStyle, "player")}, ${MODERN_EARTH_EMPHASIS}`
     );
   }
   // Express the race's visual identity, not just its name, so uncommon races
@@ -310,11 +317,11 @@ export function buildPlayerPortraitPrompt(character = {}, world = {}) {
       .filter(Boolean)
       .join(" ") || "wanderer";
   // Pointed ears belong ONLY to elves/half-elves. For every other race — AND when
-  // no race is set (the default is Human) — repeat the negation as a trailing
-  // (heavily-weighted) clause so the descriptor in the subject can't be quietly
-  // overridden by the medium/style framing (which defaults humanoids to elves).
+  // no race is set (the default is Human) — assert rounded human ears POSITIVELY.
+  // (Positive, not a "NOT elf" negation: the live pollinations path is positive-
+  // prompt-only and would otherwise render the negated "elf" token literally.)
   const earEmphasis = !POINTED_EAR_RACES.has(raceKey)
-    ? ", human rounded ears, absolutely NOT pointed elf ears, NOT fantasy elf features"
+    ? ", with naturally rounded human ears and a natural human face"
     : "";
   return `character portrait of ${subject}, ${tone}, ${artStyleDirection(engineStyle, "player")}${earEmphasis}`;
 }
@@ -763,10 +770,26 @@ export function copyDraftPortraitToRun(draftId, runId) {
 // Fallback subject when the caller did not supply a prompt: just location name +
 // world tone. The establishing-shot composition is added by LOCATION_ART_DIRECTION
 // in runLocationImageJob, so it is intentionally not repeated here.
+// CANON fragment for a scene prompt: the FIRST sentence of the committed location
+// description, sanitized to plain words and capped. This is the load-bearing fix
+// for off-canon scene art (a WW2 biplane in a modern-arcane Pacific-NW zone): a
+// poetic location NAME alone ("The Green Static — Fringe") under-constrains the
+// image model, which then invents off-world content. The committed description
+// carries the real setting/era, so it must reach the prompt.
+export function locationCanonFragment(location = {}) {
+  const desc = typeof location.description === "string" ? location.description : "";
+  if (!desc.trim()) {
+    return "";
+  }
+  const firstSentence = desc.split(/(?<=[.!?])\s/)[0] || desc;
+  return firstSentence.replace(/\s+/g, " ").trim().slice(0, 200);
+}
+
 function buildLocationPromptFallback(run, location, locationId) {
   const name = location && typeof location.name === "string" && location.name ? location.name : locationId;
   const tone = run?.world?.tone || "dark fantasy";
-  return `${name}, ${tone}`;
+  const canon = locationCanonFragment(location);
+  return canon ? `${name}, ${canon}, ${tone}` : `${name}, ${tone}`;
 }
 
 /**

@@ -681,12 +681,23 @@ async function cloudflareImage({ prompt, seed, width, height, fetchImpl }) {
 // "cloudflare" is wired below; the loop only attempts it when its keys are set
 // (isWiredImageProvider), otherwise it is skipped with no attempt/delay.
 //
-// Mock is deliberately NOT in this chain: it never fails, so including it would
-// cache a 1x1 placeholder forever on a real outage. Instead, when every real
-// provider fails the loop throws, the asset stays "failed", and the scene poll
-// retries it later. Mock only activates when NOTDND_MOCK_IMAGE=true, which
-// short-circuits before this chain ever runs.
-const IMAGE_PROVIDER_PRIORITY = ["pollinations", "cloudflare"];
+// FALLBACK POLICY (2026-07-17). Pollinations is NO LONGER a silent failover — it
+// served off-canon flux art (biplanes, elf ears) as the de-facto default whenever a
+// keyed provider was absent or failed. It now runs ONLY when explicitly selected as
+// the primary provider (NOTDND_IMAGE_PROVIDER=pollinations / INKBORNE_IMAGE_PROVIDER),
+// i.e. behind an explicit opt-in, never a silent default. With nothing configured the
+// primary resolves to mock (a clean placeholder empty state) and the curated
+// library/ComfyUI path serves owner-rated keeps; that is the intended default.
+// Mock is deliberately NOT in this chain: it never fails, so including it would cache
+// a 1x1 placeholder forever on a real outage. When every real provider fails the loop
+// throws, the asset stays "failed", and the scene poll retries it later.
+const IMAGE_PROVIDER_PRIORITY = ["cloudflare"];
+
+// Exported for the fallback-policy test: the AUTOMATIC failover order. Pollinations
+// must never appear here — it runs only as an explicit primary (opt-in).
+export function imageFailoverPriority() {
+  return [...IMAGE_PROVIDER_PRIORITY];
+}
 
 function sleep(ms) {
   return new Promise((resolve) => {

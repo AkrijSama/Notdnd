@@ -987,6 +987,19 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
   // hand-wired campaign block skipped above. Fail-loud on a dangling ref.
   if (scenarioActive) {
     loadScenarioIntoRun(run, scenario, { worldSeed });
+    // STYLE PICKER (style-lock law): the scenario loader stamps the world's DEFAULT
+    // style. If the player ACTIVELY picked a style at creation, honor it over the
+    // default. The client's art-style picker only sets world.artStyle on an explicit
+    // click, so its presence here is the "player chose" signal. Re-lock AFTER the
+    // scenario load (with a grant) so the choice wins; guarded so an out-of-allowed
+    // value is ignored and the scenario default stands. No pick → no re-lock.
+    if (isStr(world.artStyle)) {
+      try {
+        lockRunArtStyle(run, world.artStyle.trim(), { grant: true });
+      } catch {
+        // out-of-allowed / invalid style → keep the scenario default
+      }
+    }
   } else {
     // D.5 WORLDGEN SEEDING (item 1) — a non-scenario run's narrative momentum comes
     // from the server, not an author: 1-3 threads grounded in the generated graph (a

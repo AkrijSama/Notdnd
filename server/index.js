@@ -124,7 +124,7 @@ import { buildAttemptContext, buildAttemptProviderInput, classifyIntentAuthority
 import { interpretAttemptWithGm } from "./gm/attemptInterpreter.js";
 import { attributeSceneDialogue, resolveGmNarration } from "./solo/gmProvider.js";
 import { buildGmRuntimeStatus } from "./solo/gmSmoke.js";
-import { enqueueDraftPortrait, enqueueImageJob, enqueueLocationImageJob, enqueuePlayerImageJob, enqueueVnBodyImageJob, getDraftPortrait, writeUploadedBasePortrait } from "./solo/imageWorker.js";
+import { enqueueDraftPortrait, enqueueImageJob, enqueueLocationImageJob, enqueuePlayerImageJob, enqueueVnBodyImageJob, getDraftPortrait, locationCanonFragment, writeUploadedBasePortrait } from "./solo/imageWorker.js";
 import { enqueueIdentityJob, runIdentityJob, backfillNpcMannerisms, buildVoiceDirective } from "./solo/npcIdentity.js";
 import { buildDisagreementDirective, detectComplianceViolations } from "./gm/disagreementAudit.js";
 import { captureDeclaredGoal, honorGoalsOnAttempt, buildGoalsDirective, detectGoalIgnored } from "./solo/goals.js";
@@ -691,7 +691,11 @@ function buildLocationBasePrompt(run, locationId) {
   const location = run?.locations?.[locationId] || {};
   const name = String(location.name || locationId).trim();
   const tone = String(run?.world?.tone || run?.world?.setting || "dark fantasy").trim();
-  return `${name}, ${tone}, atmospheric, wide establishing shot, no people`;
+  // CANON: the committed location description carries the real setting/era; without
+  // it a poetic name alone lets the model invent off-canon content (the biplane).
+  const canon = locationCanonFragment(location);
+  const subject = canon ? `${name}, ${canon}` : name;
+  return `${subject}, ${tone}, atmospheric, wide establishing shot, no people`;
 }
 
 // Returns a fire-and-forget enqueuer for the current location's background

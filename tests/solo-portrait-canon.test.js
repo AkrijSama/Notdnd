@@ -3,12 +3,16 @@ import test from "node:test";
 
 const { buildPlayerPortraitPrompt } = await import("../server/solo/imageWorker.js");
 
-// Item 7 canon fix: The Beckoned is a modern-Earth human isekai champion, not a
-// fantasy race. The prompt must frame a present-day human and hard-negate the
-// elf/fantasy default, and must NOT leak the "The Beckoned" placeholder that the
-// Babel creator stuffs into the race + class slots (src/main.js).
+// Item 7 canon fix (revised 2026-07-17): The Beckoned is a modern-Earth human
+// isekai champion, not a fantasy race. The prompt must frame a present-day human
+// and assert human features POSITIVELY, and must NOT leak the "The Beckoned"
+// placeholder that the Babel creator stuffs into the race + class slots.
+// The live path is pollinations (positive-prompt-only), so canon must reach the
+// image as a POSITIVE assertion — a "NOT elf ears" negation renders the "elf" token
+// literally and backfires (the elf-ears report). The prompt therefore carries NO
+// "elf" token at all for a human/Beckoned character.
 
-test("Beckoned origin frames a modern-Earth human, hard-negates elf, drops placeholder race/class", () => {
+test("Beckoned origin frames a modern-Earth human POSITIVELY, no 'elf' token, drops placeholder race/class", () => {
   const prompt = buildPlayerPortraitPrompt(
     // Babel creator fills race AND class with the origin string as placeholders.
     { name: "Ash", race: "The Beckoned", class: "The Beckoned", origin: "The Beckoned", pronouns: "they/them" },
@@ -16,8 +20,9 @@ test("Beckoned origin frames a modern-Earth human, hard-negates elf, drops place
   );
   assert.match(prompt, /modern Earth human/i, "frames a modern-Earth human");
   assert.match(prompt, /newly pulled into a grim dark fantasy world/i, "isekai framing keeps the world tone");
-  assert.match(prompt, /NOT pointed elf ears/i, "hard elf negation present");
-  assert.match(prompt, /NOT high-fantasy costume/i, "modern-Earth negation present");
+  assert.match(prompt, /rounded ears/i, "human ears asserted POSITIVELY");
+  assert.match(prompt, /contemporary real-world appearance/i, "plain-modern emphasis, positive");
+  assert.doesNotMatch(prompt, /elf/i, "NO 'elf' token — it backfires on positive-only providers");
   assert.doesNotMatch(prompt, /The Beckoned/, "placeholder origin string never leaks into the prompt");
   assert.match(prompt, /Ash/, "keeps the character name");
 });
@@ -39,15 +44,16 @@ test("explicit Elf race (no Beckoned origin) still renders pointed ears", () => 
   );
   assert.match(prompt, /pointed ears/i, "elf keeps pointed ears");
   assert.doesNotMatch(prompt, /modern Earth human/i, "not modern-Earth framed");
-  assert.doesNotMatch(prompt, /NOT pointed elf ears/i, "no negation for a real elf");
 });
 
-test("Human race negates elf ears", () => {
+test("Human race asserts rounded ears positively, no 'elf' token", () => {
   const prompt = buildPlayerPortraitPrompt({ name: "Mara", race: "Human", class: "Fighter" }, { artStyle: "illustrated" });
-  assert.match(prompt, /NOT pointed elf ears/i);
+  assert.match(prompt, /rounded (human )?ears/i, "rounded human ears asserted positively");
+  assert.doesNotMatch(prompt, /elf/i, "a human must never carry the 'elf' token");
 });
 
-test("no race and no origin still asserts human (safe default, not a fantasy elf)", () => {
+test("no race and no origin still asserts human ears positively (safe default)", () => {
   const prompt = buildPlayerPortraitPrompt({ name: "Nemo" }, { artStyle: "illustrated" });
-  assert.match(prompt, /NOT pointed elf ears/i, "default human negation fires even with no race");
+  assert.match(prompt, /rounded human ears/i, "default human asserts rounded ears positively");
+  assert.doesNotMatch(prompt, /elf/i, "no 'elf' token on the default human");
 });
