@@ -20,11 +20,11 @@ export async function fetchSoloGmScene(apiClient, runId, options = {}) {
   return apiClient.fetchSoloGmScene(requireRunId(runId), options);
 }
 
-export async function postSoloAction(apiClient, runId, action) {
+export async function postSoloAction(apiClient, runId, action, turnId = null) {
   if (!apiClient || typeof apiClient.postSoloAction !== "function") {
     throw new Error("API client with postSoloAction is required.");
   }
-  return apiClient.postSoloAction(requireRunId(runId), action);
+  return apiClient.postSoloAction(requireRunId(runId), action, turnId);
 }
 
 

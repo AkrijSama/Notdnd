@@ -4025,6 +4025,45 @@ button:disabled {
 }
 
 /* Subtle "the GM is thinking…" / "loading scene…" strip in the narration area. */
+/* INPUT INTEGRITY — turn lifecycle surfaces (failed-turn recovery + queued chip). */
+.solo-turn-failed {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 10px 0;
+  padding: 9px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--danger, #b4462f);
+  background: color-mix(in srgb, var(--danger, #b4462f) 12%, var(--inset, #070708));
+  color: var(--text, #e8dcc6);
+  font-size: 13px;
+}
+.solo-turn-failed-msg { flex: 1; min-width: 12ch; }
+.solo-turn-failed-actions { display: flex; gap: 8px; }
+.solo-turn-retry,
+.solo-turn-discard {
+  border: 1px solid var(--line-strong, #34343b);
+  background: var(--inset, #070708);
+  color: var(--text, #e8dcc6);
+  border-radius: 6px;
+  padding: 4px 12px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.solo-turn-retry { border-color: var(--accent, #c9a15b); color: var(--accent, #c9a15b); }
+.solo-turn-retry:hover,
+.solo-turn-discard:hover { filter: brightness(1.15); }
+.solo-turn-queued {
+  margin: 8px 0;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px dashed var(--line-strong, #34343b);
+  background: var(--inset, #070708);
+  color: var(--text-muted, #b8a98f);
+  font-size: 12px;
+  font-style: italic;
+}
 .solo-thinking {
   display: flex;
   align-items: center;

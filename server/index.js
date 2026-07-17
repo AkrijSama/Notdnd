@@ -1552,7 +1552,13 @@ const generationLimiter = limiterFromEnv("generation", { max: 10, windowMs: 86_4
 // the turn's committed event). Keyed `${runId}::${turnId}`. Old clients omit turnId
 // and keep today's exact behavior (no idempotency, no double-commit possible for a
 // single submit).
-const inFlightTurns = new Set();
+// `${runId}::${turnId}` -> a gate Promise that resolves when the original submit
+// of that turnId settles. A concurrent duplicate AWAITS the gate, then replays the
+// original's committed outcome — exactly-once processing, no re-roll, no
+// double-commit. (A Set can't serialize: two submits can both pass a has()-check in
+// the window between the original's response finishing and its commit becoming
+// visible to a stale snapshot.)
+const inFlightTurns = new Map();
 const TURN_ID_TIMELINE_SCAN = 50; // recent events scanned for a committed turnId
 
 // The committed timeline event carrying this client turnId, or null. Scans from the
@@ -2045,27 +2051,58 @@ async function handleApi(req, res) {
       // old client omits it and keeps today's behavior.
       const turnId = typeof req.__parsedBody?.turnId === "string" ? req.__parsedBody.turnId.trim() : "";
       const idemKey = turnId ? `${run.runId}::${turnId}` : null;
+      const replayCommittedTurn = (r) => {
+        writeJson(res, 200, { ok: true, turnId, idempotentReplay: true, alreadyProcessed: true, run: r });
+        return true;
+      };
       if (turnId) {
         // Already COMMITTED: return the committed outcome (it is in `run` already) —
         // never re-roll, never append a second timeline event.
         const committed = findCommittedTurnEvent(run, turnId);
         if (committed) {
-          writeJson(res, 200, { ok: true, turnId, idempotentReplay: true, alreadyProcessed: true, run });
-          return true;
+          return replayCommittedTurn(run);
         }
       }
+      // Gate that this handler will resolve once its response settles; a concurrent
+      // duplicate of the same turnId acquires nothing and instead awaits the prior
+      // gate below, then replays the committed outcome.
+      let releaseTurnGate = null;
       if (idemKey) {
-        // Still MID-FLIGHT (a resubmit racing the original): don't double-process —
-        // tell the client to wait; the original will commit and the next resync sees it.
-        if (inFlightTurns.has(idemKey)) {
-          writeJson(res, 200, { ok: true, turnId, processing: true, run });
-          return true;
+        const inflight = inFlightTurns.get(idemKey);
+        if (inflight) {
+          // A submit of this turnId is already MID-FLIGHT — wait for it, then replay
+          // its committed outcome (exactly-once; never a second roll/commit).
+          await inflight.catch(() => {});
+          const settledRun = getSoloRun(run.runId) || run;
+          if (findCommittedTurnEvent(settledRun, turnId)) {
+            return replayCommittedTurn(settledRun);
+          }
+          // The original produced no committed turn (e.g. it errored) — fall through
+          // and process this one fresh, acquiring the gate below.
         }
-        inFlightTurns.add(idemKey);
-        // Release the guard whenever the response settles, on any path (success,
-        // early return, thrown error, or a client that hung up).
-        res.once("finish", () => inFlightTurns.delete(idemKey));
-        res.once("close", () => inFlightTurns.delete(idemKey));
+        // Acquire the gate (check-and-set is synchronous + contiguous here, so it is
+        // atomic under Node's single-threaded event loop).
+        const gate = new Promise((resolve) => { releaseTurnGate = resolve; });
+        inFlightTurns.set(idemKey, gate);
+        const settle = () => {
+          if (inFlightTurns.get(idemKey) === gate) {
+            inFlightTurns.delete(idemKey);
+          }
+          if (releaseTurnGate) {
+            releaseTurnGate();
+            releaseTurnGate = null;
+          }
+        };
+        res.once("finish", settle);
+        res.once("close", settle);
+        // TOCTOU close-out: `run` was snapshotted at the top of the handler and may
+        // predate a same-turnId submit that acquired-and-finished while we awaited
+        // the body (its gate is already gone, so the get() above missed it). Re-scan
+        // a FRESH snapshot now that WE hold the gate — replay if it already committed.
+        const freshRun = getSoloRun(run.runId);
+        if (turnId && findCommittedTurnEvent(freshRun, turnId)) {
+          return replayCommittedTurn(freshRun);
+        }
       }
       // GUEST GM-TURN CAP (#67, pre-launch spend guard). Every guest GM turn is a
       // paid cloud call; a guest at their daily turn budget is soft-stopped HERE —

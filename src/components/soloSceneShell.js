@@ -1876,7 +1876,7 @@ export function renderSoloSceneInputBar(state = {}) {
   return `
     <div class="solo-scene-input solo-measure">
       <div class="solo-scene-input-row">
-        <input type="text" class="solo-scene-field" data-solo-attempt-input placeholder="What do you do?  (&quot;quote&quot; to speak · /ooc to ask the GM)" value="${escapeHtml(draft)}" maxlength="${SOLO_INPUT_MAXLEN}" ${busy ? "disabled" : ""} />
+        <input type="text" class="solo-scene-field" data-solo-attempt-input placeholder="What do you do?  (&quot;quote&quot; to speak · /ooc to ask the GM)" value="${escapeHtml(draft)}" maxlength="${SOLO_INPUT_MAXLEN}" />
         <button type="button" class="solo-attempt-submit" data-solo-attempt-submit ${busy ? "disabled" : ""}>${busy ? "Thinking…" : "Attempt"}</button>
       </div>
       <div class="solo-scene-input-meta">
@@ -2826,6 +2826,7 @@ export function renderSoloSceneShell(state = {}) {
                        action. Stable wrapper so the fast-path patches it in place. -->
                   <div data-solo-conditions>${renderSoloConditionsHud(scene)}</div>
                   <div data-solo-dock-status>${renderSoloThinkingIndicator(state)}</div>
+                  <div data-solo-turn-lifecycle>${renderSoloTurnLifecycle(state)}</div>
                   ${renderSoloSceneInputBar(state)}
                 </div>
               </div>
@@ -2882,6 +2883,8 @@ export function dispatchSoloClick(target, handlers = {}) {
   if ((el = closest("[data-solo-npc-close]"))) { handlers.onNpcClose?.(); return true; }
   if ((el = closest("[data-solo-npc-submit]"))) { handlers.onNpcSubmit?.(); return true; }
   if ((el = closest("[data-solo-action='reload-scene']"))) { handlers.onReload?.(); return true; }
+  if ((el = closest("[data-solo-turn-retry]"))) { handlers.onTurnRetry?.(); return true; }
+  if ((el = closest("[data-solo-turn-discard]"))) { handlers.onTurnDiscard?.(); return true; }
   if ((el = closest("[data-solo-banner-dismiss]"))) { handlers.onDismissBanner?.(); return true; }
   if ((el = closest("[data-solo-home]"))) { handlers.onReturnHome?.(); return true; }
   if ((el = closest("[data-solo-exit]"))) { handlers.onExit?.(); return true; }
@@ -3520,6 +3523,13 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     outcomeEl.innerHTML = renderSoloActionOutcome(state);
     thinkingEl.innerHTML = renderSoloThinkingIndicator(state);
 
+    // INPUT INTEGRITY: keep the failed-turn/queued surface current on the fast path
+    // (a settled/failed turn must show its recovery affordance without a full render).
+    const lifecycleEl = root.querySelector("[data-solo-turn-lifecycle]");
+    if (lifecycleEl && "innerHTML" in lifecycleEl) {
+      lifecycleEl.innerHTML = renderSoloTurnLifecycle(state);
+    }
+
     // CONDITIONS HUD: chips appear on commit and vanish on shed via BOTH render
     // paths (one policy — the scroll-fix precedent). Tolerates absence in the
     // lightweight test mocks.
@@ -3615,6 +3625,8 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       onTextSpeed: handleTextSpeed,
       onAttempt: handleAttempt,
       onAttemptDraft: handleAttemptDraft,
+      onTurnRetry: retryPendingTurn,
+      onTurnDiscard: discardPendingTurn,
       onDialogueClose: handleDialogueClose,
       onDialogueTyped: handleDialogueTyped,
       onDialogueReply: handleDialogueReply,
@@ -4035,11 +4047,29 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
   // surfaces any thrown error as a dismissible in-panel banner, and always
   // clears the busy/lag state when the action settles.
   let lagTimer = null;
+  let stallTimer = null;
+
+  // STALL VISIBILITY: a focus-safe repaint of ONLY the thinking-indicator leaf, so
+  // the elapsed-seconds counter ("Still working — 18s") ticks even while the player
+  // is typing their next action (the input element is never touched).
+  function repaintDockStatus() {
+    if (!root || typeof root.querySelector !== "function") {
+      return;
+    }
+    const el = root.querySelector("[data-solo-dock-status]");
+    if (el && "innerHTML" in el) {
+      el.innerHTML = renderSoloThinkingIndicator(state);
+    }
+  }
 
   function clearLag() {
     if (lagTimer) {
       clearTimeout(lagTimer);
       lagTimer = null;
+    }
+    if (stallTimer) {
+      clearInterval(stallTimer);
+      stallTimer = null;
     }
     state.gmThinking = false;
   }
@@ -4068,6 +4098,18 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       }, 2000);
       if (lagTimer && typeof lagTimer.unref === "function") {
         lagTimer.unref();
+      }
+    }
+    // STALL VISIBILITY: once thinking, tick the elapsed counter every second via a
+    // leaf-only repaint (focus-safe — never rebuilds the composer mid-keystroke).
+    if (typeof setInterval === "function") {
+      stallTimer = setInterval(() => {
+        if (state.gmThinking) {
+          repaintDockStatus();
+        }
+      }, 1000);
+      if (stallTimer && typeof stallTimer.unref === "function") {
+        stallTimer.unref();
       }
     }
     render();
@@ -4350,7 +4392,6 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     if (response && response.processing) {
       state.pendingTurn = null;
       await loadScene();
-      flushQueuedTurn();
       return;
     }
     // OOC (#37/#38): server committed NO state, answered AS GM. Render + stop.
@@ -4366,13 +4407,11 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       state.pendingTurn = null;
       clearComposerDraft();
       await loadScene();
-      flushQueuedTurn();
       return;
     }
     // Normal first-time success.
     state.pendingTurn = null;
     await applyTurnSuccess(response, submittedText);
-    flushQueuedTurn();
   }
 
   // QUEUE, DON'T SWALLOW (contract clause 2): a turn typed while another is
@@ -4385,6 +4424,15 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     }
     state.queuedTurn = null;
     handleAttempt({ intent: queued.text, mode: queued.mode });
+  }
+
+  // Runs after an attempt's runAction fully settles (busy cleared). Flushes any turn
+  // the player queued mid-flight — must be here, NOT inside submitTurn, or the flush
+  // would re-see busy=true and re-queue instead of sending.
+  function afterTurnSettled() {
+    if (!state.busy && state.queuedTurn && (!state.pendingTurn || state.pendingTurn.status !== "failed")) {
+      flushQueuedTurn();
+    }
   }
 
   function handleAttempt({ intent, mode }) {
@@ -4406,7 +4454,7 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       return;
     }
     const turnId = newSoloTurnId(runId);
-    return runAction("attempt", () => submitTurn({ intent: submittedText, mode, turnId, submittedText }));
+    return runAction("attempt", () => submitTurn({ intent: submittedText, mode, turnId, submittedText })).then(afterTurnSettled);
   }
 
   // Retry the surfaced failed turn — reuses its turnId (idempotent) so a turn that
@@ -4417,7 +4465,7 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       return;
     }
     const { turnId, text, mode } = pending;
-    return runAction("attempt", () => submitTurn({ intent: text, mode, turnId, submittedText: text }));
+    return runAction("attempt", () => submitTurn({ intent: text, mode, turnId, submittedText: text })).then(afterTurnSettled);
   }
 
   // Discard is a PLAYER choice only (contract clause 1c) — the sole path that drops

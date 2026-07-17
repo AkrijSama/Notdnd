@@ -178,10 +178,13 @@ export function createApiClient(baseUrl = "") {
       // same slow model/fallback path, so give it the same headroom (was 25s).
       return request(`/api/solo/runs/${encodeURIComponent(runId)}/gm-scene${query}`, { timeoutMs: 90000 });
     },
-    async postSoloAction(runId, action) {
+    async postSoloAction(runId, action, turnId = null) {
       return request(`/api/solo/runs/${encodeURIComponent(runId)}/actions`, {
         method: "POST",
-        body: JSON.stringify({ action }),
+        // turnId (input integrity): a client-stamped id the server uses to make a
+        // resubmission idempotent (no re-roll, no double-commit). Omitted → today's
+        // behavior. Sent alongside `action` so the server body shape is additive.
+        body: JSON.stringify(turnId ? { action, turnId } : { action }),
         // A GM turn is legitimately slow: the server's own backstop is ~65s
         // (GM_LOCAL_TIMEOUT_MS + 5s) and a cloud→local fallback hop adds more, plus
         // the attempt interpreter runs BEFORE narration. The old 25s default aborted
