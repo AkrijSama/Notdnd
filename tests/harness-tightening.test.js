@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { detectInventedAgents } from "../server/solo/npcCommit.js";
 import { detectEmDashViolations, stripAiTells } from "../server/gm/voice.js";
-import { enforceRomanceRegister, ROMANCE_CORRECTIVE_CLAUSE } from "../server/gm/romanceEnforcement.js";
+import { enforceRomanceRegister, stripRomanceRegister, ROMANCE_CORRECTIVE_CLAUSE } from "../server/gm/romanceEnforcement.js";
 
 // ── ITEM 1: phantom-agent v2 (unnamed invented agents) ──────────────────────
 
@@ -131,6 +131,24 @@ test("R10: regeneration failure/throw/absence all degrade to blocked", async () 
     assert.equal(out.action, "blocked");
     assert.equal(out.narrative, null);
   }
+});
+
+test("R10 fallback sanitizer: a template echoing the blocked register is stripped (live-probe finding)", () => {
+  const run = mainlineRun();
+  // The exact live-probe shape: the deterministic template restated the
+  // player's own intent.
+  const echo = "The kiss is intense and romantic, both players feeling a deep connection. The tavern hums around you.";
+  const fix = stripRomanceRegister(echo, run);
+  assert.equal(fix.removed.length, 1);
+  assert.doesNotMatch(fix.text, /kiss/i);
+  assert.match(fix.text, /tavern hums/);
+  // A template that is ENTIRELY violating degrades to a neutral line, never "".
+  const allDirty = stripRomanceRegister("She kisses you deeply.", run);
+  assert.equal(allDirty.text, "The moment passes.");
+  // Clean text passes through untouched, zero removals.
+  const clean = stripRomanceRegister("Lyra laughs and waves you off.", run);
+  assert.equal(clean.removed.length, 0);
+  assert.equal(clean.text, "Lyra laughs and waves you off.");
 });
 
 test("R10: explicit content blocks at ANY tier (the SFW wall), corrective clause is hardened", async () => {

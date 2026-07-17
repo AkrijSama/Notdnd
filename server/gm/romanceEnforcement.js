@@ -72,3 +72,28 @@ export async function enforceRomanceRegister(narrative, { run, regenerate, detec
   }
   return { narrative: null, action: "blocked", violations, retryViolations: null };
 }
+
+// FALLBACK SANITIZER (live-probe finding, 2026-07-17): when R10 blocks and the
+// deterministic template stands in, the template itself can ECHO the player's
+// own over-tier intent ("I kiss her..." → "The kiss is intense and romantic") —
+// a violation reaching the player through the safe path. Same sentence-strip
+// shape as the spit ban: flagged sentences are excised; a template stripped to
+// nothing degrades to a neutral committed line, never violating prose.
+const SAFE_EMPTY_LINE = "The moment passes.";
+export function stripRomanceRegister(text, run, detect = detectRomanceRegisterViolations) {
+  const source = String(text || "");
+  if (!source.trim() || detect(source, run).length === 0) {
+    return { text: source, removed: [] };
+  }
+  const sentences = source.split(/(?<=[.!?]["'”’)\]]?)\s+/);
+  const removed = [];
+  const kept = sentences.filter((sentence) => {
+    if (detect(sentence, run).length > 0) {
+      removed.push(sentence.trim());
+      return false;
+    }
+    return true;
+  });
+  const rebuilt = kept.join(" ").replace(/\s+/g, " ").trim();
+  return { text: rebuilt || SAFE_EMPTY_LINE, removed };
+}

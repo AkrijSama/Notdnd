@@ -127,7 +127,7 @@ import { buildGmRuntimeStatus } from "./solo/gmSmoke.js";
 import { enqueueDraftPortrait, enqueueImageJob, enqueueLocationImageJob, enqueuePlayerImageJob, enqueueVnBodyImageJob, getDraftPortrait, writeUploadedBasePortrait } from "./solo/imageWorker.js";
 import { enqueueIdentityJob, runIdentityJob, backfillNpcMannerisms, buildVoiceDirective } from "./solo/npcIdentity.js";
 import { buildDisagreementDirective, detectComplianceViolations } from "./gm/disagreementAudit.js";
-import { enforceRomanceRegister, ROMANCE_CORRECTIVE_CLAUSE } from "./gm/romanceEnforcement.js";
+import { enforceRomanceRegister, stripRomanceRegister, ROMANCE_CORRECTIVE_CLAUSE } from "./gm/romanceEnforcement.js";
 import { buildNpcIntroDirective, buildSoloScenePayload, collectNpcsWithPendingIntro } from "./solo/scene.js";
 import { buildSystemLoreClause, detectSystemLoreViolations } from "./gm/systemLore.js";
 import { detectDeadlineViolations } from "./gm/deadlineAudit.js";
@@ -2200,6 +2200,33 @@ async function handleApi(req, res) {
         appendTurnLog(responseRun.runId, buildTurnTranscript(resolved, gmResult, suggestionsResult));
       } catch {
         // transcript must never break a turn
+      }
+      // R10 FALLBACK SANITIZER (live-probe finding): when the GM draft was
+      // BLOCKED and the deterministic template stands in, the template can echo
+      // the player's own over-tier intent ("I kiss her…" → "The kiss is
+      // intense…"). Strip register-violating sentences from every template
+      // surface this turn so the blocked register can't re-enter through the
+      // safe path. Log-visible; non-fatal by construction (pure string filter).
+      if (!gmNarration && gmResult?.source === "romance-blocked") {
+        const surfaces = [
+          ["attemptResult.narration", attemptResult, "narration"],
+          ["talkResult.line", talkResult, "line"],
+          ["searchResult.summary", searchResult, "summary"],
+          ["restResult.summary", restResult, "summary"],
+          ["useItemResult.summary", useItemResult, "summary"]
+        ];
+        for (const [label, holder, field] of surfaces) {
+          if (holder && typeof holder[field] === "string" && holder[field].trim()) {
+            const fix = stripRomanceRegister(holder[field], responseRun);
+            if (fix.removed.length > 0) {
+              holder[field] = fix.text;
+              logTurnEvent(
+                responseRun.runId,
+                `romance-register R10: fallback template ${label} echoed the blocked register — stripped ${fix.removed.length} sentence(s)`
+              );
+            }
+          }
+        }
       }
       if (gmNarration) {
         const actionType = resolved.action?.type;
