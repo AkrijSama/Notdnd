@@ -1174,6 +1174,28 @@ function buildThreadsSummary(run) {
 // individual tier surfaces only for a MET NPC; a faction tier only once DISCOVERED.
 // Hidden standings still accrue server-side — they just never leave here. Payload
 // only (the meter UI is a later client round).
+// PLAYER GOALS surface (player-goals-law, honor machinery 4): the committed
+// goals the STATUS WINDOW draws. Active goals (with Project pips) + the last few
+// achievements. Empty array on a legacy run with no goals.
+function buildGoalsSummary(run) {
+  const goals = isPlainObject(run?.goals) ? Object.values(run.goals) : [];
+  const active = goals
+    .filter((g) => isPlainObject(g) && g.state === "active")
+    .map((g) => {
+      const entry = { goalId: g.goalId, summary: g.summary, scale: g.scale, state: "active" };
+      if (g.scale === "project" && isPlainObject(g.progress)) {
+        entry.progress = { current: Number(g.progress.current) || 0, target: Number(g.progress.target) || 0 };
+      }
+      return entry;
+    });
+  const achieved = goals
+    .filter((g) => isPlainObject(g) && g.state === "achieved")
+    .sort((a, b) => (Number(b.achievedAtMinutes) || 0) - (Number(a.achievedAtMinutes) || 0))
+    .slice(0, 3)
+    .map((g) => ({ goalId: g.goalId, summary: g.summary, scale: g.scale, state: "achieved" }));
+  return [...active, ...achieved];
+}
+
 function buildReputationSummary(run) {
   const individuals = [];
   for (const npc of Object.values(run?.npcs || {})) {
@@ -1344,6 +1366,7 @@ export function buildSoloScenePayload(run, options = {}) {
     // reputation-engine-v1: known standings (met NPC tiers + discovered faction
     // tiers). Visibility-gated; hidden standings accrue but never surface. No UI yet.
     reputation: buildReputationSummary(run),
+    goals: buildGoalsSummary(run),
     // Open, un-accepted job offers held by PRESENT NPCs (F2: an offer no one can
     // discover is dead content). Server-authored truth: the GM may voice these —
     // accepting one is a real committed transition (resolveQuestAccept).

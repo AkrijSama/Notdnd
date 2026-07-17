@@ -127,6 +127,7 @@ import { buildGmRuntimeStatus } from "./solo/gmSmoke.js";
 import { enqueueDraftPortrait, enqueueImageJob, enqueueLocationImageJob, enqueuePlayerImageJob, enqueueVnBodyImageJob, getDraftPortrait, writeUploadedBasePortrait } from "./solo/imageWorker.js";
 import { enqueueIdentityJob, runIdentityJob, backfillNpcMannerisms, buildVoiceDirective } from "./solo/npcIdentity.js";
 import { buildDisagreementDirective, detectComplianceViolations } from "./gm/disagreementAudit.js";
+import { captureDeclaredGoal, honorGoalsOnAttempt, buildGoalsDirective, detectGoalIgnored } from "./solo/goals.js";
 import { enforceRomanceRegister, stripRomanceRegister, ROMANCE_CORRECTIVE_CLAUSE } from "./gm/romanceEnforcement.js";
 import { buildNpcIntroDirective, buildSoloScenePayload, collectNpcsWithPendingIntro } from "./solo/scene.js";
 import { buildSystemLoreClause, detectSystemLoreViolations } from "./gm/systemLore.js";
@@ -1217,6 +1218,11 @@ async function narrateActionWithGm(run, resolved, user) {
       `dialogue-laws ACTIVE:${disagreementDirective ? ` disagreement[${disagreementDirective.slice(0, 120).replace(/^.*?: /, "").trim()}…]` : ""}${voiceDirective ? " voice" : ""}`
     );
   }
+  // PLAYER GOALS (player-goals-law): active goals ride every prompt as committed
+  // directives (acknowledge / advance / lawfully obstruct — never ignore or
+  // redirect away), and committed achievements ride so the world references what
+  // the player has built. Paired with the goal-ignored auditor below.
+  message += buildGoalsDirective(run);
   // SYSTEM LORE (item 1): the WINDOW/VOICE world-law facts ground every turn, so
   // the model never invents system capabilities ("the window will remember…").
   message += buildSystemLoreClause();
@@ -1535,6 +1541,32 @@ const oocLimiter = limiterFromEnv("ooc", { max: 6, windowMs: 60_000 });
 const newRunLimiter = limiterFromEnv("new_run", { max: 5, windowMs: 3_600_000 });
 const authLimiter = limiterFromEnv("auth", { max: 10, windowMs: 3_600_000 });
 const generationLimiter = limiterFromEnv("generation", { max: 10, windowMs: 86_400_000 });
+
+// INPUT INTEGRITY — turn idempotency. A client stamps each submitted turn with a
+// turnId; a RESUBMISSION of the same turnId (the resync/retry path after a
+// client-side timeout or dropped connection) must NEVER re-roll or double-commit
+// (dice roll server-side, so a naive resubmit would produce a different outcome
+// AND a second timeline event). Two guards: `inFlightTurns` covers the concurrent
+// window (the same turnId still processing), and a COMMITTED turnId is matched by
+// scanning the run's timeline (durable across restarts — the turnId is stamped onto
+// the turn's committed event). Keyed `${runId}::${turnId}`. Old clients omit turnId
+// and keep today's exact behavior (no idempotency, no double-commit possible for a
+// single submit).
+const inFlightTurns = new Set();
+const TURN_ID_TIMELINE_SCAN = 50; // recent events scanned for a committed turnId
+
+// The committed timeline event carrying this client turnId, or null. Scans from the
+// newest event back, bounded — a resubmit always targets a very recent turn.
+function findCommittedTurnEvent(run, turnId) {
+  const timeline = Array.isArray(run?.timeline) ? run.timeline : [];
+  for (let i = timeline.length - 1, seen = 0; i >= 0 && seen < TURN_ID_TIMELINE_SCAN; i -= 1, seen += 1) {
+    const ev = timeline[i];
+    if (ev && ev.payload && ev.payload.turnId === turnId) {
+      return ev;
+    }
+  }
+  return null;
+}
 
 async function buildLiveAttemptOptions(run, action, user) {
   if (!action || action.type !== "attempt") {
@@ -2007,6 +2039,34 @@ async function handleApi(req, res) {
           return true;
         }
       }
+      // INPUT INTEGRITY (turn idempotency, read BEFORE the guest cap so a replay of
+      // an already-committed turn returns its outcome even for a capped guest — the
+      // turn was already spent, replaying it costs nothing). turnId is optional; an
+      // old client omits it and keeps today's behavior.
+      const turnId = typeof req.__parsedBody?.turnId === "string" ? req.__parsedBody.turnId.trim() : "";
+      const idemKey = turnId ? `${run.runId}::${turnId}` : null;
+      if (turnId) {
+        // Already COMMITTED: return the committed outcome (it is in `run` already) —
+        // never re-roll, never append a second timeline event.
+        const committed = findCommittedTurnEvent(run, turnId);
+        if (committed) {
+          writeJson(res, 200, { ok: true, turnId, idempotentReplay: true, alreadyProcessed: true, run });
+          return true;
+        }
+      }
+      if (idemKey) {
+        // Still MID-FLIGHT (a resubmit racing the original): don't double-process —
+        // tell the client to wait; the original will commit and the next resync sees it.
+        if (inFlightTurns.has(idemKey)) {
+          writeJson(res, 200, { ok: true, turnId, processing: true, run });
+          return true;
+        }
+        inFlightTurns.add(idemKey);
+        // Release the guard whenever the response settles, on any path (success,
+        // early return, thrown error, or a client that hung up).
+        res.once("finish", () => inFlightTurns.delete(idemKey));
+        res.once("close", () => inFlightTurns.delete(idemKey));
+      }
       // GUEST GM-TURN CAP (#67, pre-launch spend guard). Every guest GM turn is a
       // paid cloud call; a guest at their daily turn budget is soft-stopped HERE —
       // before the interpreter or narration fire — so anonymous sessions cannot
@@ -2037,6 +2097,7 @@ async function handleApi(req, res) {
       // actually fire in live play. No-op for non-attempt / test-hook actions.
       const attemptOptions = await buildLiveAttemptOptions(run, action, user);
       timing.mark("interpreter");
+      const timelineLenBefore = Array.isArray(run.timeline) ? run.timeline.length : 0;
       const resolved = resolveSoloAction(run, action, attemptOptions);
       if (!resolved.ok) {
         throw Object.assign(new Error("Solo action could not be resolved."), {
@@ -2045,6 +2106,19 @@ async function handleApi(req, res) {
           validationErrors: resolved.errors,
           actionType: resolved.actionType
         });
+      }
+      // INPUT INTEGRITY: stamp the client turnId onto every timeline event THIS turn
+      // committed, so a later resubmission of the same turnId is recognized as
+      // already-committed (findCommittedTurnEvent) and replayed idempotently. Durable:
+      // the stamp lives in run state and survives reload/restart. payload is free-form
+      // (validateTimelineEvent does not whitelist its keys), so this is schema-safe.
+      if (turnId && resolved.run && Array.isArray(resolved.run.timeline)) {
+        for (let i = timelineLenBefore; i < resolved.run.timeline.length; i += 1) {
+          const ev = resolved.run.timeline[i];
+          if (ev) {
+            ev.payload = { ...(ev.payload || {}), turnId };
+          }
+        }
       }
       // #67: count this turn against the guest cap (only guests are metered, so
       // this is a no-op write for accounts — gated to avoid needless disk writes).
@@ -2076,7 +2150,34 @@ async function handleApi(req, res) {
         return true;
       }
 
+      // PLAYER GOALS (player-goals-law) — capture + honor, on the resolver's run
+      // BEFORE it is persisted, so a goal declared this turn AND the artifact a
+      // goal-relevant success just produced land in the SAME commit. Attempt
+      // turns only (free-text intents); non-attempt actions carry no goal intent.
+      let goalCapture = null;
+      let goalHonored = [];
+      if (resolved.run && resolved.action?.type === "attempt") {
+        const goalIntent = resolved.attemptResult?.intent || resolved.action?.intent || "";
+        const nowMinutes = resolved.run.world?.time?.minutes ?? 0;
+        const turnNo = Array.isArray(resolved.run.timeline) ? resolved.run.timeline.length : 0;
+        // DECLARED door: intention-shaped speech commits a goal (guards: musing,
+        // questions, one-shot actions never capture — see goals.detectGoalDeclaration).
+        goalCapture = captureDeclaredGoal(resolved.run, goalIntent, { nowMinutes, turn: turnNo });
+        // Honor pipeline (Tasks): a goal-relevant build success writes the
+        // goal-linked objectState + storm cover + achievement/XP.
+        goalHonored = honorGoalsOnAttempt(resolved.run, {
+          intent: goalIntent,
+          attemptResult: resolved.attemptResult,
+          nowMinutes
+        });
+      }
       const responseRun = resolved.run ? saveSoloRun(resolved.run) : run;
+      if (goalCapture) {
+        logTurnEvent(responseRun.runId, `goal CAPTURED (declared, ${goalCapture.scale}): "${goalCapture.summary}" [${goalCapture.goalId}]`);
+      }
+      for (const h of goalHonored) {
+        logTurnEvent(responseRun.runId, `goal HONORED: "${h.summary}" [${h.goalId}] -> objectState ${h.objectId} (${h.band}${h.sheltered ? ", sheltered" : ""}); ${h.achieved ? `achieved +${h.xp}xp` : "progressed"}`);
+      }
       timing.mark("commit");
 
       // Quest win condition: completing the main quest ends the run in victory.
@@ -2152,6 +2253,20 @@ async function handleApi(req, res) {
           logTurnEvent(
             responseRun.runId,
             `disagreement-law VIOLATION: ${complianceViolations.map((v) => `${v.name}[${v.reason}@${v.tier}] complied: "${v.line}"`).join(" | ")} user=${user?.id || "anon"}`
+          );
+        }
+        // GOAL-IGNORED AUDITOR (player-goals-law): the player pursued a committed
+        // goal this turn and the narration neither engaged it nor lawfully
+        // obstructed it — the founding "build a shelter, GM says go to town"
+        // stiff-arm. Log-only; the goals directive is the contract.
+        const ignoredGoals = detectGoalIgnored(gmNarration, responseRun, {
+          intent: resolved.attemptResult?.intent || resolved.action?.intent || "",
+          attemptResult: resolved.attemptResult
+        });
+        if (ignoredGoals.length > 0) {
+          logTurnEvent(
+            responseRun.runId,
+            `goal-ignored VIOLATION: ${ignoredGoals.map((g) => `"${g.summary}" [${g.goalId}] neither engaged nor lawfully obstructed — "${g.excerpt}"`).join(" | ")} user=${user?.id || "anon"}`
           );
         }
       }
@@ -2397,6 +2512,9 @@ async function handleApi(req, res) {
 
       writeJson(res, 200, {
         ok: true,
+        // Echoed so the client can match this outcome to its in-flight turn and
+        // retire the pending lifecycle (input integrity).
+        turnId: turnId || null,
         run: responseRun,
         action: resolved.action,
         event: resolved.event,

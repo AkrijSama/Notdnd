@@ -15,6 +15,10 @@ docs/design/romance-legacy-law.md (R-laws, economy laws, narration law, ads law)
 | Ink ledger (balances, drips, spends; the tailor pricing hook is a stub seam awaiting it) | Laws 1/2/4 (economy) | NOT BUILT: `tailorFullbody` exposes `onBeforeGenerate` stub only; no ledger, no charging anywhere | TBD by owner |
 | Romanceable default | Romance law (default-true intent) | DIVERGES: `mintNpcReputation` mints `romanceable` ~1-in-6 (`seed % 6 === 0`), not default-true | TBD by owner |
 | Romance-register detector lexicon (paraphrase evasion) | Law R10 (SFW enforcement) | REFINEMENT: the live probe showed a blocked register re-entering as paraphrase the detector's lexicon misses ("lips meet yours", "bodies intertwine"); machinery verified, lexicon needs a calibration pass | TBD by owner |
+| Goal capture doors: DEMONSTRATED (3+ same-pattern actions → one diegetic ask) + OFFERED (NPC/world proposal accepted) | Player-goals law | NOT BUILT: only the DECLARED door ships; the shared goal record + honor pipeline are ready to receive both | **HIGH** |
+| Goals as D.5 thread sources (Project beats, Ambition arcs) | Player-goals law (honor machinery 3) | NOT BUILT: Tasks honor through the attempt pipeline; Projects/Ambitions do not yet register as thread sources (threads engine read-only this pass) | **HIGH** |
+| Goal STATUS-WINDOW surface (goals list + Project pips) | Player-goals law (honor machinery 4) | NOT BUILT: goals are committed + ride the prompt, but not yet drawn in the status/VN UI | TBD by owner |
+| Goal lifecycle: neglect check-in → archive | Player-goals law (lifecycle) | PARTIAL: state machine + stated-abandon + achieve/fail states exist; the neglect → ONE diegetic check-in → archive path is not wired | TBD by owner |
 
 ## Closed
 

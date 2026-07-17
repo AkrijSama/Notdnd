@@ -1800,12 +1800,57 @@ export function renderSoloConditionsHud(scene = {}) {
   return `<div class="solo-conditions solo-measure" role="group" aria-label="Active conditions">${chips}</div>`;
 }
 
-export function renderSoloThinkingIndicator(state = {}) {
+// Past this elapsed time a pending turn shows a live seconds counter instead of a
+// static "thinking" label, so a latency spike reads as alive, not dead.
+export const SOLO_STALL_ELAPSED_THRESHOLD_MS = 6000;
+
+export function renderSoloThinkingIndicator(state = {}, now = null) {
   if (!state.gmThinking && !state.sceneReloading) {
     return "";
   }
-  const label = state.gmThinking ? "The GM is thinking…" : "Loading scene…";
+  let label = state.gmThinking ? "The GM is thinking…" : "Loading scene…";
+  // STALL VISIBILITY (input integrity clause 5): once a processing turn passes the
+  // stall threshold, surface elapsed time ("Still working — 18s"). Tie-in: the
+  // pending turn's startedAt (set at submit) + the shell's stall re-render timer.
+  const started = state.pendingTurn && state.pendingTurn.status === "processing"
+    ? Number(state.pendingTurn.startedAt)
+    : NaN;
+  const nowT = Number.isFinite(now) ? Number(now) : (typeof Date !== "undefined" ? Date.now() : 0);
+  if (state.gmThinking && Number.isFinite(started) && nowT - started >= SOLO_STALL_ELAPSED_THRESHOLD_MS) {
+    const el = stallElapsedLabel(started, nowT);
+    if (el) {
+      label = `Still working — ${el}`;
+    }
+  }
   return `<div class="solo-thinking" role="status">${label}</div>`;
+}
+
+// INPUT INTEGRITY surface — the failed-turn recovery banner and the one-deep queued
+// chip. A failed turn is NEVER silently dropped: the player sees exactly which
+// action is at risk and chooses Retry (idempotent resubmit) or Discard.
+export function renderSoloTurnLifecycle(state = {}) {
+  const parts = [];
+  const pending = state.pendingTurn;
+  if (pending && pending.status === "failed") {
+    const label = firstWordsLabel(pending.text) || "your last action";
+    parts.push(
+      `<div class="solo-turn-failed" role="alert" data-solo-turn-failed>` +
+        `<span class="solo-turn-failed-msg">Your action “${escapeHtml(label)}” wasn't processed.</span>` +
+        `<span class="solo-turn-failed-actions">` +
+        `<button type="button" class="solo-turn-retry" data-solo-turn-retry>Retry</button>` +
+        `<button type="button" class="solo-turn-discard" data-solo-turn-discard>Discard</button>` +
+        `</span>` +
+      `</div>`
+    );
+  }
+  const queued = state.queuedTurn;
+  if (queued && queued.text) {
+    const label = firstWordsLabel(queued.text) || "next action";
+    parts.push(
+      `<div class="solo-turn-queued" role="status" data-solo-turn-queued>Queued: “${escapeHtml(label)}” — sends when this turn finishes.</div>`
+    );
+  }
+  return parts.join("");
 }
 
 export function renderSoloSceneInputBar(state = {}) {
@@ -2153,6 +2198,47 @@ function clockWeatherIcon(weather) {
   return `<svg class="solo-clock-icon solo-clock-wx solo-clock-wx-${w}" viewBox="0 0 24 24" aria-hidden="true" focusable="false" data-solo-weather="${w}">${art}</svg>`;
 }
 
+// PLAYER GOALS status surface (player-goals-law, honor machinery 4). Draws the
+// committed goals from scene.goals: active goals with a scale tag (Projects show
+// pips), then recent achievements struck through. "" when the run has no goals,
+// so a legacy run's rail is unchanged.
+const GOAL_SCALE_LABEL = { task: "Task", project: "Project", ambition: "Ambition" };
+function goalPips(progress) {
+  if (!progress || !Number.isFinite(progress.target) || progress.target <= 0) {
+    return "";
+  }
+  const target = Math.min(12, Math.max(0, Math.floor(progress.target)));
+  const filled = Math.min(target, Math.max(0, Math.floor(progress.current)));
+  let pips = "";
+  for (let i = 0; i < target; i += 1) {
+    pips += `<span class="solo-goal-pip${i < filled ? " is-filled" : ""}" aria-hidden="true"></span>`;
+  }
+  return `<span class="solo-goal-pips" role="img" aria-label="${filled} of ${target}">${pips}</span>`;
+}
+export function renderSoloGoals(scene = {}) {
+  const goals = Array.isArray(scene.goals) ? scene.goals.filter((g) => g && typeof g.summary === "string") : [];
+  if (!goals.length) {
+    return "";
+  }
+  const rows = goals
+    .map((g) => {
+      const achieved = g.state === "achieved";
+      const scale = GOAL_SCALE_LABEL[g.scale] || "Goal";
+      const pips = !achieved && g.scale === "project" ? goalPips(g.progress) : "";
+      return `<li class="solo-goal${achieved ? " is-achieved" : ""}">
+        <span class="solo-goal-scale">${escapeHtml(scale)}</span>
+        <span class="solo-goal-summary">${escapeHtml(g.summary)}</span>
+        ${achieved ? `<span class="solo-goal-check" aria-label="achieved">✓</span>` : pips}
+      </li>`;
+    })
+    .join("");
+  return `
+    <div class="solo-goals" data-solo-goals>
+      <div class="solo-stat-kicker">Goals</div>
+      <ul class="solo-goal-list">${rows}</ul>
+    </div>`;
+}
+
 export function renderSoloClock(scene = {}) {
   const wt = (scene.player && typeof scene.player.worldTime === "object" && scene.player.worldTime)
     || (typeof scene.worldTime === "object" && scene.worldTime)
@@ -2263,6 +2349,10 @@ export function renderSoloRightRail(state = {}) {
       <div class="solo-rail-block solo-rail-presence">
         ${renderSoloPresenceMap(scene)}
       </div>
+      ${(() => {
+        const goals = renderSoloGoals(scene);
+        return goals ? `<div class="solo-rail-block solo-rail-goals">${goals}</div>` : "";
+      })()}
       <div class="solo-rail-block">
         <div class="solo-stat-kicker">Recent Rolls</div>
         ${recentRolls}
@@ -3063,6 +3153,55 @@ export const SOLO_SKIN_STORAGE_KEY = "notdnd.solo.skin";
 export const SOLO_FONT_STORAGE_KEY = "notdnd.solo.fontSet";
 export const SOLO_LOG_SCALE_STORAGE_KEY = "notdnd.solo.logScale";
 export const SOLO_TEXT_SPEED_STORAGE_KEY = "notdnd.solo.textSpeed";
+// DRAFT SURVIVAL (input integrity): the composer draft is persisted per-run so a
+// page refresh / disconnect never eats typed-but-unsent text. Namespaced like the
+// other solo prefs; follows the textSpeed read/write pattern (readSoloThemePref /
+// writeSoloThemePref), no new dependency.
+export const SOLO_COMPOSER_DRAFT_STORAGE_KEY_PREFIX = "notdnd.solo.draft.";
+export function soloComposerDraftKey(runId) {
+  return `${SOLO_COMPOSER_DRAFT_STORAGE_KEY_PREFIX}${String(runId || "")}`;
+}
+
+// A client-stamped turn id for input integrity. Unique per logical turn; a resync
+// RESUBMIT reuses the same id so the server replays it idempotently (no re-roll,
+// no double-commit). crypto.randomUUID when available; a time+counter fallback
+// otherwise (uniqueness only needs to hold within a run's resync window).
+let soloTurnIdCounter = 0;
+export function newSoloTurnId(runId) {
+  soloTurnIdCounter += 1;
+  let rnd;
+  try {
+    rnd = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID().slice(0, 8)
+      : Math.random().toString(36).slice(2, 10);
+  } catch {
+    rnd = Math.random().toString(36).slice(2, 10);
+  }
+  const t = typeof Date !== "undefined" ? Date.now() : 0;
+  return `turn_${String(runId || "r").slice(0, 12)}_${t}_${soloTurnIdCounter}_${rnd}`;
+}
+
+// The "first six words…" label the failed-turn surface shows, so a stranger sees
+// exactly which of their actions is at risk. Bounded + ellipsized.
+export function firstWordsLabel(text, n = 6) {
+  const words = String(text || "").trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) {
+    return "";
+  }
+  const head = words.slice(0, n).join(" ");
+  return words.length > n ? `${head}…` : head;
+}
+
+// Elapsed-seconds phrasing for the stall indicator ("Still working — 18s"). Past
+// the lag threshold a slow turn reads as ALIVE, not dead.
+export function stallElapsedLabel(startedAtMs, nowMs) {
+  const started = Number(startedAtMs);
+  const now = Number(nowMs);
+  if (!Number.isFinite(started) || !Number.isFinite(now) || now < started) {
+    return "";
+  }
+  return `${Math.floor((now - started) / 1000)}s`;
+}
 
 export function readSoloThemePref(key, fallback) {
   try {
@@ -3198,7 +3337,15 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     // { id, intent, checkResult, text, speaker }. Client-owned; survives the
     // per-turn scene refresh (the scene payload only carries the CURRENT turn).
     narrationLog: [],
-    attemptDraft: "",
+    // DRAFT SURVIVAL: restore any composer text persisted for this run (page
+    // refresh / disconnect must never eat typed-but-unsent input).
+    attemptDraft: readSoloThemePref(soloComposerDraftKey(runId), ""),
+    // INPUT INTEGRITY — turn lifecycle. `pendingTurn` is the single in-flight (or
+    // failed) typed turn: { turnId, text, mode, status: "processing"|"failed",
+    // startedAt }. `queuedTurn` is the one-deep queue for a turn typed while another
+    // is processing: { text, mode }. Both null when idle.
+    pendingTurn: null,
+    queuedTurn: null,
     busy: null,
     banner: "",
     // "info" => amber/gold one-time wait notice; anything else => the default
@@ -3977,13 +4124,26 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
   // Posts a solo action and flags a pending victory when the server reports the
   // main quest was just completed (response.runWon). The flag is flushed by
   // maybeConcludeVictory once the action settles.
-  async function postAction(action) {
-    const response = await postSoloAction(apiClient, runId, action);
+  async function postAction(action, turnId = null) {
+    const response = await postSoloAction(apiClient, runId, action, turnId);
     if (response && response.runWon) {
       state.pendingVictory = true;
       state.victoryNarration = typeof response.victoryNarration === "string" ? response.victoryNarration : null;
     }
     return response;
+  }
+
+  // DRAFT SURVIVAL: persist / clear the composer draft for this run (mirrors the
+  // textSpeed pref pattern). Called on every keystroke and on a settled submit.
+  function persistDraft(text) {
+    writeSoloThemePref(soloComposerDraftKey(runId), String(text || ""));
+  }
+  function clearComposerDraft() {
+    state.attemptDraft = "";
+    persistDraft("");
+  }
+  function nowMs() {
+    return typeof Date !== "undefined" && typeof Date.now === "function" ? Date.now() : 0;
   }
 
   // Concludes the run as a win when it was just won — either via the action
@@ -4107,6 +4267,8 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
 
   function handleAttemptDraft({ value }) {
     state.attemptDraft = String(value || "");
+    // DRAFT SURVIVAL: persist per keystroke so a refresh/disconnect keeps the text.
+    persistDraft(state.attemptDraft);
   }
 
   // Bug A (#37/#38): render the GM's out-of-character reply as a distinct log
@@ -4121,59 +4283,153 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     render();
   }
 
+  // Applies a committed turn's response to state (provenance, attempt result,
+  // dialogue cue, dialogue lines) then resyncs the scene. Shared by a first-try
+  // success and an idempotent retry so both render identically.
+  async function applyTurnSuccess(response, submittedText) {
+    state.pendingPlayerAction = submittedText;
+    state.attemptResult = response.attemptResult || response.latestAttemptResult || null;
+    // VISIBLE CONSEQUENCE (law 3): derive the diegetic cue from the COMMITTED
+    // disposition delta this turn returned (never narrator text). Turn-scoped.
+    {
+      const dc = state.attemptResult?.dispositionChange || state.attemptResult?.giftChange || null;
+      const cueText = dc ? dispositionCueText(dc) : "";
+      state.dispositionCue = cueText ? { npcId: dc.targetNpcId, text: cueText } : null;
+    }
+    // #20-full: per-line speaker attribution so logNarration nameplates NPC lines.
+    state.dialogueLines = Array.isArray(response.dialogueLines) ? response.dialogueLines : [];
+    clearComposerDraft();
+    state.searchResult = null;
+    state.talkResult = null;
+    state.dialogueActive = false;
+    state.restResult = null;
+    state.useItemResult = null;
+    await loadScene();
+  }
+
+  // INPUT INTEGRITY — the resync-safe submit. Posts a typed turn stamped with a
+  // stable turnId; on a thrown/lost request it RESUBMITS the SAME turnId once (the
+  // server replays idempotently if the turn already committed, or processes it if
+  // it did not — never a re-roll, never a double-commit). If both attempts fail to
+  // reach the server, the turn is SURFACED (pendingTurn.status = "failed") with
+  // Retry/Discard — never silently dropped. `caughtErrors` collects both throws so
+  // the second failure carries the real message.
+  async function submitTurn({ intent, mode, turnId, submittedText }) {
+    state.pendingTurn = { turnId, text: submittedText, mode, status: "processing", startedAt: nowMs() };
+    let response = null;
+    let firstError = null;
+    try {
+      response = await postAction(createAttemptAction({ intent, mode }), turnId);
+    } catch (error) {
+      firstError = error;
+      // OOC never fails silently (Bug A): a thrown OOC request gets a visible note.
+      if (mode === "ooc") {
+        appendOocNote({ reply: "" });
+        state.pendingTurn = null;
+        clearComposerDraft();
+        return;
+      }
+      // Resync-safe retry — SAME turnId, so a committed-but-timed-out turn replays
+      // idempotently rather than re-rolling.
+      try {
+        response = await postAction(createAttemptAction({ intent, mode }), turnId);
+      } catch {
+        // Both attempts failed: SURFACE (contract clause 1c), never drop. Keep the
+        // player's text so Retry/Discard/edit are all possible.
+        state.pendingTurn = { turnId, text: submittedText, mode, status: "failed", startedAt: state.pendingTurn?.startedAt || nowMs() };
+        state.attemptDraft = submittedText;
+        persistDraft(submittedText);
+        state.banner = "";
+        return; // runAction's finally clears busy; the failed-turn surface renders
+      }
+    }
+    void firstError;
+    // The original of this turnId is still processing server-side (a resubmit raced
+    // it). Don't double-process — resync to catch its commit; the pending surface
+    // clears once the committed scene is shown.
+    if (response && response.processing) {
+      state.pendingTurn = null;
+      await loadScene();
+      flushQueuedTurn();
+      return;
+    }
+    // OOC (#37/#38): server committed NO state, answered AS GM. Render + stop.
+    if (response && response.ooc) {
+      appendOocNote({ reply: response.oocReply });
+      state.pendingTurn = null;
+      clearComposerDraft();
+      return;
+    }
+    // Idempotent replay: the turn was ALREADY committed (a prior attempt landed).
+    // Its outcome is already in the run/scene — just resync, never re-append.
+    if (response && (response.idempotentReplay || response.alreadyProcessed)) {
+      state.pendingTurn = null;
+      clearComposerDraft();
+      await loadScene();
+      flushQueuedTurn();
+      return;
+    }
+    // Normal first-time success.
+    state.pendingTurn = null;
+    await applyTurnSuccess(response, submittedText);
+    flushQueuedTurn();
+  }
+
+  // QUEUE, DON'T SWALLOW (contract clause 2): a turn typed while another is
+  // processing is captured one-deep and flushed when the current turn settles —
+  // no keystroke path throws input away.
+  function flushQueuedTurn() {
+    const queued = state.queuedTurn;
+    if (!queued) {
+      return;
+    }
+    state.queuedTurn = null;
+    handleAttempt({ intent: queued.text, mode: queued.mode });
+  }
+
   function handleAttempt({ intent, mode }) {
     if (!state.scene) {
       return;
     }
-    // Bug B (provenance): remember the player's VERBATIM submitted text so the YOU
-    // header renders exactly what they typed — never a GM-generated beat title,
-    // regardless of how the resolver commits the turn (attempt / move / search…).
+    // Bug B (provenance): the player's VERBATIM submitted text drives the YOU header.
     const submittedText = String(intent || "").trim();
-    return runAction("attempt", async () => {
-      let response;
-      try {
-        response = await postAction(createAttemptAction({ intent, mode }));
-      } catch (error) {
-        // OOC must never fail silently (Bug A): a thrown OOC request still gets a
-        // visible failure note rather than a generic banner + resync.
-        if (mode === "ooc") {
-          appendOocNote({ reply: "" });
-          state.attemptDraft = "";
-          return;
-        }
-        throw error;
-      }
-      // Bug A — OOC (#37/#38): the server committed NO state (run echoed unchanged)
-      // and answered AS GM. Render that reply as a distinct note and STOP: no turn
-      // cost, no clock tick, no scene reload, no story entry, no auditor pass.
-      if (response && response.ooc) {
-        appendOocNote({ reply: response.oocReply });
-        state.attemptDraft = "";
-        return;
-      }
-      state.pendingPlayerAction = submittedText;
-      state.attemptResult = response.attemptResult || response.latestAttemptResult || null;
-      // VISIBLE CONSEQUENCE (law 3): derive the diegetic cue from the COMMITTED
-      // disposition delta this turn returned (never narrator text). Turn-scoped:
-      // replaced (or nulled) on every submit, cleared by the dialogue handlers.
-      {
-        // A committed GIFT rides the same cue surface (its payload carries the
-        // same targetName/romanceTier fields); disposition wins when both exist.
-        const dc = state.attemptResult?.dispositionChange || state.attemptResult?.giftChange || null;
-        const cueText = dc ? dispositionCueText(dc) : "";
-        state.dispositionCue = cueText ? { npcId: dc.targetNpcId, text: cueText } : null;
-      }
-      // #20-full: capture the server's per-line speaker attribution for this turn
-      // so logNarration can nameplate each grounded NPC line (cross-wire to #20).
-      state.dialogueLines = Array.isArray(response.dialogueLines) ? response.dialogueLines : [];
-      state.attemptDraft = "";
-      state.searchResult = null;
-      state.talkResult = null;
-      state.dialogueActive = false;
-      state.restResult = null;
-      state.useItemResult = null;
-      await loadScene();
-    });
+    if (!submittedText) {
+      return;
+    }
+    // A turn is already processing: QUEUE this one (one deep) with a visible chip,
+    // clear the box so the composer is ready, and flush when the current turn
+    // settles. Replacing an existing queued turn keeps only the newest (one deep).
+    if (state.busy) {
+      state.queuedTurn = { text: submittedText, mode };
+      clearComposerDraft();
+      render();
+      return;
+    }
+    const turnId = newSoloTurnId(runId);
+    return runAction("attempt", () => submitTurn({ intent: submittedText, mode, turnId, submittedText }));
+  }
+
+  // Retry the surfaced failed turn — reuses its turnId (idempotent) so a turn that
+  // actually committed on the prior attempt is not double-committed.
+  function retryPendingTurn() {
+    const pending = state.pendingTurn;
+    if (!pending || pending.status !== "failed" || state.busy) {
+      return;
+    }
+    const { turnId, text, mode } = pending;
+    return runAction("attempt", () => submitTurn({ intent: text, mode, turnId, submittedText: text }));
+  }
+
+  // Discard is a PLAYER choice only (contract clause 1c) — the sole path that drops
+  // a typed turn, and only on explicit intent.
+  function discardPendingTurn() {
+    if (!state.pendingTurn || state.pendingTurn.status !== "failed") {
+      return;
+    }
+    state.pendingTurn = null;
+    clearComposerDraft();
+    state.banner = "";
+    render();
   }
 
   // ---- Location-image controls (Redo / Save) ----

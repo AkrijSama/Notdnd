@@ -65,6 +65,18 @@ const NPC_VOICE_REGISTER_SET = new Set(["rough", "plain", "learned"]);
 const NPC_VOICE_LENGTH_SET = new Set(["clipped", "middling", "rambling"]);
 const NPC_VOICE_TALKATIVENESS_SET = new Set(["taciturn", "measured", "chatty"]);
 
+// PLAYER GOALS (player-goals-law) — a committed player objective, first-class
+// like a quest. SCALE ladder: task (attempt-pipeline resolution) / project
+// (server-owned progress track) / ambition (thread-source, faction grade).
+// DOOR = the capture provenance. STATE = the lifecycle. All additive/optional:
+// legacy runs carry no run.goals and behave exactly as before (resume-safe law).
+export const GOAL_SCALES = ["task", "project", "ambition"];
+export const GOAL_STATES = ["active", "achieved", "abandoned", "failed"];
+export const GOAL_DOORS = ["declared", "demonstrated", "offered"];
+const GOAL_SCALE_SET = new Set(GOAL_SCALES);
+const GOAL_STATE_SET = new Set(GOAL_STATES);
+const GOAL_DOOR_SET = new Set(GOAL_DOORS);
+
 // D.5 narrative-substrate: run.threads is a first-class validated record, like
 // run.quests (front:thread :: questTemplate:questState). These enum sets mirror
 // scenarioSchema.js's frozen authoring enums, kept local so the core contract
@@ -1004,6 +1016,55 @@ function validateThreadBeat(beat) {
   return result(errors);
 }
 
+// PLAYER GOAL record (player-goals-law). Thin/tolerant like validateThreadState:
+// identity + typed enums + free-form extension. Optional/additive so legacy runs
+// (no run.goals) stay valid.
+export function validateGoal(goal) {
+  const errors = [];
+  if (!isPlainObject(goal)) {
+    push(errors, "goal", "Expected object");
+    return result(errors);
+  }
+  validateRequiredString(goal.goalId, "goalId", errors);
+  validateRequiredString(goal.summary, "summary", errors);
+  validateEnum(goal.scale, GOAL_SCALE_SET, "scale", errors);
+  validateEnum(goal.state, GOAL_STATE_SET, "state", errors);
+  validateEnum(goal.door, GOAL_DOOR_SET, "door", errors);
+  validateStringArray(goal.matchTokens, "matchTokens", errors);
+  validateStringArray(goal.linkedObjectIds, "linkedObjectIds", errors);
+  if (goal.stages !== undefined && goal.stages !== null) {
+    if (!Array.isArray(goal.stages)) {
+      push(errors, "stages", "Expected array");
+    } else {
+      goal.stages.forEach((stage, i) => {
+        if (!isPlainObject(stage)) {
+          push(errors, `stages.${i}`, "Expected object");
+        } else {
+          validateRequiredString(stage.id, `stages.${i}.id`, errors);
+          validateRequiredString(stage.label, `stages.${i}.label`, errors);
+        }
+      });
+    }
+  }
+  if (goal.progress !== undefined && goal.progress !== null) {
+    if (!isPlainObject(goal.progress)) {
+      push(errors, "progress", "Expected object");
+    } else {
+      validateOptionalNumber(goal.progress.current, "progress.current", errors);
+      validateOptionalNumber(goal.progress.target, "progress.target", errors);
+    }
+  }
+  validateOptionalString(goal.stakes, "stakes", errors);
+  validateOptionalString(goal.provenance, "provenance", errors);
+  validateOptionalNumber(goal.createdTurn, "createdTurn", errors);
+  validateOptionalNumber(goal.createdAtMinutes, "createdAtMinutes", errors);
+  if (goal.achievedAtMinutes !== undefined && goal.achievedAtMinutes !== null) {
+    validateNumber(goal.achievedAtMinutes, "achievedAtMinutes", errors);
+  }
+  validateObject(goal.flags, "flags", errors);
+  return result(errors);
+}
+
 export function validateThreadState(thread) {
   const errors = [];
   if (!isPlainObject(thread)) {
@@ -1343,6 +1404,11 @@ export function validateSoloRun(run) {
   // runs (undefined) stay valid, exactly like run.vn / run.battleMap.
   if (run.threads !== undefined && run.threads !== null) {
     validateRecord(run.threads, "threads", errors, validateThreadState);
+  }
+  // PLAYER GOALS (player-goals-law) — optional/additive first-class record, like
+  // run.threads; legacy runs (undefined) stay valid with zero behavior change.
+  if (run.goals !== undefined && run.goals !== null) {
+    validateRecord(run.goals, "goals", errors, validateGoal);
   }
   if (run.factions !== undefined && run.factions !== null) {
     validateRecord(run.factions, "factions", errors, validateFactionState);
@@ -1688,6 +1754,8 @@ export function createDefaultSoloRun(options = {}) {
     // D.5 narrative substrate (threads) + D.4 combat — first-class additive
     // records; empty/null until a scenario seeds a thread or a fight begins.
     threads: {},
+    // Player goals (player-goals-law) — empty until a capture door fires.
+    goals: {},
     // reputation-engine-v1 — per-world faction standings (individual reputation
     // rides on run.relationships). Additive first-class record like run.threads.
     factions: {},

@@ -2433,6 +2433,17 @@ button:disabled {
    The has-wx modifier tightens the gap so icon-pair + text read as one unit. */
 .solo-clock-has-wx { gap: 8px; }
 .solo-clock-wx { width: 24px; height: 24px; color: var(--text-2, #b0b3bb); }
+/* Player goals status surface (player-goals-law honor machinery 4). Committed
+   objectives in the side rail: scale tag, summary, Project pips / achieved tick. */
+.solo-goal-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.solo-goal { display: flex; align-items: baseline; gap: 8px; font-size: 0.85rem; }
+.solo-goal-scale { flex: none; font-size: 0.62rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-label, #8a7c68); }
+.solo-goal-summary { flex: 1 1 auto; color: var(--text, #d9dbe0); }
+.solo-goal.is-achieved .solo-goal-summary { color: var(--text-2, #b0b3bb); text-decoration: line-through; }
+.solo-goal-check { flex: none; color: var(--good, #7fb069); }
+.solo-goal-pips { flex: none; display: inline-flex; gap: 3px; }
+.solo-goal-pip { width: 6px; height: 6px; border-radius: 50%; border: 1px solid var(--text-label, #8a7c68); }
+.solo-goal-pip.is-filled { background: var(--accent, #c2c6cf); border-color: var(--accent, #c2c6cf); }
 .solo-clock-text { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; }
 .solo-clock-time { font-family: var(--font-body, Georgia, serif); font-size: 1.5rem; color: var(--text, #d9dbe0); }
 .solo-clock-phase { font-size: 0.8rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-label, #8a7c68); }
