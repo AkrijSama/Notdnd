@@ -202,22 +202,40 @@ function applyStyleModelOverrides(options, styleConfig) {
   return next;
 }
 
-// Word-budget enforcement (item 3): on NON-THINK flash the 2048-token reasoning
-// floor is pure runaway headroom — the contract caps prose at 120 words, so cap
-// the API budget at ~220 tokens (comfortable margin over 120 words + paragraph
-// breaks, blocks a runaway draft mechanically). Reasoning models keep the floor
-// (their thinking spends from the same budget).
-const NARRATIVE_FLASH_MAX_TOKENS = Math.max(150, Number(process.env.NOTDND_GM_FLASH_MAX_TOKENS || 190));
-function isNonThinkFlash(model) {
+// Word-budget enforcement (item 3), CORRECTED 2026-07-17 (the token-cap collapse):
+// deepseek-v4-flash is a REASONING model — its hidden thinking spends from the
+// SAME completion budget, so the old 190-token "non-think" cap starved it to
+// mid-sentence truncation (finish=length on 10/14 calls), retry churn, and
+// finally EMPTY narrations live (the 2026-07-16 owner-session collapse).
+// Reasoning-class flash keeps a WORD-BUDGET cap (the 120-word prose contract
+// still holds — max_tokens is a ceiling, not a target) but with reasoning
+// headroom: default 600, env-overridable via NOTDND_GM_FLASH_MAX_TOKENS, and
+// NEVER below 512 regardless of override. Non-reasoning narrative models keep
+// the generous NARRATIVE_MIN_RESPONSE_TOKENS floor path below, unchanged.
+export const REASONING_MIN_COMPLETION_TOKENS = 512;
+export const REASONING_FLASH_MAX_TOKENS = Math.max(
+  REASONING_MIN_COMPLETION_TOKENS,
+  Number(process.env.NOTDND_GM_FLASH_MAX_TOKENS || 600)
+);
+export function isReasoningFlash(model) {
   return /deepseek-v4-flash/i.test(String(model || ""));
 }
 
+// The completion budget a narrative call actually receives for a given resolved
+// model. Pure — exported for the regression test (a reasoning-class model must
+// never see a completion cap below REASONING_MIN_COMPLETION_TOKENS).
+export function resolveNarrativeTokenBudget(resolvedModel, options = {}) {
+  if (isReasoningFlash(resolvedModel)) {
+    const requested = Number(options.flashMaxTokens);
+    const base = Number.isFinite(requested) ? requested : REASONING_FLASH_MAX_TOKENS;
+    return Math.max(REASONING_MIN_COMPLETION_TOKENS, base);
+  }
+  return withNarrativeTokenFloor(options).maxResponseTokens;
+}
+
 async function callNarrativeModel(messages, campaignId, resolvedModel, modelTiers, options) {
-  if (isNonThinkFlash(resolvedModel)) {
-    const flashCap = Number.isFinite(Number(options.flashMaxTokens))
-      ? Math.min(Number(options.flashMaxTokens), 512)
-      : NARRATIVE_FLASH_MAX_TOKENS;
-    const capped = { ...options, maxResponseTokens: flashCap };
+  if (isReasoningFlash(resolvedModel)) {
+    const capped = { ...options, maxResponseTokens: resolveNarrativeTokenBudget(resolvedModel, options) };
     if (resolvedModel === modelTiers.narrative) {
       return generateNarrative(messages, campaignId, capped);
     }

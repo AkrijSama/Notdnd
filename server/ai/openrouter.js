@@ -577,6 +577,31 @@ async function parseJsonResponse(response) {
   };
 }
 
+// ── Reasoning-class completion floor ──────────────────────────────────────────
+// Models whose hidden thinking spends from the SAME completion budget as the
+// visible text. A tight max_tokens on these yields mid-sentence truncation or a
+// zero-content "length" finish (the 2026-07-16 owner-session collapse). Known
+// reasoning models on the current chain: deepseek-v4-flash (primary narrative
+// trial) and gemini-2.5-flash (fallback lane).
+export const REASONING_MODEL_RE = /deepseek-v4-flash|gemini-2\.5-flash|deepseek-r1|qwq|-thinking\b/i;
+export const REASONING_MIN_COMPLETION_TOKENS = 512;
+export function isReasoningModel(model) {
+  return REASONING_MODEL_RE.test(String(model || ""));
+}
+// The max_tokens the request body actually sends: callers' caps are honored,
+// EXCEPT a reasoning-class model is never ceilinged below 512 — unless the
+// caller explicitly disabled reasoning ({ reasoning: { enabled: false } }, the
+// utility fast-lane contract), in which case there is no hidden spend and the
+// tight budget is intentional. Pure; exported for the regression test.
+export function reasoningSafeMaxTokens(model, maxResponseTokens, options = {}) {
+  const cap = Math.max(1, Number(maxResponseTokens));
+  const reasoningDisabled = Boolean(options.reasoning && options.reasoning.enabled === false);
+  if (!reasoningDisabled && isReasoningModel(model) && cap < REASONING_MIN_COMPLETION_TOKENS) {
+    return REASONING_MIN_COMPLETION_TOKENS;
+  }
+  return cap;
+}
+
 async function requestOpenRouter(messages, model, options = {}) {
   if (mockModeEnabled()) {
     const userText = Array.isArray(messages)
@@ -642,7 +667,14 @@ async function requestOpenRouter(messages, model, options = {}) {
     body.temperature = Number(options.temperature);
   }
   if (Number.isFinite(Number(options.maxResponseTokens))) {
-    body.max_tokens = Math.max(1, Number(options.maxResponseTokens));
+    // Last line of defense (2026-07-16 collapse, T8): a completion cap computed
+    // upstream for one model can RIDE the fallback chain into a different lane —
+    // tonight a 190-token cap reached thinking gemini-2.5-flash and left 41 chars
+    // of prose. This is the one place the ACTUAL lane model is known, so clamp
+    // here: a reasoning-class model never receives a ceiling below 512. Skipped
+    // when the caller explicitly disabled reasoning (utility fast-lane keeps its
+    // deliberately tight budgets — reasoning off means no hidden spend).
+    body.max_tokens = reasoningSafeMaxTokens(model, Number(options.maxResponseTokens), options);
   }
   // OpenRouter-SPECIFIC body fields (`reasoning`, provider-routing `extraBody`)
   // are rejected with a 400 by strict OpenAI-compatible endpoints like Gemini's
