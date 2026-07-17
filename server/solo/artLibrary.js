@@ -90,17 +90,78 @@ export function worldKeyForRun(run) {
   return null;
 }
 
+// The `loc:<slug>` library tag for a committed location name — the precision key
+// that binds a cooked scene to the location it depicts. Slug rule mirrors the
+// batch-cook manifests: lowercase, every non-alphanumeric run collapses to "-".
+export function locationLibraryTag(name) {
+  const slug = String(name || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return slug ? `loc:${slug}` : null;
+}
+
 /**
  * Scene-stage read path: a curated library "scene" keep for the run's world +
  * art style, or null (caller falls back to the generated per-location image).
+ *
+ * Location precision ("never a stranger's location" — the geography analog of
+ * the face law): when a `location` is given, a keep TAGGED for that location
+ * (`loc:<slug of its committed name>`) wins. The generic world+style rung then
+ * only serves keeps that carry NO loc: tag at all — a location-specific image
+ * must never surface as another location's backdrop (world families like
+ * "babel" share one world key across runs with entirely different geography).
  * @param {object} run
+ * @param {object} [location] the committed location record (name drives the tag)
  * @returns {string|null}
  */
-export function resolveSceneArtForRun(run) {
-  return resolveLibraryArt({
-    world: worldKeyForRun(run),
-    kind: "scene",
-    // Butler-resolved canonical style (was runArtStyle → engine vocab).
-    style: styleForRun(run)
-  });
+export function resolveSceneArtForRun(run, location = null) {
+  const slot = { world: worldKeyForRun(run), kind: "scene", style: styleForRun(run) };
+  const locTag = locationLibraryTag(location?.name);
+  if (locTag) {
+    const tagged = keepsFor(slot).filter((a) => Array.isArray(a.tags) && a.tags.includes(locTag));
+    const chosen = pickStable(tagged);
+    if (chosen) {
+      return libraryAssetUri(chosen.id);
+    }
+  }
+  const generic = keepsFor(slot).filter(
+    (a) => !(Array.isArray(a.tags) && a.tags.some((t) => String(t).startsWith("loc:")))
+  );
+  const chosen = pickStable(generic);
+  return chosen ? libraryAssetUri(chosen.id) : null;
+}
+
+/**
+ * Face read path (Law 5): the library portrait/fullbody CHECKED OUT to exactly
+ * this (runId, npcId), keep-rated and matching the run's locked art style, or
+ * null. A checkout is the face commitment — this never serves a stranger's
+ * face (no checkout, no image), never serves off-style art, and never throws
+ * (a broken library falls back to the caller's empty state).
+ * @param {object} run
+ * @param {string} npcId
+ * @param {"portrait"|"fullbody"} kind
+ * @returns {string|null}
+ */
+export function resolveNpcFaceFromLibrary(run, npcId, kind) {
+  const runId = run && typeof run.runId === "string" ? run.runId : null;
+  if (!runId || !npcId || (kind !== "portrait" && kind !== "fullbody")) {
+    return null;
+  }
+  let found;
+  try {
+    found = queryAssets({ kind }).filter((a) => a && a.rating === "keep");
+  } catch {
+    return null;
+  }
+  const libStyle = toCanonicalStyle(styleForRun(run));
+  const matches = found.filter(
+    (a) =>
+      a.checkout &&
+      a.checkout.runId === runId &&
+      a.checkout.npcId === npcId &&
+      (!libStyle || a.style === libStyle)
+  );
+  const chosen = pickStable(matches);
+  return chosen ? libraryAssetUri(chosen.id) : null;
 }

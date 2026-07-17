@@ -2616,8 +2616,10 @@ async function handleApi(req, res) {
       }
       // Lazy full-body VN sprite: only when an NPC is in VN (direct) mode. The
       // worker skips an already-generated vnBody, so this is cheap to re-enqueue
-      // on every scene load and never fires for NPCs who never enter VN.
-      if (allowImages && scene.vnMode && typeof scene.speakerId === "string" && scene.speakerId) {
+      // on every scene load and never fires for NPCs who never enter VN. A scene
+      // whose sprite already resolved (run asset OR a Law-5 library checkout)
+      // never enqueues — generating anyway would face-swap the served sprite.
+      if (allowImages && scene.vnMode && !scene.vnBodyUri && typeof scene.speakerId === "string" && scene.speakerId) {
         const vnNpcId = scene.speakerId.includes(":")
           ? scene.speakerId.split(":").slice(1).join(":")
           : scene.speakerId;

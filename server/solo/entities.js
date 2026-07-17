@@ -4,6 +4,7 @@ import {
   validateEntityAgainstPolicy,
   validateSoloRun
 } from "./schema.js";
+import { resolveNpcFaceFromLibrary } from "./artLibrary.js";
 
 const ENTITY_TYPES = new Set(["player", "party_member", "npc", "item", "location_object", "player_asset", "exit", "other"]);
 
@@ -121,15 +122,18 @@ function playerEntity(player, currentLocationId) {
   };
 }
 
-function npcEntity(npc, relationshipId = null, imageAssets = {}) {
+function npcEntity(npc, relationshipId = null, imageAssets = {}, libraryPortraitUri = null) {
   // NPC portraits are stored as imageAsset records (referenced by imageAssetId),
   // not as a direct URI like the player. Resolve the served URI here the same
   // way the cast roster does (a generated asset with a uri) so the Entity Sheet
-  // can render an <img> instead of printing the raw asset id as text.
+  // can render an <img> instead of printing the raw asset id as text. When the
+  // run has no generated bust, the caller's library face (the portrait checked
+  // out to this exact run+npc, Law 5) fills the slot; null keeps the empty state.
   const asset =
     isString(npc.imageAssetId) && isPlainObject(imageAssets) ? imageAssets[npc.imageAssetId] : null;
   const portraitUri =
-    asset && asset.status === "generated" && isString(asset.uri) ? asset.uri : null;
+    (asset && asset.status === "generated" && isString(asset.uri) ? asset.uri : null) ||
+    (isString(libraryPortraitUri) ? libraryPortraitUri : null);
   return {
     entityId: `npc:${npc.npcId}`,
     entityType: "npc",
@@ -259,7 +263,14 @@ export function getVisibleEntities(run, options = {}) {
 
   for (const npc of Object.values(run.npcs || {})) {
     if (npc.currentLocationId === run.currentLocationId) {
-      entities.push(npcEntity(npc, relationshipIdForNpc(run, npc.npcId), run.imageAssets));
+      entities.push(
+        npcEntity(
+          npc,
+          relationshipIdForNpc(run, npc.npcId),
+          run.imageAssets,
+          resolveNpcFaceFromLibrary(run, npc.npcId, "portrait")
+        )
+      );
     }
   }
 

@@ -1,5 +1,5 @@
 import { providerSupportsReference, resolveImageProvider } from "../ai/providers.js";
-import { resolveSceneArtForRun } from "./artLibrary.js";
+import { resolveSceneArtForRun, resolveNpcFaceFromLibrary } from "./artLibrary.js";
 import { getAvailableSoloActions } from "./actions.js";
 import { MILESTONE_MAX, RANK_LADDER, tierForMilestone, displayLevelFor, rankForPlayer } from "./progression.js";
 import { babelStatBlock } from "./babelStats.js";
@@ -467,8 +467,11 @@ export function collectNpcsNeedingArt(run, visibleEntities = null) {
     // Only a missing BASE portrait makes an NPC "need art" on encounter.
     // Expression variants are generated lazily per talk beat (runVariantImageJob),
     // not eagerly here — most NPCs are only ever seen in 1-2 expressions.
+    // An NPC wearing a library face (a portrait checked out to this exact
+    // run+npc, Law 5) is art-complete: enqueueing a generated portrait anyway
+    // would later SWAP the face the player has already seen.
     const generated = (assetId) => isString(assetId) && assets[assetId]?.status === "generated";
-    if (!generated(npc.imageAssetId)) {
+    if (!generated(npc.imageAssetId) && !resolveNpcFaceFromLibrary(run, npcId, "portrait")) {
       needing.push(npcId);
     }
   }
@@ -632,7 +635,9 @@ export function buildCastRoster(run, policyProfile) {
         known: npc.known !== false,
         currentLocationId: npc.currentLocationId || null,
         present: npc.currentLocationId === run.currentLocationId,
-        portraitUri: uriFor(npc.imageAssetId),
+        // Run-generated bust first (a seen face never swaps), else the library
+        // portrait checked out to this exact (run, npc) — Law 5 face read path.
+        portraitUri: uriFor(npc.imageAssetId) || resolveNpcFaceFromLibrary(run, npc.npcId, "portrait"),
         // #50: committed gender/pronouns so the client can reflect them and the
         // portrait's subject is verifiable (the image worker grounds on these).
         gender: isString(npc.gender) ? npc.gender : null,
@@ -1086,14 +1091,16 @@ export function resolveLocationImageUri(run, location) {
   if (asset && asset.locked && generated) {
     return generated;
   }
-  const libraryScene = resolveSceneArtForRun(run);
+  const libraryScene = resolveSceneArtForRun(run, location);
   return libraryScene || generated;
 }
 
-// Pure. The active VN speaker's full-body sprite URI from run.imageAssets, or
-// null (ambient, or the sprite has not been lazily generated yet). Keyed by the
-// deterministic vnBody asset id; speakerId is the raw npcId (any "npc:" prefix
-// is stripped defensively).
+// The active VN speaker's full-body sprite URI: the run's own generated vnBody
+// asset first (the face the player has already seen never swaps), else the
+// library fullbody CHECKED OUT to this exact (run, npc) in the run's locked
+// style (Law 5 — a checkout is the face commitment; no checkout, no image).
+// Null when ambient or when neither source has the sprite — dialogue never
+// blocks on assets. speakerId is the raw npcId (any "npc:" prefix stripped).
 export function resolveVnBodyUri(run, vnState) {
   if (!vnState || vnState.active !== true || !isString(vnState.speakerId)) {
     return null;
@@ -1102,7 +1109,8 @@ export function resolveVnBodyUri(run, vnState) {
   const npcId = speakerId.includes(":") ? speakerId.split(":").slice(1).join(":") : speakerId;
   const assets = isPlainObject(run?.imageAssets) ? run.imageAssets : {};
   const asset = assets[`img_${npcId}_vnBody`];
-  return asset && asset.status === "generated" && isString(asset.uri) ? asset.uri : null;
+  const generated = asset && asset.status === "generated" && isString(asset.uri) ? asset.uri : null;
+  return generated || resolveNpcFaceFromLibrary(run, npcId, "fullbody");
 }
 
 // Pure. True when the player has locked the current location's background image
