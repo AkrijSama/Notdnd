@@ -17,6 +17,7 @@
 import { combatActive } from "./combat.js";
 import { getAvailableMoves } from "./movement.js";
 import { activeGoals } from "./goals.js";
+import { followableTrailsAtCurrent } from "./essence.js";
 
 function isPlainObject(v) {
   return Boolean(v) && typeof v === "object" && !Array.isArray(v);
@@ -131,6 +132,28 @@ function objectAffordances(location) {
   return out;
 }
 
+// ESSENCE-SIGHT (verdance-region-v1 §law-5): a committed FOLLOWABLE trail at the
+// current location surfaces a "Follow the trail — <band>" chip (source: sight).
+// Its intent routes through detectMoveIntent's trail branch → the normal move
+// pipeline, tracking along the trail's committed edge. Only the MC sees these.
+function trailAffordances(run) {
+  const out = [];
+  for (const trail of followableTrailsAtCurrent(run)) {
+    const band = isStr(trail.bandWord) ? trail.bandWord.toLowerCase() : "clear";
+    out.push({
+      label: `Follow the trail — ${band}`,
+      // Phrased so detectMoveIntent's trail branch resolves it against committed
+      // state — and, crucially, NO directional cue word (onward/deeper/…) so that
+      // where no trail is committed it falls through to a normal attempt instead
+      // of the forward-exploration heuristic committing a stray move.
+      intent: "I follow the essence trail my sight reads.",
+      source: "sight",
+      feasibility: "ok"
+    });
+  }
+  return out;
+}
+
 // Dedupe by label (stable, first wins) — the reliable floor keeps priority.
 function dedupe(list) {
   const seen = new Set();
@@ -156,6 +179,7 @@ export function deriveAffordances(run) {
   }
   return dedupe([
     ...standingAffordances(false),
+    ...trailAffordances(run),
     ...goalAffordances(run, location),
     ...castAffordances(run),
     ...serviceAffordances(location),

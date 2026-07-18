@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { validateSoloRun } from "./schema.js";
 import { momentumCandidates } from "../campaign/momentumEvents.js";
 import { loadThreadsFromJson } from "./threads.js";
+import { mintTraceFromSpawn } from "./essence.js";
 
 // item 4b — MOMENTUM PROMOTION (closes the fake-urgency class at its source). A
 // momentum event whose build() returns a `deadline` { minutes, consequenceBrief,
@@ -385,6 +386,20 @@ export function fireMomentumEvent(run, options = {}) {
     committed,
     firedAtTurn: momentum.turnCount
   };
+
+  // ESSENCE-SIGHT (verdance-region-v1 §law-5): a hazard event that spawns a
+  // demon/rapture mints an outbound essence trail at fire time — demons drift
+  // (regional law 2). `built.spawn` is the committed marker; ordinary hazards
+  // (collapse/fire/storm/tracks) carry none, so this is a no-op for them.
+  if (built.spawn && typeof built.spawn === "object") {
+    const at = (typeof built.spawn.at === "string" && built.spawn.at) || built.objectState?.locationId || run.currentLocationId;
+    const nowMin = Number(run?.world?.time?.minutes);
+    mintTraceFromSpawn(run, built.spawn, {
+      id: `trace_${event.eventId}`,
+      locationId: at,
+      nowMinutes: Number.isFinite(nowMin) ? nowMin : undefined
+    });
+  }
 
   const memoryFact = createMomentumMemoryFact(run, event, options);
   const timelineEvent = createMomentumTimelineEvent(run, event, memoryFact, options);

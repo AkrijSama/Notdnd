@@ -9,6 +9,7 @@ import { getVisibleEntities, validateVisibleEntity } from "./entities.js";
 import { generatePlaceholderGmNarration, validateGmSceneOutput } from "./gm.js";
 import { getAvailableMoves } from "./movement.js";
 import { buildRegionMapPayload } from "./regionMap.js";
+import { buildSightPayload } from "./essence.js";
 import {
   placeEntities as placeLayoutEntities,
   placeMarkers as placeLayoutMarkers,
@@ -1422,6 +1423,12 @@ export function buildSoloScenePayload(run, options = {}) {
     // ONLY visited-or-map-revealed nodes + edges between them (hidden geography
     // never crosses the wire). Rendered behind the local⇄region zoom toggle.
     regionMap: buildRegionMapPayload(run),
+    // ESSENCE-SIGHT (verdance-region-v1 §law-5): the SIGHT layer — committed
+    // demon-essence traces the MC ALONE perceives, rendered via the STATUS
+    // WINDOW. Player-perspective ONLY: this rides the scene payload for the
+    // player character; it is deliberately placed on no NPC/cast/OOC surface
+    // (buildCastRoster, npcEntity, buildOocGroundingContext never read it).
+    sight: buildSightPayload(run),
     // MVP quest engine: active quests + the main quest (or null) for this run.
     quests: getQuestPayload(run),
     // D.5 narrative substrate: a thin thread summary (id/kind/status/revealState).

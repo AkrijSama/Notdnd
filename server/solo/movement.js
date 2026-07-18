@@ -8,6 +8,7 @@ import {
 import { advanceClock } from "./worldClock.js";
 import { tickConditions } from "./conditions.js";
 import { ensureLocationLayout } from "./layout.js";
+import { trailFollowTargetAtCurrent } from "./essence.js";
 
 // WORLD CLOCK (#14): in-fiction minutes a single location move costs.
 const TRAVEL_MINUTES = 10;
@@ -114,6 +115,11 @@ const MOVE_INTENT_RE = new RegExp(`\\b${MOVE_VERB}\\b[^.?!]*?\\b${MOVE_PREP}\\b`
 // VOICE itself teaches this exact phrasing, and it narrated into the void
 // instead of committing the move.
 const TAKE_ROUTE_RE = /\b(?:take|takes|taking|took)\b[^.?!]*?\b(?:road|roads|path|paths|trail|trails|track|route|way|street|bridge|stairs?|pass|causeway|crossing|ferry)\b/i;
+// ESSENCE-SIGHT: "follow the trail" / "track the scent" / "trace the essence".
+// A follow-verb bound to a trace noun. This intent commits ONLY when a committed
+// followable trail actually exists at the current location (checked below), so it
+// never invents a heading — you track by sight along real committed geography.
+const TRAIL_FOLLOW_RE = /\b(?:follow(?:ing)?|track(?:ing)?|trace|traces|tracing|pursue|pursuing|stay on|keep to)\b[^.?!]*?\b(?:trail|track|scent|essence|traces?|residue)\b/i;
 const LOCATION_STOPWORDS = new Set(["the", "a", "an", "of", "and", "to", "at", "in", "on", "near", "old", "new"]);
 
 function locationNameTokens(name) {
@@ -148,6 +154,23 @@ function nameMatchScore(intentLc, name) {
  */
 export function detectMoveIntent(run, intent) {
   const text = String(intent || "").toLowerCase();
+  // (0) FOLLOW THE TRAIL (essence-sight): a trail-following phrase + a committed
+  // FOLLOWABLE trail at the current location routes a track intent straight to the
+  // trail's committed next node — bypassing name-matching so an UNDISCOVERED next
+  // node still commits (you track by sight, not by knowing the place's name). Only
+  // fires when the trail is real; otherwise falls through to normal detection.
+  if (TRAIL_FOLLOW_RE.test(text)) {
+    const target = trailFollowTargetAtCurrent(run);
+    if (target && isString(target.toLocationId) && run?.locations?.[target.toLocationId]) {
+      return {
+        reachable: true,
+        toLocationId: target.toLocationId,
+        name: String(run.locations[target.toLocationId].name || target.toLocationId),
+        viaTrail: true,
+        band: target.band
+      };
+    }
+  }
   const forward = MOVE_FORWARD_RE.test(text);
   const backward = MOVE_BACKWARD_RE.test(text);
   // A move intent is verb+preposition ("head to …"), a route-taking phrase

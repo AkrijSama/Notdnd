@@ -169,11 +169,10 @@ consumer (see the gap ledger below).
 Precise, per item 4 of the dispatch — DATA is loaded; these consumers do not yet
 exist (no engine wired this pass):
 
-1. **Essence-trail rendering.** POIs carry rapture-fresh/old/failed and
-   predecessor classes whose payoff is the MC's essence-sight (trail strength =
-   recency). There is **no essence-trail render/read surface** yet — the STATUS
-   WINDOW does not draw trails. The classes are loaded as `tags`; the sight
-   mechanic is a future engine surface.
+1. **Essence-trail rendering.** ✅ **SHIPPED (Essence-sight v1)** — see the
+   IMPLEMENTATION section below. The STATUS WINDOW now draws committed traces;
+   the Warm House / St. Brigid's / Tithing Mill / Cold Door rows carry
+   `traceSeeds`. (The gap is closed; retained here for provenance.)
 2. **Map-knowledge loot items.** Ranger Station 9 and The Unfinished Map are
    canon map-reveal sources. The regionMap reveal READ (`map:babel` fact →
    nodes) already exists (`server/solo/regionMap.js` `mapKnowledgeReveals`), but
@@ -195,3 +194,82 @@ exist (no engine wired this pass):
    `TONE_PRESETS`, not scenario nameBanks. Consumer TBD.
 6. **Anti-noise front cap.** Two region fronts parked (Reservoir, Cold Door) —
    the ≤3 active-front law means they queue for rotation, not simultaneous play.
+
+---
+
+## IMPLEMENTATION — ESSENCE-SIGHT v1 (regional law 5, shipped)
+
+The MC's unique trait is now a live engine surface. This section is the
+implementation contract; the mechanic is server-owned, additive, and resume-safe.
+
+### The law, in code
+- **Traces are COMMITTED STATE** on `run.essenceTraces` (server-owned, like
+  everything else). The narrator DESCRIBES committed traces; it never invents
+  them (`buildEssenceTraceDirective` + the `auditNarratedEssenceTraces` strip
+  guard, `server/solo/essence.js`). Additive/optional per the state contract:
+  a legacy run with no field reads as "no traces" everywhere; `getSoloRun`
+  normalizes it to `[]` on load.
+- **Only the MC perceives traces.** They ride the **SIGHT layer** of the scene
+  payload (`payload.sight`) for the player character ONLY. No NPC / cast /
+  OOC-grounding surface carries trace data (proven by an acceptance test).
+
+### The trace record
+```jsonc
+{
+  "id": "trace_<slug>",              // deterministic → mint is idempotent
+  "kind": "trail" | "residue" | "mark",
+  "source": "<demon/event ref>",     // free descriptor
+  "locationId": "loc_...",           // where the trace is PERCEIVED
+  "path": ["loc_..."],               // trails: committed next-hop edge refs (crossing locations)
+  "bornMinutes": 420,                // world-clock minute of birth (may be NEGATIVE: born pre-campaign)
+  "standing": false,                 // residue/mark: does not fade
+  "standingBand": null,              // fixed band for standing traces
+  "meta": { "handlerScent": "..." }  // e.g. Congregation chalk-mark handler-scent
+}
+```
+
+### Strength = recency (Law 6 tunable table)
+`deriveTraceStrength(trace, nowMinutes)` reads a band from AGE (`now - born`)
+via the exported, tunable `TRACE_STRENGTH_BANDS` (never a call-site hardcode):
+`bright ≤ 12h · clear ≤ 3d · faint ≤ 14d · cold` beyond. STANDING traces
+(portal residue; renewed chalk marks) hold a fixed band and never fade —
+guardians never leave (regional law 2 exception).
+
+### Born at committed events
+- **Loader seeding.** A POI row's authored `traceSeeds[]` mints traces after
+  locations + edges are committed (`seedEssenceTracesFromScenario`). Seeded rows:
+  St. Brigid's (outbound trail, aged → **faint**), Warm House (outbound →
+  **bright**), Cold Door (portal **residue**, standing), Tithing Mill (chalk
+  **mark** carrying handler-scent meta).
+- **Fire-time minting.** A demon/rapture-spawning committed event mints an
+  OUTBOUND trail at fire time (demons drift). Wired into BOTH commit choke
+  points via a nested `payload.spawn` / `built.spawn` marker (survives the
+  loaders): thread beats (`fireBeat`, `server/solo/threads.js`) and momentum
+  hazards (`fireMomentumEvent`, `server/solo/momentum.js`). `front_warm_house`'s
+  `beat_which_way` carries a live `spawn` (the drift toward the Cold Door). The
+  mint never invents an edge — it drifts along a committed exit only.
+
+### Follow the trail
+A committed followable trail surfaces a **"Follow the trail — <band>"**
+affordance (`source: "sight"`). Its intent routes through `detectMoveIntent`'s
+trail branch straight to the trail's committed next node — bypassing name-match,
+so an UNDISCOVERED next node still commits — then the normal move pipeline
+tracks the edge. Where no trail is committed, the phrase falls through to a
+normal attempt (no false arrival).
+
+### STATUS WINDOW + region map
+- **Trace chips** in the WINDOW: kind glyph + strength band + direction, the
+  same multi-channel (glyph + word + aria, never colour alone) encoding as the
+  conditions HUD. Quiet empty state.
+- **Region-map edge glow** for a followed trail (banded), plus a **sight-reveal
+  silhouette** of the next node.
+
+### PROVISIONAL RULING — owner confirm (fog law tension)
+The fog law says maps reveal geography only via committed MAP-KNOWLEDGE. Sight is
+an in-fiction perception, so this pass rules — **provisionally, pending owner** —
+that a followable trail MAY reveal its NEXT node only, rendered as a **silhouette
+node distinct from a map-item reveal**: fog-safe (no place-name, no template/kind
+crosses the wire; it links only to the current node). If the owner prefers a
+strict maps-only fog, drop the silhouette + edge glow from `buildRegionMapPayload`
+(the STATUS WINDOW sight chips + Follow-the-trail affordance stand independent of
+the map surface).

@@ -18,6 +18,7 @@ import { validateScenario } from "./scenarioSchema.js";
 import { validateSoloRun, createEmptyExpressionVariants } from "../solo/schema.js";
 import { resolveWorldArtStyle, stampArtStyle } from "../solo/artStyle.js";
 import { normalizeAgeClass, ensureFaction } from "../solo/reputation.js";
+import { seedEssenceTracesFromScenario } from "../solo/essence.js";
 
 const SCENARIO_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "scenarios");
 
@@ -244,6 +245,13 @@ export function loadScenarioIntoRun(run, scenario, options = {}) {
       if (!dest.connectedLocationIds.includes(id)) dest.connectedLocationIds.push(id);
     }
   }
+
+  // ESSENCE-SIGHT SEEDING (verdance-region-v1 §law-5) — after all POIs are minted
+  // and edges symmetrized, turn each POI's authored `traceSeeds` into committed
+  // run.essenceTraces. Ages are authored relative to run-start; the trail path
+  // endpoints are now real committed edges. rapture-sites mint outbound trails,
+  // portals mint standing residue, Congregation chalk marks carry handler-scent.
+  seedEssenceTracesFromScenario(run, scenario, { resolveLocationRef });
 
   // RESIDUAL 2 — NO WORLDGEN LOCATION IDENTITY may persist. run.world still carries
   // the worldgen start-location metadata (e.g. startingLocationName "The Ember

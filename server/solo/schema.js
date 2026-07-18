@@ -1463,6 +1463,16 @@ export function validateSoloRun(run) {
   if (run.equipment !== undefined && run.equipment !== null) {
     appendNestedErrors(errors, "equipment", validateEquipment(run.equipment));
   }
+  // ESSENCE-SIGHT (verdance-region-v1 §law-5) — committed, server-owned traces
+  // the MC alone perceives. Optional/additive array like the records above;
+  // legacy runs (undefined) stay valid. Shape validated per-entry.
+  if (run.essenceTraces !== undefined && run.essenceTraces !== null) {
+    if (!Array.isArray(run.essenceTraces)) {
+      push(errors, "essenceTraces", "Expected array");
+    } else {
+      run.essenceTraces.forEach((trace, index) => appendNestedErrors(errors, `essenceTraces.${index}`, validateEssenceTrace(trace)));
+    }
+  }
 
   if (!Array.isArray(run.memoryFacts)) {
     push(errors, "memoryFacts", "Expected array");
@@ -1559,6 +1569,41 @@ function appendFlatErrors(errors, validation) {
   for (const error of validation.errors) {
     push(errors, error.path, error.message);
   }
+}
+
+// ESSENCE-SIGHT trace record (verdance-region-v1 §law-5). Mirror of the kinds in
+// server/solo/essence.js (validation authority is here, kept self-contained like
+// RUN_MODES / THREAD_STATUSES). `bornMinutes` may be NEGATIVE — a trace can be
+// born before the campaign clock's day-1 07:00 (a rapture that predates the run).
+const ESSENCE_TRACE_KINDS = Object.freeze(["trail", "residue", "mark"]);
+function validateEssenceTrace(trace) {
+  const errors = [];
+  if (!isPlainObject(trace)) {
+    push(errors, "", "Expected object");
+    return { ok: false, errors };
+  }
+  if (!isString(trace.id)) {
+    push(errors, "id", "Expected non-empty string");
+  }
+  if (!isString(trace.kind) || !ESSENCE_TRACE_KINDS.includes(trace.kind)) {
+    push(errors, "kind", `Expected one of ${ESSENCE_TRACE_KINDS.join(", ")}`);
+  }
+  if (!isString(trace.locationId)) {
+    push(errors, "locationId", "Expected non-empty string");
+  }
+  if (trace.bornMinutes !== undefined && !isNumber(trace.bornMinutes)) {
+    push(errors, "bornMinutes", "Expected number");
+  }
+  if (trace.path !== undefined) {
+    validateStringArray(trace.path, "path", errors);
+  }
+  if (trace.standing !== undefined && !isBoolean(trace.standing)) {
+    push(errors, "standing", "Expected boolean");
+  }
+  if (trace.meta !== undefined && trace.meta !== null && !isPlainObject(trace.meta)) {
+    push(errors, "meta", "Expected object");
+  }
+  return { ok: errors.length === 0, errors };
 }
 
 export function createDefaultLocationGraph(options = {}) {
@@ -1842,6 +1887,9 @@ export function createDefaultSoloRun(options = {}) {
     vn: createDefaultVnState(),
     // Equip-slots layer — all four slots start empty (equip-slots-v1).
     equipment: createDefaultEquipment(),
+    // ESSENCE-SIGHT (verdance-region-v1 §law-5) — committed demon-essence traces
+    // the MC alone perceives; empty until a scenario/beat mints one.
+    essenceTraces: [],
     version: SOLO_RUN_VERSION
   };
 }

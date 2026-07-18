@@ -6,6 +6,7 @@ import { ensureCampaignMemoryDocs, ensureCampaignMemoryDocsAsync } from "../gm/m
 import { formatRollSummary, resolveAttack, resolveSkillCheck, rollDiceExpression } from "../rules/engine.js";
 import { NPC_EXPRESSIONS, createDefaultSoloRun, validateSoloRun } from "../solo/schema.js";
 import { backfillConditionKinds } from "../solo/conditions.js";
+import { ensureEssenceTraces } from "../solo/essence.js";
 import { uid } from "../utils/ids.js";
 import { createSeedState } from "./seedState.js";
 import { getDatabase } from "./database.js";
@@ -882,7 +883,11 @@ export function getSoloRun(runId) {
   if (backfillConditionKinds(stored) > 0) {
     writeToDisk();
   }
-  return deepClone(stored);
+  const cloned = deepClone(stored);
+  // ESSENCE-SIGHT resume-safety: a legacy run predates run.essenceTraces — read
+  // it back as an empty array so every consumer sees the concrete field.
+  ensureEssenceTraces(cloned);
+  return cloned;
 }
 
 export function listSoloRunsForUser(userId) {

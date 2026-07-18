@@ -9,6 +9,7 @@
 // between included (visited-or-revealed) nodes.
 
 import { inferLayoutTemplate } from "./layout.js";
+import { tracesAtLocation } from "./essence.js";
 
 function isPlainObject(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -126,6 +127,30 @@ export function buildRegionMapPayload(run) {
     }
   }
 
+  // ESSENCE-SIGHT (verdance-region-v1 §law-5): a FOLLOWABLE trail at the current
+  // location reveals its next node as a SILHOUETTE — heard-of-by-sight, distinct
+  // from a map-item reveal. Provisional per the dispatch ruling (sight is an
+  // in-fiction perception and MAY reveal the next node only). The silhouette is
+  // fog-safe: no name/type/kind crosses the wire, only that a trail leads there,
+  // and it links ONLY to the current node (no further geography leaks).
+  const sightTrails = current ? tracesAtLocation(run, current).filter((t) => t.followable && isString(t.targetLocationId)) : [];
+  const silhouettes = new Map(); // locationId -> strength band
+  const trailEdgeBands = new Map(); // "a|b" -> band (for the edge glow)
+  for (const t of sightTrails) {
+    const target = t.targetLocationId;
+    if (!locations[target]) {
+      continue;
+    }
+    if (!included.has(target)) {
+      included.add(target);
+      silhouettes.set(target, t.band);
+    }
+    const [a, b] = current < target ? [current, target] : [target, current];
+    if (!trailEdgeBands.has(`${a}|${b}`)) {
+      trailEdgeBands.set(`${a}|${b}`, t.band);
+    }
+  }
+
   // Reachable = an exit of the CURRENT location that is itself included (tappable
   // as a travel intent). A revealed-but-nonadjacent node is shown, not tappable.
   const currentExits = Array.isArray(locations[current]?.connectedLocationIds)
@@ -136,6 +161,24 @@ export function buildRegionMapPayload(run) {
   const nodes = [];
   for (const id of included) {
     const loc = locations[id];
+    // SILHOUETTE (sight-revealed): fog-safe — no name/type/hazard/exit-count, only
+    // that a trail of a given band leads here. Rendered dimmed + dashed, distinct
+    // from a map-item reveal; tappable (it is a committed exit of the current node).
+    if (silhouettes.has(id)) {
+      nodes.push({
+        id,
+        name: "",
+        type: null,
+        visited: false,
+        revealedBy: null,
+        isCurrent: false,
+        reachable: reachable.has(id),
+        unexploredExits: 0,
+        hazard: null,
+        sightReveal: silhouettes.get(id)
+      });
+      continue;
+    }
     const visited = isVisited(loc);
     const revealedBy = revealedByMap.get(id) || null;
     const { templateId } = inferLayoutTemplate(loc, run);
@@ -167,6 +210,11 @@ export function buildRegionMapPayload(run) {
       if (!included.has(c)) {
         continue;
       }
+      // A SILHOUETTE endpoint links ONLY to the current node (you sense where the
+      // trail leads from HERE); it never leaks the rest of its geography.
+      if ((silhouettes.has(id) || silhouettes.has(c)) && id !== current && c !== current) {
+        continue;
+      }
       const [a, b] = id < c ? [id, c] : [c, id];
       const key = `${a}|${b}`;
       if (seen.has(key)) {
@@ -181,6 +229,10 @@ export function buildRegionMapPayload(run) {
       }
       if (blocked) {
         edge.blocked = true;
+      }
+      // ESSENCE-SIGHT edge glow: this edge carries a followable trail of this band.
+      if (trailEdgeBands.has(key)) {
+        edge.trail = trailEdgeBands.get(key);
       }
       edges.push(edge);
     }

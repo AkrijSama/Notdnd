@@ -159,6 +159,42 @@ An inventory item is a **revival means** if either:
 Track A gates revival-on-death on possession of such an item (consumed once);
 the contract only defines the marker. `ITEM_EFFECT_TYPES` now includes `revive`.
 
+## 8. `run.essenceTraces` + `payload.sight` — ESSENCE-SIGHT (verdance §law-5)
+
+Committed, server-owned demon-essence traces the MC ALONE perceives (see
+`server/solo/essence.js` + `docs/worlds/babel/verdance-region-v1.md`). Additive +
+tolerant: legacy runs lack `run.essenceTraces` and still validate; `getSoloRun`
+normalizes it to `[]` on load, and the scene payload always emits a concrete
+`sight`.
+
+Persistence — `run.essenceTraces` is an array of trace records:
+
+```jsonc
+{ "id": "trace_...", "kind": "trail"|"residue"|"mark", "source": "...",
+  "locationId": "loc_...", "path": ["loc_..."], "bornMinutes": 420,
+  "standing": false, "standingBand": null, "meta": { /* handlerScent, … */ } }
+```
+
+Required per entry: `id`, `kind` (enum), `locationId`. `bornMinutes` may be
+NEGATIVE (born before the campaign clock). Validator: `validateEssenceTrace`
+(schema.js), guarded-optional in `validateSoloRun`.
+
+Scene payload — **`payload.sight`, always populated, PLAYER-PERSPECTIVE ONLY**
+(deliberately absent from `cast`, `visibleEntities`, and OOC grounding):
+
+```jsonc
+{ "traces": [
+    { "id","kind","band":"bright"|"clear"|"faint"|"cold","glyph","kindWord",
+      "bandWord","source","meta","targetLocationId","followable","direction" } ],
+  "followable": false,
+  "sightReveals": [ { "locationId","band" } ] }
+```
+
+`band` is DERIVED (never stored) from world-clock age via the tunable
+`TRACE_STRENGTH_BANDS`. `regionMap` nodes may additionally carry `sightReveal`
+(a fog-safe silhouette band) and edges a `trail` (glow band) — provisional per
+the doc's owner-confirm ruling.
+
 ---
 
 ### Validators (schema.js)
@@ -168,4 +204,5 @@ the contract only defines the marker. `ITEM_EFFECT_TYPES` now includes `revive`.
 optional/additive. `validateSoloRun`: `mode` (optional enum), `battleMap.tokens[]`
 (optional), `status` enum (incl. terminal `dead`). Exposed constants: `RUN_MODES`,
 `BATTLE_MAP_TOKEN_KINDS`. Revival marker: `use.effectType: "revive"` or
-`tags: ["revival"]`.
+`tags: ["revival"]`. `essenceTraces[]` (optional/additive) validated per-entry by
+`validateEssenceTrace` (§8).

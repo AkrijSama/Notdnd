@@ -28,6 +28,7 @@
 import { validateSoloRun, validateThreadState, createEmptyExpressionVariants } from "./schema.js";
 import { resolveStatBlock } from "../campaign/bestiary.js";
 import { applyReputationEffects, normalizeAgeClass } from "./reputation.js";
+import { mintTraceFromSpawn } from "./essence.js";
 
 // reputation-engine-v1: a thread may carry reputationEffects [{target, delta, tags?}]
 // that commit to faction/individual standing WHEN THE THREAD RESOLVES (any outcome).
@@ -299,6 +300,31 @@ function commitBeatPayload(run, thread, beat, options) {
   return { committed, undo: () => undo.forEach((fn) => fn()) };
 }
 
+// ESSENCE-SIGHT trace minting for a committed spawn beat. `beat.payload.spawn`
+// (a nested marker that survives the loaders) says a demon/rapture was born here;
+// mint its outbound drift trail. Spawn location is `spawn.at` (or the player's
+// location for {player_location}/absent); the birth-time is the current world
+// clock. No-op when the beat carries no spawn marker.
+function maybeMintSpawnTrace(run, thread, beat) {
+  const spawn = beat?.payload?.spawn;
+  if (!spawn || typeof spawn !== "object") {
+    return;
+  }
+  let at = typeof spawn.at === "string" && spawn.at ? spawn.at : run?.currentLocationId;
+  if (at === "{player_location}") {
+    at = run?.currentLocationId;
+  }
+  if (!at || !run?.locations?.[at]) {
+    return;
+  }
+  const nowMin = Number(run?.world?.time?.minutes);
+  mintTraceFromSpawn(run, spawn, {
+    id: `trace_${thread?.threadId || "thread"}_${beat?.beatId || "beat"}`,
+    locationId: at,
+    nowMinutes: Number.isFinite(nowMin) ? nowMin : undefined
+  });
+}
+
 // Commit a beat with the momentum adjudication discipline: write → validate →
 // roll back exactly what was written if invalid (never narrate an invalid beat).
 function fireBeat(run, thread, beat, options) {
@@ -311,6 +337,11 @@ function fireBeat(run, thread, beat, options) {
     return null;
   }
   beat.status = "committed";
+  // ESSENCE-SIGHT (verdance-region-v1 §law-5): a beat that spawns a demon/rapture
+  // mints an OUTBOUND essence trail at fire time — demons drift (regional law 2).
+  // The `spawn` marker rides beat.payload (survives both loaders' {...payload}
+  // spread); birth-time is the committed post-spend world clock. Idempotent by id.
+  maybeMintSpawnTrace(run, thread, beat);
   applyBeatReveal(thread, beat); // item 5 — a committed escalation may make the thread known
   thread.beatIndex = (thread.beatIndex ?? 0) + 1;
   thread.clock = thread.clock || {};

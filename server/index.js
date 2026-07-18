@@ -132,6 +132,7 @@ import { buildLayoutDirective, ensureLocationLayout } from "./solo/layout.js";
 import { enforceRomanceRegister, stripRomanceRegister, ROMANCE_CORRECTIVE_CLAUSE } from "./gm/romanceEnforcement.js";
 import { buildNpcIntroDirective, buildSoloScenePayload, collectNpcsWithPendingIntro } from "./solo/scene.js";
 import { buildSystemLoreClause, detectSystemLoreViolations } from "./gm/systemLore.js";
+import { buildEssenceTraceDirective, auditNarratedEssenceTraces } from "./solo/essence.js";
 import { detectDeadlineViolations } from "./gm/deadlineAudit.js";
 import { individualReputation, factionReputation, detectRomanceRegisterViolations } from "./solo/reputation.js";
 import { detectSpitViolations, stripSpitGestures, detectRepeatedGestures } from "./gm/mannerismAudit.js";
@@ -1235,6 +1236,11 @@ async function narrateActionWithGm(run, resolved, user) {
   // SYSTEM LORE (item 1): the WINDOW/VOICE world-law facts ground every turn, so
   // the model never invents system capabilities ("the window will remember…").
   message += buildSystemLoreClause();
+  // ESSENCE-SIGHT (verdance-region-v1 §law-5): the committed demon-essence traces
+  // at the scene ride as SIGHT-FACTS with a perception register (only the MC
+  // perceives them; NPCs cannot see/discuss them) + a hard ban on inventing a
+  // trace the WINDOW does not show. Server-owned truth, exactly like SYSTEM LORE.
+  message += buildEssenceTraceDirective(run);
   // ONGOING THREADS (D.5 item 4): the server-owned narrative agenda, reveal-gated —
   // the narrator foreshadows active threads but never invents/advances/resolves one.
   message += buildThreadsDirective(run);
@@ -2341,6 +2347,21 @@ async function handleApi(req, res) {
           logTurnEvent(
             responseRun.runId,
             `spit VIOLATION (banned) — removed ${spitFix.removed.length}: ${spits.map((v) => v.sentence).join(" | ")} user=${user?.id || "anon"}`
+          );
+        }
+      }
+      // ESSENCE-SIGHT never-invents guard (verdance-region-v1 §law-5): essence
+      // traces are server-owned committed state. When the WINDOW shows NO trace at
+      // the scene, the narrator must not assert a fresh essence trail / residue /
+      // handler-scent — strip any such invented sight-fact. When a trace IS
+      // committed here, trace-prose is the narrator DESCRIBING it, and is kept.
+      if (typeof gmNarration === "string" && gmNarration.trim()) {
+        const traceAudit = auditNarratedEssenceTraces(responseRun, gmNarration);
+        if (traceAudit.stripped.length > 0) {
+          gmNarration = traceAudit.text;
+          logTurnEvent(
+            responseRun.runId,
+            `essence-sight VIOLATION (invented trace, none committed here) — stripped ${traceAudit.stripped.length}: ${traceAudit.stripped.join(" | ")} user=${user?.id || "anon"}`
           );
         }
       }

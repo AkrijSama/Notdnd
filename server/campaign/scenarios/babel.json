@@ -116,7 +116,10 @@
       "tags": ["poi:rapture-old", "poi:supply-cache", "modern arcane", "clinic"],
       "layoutTemplate": "interior",
       "dangerLevel": 2,
-      "connectedLocationIds": ["loc_old_rapture"]
+      "connectedLocationIds": ["loc_old_rapture"],
+      "traceSeeds": [
+        { "kind": "trail", "source": "st_brigids_rapture", "ageMinutes": 15840, "path": ["loc_old_rapture"] }
+      ]
     },
     "loc_warm_house": {
       "name": "The Warm House",
@@ -124,7 +127,10 @@
       "tags": ["poi:rapture-fresh", "modern arcane", "haunted"],
       "layoutTemplate": "interior",
       "dangerLevel": 2,
-      "connectedLocationIds": ["loc_tithing_mill"]
+      "connectedLocationIds": ["loc_tithing_mill"],
+      "traceSeeds": [
+        { "kind": "trail", "source": "warm_house_rapture", "ageMinutes": 90, "path": ["loc_tithing_mill"] }
+      ]
     },
     "loc_tithing_mill": {
       "name": "The Tithing Mill",
@@ -132,7 +138,10 @@
       "tags": ["poi:faction-site", "poi:congregation", "modern arcane", "sinister"],
       "layoutTemplate": "interior",
       "dangerLevel": 2,
-      "connectedLocationIds": ["loc_cold_door"]
+      "connectedLocationIds": ["loc_cold_door"],
+      "traceSeeds": [
+        { "kind": "mark", "source": "congregation_chalk", "standing": true, "meta": { "handlerScent": "a cold oil-and-ash hand, the same that marked the doorposts of the taken houses" } }
+      ]
     },
     "loc_drowned_highway": {
       "name": "The Drowned Highway",
@@ -220,7 +229,10 @@
       "tags": ["poi:portal", "poi:endgame", "modern arcane", "deadly"],
       "layoutTemplate": "interior",
       "dangerLevel": 4,
-      "connectedLocationIds": []
+      "connectedLocationIds": [],
+      "traceSeeds": [
+        { "kind": "residue", "source": "cold_door_portal", "standing": true }
+      ]
     },
     "loc_her_clearing": {
       "name": "Her Clearing",
@@ -480,6 +492,12 @@
           "payload": {
             "fact": {
               "text": "The Warm House trail bends toward the Tithing Mill's recommended route — the same road the Hollow Congregation calls safe."
+            },
+            "spawn": {
+              "kind": "rapture",
+              "at": "loc_tithing_mill",
+              "trailTo": "loc_cold_door",
+              "source": "warm_house_drift"
             }
           }
         }

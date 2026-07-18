@@ -80,6 +80,9 @@ function styleSuffix(run) {
     // committed state — no invented countdowns. Live-audited by deadlineAudit.js.
     "URGENCY LAW: never state a specific time budget or countdown (no 'you have five minutes', no 'before nightfall') unless a committed deadline in your context backs it. " +
     "Pressure without a committed deadline must stay qualitative (the smoke thickens, the voices come closer) with no invented numbers or countdowns. " +
+    // Anti-withheld law (tonight's research): dormant/rotated-out content is
+    // UNDISCOVERED, never gated. The narrator must not signpost the seams.
+    "UNDISCOVERED LAW: never describe any content, place, thread, or option as unavailable, locked, sealed-off, 'not yet', or out of reach as a game boundary. Content you were not handed is simply UNDISCOVERED, not withheld: say what IS here and let the rest stay unmentioned. Do not tell the player a door is closed to them. " +
     "Do not restate dice or mechanics, and do not use bracketed trigger tags."
   );
 }

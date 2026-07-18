@@ -1617,6 +1617,10 @@ export function renderBabelStatusWindow(character = SOLO_SAMPLE_CHARACTER, { ope
           <div class="solo-stat-kicker">Conditions</div>
           ${conditionsHtml}
         </div>
+        <div class="solo-sidebar-block solo-sight-block">
+          <div class="solo-stat-kicker">Essence-sight</div>
+          <div data-solo-sight>${renderSoloSightBlockInner(scene)}</div>
+        </div>
         <div class="solo-sidebar-block solo-window-motto">[ THE WINDOW DOES NOT LIE. ]</div>
       `)}
     </aside>
@@ -1773,6 +1777,57 @@ export const CONDITION_KIND_META = Object.freeze({
 
 function conditionKindMeta(kind) {
   return CONDITION_KIND_META[String(kind || "").toLowerCase()] || CONDITION_KIND_META.neutral;
+}
+
+// ---------------------------------------------------------------------------
+// ESSENCE-SIGHT trace chips (verdance-region-v1 §law-5) — the SIGHT layer in the
+// STATUS WINDOW idiom. Same multi-channel encoding as the conditions HUD: a kind
+// GLYPH + a band WORD + the direction, never colour alone (colorblind-safe). Fed
+// by scene.sight (a player-only surface no NPC/OOC payload carries). Only the MC
+// perceives essence, so this reads as the champion's unique organ.
+// ---------------------------------------------------------------------------
+export const TRACE_CHIP_META = Object.freeze({
+  trail: { glyph: "≈", word: "Trail" },
+  residue: { glyph: "◈", word: "Residue" },
+  mark: { glyph: "✶", word: "Mark" }
+});
+export const TRACE_BAND_WORD = Object.freeze({ bright: "Bright", clear: "Clear", faint: "Faint", cold: "Cold" });
+
+function traceChipMeta(kind) {
+  return TRACE_CHIP_META[String(kind || "").toLowerCase()] || TRACE_CHIP_META.trail;
+}
+
+export function renderSoloTraceChips(scene = {}) {
+  const traces = Array.isArray(scene?.sight?.traces) ? scene.sight.traces : [];
+  if (!traces.length) {
+    return ""; // empty state supplied by the block wrapper (see renderSoloSightBlockInner)
+  }
+  const chips = traces
+    .map((t) => {
+      const kind = TRACE_CHIP_META[String(t.kind || "").toLowerCase()] ? String(t.kind).toLowerCase() : "trail";
+      const meta = traceChipMeta(kind);
+      const band = String(t.band || "cold").toLowerCase();
+      const bandWord = TRACE_BAND_WORD[band] || "Cold";
+      const dir = t.followable ? (t.direction ? `toward ${t.direction}` : "leading onward") : "";
+      const scent = t.meta && typeof t.meta.handlerScent === "string" ? t.meta.handlerScent : "";
+      const tipBody = [dir, scent].filter(Boolean).join(" · ");
+      return `
+        <span class="solo-trace-chip trace-${band}" tabindex="0" data-trace-id="${escapeHtml(t.id || kind)}" aria-label="${escapeHtml(`${meta.word}. ${bandWord}. ${tipBody}`)}">
+          <span class="solo-trace-glyph" aria-hidden="true">${meta.glyph}</span>
+          <span class="solo-trace-name">${escapeHtml(meta.word)}</span>
+          <span class="solo-trace-band">${escapeHtml(bandWord)}</span>
+          ${dir ? `<span class="solo-trace-dir">${escapeHtml(dir)}</span>` : ""}
+          <span class="solo-trace-tip" role="tooltip"><strong>${escapeHtml(meta.word)} · ${escapeHtml(bandWord)}</strong>${tipBody ? `<span>${escapeHtml(tipBody)}</span>` : ""}</span>
+        </span>`;
+    })
+    .join("");
+  return `<div class="solo-traces solo-measure" role="group" aria-label="Essence-sight traces">${chips}</div>`;
+}
+
+// The STATUS WINDOW's essence-sight block body: the chips, or a quiet empty state
+// (the WINDOW always reads out the sight — a quiet sight is still a fact).
+export function renderSoloSightBlockInner(scene = {}) {
+  return renderSoloTraceChips(scene) || `<div class="solo-trace-empty">The sight is quiet here.</div>`;
 }
 
 // World-clock minutes → a short human duration ("45m", "≈2h", "≈3d").
@@ -2559,7 +2614,13 @@ export function renderSoloRegionMap(scene = {}) {
       const y1 = py(pa.y);
       const x2 = px(pb.x);
       const y2 = py(pb.y);
-      const cls = e.blocked ? "solo-region-edge is-blocked" : "solo-region-edge";
+      // ESSENCE-SIGHT edge glow: an edge carrying a followable trail draws bright
+      // and dashed, banded by strength — the trail the champion is reading.
+      const cls = e.blocked
+        ? "solo-region-edge is-blocked"
+        : e.trail
+          ? `solo-region-edge is-followed trail-${escapeHtml(String(e.trail))}`
+          : "solo-region-edge";
       const line = `<line class="${cls}" x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" />`;
       const mx = (x1 + x2) / 2;
       const my = (y1 + y2) / 2;
@@ -2581,6 +2642,21 @@ export function renderSoloRegionMap(scene = {}) {
       }
       const cx = px(p.x);
       const cy = py(p.y);
+      // ESSENCE-SIGHT silhouette: a sight-revealed next node — dimmed + dashed, no
+      // place-name (fog-safe: heard-of-by-sight, distinct from a map-item reveal).
+      // Tappable to FOLLOW the trail (a normal committed move to that node).
+      if (n.sightReveal) {
+        const band = escapeHtml(String(n.sightReveal));
+        const scls = ["solo-region-node", "is-silhouette", `sight-${band}`];
+        if (n.reachable) scls.push("is-reachable");
+        const sg =
+          `<text class="solo-region-glyph" x="${cx.toFixed(1)}" y="${(cy + 5).toFixed(1)}" text-anchor="middle">≈</text>` +
+          `<text class="solo-region-name solo-region-silname" x="${cx.toFixed(1)}" y="${(cy + 22).toFixed(1)}" text-anchor="middle">trail</text>`;
+        if (n.reachable) {
+          return `<g class="${scls.join(" ")}" role="button" tabindex="0" data-solo-action="move" data-location-id="${escapeHtml(n.id)}" aria-label="Follow the ${band} essence trail">${sg}</g>`;
+        }
+        return `<g class="${scls.join(" ")}" aria-label="A ${band} essence trail leads here">${sg}</g>`;
+      }
       const glyph = REGION_TYPE_GLYPH[n.type] || "◆";
       const classes = ["solo-region-node", `solo-region-type-${escapeHtml(n.type)}`];
       if (n.isCurrent) classes.push("is-current");
@@ -3917,6 +3993,13 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     const conditionsEl = root.querySelector("[data-solo-conditions]");
     if (conditionsEl && "innerHTML" in conditionsEl) {
       conditionsEl.innerHTML = renderSoloConditionsHud(state.scene || {}, { compact: true });
+    }
+    // ESSENCE-SIGHT chips in the STATUS WINDOW: the sight readout shifts with the
+    // committed traces at the scene (a followed trail, a fresh spawn), so repaint
+    // it in place on the fast path too. Tolerates absence in lightweight mocks.
+    const sightEl = root.querySelector("[data-solo-sight]");
+    if (sightEl && "innerHTML" in sightEl) {
+      sightEl.innerHTML = renderSoloSightBlockInner(state.scene || {});
     }
     // ROLL BANNER: the latest roll updates in place on the fast path too.
     const rollBannerEl = root.querySelector("[data-solo-roll-banner]");
