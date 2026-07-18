@@ -91,6 +91,45 @@ export function intakeToLibrary({ id, bytes, kind, run, subjectId = null, prompt
 
 const queue = [];
 let processing = false;
+// ── WORKER HEALTH (autopsy 2026-07-18) ───────────────────────────────────────
+// The single-flight `processing` guard had no watchdog: if ANY dispatch failed to
+// SETTLE (a hung await — the image path's tail carried no deadline), `processing`
+// stayed true forever and every later enqueueImageJob hit `if (processing) return`
+// and was SILENTLY DROPPED. No crash, no log — it looked exactly like a cache
+// re-serve (owner's redos "returned the same image", zero new ComfyUI jobs for
+// ~90 min). Fix: a per-job TIMEOUT so a hang can't pin the drain, a WATCHDOG that
+// reclaims a wedged drain, and a loud health flag in /api/debug/status so a dead
+// worker can never again masquerade as a cache issue.
+const JOB_TIMEOUT_MS = 180_000; // a single image job may not exceed this
+const WEDGE_MS = JOB_TIMEOUT_MS + 30_000; // draining longer ⇒ declared wedged
+let drainStartedAt = 0; // epoch ms the CURRENT job started (0 = idle)
+let lastJobAt = 0; // epoch ms the last job settled
+let lastJobKind = null;
+let lastError = null; // { message, at } of the last failure/timeout
+
+function withTimeout(promise, ms, label) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`${label} exceeded ${ms}ms`)), ms);
+    Promise.resolve(promise).then(
+      (value) => { clearTimeout(timer); resolve(value); },
+      (error) => { clearTimeout(timer); reject(error); }
+    );
+  });
+}
+
+// Loud worker health for /api/debug/status — a dead/wedged worker is now visible.
+export function imageWorkerStatus() {
+  const stuckMs = processing && drainStartedAt ? Date.now() - drainStartedAt : 0;
+  return {
+    processing,
+    queueDepth: queue.length,
+    lastJobKind,
+    lastJobAt: lastJobAt ? new Date(lastJobAt).toISOString() : null,
+    lastError,
+    wedged: stuckMs > WEDGE_MS,
+    stuckMs
+  };
+}
 
 // Shared art-direction suffix appended to EVERY character portrait prompt
 // (player + NPC) so the whole cast reads as one coherent art set rather than a
@@ -1032,21 +1071,38 @@ function dispatchJob(job) {
 
 async function drainQueue() {
   if (processing) {
-    return;
+    // WATCHDOG self-heal: if a prior drain wedged (hung past the ceiling), reclaim
+    // it so newly-enqueued jobs are not dropped forever. Belt to the per-job
+    // timeout's suspenders — covers any path that leaves `processing` stuck true.
+    if (drainStartedAt && Date.now() - drainStartedAt > WEDGE_MS) {
+      logWorker(`watchdog: reclaiming a wedged drain (stuck ${Date.now() - drainStartedAt}ms)`);
+      processing = false;
+    } else {
+      return;
+    }
   }
   processing = true;
   try {
     while (queue.length > 0) {
       const job = queue.shift();
+      drainStartedAt = Date.now(); // per-job clock for the watchdog + health flag
       try {
         // eslint-disable-next-line no-await-in-loop
-        await dispatchJob(job);
+        await withTimeout(dispatchJob(job), JOB_TIMEOUT_MS, `image job (${job?.kind || "?"})`);
+        lastError = null;
       } catch (error) {
-        logWorker("job crashed", error);
+        // A hang now TIMES OUT here instead of pinning the drain forever; the
+        // underlying provider call self-aborts (fetchWithDeadline) in the void.
+        lastError = { message: String(error?.message || error), at: new Date().toISOString() };
+        logWorker(`job ${job?.kind || "?"} failed/timed out`, error);
+      } finally {
+        lastJobAt = Date.now();
+        lastJobKind = job?.kind || null;
       }
     }
   } finally {
     processing = false;
+    drainStartedAt = 0;
   }
 }
 

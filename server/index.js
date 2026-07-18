@@ -124,7 +124,7 @@ import { buildAttemptContext, buildAttemptProviderInput, classifyIntentAuthority
 import { interpretAttemptWithGm } from "./gm/attemptInterpreter.js";
 import { attributeSceneDialogue, resolveGmNarration } from "./solo/gmProvider.js";
 import { buildGmRuntimeStatus } from "./solo/gmSmoke.js";
-import { enqueueDraftPortrait, enqueueImageJob, enqueueLocationImageJob, enqueuePlayerImageJob, enqueueVnBodyImageJob, getDraftPortrait, locationCanonFragment, writeUploadedBasePortrait } from "./solo/imageWorker.js";
+import { enqueueDraftPortrait, enqueueImageJob, enqueueLocationImageJob, enqueuePlayerImageJob, enqueueVnBodyImageJob, getDraftPortrait, imageWorkerStatus, locationCanonFragment, writeUploadedBasePortrait } from "./solo/imageWorker.js";
 import { enqueueIdentityJob, runIdentityJob, backfillNpcMannerisms, buildVoiceDirective } from "./solo/npcIdentity.js";
 import { buildDisagreementDirective, detectComplianceViolations } from "./gm/disagreementAudit.js";
 import { captureDeclaredGoal, honorGoalsOnAttempt, buildGoalsDirective, detectGoalIgnored } from "./solo/goals.js";
@@ -1753,7 +1753,10 @@ async function handleApi(req, res) {
         configuredProvider: resolveImageProvider(),
         // What ACTUALLY rendered last: { provider, model, checkpoint, at } — the
         // IMAGE line always carries model + timestamp of the last real generation.
-        served: getImageServe()
+        served: getImageServe(),
+        // Loud worker health: a dead/wedged image worker can no longer masquerade
+        // as a cache issue (autopsy 2026-07-18).
+        worker: imageWorkerStatus()
       },
       // Item 7: per-turn latency stage breakdown (interpreter/commit/gm/auditor/
       // renderReady) — last turn + a short ring of recent turns, so a slow outlier
