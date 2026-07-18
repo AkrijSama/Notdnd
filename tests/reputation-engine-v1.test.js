@@ -7,7 +7,8 @@ import {
   preferenceWeight, computeWeightedDelta,
   ensureFaction, applyFactionStanding, seedFactions, loadFactionsFromJson,
   mintNpcReputation, migrateReputation, recomputeIndividualTiers,
-  applyReputationEffects, individualReputation, detectRomanceRegisterViolations
+  applyReputationEffects, individualReputation, detectRomanceRegisterViolations,
+  romanceableDefault
 } from "../server/solo/reputation.js";
 import { commitSocialDisposition, commitGift } from "../server/solo/relationships.js";
 import { resolveThreadLifecycle } from "../server/solo/threads.js";
@@ -186,6 +187,8 @@ test("worldgen seeds 2-4 factions and mints NPC preferences deterministically", 
   assert.ok(m.minted.includes("npc_a"));
   assert.ok(run.npcs.npc_a.preferences.length >= 1 && run.npcs.npc_a.preferences.length <= 3);
   assert.equal(typeof run.npcs.npc_a.romanceable, "boolean");
+  // law R2: an adult NPC defaults romanceable=true (no faction required).
+  assert.equal(run.npcs.npc_a.romanceable, true, "minted adult NPC defaults romanceable per law R2");
 
   // deterministic: same seed → same faction set
   const run2 = createDefaultSoloRun({ now: T(0) });
@@ -194,6 +197,27 @@ test("worldgen seeds 2-4 factions and mints NPC preferences deterministically", 
   assert.deepEqual(Object.keys(run.factions).sort(), Object.keys(run2.factions).sort());
   // idempotent
   assert.deepEqual(seedFactions(run, {}).seeded, []);
+});
+
+// ── romanceable default + hard exclusions (law R2) ────────────────────────────
+test("romanceableDefault: adults default true; hard exclusions hold", () => {
+  assert.equal(romanceableDefault({ npcId: "adult" }), true, "a plain adult NPC defaults romanceable");
+  assert.equal(romanceableDefault({ npcId: "kid", isMinor: true }), false, "minors are excluded (architectural, absolute)");
+  assert.equal(romanceableDefault({ npcId: "kid2", minor: true }), false, "minor flag alias excluded");
+  assert.equal(romanceableDefault({ npcId: "priest", tags: ["romance-excluded"] }), false, "world-book-excluded role opts out");
+  assert.equal(romanceableDefault({ npcId: "vow", tags: ["no-romance"] }), false, "no-romance tag opts out");
+  assert.equal(romanceableDefault({ npcId: "authored", romanceable: false }), false, "explicit false override honored");
+  assert.equal(romanceableDefault(null), false, "non-object → false, no throw");
+});
+
+test("mint honors exclusions: an excluded-role NPC is not made romanceable by default", () => {
+  const run = createDefaultSoloRun({ now: T(0) });
+  run.worldSeed = "seed_excl";
+  run.npcs.npc_child = makeNpc("npc_child", { displayName: "Pip", isMinor: true });
+  run.npcs.npc_role = makeNpc("npc_role", { displayName: "Abbot", tags: ["romance-excluded"] });
+  mintNpcReputation(run);
+  assert.equal(run.npcs.npc_child.romanceable, false, "minted minor stays excluded");
+  assert.equal(run.npcs.npc_role.romanceable, false, "minted excluded-role stays excluded");
 });
 
 // ── social affinity is preference-weighted ────────────────────────────────────

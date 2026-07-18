@@ -64,3 +64,14 @@ isSafeConversation("deceive the guard") -> false  (correct)
 ## Bottom line
 
 Two tonight-runs together (8b then flash) establish: on the production model (cloud flash), the engine's **failure variety, lethality/L3, and free-text substance are all GREEN** — those three reds were **8b model weakness, now closed**. The gate/coherence layer is server-deterministic and mostly rock-solid (G1–G5 gating, 24/24 leak asserts clean, possession/gating/ch3/location_source all green), but carries **one real pushover defect**: a false-identity-claim-for-benefit is auto-succeeded as safe talk instead of rolling a deception check (`attempt.js` `isSafeConversation`). The remaining three failures are **not product regressions** — they are the autoplay battery's momentum/wire/adversarial2 asserts lagging the D.5 "one-clock" architecture: the world still moves on idle turns, but via thread beats the old asserts don't recognize. Net: the production engine is in far better shape than the 8b run implied — **1 real defect to fix (coherence safe-talk), 3 stale asserts to update, 0 leaks, $0.19 spent.**
+
+---
+
+## FIX-STATUS ADDENDUM (appended 2026-07-17, post-battery)
+
+**These defects are CLOSED. Do not re-fix from this report.**
+
+- **G6 — coherence safe-talk pushover** (the one real defect: a false-identity-claim-for-benefit auto-succeeded as safe talk instead of rolling a deception check, `attempt.js` `isSafeConversation`) — **FIXED in `c394056`** ("coherence: false-identity-claim rolls (G6 fix)"). False-identity claims made for benefit now route to a deception check; regression test in `tests/solo-resolution-tier.test.js`.
+- **momentum 6/7 · wire 7/9 · adversarial2 14/15 — the 3 stale asserts** (never product regressions; the autoplay asserts lagged the D.5 "one-clock" thread engine and didn't count thread beats as world-interruptions/server-fires) — **updated in `c394056`** so the battery recognizes thread-beat fires. adversarial2 confirmed thread-driven (server arrival), not a genuine player-mint.
+
+Net after `c394056`: the 1 real defect and all 3 stale asserts from this report are resolved. Nothing here remains open.

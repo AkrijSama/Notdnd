@@ -334,9 +334,24 @@ export function loadFactionsFromJson(run, factions, options = {}) {
   return { loaded };
 }
 
+// Romance-legacy-law R2: any ADULT NPC defaults romanceable=true. Hard exclusions
+// are absolute — minors (architectural: an isMinor/minor flag, no override) and
+// world-book-excluded roles (a `romance-excluded`/`no-romance` tag). A world-book
+// or authored sheet may still opt an NPC out by setting romanceable:false directly;
+// that explicit override is honored. Everything else — every adult — is romanceable.
+export function romanceableDefault(npc) {
+  if (!isPlainObject(npc)) return false;
+  if (npc.romanceable === false) return false; // explicit world-book / authored override
+  if (npc.isMinor === true || npc.minor === true) return false; // minors: absolute exclusion
+  const tags = Array.isArray(npc.tags) ? npc.tags : [];
+  if (tags.includes("romance-excluded") || tags.includes("no-romance")) return false; // world-book-excluded role
+  return true;
+}
+
 // Mint per-NPC reputation traits (preferences + faction membership + romanceable)
-// deterministically for NPCs that lack them. Sparse romanceable (mint law). Authored
-// NPCs carry their own; this only fills gaps for worldgen/procedural NPCs.
+// deterministically for NPCs that lack them. romanceable defaults per law R2 (see
+// romanceableDefault). Authored NPCs carry their own; this only fills gaps for
+// worldgen/procedural NPCs.
 const NPC_PREFERENCE_TAGS = ["coin", "honesty", "craft", "rare-herb", "law", "piety", "violence", "charity", "smuggling"];
 export function mintNpcReputation(run, options = {}) {
   if (!isPlainObject(run) || !isPlainObject(run.npcs)) return { minted: [] };
@@ -358,8 +373,8 @@ export function mintNpcReputation(run, options = {}) {
     npc.preferences = prefs;
     // faction membership: nullable — ~half of NPCs unaffiliated.
     npc.factionId = factionIds.length && seed % 2 === 0 ? factionIds[seed % factionIds.length] : null;
-    // romanceable: minted sparingly (~1 in 6) and default false.
-    npc.romanceable = factionIds.length ? seed % 6 === 0 : false;
+    // romanceable: adult NPCs default TRUE (law R2); hard exclusions honored.
+    npc.romanceable = romanceableDefault(npc);
     minted.push(npc.npcId);
   }
   return { minted };
