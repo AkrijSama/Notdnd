@@ -29,7 +29,7 @@ function giftRun({ npcExtra = {}, itemExtra = {} } = {}) {
     npc_mara: {
       npcId: "npc_mara", displayName: "Mara", role: "herbalist", status: "present",
       known: true, tags: [], flags: {}, memoryFactIds: [], origin: "hybrid",
-      currentLocationId: run.currentLocationId, romanceable: true,
+      currentLocationId: run.currentLocationId, ageClass: "adult", romanceable: true,
       preferences: [], ...npcExtra
     }
   };

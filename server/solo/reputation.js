@@ -136,7 +136,7 @@ export function recomputeIndividualTiers(rel, npc) {
   if (!isPlainObject(rel)) return;
   if (!Number.isFinite(rel.affinity)) rel.affinity = aggregateAffinityFromMeters(rel.meters);
   rel.tier = tierForAffinity(rel.affinity);
-  rel.romanceTier = npc && npc.romanceable ? romanceTierForAffection(rel.meters?.affection ?? 0) : null;
+  rel.romanceTier = isRomanceEligible(npc) ? romanceTierForAffection(rel.meters?.affection ?? 0) : null;
 }
 export function applyAffinityToRelationship(rel, npc, baseDelta, tags = []) {
   if (!isPlainObject(rel)) return null;
@@ -163,8 +163,8 @@ export function individualReputation(run, npcId) {
     affinity,
     tier: tierForAffinity(affinity),
     preferences: Array.isArray(npc.preferences) ? npc.preferences : [],
-    romanceable: Boolean(npc.romanceable),
-    romanceTier: npc.romanceable ? romanceTierForAffection(rel?.meters?.affection ?? 0) : null,
+    romanceable: isRomanceEligible(npc),
+    romanceTier: isRomanceEligible(npc) ? romanceTierForAffection(rel?.meters?.affection ?? 0) : null,
     factionId: isString(npc.factionId) ? npc.factionId : null,
     // VISIBILITY: a tier is knowledge — surfaced only once the NPC is met/known.
     met: npc.known === true || npc.met === true || Boolean(rel)
@@ -334,15 +334,33 @@ export function loadFactionsFromJson(run, factions, options = {}) {
   return { loaded };
 }
 
-// Romance-legacy-law R2: any ADULT NPC defaults romanceable=true. Hard exclusions
-// are absolute — minors (architectural: an isMinor/minor flag, no override) and
-// world-book-excluded roles (a `romance-excluded`/`no-romance` tag). A world-book
-// or authored sheet may still opt an NPC out by setting romanceable:false directly;
-// that explicit override is honored. Everything else — every adult — is romanceable.
+// ── THE ROMANCE AGE WALL (law R2 — minors: absolute, architectural, no override) ─
+// FAIL-CLOSED: romance eligibility requires an AFFIRMATIVE adult age-class. Missing
+// or unknown age data is NOT adult — the wall never depends on a "minor" flag that
+// something has to remember to set. Every romance enforcement point routes through
+// isRomanceEligible, so even a stray romanceable:true can never bypass age.
+export const ADULT_AGE_CLASS = "adult";
+// STAMP-time normalization at NPC creation: procedurally minted cast defaults to
+// adult (worlds mint adult casts; child NPCs exist only where world data
+// affirmatively creates them). An explicit age-class (e.g. "child") is preserved.
+export function normalizeAgeClass(value) {
+  return (typeof value === "string" && value.trim()) ? value.trim().toLowerCase() : ADULT_AGE_CLASS;
+}
+// ENFORCEMENT-time predicate: strict — only the affirmative adult class passes.
+export function isAdult(npc) {
+  return isPlainObject(npc) && npc.ageClass === ADULT_AGE_CLASS;
+}
+// The single romance gate. Age is absolute and checked FIRST; the romanceable flag
+// only matters once adulthood is affirmed.
+export function isRomanceEligible(npc) {
+  return isAdult(npc) && npc.romanceable === true;
+}
+// Default romanceable at mint (law R2): every ADULT NPC is romanceable unless a
+// world-book/authored sheet opts out (romanceable:false) or the role is excluded
+// (romance-excluded / no-romance tag). Non-adults are never romanceable — fail-closed.
 export function romanceableDefault(npc) {
-  if (!isPlainObject(npc)) return false;
-  if (npc.romanceable === false) return false; // explicit world-book / authored override
-  if (npc.isMinor === true || npc.minor === true) return false; // minors: absolute exclusion
+  if (!isAdult(npc)) return false; // FAIL-CLOSED: affirmative adult age-class required
+  if (npc.romanceable === false) return false; // explicit world-book / authored opt-out
   const tags = Array.isArray(npc.tags) ? npc.tags : [];
   if (tags.includes("romance-excluded") || tags.includes("no-romance")) return false; // world-book-excluded role
   return true;
@@ -373,7 +391,9 @@ export function mintNpcReputation(run, options = {}) {
     npc.preferences = prefs;
     // faction membership: nullable — ~half of NPCs unaffiliated.
     npc.factionId = factionIds.length && seed % 2 === 0 ? factionIds[seed % factionIds.length] : null;
-    // romanceable: adult NPCs default TRUE (law R2); hard exclusions honored.
+    // age-class: procedural cast defaults adult (stamped so the wall always has
+    // data); romanceable then defaults per law R2, fail-closed on age.
+    npc.ageClass = normalizeAgeClass(npc.ageClass);
     npc.romanceable = romanceableDefault(npc);
     minted.push(npc.npcId);
   }
@@ -398,7 +418,7 @@ export function romanceCeilingForRun(run) {
   const here = run.currentLocationId;
   let best = { tier: null, rank: -1, npcId: null };
   for (const npc of Object.values(run.npcs)) {
-    if (!isPlainObject(npc) || !npc.romanceable) continue;
+    if (!isRomanceEligible(npc)) continue; // R10 register ceiling — age wall bites here too
     if (npc.currentLocationId !== here || npc.status === "gone") continue;
     const rel = Object.values(run.relationships || {}).find(
       (r) => isPlainObject(r) && r.sourceEntityId === "player" && r.targetEntityId === npc.npcId

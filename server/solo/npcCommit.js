@@ -22,6 +22,7 @@
 import crypto from "node:crypto";
 import { validateNpc } from "./schema.js";
 import { detectDirectionHint } from "./layout.js";
+import { normalizeAgeClass } from "./reputation.js";
 
 function isPlainObject(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -100,6 +101,8 @@ export function commitNarratedNpc(run, spec, options = {}) {
     memoryFactIds: [],
     // Narrated NPCs are hybrid: the fiction (GM) named them, the server commits them.
     origin: "hybrid",
+    // Age wall (law R2): narrated cast are adults unless the spec affirms otherwise.
+    ageClass: normalizeAgeClass(spec.ageClass),
     tags: Array.isArray(spec.tags) ? spec.tags.filter(isString) : [],
     // Born introduced: the narration that minted them IS their introduction —
     // the first-appearance directive must not re-fire next turn.

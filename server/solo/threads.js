@@ -27,7 +27,7 @@
 
 import { validateSoloRun, validateThreadState, createEmptyExpressionVariants } from "./schema.js";
 import { resolveStatBlock } from "../campaign/bestiary.js";
-import { applyReputationEffects } from "./reputation.js";
+import { applyReputationEffects, normalizeAgeClass } from "./reputation.js";
 
 // reputation-engine-v1: a thread may carry reputationEffects [{target, delta, tags?}]
 // that commit to faction/individual standing WHEN THE THREAD RESOLVES (any outcome).
@@ -246,6 +246,7 @@ function commitBeatPayload(run, thread, beat, options) {
       currentLocationId: placeAt,
       memoryFactIds: [],
       expressionVariants: createEmptyExpressionVariants(),
+      ageClass: normalizeAgeClass(p.ageClass), // thread-spawned cast adult unless the beat says otherwise
       tags: kind === "hostileNpc" ? ["hostile"] : [],
       flags: kind === "hostileNpc" ? { hostile: true, threadId: thread.threadId } : { threadId: thread.threadId },
       dialogueBeats: Array.isArray(p.dialogueBeats) ? p.dialogueBeats.map((d, i) => ({

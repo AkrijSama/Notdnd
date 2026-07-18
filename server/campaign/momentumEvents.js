@@ -57,6 +57,7 @@ function buildArrivalNpc(run, { npcId, displayName, role, beatLabel, beatText })
     known: true,
     status: "present",
     memoryFactIds: [],
+    ageClass: "adult", // momentum arrivals (couriers, watchers, refugees) are adults
     tags: ["momentum"],
     flags: { momentumArrival: true },
     edition: "mainline",

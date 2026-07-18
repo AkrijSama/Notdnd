@@ -82,7 +82,7 @@ function mainlineRun(edition = "mainline") {
     edition,
     currentLocationId: "loc_inn",
     npcs: {
-      npc_mira: { npcId: "npc_mira", displayName: "Mira", romanceable: true, currentLocationId: "loc_inn", status: "active" }
+      npc_mira: { npcId: "npc_mira", displayName: "Mira", ageClass: "adult", romanceable: true, currentLocationId: "loc_inn", status: "active" }
     },
     relationships: {}
   };

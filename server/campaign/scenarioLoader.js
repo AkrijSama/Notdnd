@@ -17,6 +17,7 @@ import { fileURLToPath } from "node:url";
 import { validateScenario } from "./scenarioSchema.js";
 import { validateSoloRun, createEmptyExpressionVariants } from "../solo/schema.js";
 import { resolveWorldArtStyle, stampArtStyle } from "../solo/artStyle.js";
+import { normalizeAgeClass } from "../solo/reputation.js";
 
 const SCENARIO_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "scenarios");
 
@@ -257,6 +258,7 @@ export function loadScenarioIntoRun(run, scenario, options = {}) {
       expressionVariants: createEmptyExpressionVariants(),
       tags: [c.role || "stranger"],
       flags: {},
+      ageClass: normalizeAgeClass(c.ageClass), // scenario cast adult unless the scenario says child
       edition: "mainline",
       policyProfileId: "mainline_default",
       contentTags: [],

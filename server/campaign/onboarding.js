@@ -19,7 +19,7 @@ import { lockRunArtStyle } from "../solo/artStyle.js";
 import { buildTrialQuest, TRIAL_QUEST_ID, buildDeliveryOffer } from "./authoredQuests.js";
 import { resolveRequestedScenario, loadScenarioIntoRun } from "./scenarioLoader.js";
 import { seedSandboxThreads } from "../solo/threads.js";
-import { seedFactions, mintNpcReputation, migrateReputation } from "../solo/reputation.js";
+import { seedFactions, mintNpcReputation, migrateReputation, normalizeAgeClass } from "../solo/reputation.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -77,6 +77,7 @@ function buildStartingNpc(config, characterName) {
     memoryFactIds: [],
     tags: config.tags || [],
     flags: {},
+    ageClass: normalizeAgeClass(config.ageClass), // starting cast are adults unless a config says otherwise
     edition: "mainline",
     policyProfileId: "mainline_default",
     contentTags: [],

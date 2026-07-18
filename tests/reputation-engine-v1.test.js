@@ -8,7 +8,7 @@ import {
   ensureFaction, applyFactionStanding, seedFactions, loadFactionsFromJson,
   mintNpcReputation, migrateReputation, recomputeIndividualTiers,
   applyReputationEffects, individualReputation, detectRomanceRegisterViolations,
-  romanceableDefault
+  romanceableDefault, isAdult, isRomanceEligible, normalizeAgeClass, romanceCeilingForRun
 } from "../server/solo/reputation.js";
 import { commitSocialDisposition, commitGift } from "../server/solo/relationships.js";
 import { resolveThreadLifecycle } from "../server/solo/threads.js";
@@ -126,15 +126,15 @@ test("migration aggregates affinity from committed trust+affection without disca
 // ── romance-tier gating + SFW auditor (acceptance iii) ────────────────────────
 test("romanceTier gates on affection and only when romanceable", () => {
   const rel = { meters: { affection: 25, trust: 0 }, affinity: 25 };
-  recomputeIndividualTiers(rel, { romanceable: true });
+  recomputeIndividualTiers(rel, { ageClass: "adult", romanceable: true });
   assert.equal(rel.romanceTier, "close");
-  recomputeIndividualTiers(rel, { romanceable: false });
+  recomputeIndividualTiers(rel, { ageClass: "adult", romanceable: false });
   assert.equal(rel.romanceTier, null);
 });
 
 test("the SFW auditor: physical romance below courting flags; explicit flags at every tier", () => {
   const run = createDefaultSoloRun({ now: T(0) });
-  run.npcs.npc_lover = makeNpc("npc_lover", { displayName: "Aria", romanceable: true, currentLocationId: "start_location" });
+  run.npcs.npc_lover = makeNpc("npc_lover", { displayName: "Aria", ageClass: "adult", romanceable: true, currentLocationId: "start_location" });
 
   // low affection (stranger) — warm rapport is clean, a kiss is over-tier
   setRel(run, "npc_lover", { affection: 2 });
@@ -199,25 +199,88 @@ test("worldgen seeds 2-4 factions and mints NPC preferences deterministically", 
   assert.deepEqual(seedFactions(run, {}).seeded, []);
 });
 
-// ── romanceable default + hard exclusions (law R2) ────────────────────────────
-test("romanceableDefault: adults default true; hard exclusions hold", () => {
-  assert.equal(romanceableDefault({ npcId: "adult" }), true, "a plain adult NPC defaults romanceable");
-  assert.equal(romanceableDefault({ npcId: "kid", isMinor: true }), false, "minors are excluded (architectural, absolute)");
-  assert.equal(romanceableDefault({ npcId: "kid2", minor: true }), false, "minor flag alias excluded");
-  assert.equal(romanceableDefault({ npcId: "priest", tags: ["romance-excluded"] }), false, "world-book-excluded role opts out");
-  assert.equal(romanceableDefault({ npcId: "vow", tags: ["no-romance"] }), false, "no-romance tag opts out");
-  assert.equal(romanceableDefault({ npcId: "authored", romanceable: false }), false, "explicit false override honored");
+// ── the romance AGE WALL — fail-closed, stamped at mint (law R2) ───────────────
+test("romanceableDefault is FAIL-CLOSED: romance needs an affirmative adult age-class", () => {
+  // No age data → NOT romanceable. The wall never depends on a flag someone must set.
+  assert.equal(romanceableDefault({ npcId: "unknown" }), false, "missing ageClass → fail-closed (not romanceable)");
+  assert.equal(romanceableDefault({ npcId: "adult", ageClass: "adult" }), true, "an affirmed adult defaults romanceable");
+  assert.equal(romanceableDefault({ npcId: "kid", ageClass: "child" }), false, "a child is excluded — absolute, no override");
+  assert.equal(romanceableDefault({ npcId: "teen", ageClass: "adolescent" }), false, "any non-adult class is excluded");
+  assert.equal(romanceableDefault({ npcId: "role", ageClass: "adult", tags: ["romance-excluded"] }), false, "world-book-excluded role opts out");
+  assert.equal(romanceableDefault({ npcId: "vow", ageClass: "adult", tags: ["no-romance"] }), false, "no-romance tag opts out");
+  assert.equal(romanceableDefault({ npcId: "authored", ageClass: "adult", romanceable: false }), false, "explicit romanceable:false override honored");
   assert.equal(romanceableDefault(null), false, "non-object → false, no throw");
 });
 
-test("mint honors exclusions: an excluded-role NPC is not made romanceable by default", () => {
+test("isAdult / isRomanceEligible are strict: only the affirmative adult class passes", () => {
+  assert.equal(isAdult({ ageClass: "adult" }), true);
+  assert.equal(isAdult({ ageClass: "child" }), false);
+  assert.equal(isAdult({}), false, "no ageClass → not adult (fail-closed)");
+  assert.equal(isAdult(null), false);
+  // Even a STRAY romanceable:true cannot bypass age — age is checked first.
+  assert.equal(isRomanceEligible({ ageClass: "child", romanceable: true }), false, "child + stray romanceable:true still blocked");
+  assert.equal(isRomanceEligible({ ageClass: "adult", romanceable: true }), true);
+  assert.equal(isRomanceEligible({ ageClass: "adult", romanceable: false }), false);
+  assert.equal(isRomanceEligible({ romanceable: true }), false, "no age data + romanceable:true → blocked");
+});
+
+test("normalizeAgeClass stamps adult by default; preserves an explicit class", () => {
+  assert.equal(normalizeAgeClass(undefined), "adult", "procedural cast defaults adult");
+  assert.equal(normalizeAgeClass(""), "adult");
+  assert.equal(normalizeAgeClass("child"), "child", "explicit child preserved");
+  assert.equal(normalizeAgeClass(" Adult "), "adult", "trimmed + lowercased");
+});
+
+test("mint STAMPS ageClass=adult and makes procedural adult cast romanceable; child stays excluded", () => {
   const run = createDefaultSoloRun({ now: T(0) });
-  run.worldSeed = "seed_excl";
-  run.npcs.npc_child = makeNpc("npc_child", { displayName: "Pip", isMinor: true });
-  run.npcs.npc_role = makeNpc("npc_role", { displayName: "Abbot", tags: ["romance-excluded"] });
+  run.worldSeed = "seed_age";
+  seedFactions(run, { worldSeed: "seed_age" });
+  run.npcs.npc_proc = makeNpc("npc_proc", { displayName: "Rook" });          // no ageClass supplied
+  run.npcs.npc_kid = makeNpc("npc_kid", { displayName: "Pip", ageClass: "child" }); // affirmatively a child
   mintNpcReputation(run);
-  assert.equal(run.npcs.npc_child.romanceable, false, "minted minor stays excluded");
-  assert.equal(run.npcs.npc_role.romanceable, false, "minted excluded-role stays excluded");
+  assert.equal(run.npcs.npc_proc.ageClass, "adult", "procedural cast stamped adult at mint");
+  assert.equal(run.npcs.npc_proc.romanceable, true, "adult procedural cast is romanceable per law R2");
+  assert.equal(run.npcs.npc_kid.ageClass, "child", "explicit child age-class preserved");
+  assert.equal(run.npcs.npc_kid.romanceable, false, "a child is never made romanceable");
+});
+
+test("THE WALL BITES EVERYWHERE: a child NPC is excluded at every romance enforcement point", () => {
+  const run = createDefaultSoloRun({ now: T(0) });
+  run.currentLocationId = "start_location";
+  // A worst case: a child carrying a STRAY romanceable:true, present, with high affection.
+  run.npcs.npc_child = makeNpc("npc_child", {
+    displayName: "Pip", ageClass: "child", romanceable: true,
+    currentLocationId: "start_location", status: "present", known: true
+  });
+  run.relationships.rel_child = {
+    relationshipId: "rel_child", sourceEntityId: "player", targetEntityId: "npc_child",
+    affinity: 90, meters: { affection: 90, trust: 40 }
+  };
+
+  // 1. eligibility predicate
+  assert.equal(isRomanceEligible(run.npcs.npc_child), false, "predicate: child not romance-eligible");
+  // 2. the individualReputation VIEW (feeds scene payload + GM grounding + R10 clause)
+  const view = individualReputation(run, "npc_child");
+  assert.equal(view.romanceable, false, "view: romanceable false for the child");
+  assert.equal(view.romanceTier, null, "view: no romanceTier for the child (R10 boundary clause never builds)");
+  // 3. the romance-track switch / gift-affection routing (recomputeIndividualTiers)
+  recomputeIndividualTiers(run.relationships.rel_child, run.npcs.npc_child);
+  assert.equal(run.relationships.rel_child.romanceTier, null, "gift/social affection never opens a romance track for a child");
+  // 4. the R10 register CEILING (present-romanceable scan)
+  assert.equal(romanceCeilingForRun(run).rank, -1, "child raises no romance-register ceiling");
+
+  // Positive control: an ADULT in the same state DOES pass every gate (guards against a dead test).
+  run.npcs.npc_adult = makeNpc("npc_adult", {
+    displayName: "Vera", ageClass: "adult", romanceable: true,
+    currentLocationId: "start_location", status: "present", known: true
+  });
+  run.relationships.rel_adult = {
+    relationshipId: "rel_adult", sourceEntityId: "player", targetEntityId: "npc_adult",
+    affinity: 90, meters: { affection: 90, trust: 40 }
+  };
+  assert.equal(isRomanceEligible(run.npcs.npc_adult), true, "control: adult is romance-eligible");
+  assert.equal(individualReputation(run, "npc_adult").romanceable, true, "control: adult romanceable in view");
+  assert.ok(romanceCeilingForRun(run).rank >= 0, "control: adult raises a real ceiling");
 });
 
 // ── social affinity is preference-weighted ────────────────────────────────────
@@ -247,7 +310,7 @@ test("authored worlds load factions as plain JSON (same authorability law as thr
 // ── scene payload + OOC surfacing (visibility-gated) ──────────────────────────
 test("scene payload surfaces met-NPC tiers + discovered-faction tiers; hidden stay hidden", () => {
   const run = createDefaultSoloRun({ now: T(0) });
-  run.npcs.npc_met = makeNpc("npc_met", { displayName: "Bram", known: true, preferences: [{ tag: "coin", weight: 2 }], romanceable: true });
+  run.npcs.npc_met = makeNpc("npc_met", { displayName: "Bram", known: true, preferences: [{ tag: "coin", weight: 2 }], ageClass: "adult", romanceable: true });
   setRel(run, "npc_met", { trust: 5, affection: 10 });
   migrateReputation(run);
   ensureFaction(run, "faction_seen", { name: "Seen Order", standing: 25, discovered: true });
