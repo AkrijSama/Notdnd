@@ -30,7 +30,7 @@ loadDotenv();
 
 import { createAiJobProcessor } from "./ai/processor.js";
 import { generateNarrative, generateRaw, getCampaignUsage, getModelTiers, localFallbackEnabled, resolveCloudChain, resolveGmModel, runWithBatteryContext } from "./ai/openrouter.js";
-import { getBuildInfo, getGmServe, getImageServe, debugPanelDefault } from "./runtimeStatus.js";
+import { getBuildInfo, initBuildInfo, getGmServe, getImageServe, debugPanelDefault } from "./runtimeStatus.js";
 import { appendTurnLog, logTurnEvent } from "./logging/sessionLog.js";
 import { startTurnTiming, getLastTurnTiming, getRecentTurnTimings } from "./logging/turnTiming.js";
 import { generateWithProvider, listAiProviders, pollinationsEditConfigured, resolveImageProvider } from "./ai/providers.js";
@@ -1751,6 +1751,8 @@ async function handleApi(req, res) {
       },
       image: {
         configuredProvider: resolveImageProvider(),
+        // What ACTUALLY rendered last: { provider, model, checkpoint, at } — the
+        // IMAGE line always carries model + timestamp of the last real generation.
         served: getImageServe()
       },
       // Item 7: per-turn latency stage breakdown (interpreter/commit/gm/auditor/
@@ -4203,8 +4205,12 @@ server.on("error", (error) => {
 });
 
 server.listen(port, host, () => {
+  // Freeze the build identity to THIS process's boot (the loaded code), so the
+  // badge reports what is running, not a request-time disk read (stale-process
+  // trap, 2026-07-18). startedAt now marks the real bind, not the first request.
+  const b = initBuildInfo();
   // Startup confirmation: makes a successful bind obvious vs. a server stuck in
   // an EADDRINUSE loop (where only [DB] prints and the port never binds).
   // eslint-disable-next-line no-console
-  console.log(`[SERVER] Inkborne listening on port ${port}`);
+  console.log(`[SERVER] Inkborne listening on port ${port} — build ${b.sha}${b.dirty ? " (dirty)" : ""} @ ${b.startedAt}`);
 });
