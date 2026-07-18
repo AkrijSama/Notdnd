@@ -117,9 +117,18 @@ function collectDeclaredIds(scenario) {
   }
   if (isPlainObject(scenario.quests)) for (const k of Object.keys(scenario.quests)) declared.quests.add(k);
   if (isPlainObject(scenario.questOffers)) for (const k of Object.keys(scenario.questOffers)) declared.questOffers.add(k);
-  for (const l of Array.isArray(scenario.locations) ? scenario.locations : []) {
-    if (isString(l?.id)) declared.locations.add(l.id);
-    else if (isString(l)) declared.locations.add(l);
+  if (Array.isArray(scenario.locations)) {
+    for (const l of scenario.locations) {
+      if (isString(l?.id)) declared.locations.add(l.id);
+      else if (isString(l)) declared.locations.add(l);
+    }
+  } else if (isPlainObject(scenario.locations)) {
+    // World-book scenarios (e.g. babel's Verdance region) key locations as an
+    // object MAP; the loader reads them with Object.entries, so their keys are
+    // real declared location ids. (The array form above is the legacy authoring
+    // shorthand.) Without this, object-keyed POIs were invisible to ref-checking
+    // and any front/cast/secret grounding in one failed validation.
+    for (const k of Object.keys(scenario.locations)) declared.locations.add(k);
   }
   for (const f of Array.isArray(scenario.fronts) ? scenario.fronts : []) {
     if (isString(f?.frontId)) declared.fronts.add(f.frontId);

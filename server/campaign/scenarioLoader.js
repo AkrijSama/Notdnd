@@ -17,7 +17,7 @@ import { fileURLToPath } from "node:url";
 import { validateScenario } from "./scenarioSchema.js";
 import { validateSoloRun, createEmptyExpressionVariants } from "../solo/schema.js";
 import { resolveWorldArtStyle, stampArtStyle } from "../solo/artStyle.js";
-import { normalizeAgeClass } from "../solo/reputation.js";
+import { normalizeAgeClass, ensureFaction } from "../solo/reputation.js";
 
 const SCENARIO_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "scenarios");
 
@@ -143,7 +143,11 @@ export function loadScenarioIntoRun(run, scenario, options = {}) {
     // `variant` is the world-family discriminator (e.g. "babel") the scene
     // payload surfaces so the client can render a world-specific STATUS WINDOW
     // (Babel's six-stat / rank / milestone panel) instead of the default sheet.
-    for (const k of ["name", "tone", "flavor", "artStyle", "variant"]) {
+    // `era` closes the art-pipeline ERA LAW gap (scripts/art/promptAssembly.js
+    // eraDescriptor reads world.era): with it set, minted attire carries the
+    // world's era instead of defaulting to modern dress. Additive; worlds without
+    // it ride bare exactly as before.
+    for (const k of ["name", "tone", "flavor", "artStyle", "variant", "era"]) {
       if (isString(scenario.world[k])) run.world[k] = scenario.world[k];
     }
     // Carry the scenario's engine art style into BOTH the new primary
@@ -182,17 +186,62 @@ export function loadScenarioIntoRun(run, scenario, options = {}) {
 
   for (const [locRef, loc] of Object.entries(scenario.locations || {})) {
     const id = resolveLocationRef(locRef);
-    const target = run.locations[id];
-    if (!target || !loc || typeof loc !== "object") continue;
+    if (!loc || typeof loc !== "object") continue;
+    let target = run.locations[id];
+    if (!target) {
+      // WORLD-BOOK POIs: a scenario may author locations BEYOND the 3 positional
+      // worldgen seeds (the Verdance region's 20-POI table). Instantiate them as
+      // real, schema-valid nodes so the region graph (regionMap), movement, and
+      // services have ground to consume. Minimal: a valid record; the authored
+      // exits / danger / services / template are copied below.
+      target = run.locations[id] = {
+        locationId: id,
+        name: isString(loc.name) ? loc.name : id,
+        description: "",
+        connectedLocationIds: [],
+        state: { visited: false, discovered: false },
+        memoryFactIds: [],
+        tags: [],
+        flags: {}
+      };
+    }
     if (isString(loc.name)) target.name = loc.name;
     if (isString(loc.description)) target.description = loc.description;
     // Drop stale worldgen flavor tags (ruins/features) that contradict the scene.
     if (Array.isArray(loc.tags)) target.tags = [...loc.tags];
+    // Region edges: authored adjacency (the exits the regionMap draws + movement
+    // walks). Symmetrized below so reachability is undirected.
+    if (Array.isArray(loc.connectedLocationIds)) {
+      target.connectedLocationIds = loc.connectedLocationIds.map(resolveLocationRef).filter(isString);
+    }
+    // Danger tier (committed): drives the regionMap hazard read + scene framing.
+    if (Number.isFinite(loc.dangerLevel)) {
+      target.state = { ...target.state, dangerLevel: loc.dangerLevel };
+    }
+    // Committed services (affordances-map-law Part A): inn/market/training seed
+    // the input-dock service chips. Copied verbatim (validated by validateSoloRun).
+    if (Array.isArray(loc.services)) {
+      target.services = JSON.parse(JSON.stringify(loc.services));
+    }
     // Map-layout law: a scenario may pin a layout template or hand-place a full
     // set-piece layout (world-book data) — the mint engine adopts it verbatim.
     if (isString(loc.layoutTemplate)) target.layoutTemplate = loc.layoutTemplate.trim();
     if (loc.layout && typeof loc.layout === "object" && Array.isArray(loc.layout.cells)) {
       target.layout = JSON.parse(JSON.stringify(loc.layout));
+    }
+  }
+
+  // EDGE SYMMETRIZATION — authored adjacency is undirected (the regionMap and the
+  // move pipeline both treat connectedLocationIds as an undirected graph). Author
+  // an edge once; guarantee the reciprocal so travel works both ways and no node
+  // is stranded by a one-way authoring slip. Only touches real, existing nodes.
+  for (const [id, loc] of Object.entries(run.locations)) {
+    if (!loc || !Array.isArray(loc.connectedLocationIds)) continue;
+    for (const other of loc.connectedLocationIds) {
+      const dest = run.locations[other];
+      if (!dest) continue;
+      dest.connectedLocationIds = Array.isArray(dest.connectedLocationIds) ? dest.connectedLocationIds : [];
+      if (!dest.connectedLocationIds.includes(id)) dest.connectedLocationIds.push(id);
     }
   }
 
@@ -303,6 +352,23 @@ export function loadScenarioIntoRun(run, scenario, options = {}) {
             }
       };
     }
+  }
+
+  // 1.5. FACTIONS — world-book faction seeds → run.factions via the existing
+  // faction engine (ensureFaction). Minimal rows: name + standing + discovery.
+  // A secret faction (Hollow Congregation) is seeded discovered:false so it stays
+  // publicly ordinary until the player uncovers it. `wants` (narrative agenda) has
+  // no engine field; it rides flags.wants for grounding. No new faction machinery —
+  // tiers/standing/preferences are the existing reputation engine's.
+  for (const f of Array.isArray(scenario.factions) ? scenario.factions : []) {
+    if (!f || !isString(f.factionId)) continue;
+    const faction = ensureFaction(run, f.factionId, {
+      name: f.name,
+      standing: Number.isFinite(f.standing) ? f.standing : 0,
+      discovered: f.discovered === true
+    });
+    if (isString(f.disposition)) faction.flags.disposition = f.disposition;
+    if (isString(f.wants)) faction.flags.wants = f.wants;
   }
 
   // 2. QUESTS — declared scenario quests become real active records (the objects

@@ -22,6 +22,7 @@
     "variant": "babel",
     "flavor": "a parallel Earth where a hundred-floor Tower at the south pole leaks Chaos into the green and the running, and the licensed make uneasy money off the corruption they cannot cure",
     "artStyle": "modern arcane",
+    "era": "modern parallel Earth, present-day pre-corruption Pacific Northwest — logging towns, ranger stations, highways, hospitals, hydro dams",
     "startingLocationName": "The Green Static — Fringe",
     "startingLocationType": "",
     "artStyleOptions": {
@@ -30,6 +31,11 @@
         "anime",
         "dark-fantasy"
       ]
+    },
+    "nameBanks": {
+      "settlements": ["Elkwater Crossing", "Hollow Pine", "Cedar Slough", "Static Ridge", "Mill Bend", "Ranger's Rest"],
+      "wilds": ["The Green Static", "The Bonelight", "The Choir Cave", "Drowned Highway", "The Waking Mile", "Rot Hollow", "The Unclaimed"],
+      "people": ["Odile", "Ruth", "Emory", "Priya", "Tobias", "Saw", "Cal", "Wren"]
     }
   },
   "locations": {
@@ -59,13 +65,179 @@
         "zone",
         "deep"
       ]
+    },
+    "loc_waking_mile": {
+      "name": "The Waking Mile",
+      "description": "The clearest ground in the Verdance — deliberately kept calm by HER. Soft light, honest paths, the corruption pushed politely back. The shimmer at its edge is a boundary marker, and the first step past it is a threshold you feel in your teeth as the STATUS window flickers. Older flattened bedding-spots in the grass show where other champions woke before you.",
+      "tags": ["poi:start-area", "poi:story", "modern arcane", "calm"],
+      "layoutTemplate": "clearing",
+      "dangerLevel": 1,
+      "connectedLocationIds": ["start_location", "loc_elkwater_crossing"]
+    },
+    "loc_elkwater_crossing": {
+      "name": "Elkwater Crossing",
+      "description": "A refugee and trader camp at a river ford — the region's living hub. Watch rotations stand day and night, and funeral flags for the vanished snap over the tents in the wind off the water. Tarps, a plank market, a bunkhouse, and a board thick with notices. The one place in the Verdance where strangers are fed before they are questioned.",
+      "tags": ["poi:settlement", "modern arcane", "refuge", "hub"],
+      "layoutTemplate": "town-approach",
+      "dangerLevel": 0,
+      "connectedLocationIds": ["loc_waking_mile", "second_location", "loc_root_shrine", "loc_st_brigids", "loc_warm_house", "loc_tithing_mill", "loc_drowned_highway", "loc_ranger_station_9", "loc_poachers_yard"],
+      "services": [
+        { "kind": "market", "label": "Trade at the ford market" },
+        { "kind": "inn", "label": "Take a bunk at the crossing" }
+      ]
+    },
+    "loc_root_shrine": {
+      "name": "The Root Shrine",
+      "description": "A keeper-camp at the base of the World-Tree, where monks and wardens read the omens in bark and bloom and quietly enforce the one law that keeps the region alive: take gently. Rope-and-cedar shelters, a fire that is never let out, and elders who will trade lore and rumor for the courtesy of listening. A place to rest without being asked why you came.",
+      "tags": ["poi:shrine", "poi:settlement", "modern arcane", "sacred", "safe"],
+      "layoutTemplate": "clearing",
+      "dangerLevel": 1,
+      "connectedLocationIds": ["loc_penitents_row", "loc_world_tree"]
+    },
+    "loc_penitents_row": {
+      "name": "The Penitents' Row",
+      "description": "The path of ruined poacher camps that climbs toward the Tree, each wreck a lesson in the Ledger: a still crushed under a healthy fallen oak, a trapline swallowed by a season of spiders, a truck that rolled for no reason on flat ground. Nothing here was killed by a demon. Everything here was taken too greedily, too close to Her, and paid for it. The keepers leave it exactly as it lies.",
+      "tags": ["poi:ledger-site", "modern arcane", "warning"],
+      "layoutTemplate": "road",
+      "dangerLevel": 1,
+      "connectedLocationIds": ["loc_world_tree"]
+    },
+    "loc_world_tree": {
+      "name": "The World-Tree",
+      "description": "Her anchor, and the region's living health-bar. It rises past where the canopy has any business ending, and its condition — bloom, rot, the slow green glow along the deepest bark — is the land's corruption read as omen, not number, cryptic even to the keepers who spend their lives beneath it. Approach humbly and it is the safest ground in the Verdance. Raise a hand against it and there is not a hero alive who would like your odds.",
+      "tags": ["poi:anchor", "poi:landmark", "modern arcane", "sacred"],
+      "layoutTemplate": "clearing",
+      "dangerLevel": 1,
+      "connectedLocationIds": ["loc_her_clearing"]
+    },
+    "loc_st_brigids": {
+      "name": "St. Brigid's Regional Medical",
+      "description": "A rapture-site gone old and quiet: pristine wards, IVs still dripping into empty beds, charts mid-sentence. The demon that emptied it is long gone — its essence trails lead OUT the ambulance doors, the region's first clean track to follow. But the region's only real stock of medicine is still on these shelves, and the looters' cairns stacked at the entrance say plenty of people weighed the risk and went in anyway.",
+      "tags": ["poi:rapture-old", "poi:supply-cache", "modern arcane", "clinic"],
+      "layoutTemplate": "interior",
+      "dangerLevel": 2,
+      "connectedLocationIds": ["loc_old_rapture"]
+    },
+    "loc_warm_house": {
+      "name": "The Warm House",
+      "description": "A family home taken mid-dinner — plates still set, chairs pushed back, a kettle boiled dry on a dead stove. No struggle, no blood; the scene is eerily whole. The trail out is the brightest and freshest your sight has found, still warm to look at. The neighbors down at Elkwater have one question and they will not stop asking it: which way did it go?",
+      "tags": ["poi:rapture-fresh", "modern arcane", "haunted"],
+      "layoutTemplate": "interior",
+      "dangerLevel": 2,
+      "connectedLocationIds": ["loc_tithing_mill"]
+    },
+    "loc_tithing_mill": {
+      "name": "The Tithing Mill",
+      "description": "A moss-eaten timber mill that still runs, after a fashion — and a front. The mill-folk are the Hollow Congregation, and their tithe to the Lord below is betrayal: they guide neighbors onto 'safe' routes past the chaos, and chalk small marks on the doorposts of houses that, a week later, stand empty and pristine. The vanishings cluster too neatly along their recommended roads. There is no proof yet. But your sight reads a handler-scent on the chalk, and it matches the trails out of the taken homes.",
+      "tags": ["poi:faction-site", "poi:congregation", "modern arcane", "sinister"],
+      "layoutTemplate": "interior",
+      "dangerLevel": 2,
+      "connectedLocationIds": ["loc_cold_door"]
+    },
+    "loc_drowned_highway": {
+      "name": "The Drowned Highway",
+      "description": "An interstate slumped whole into a flooded valley, the roadbed gone under dark water and the roofs of drowned cars left as stepping stones across it. Something corrupted nests in the underpasses where the current pools. It is the fast way across the region and the stupid way to die — a shortcut you take when the long safe road costs more than you have.",
+      "tags": ["poi:infrastructure", "poi:route", "modern arcane", "flooded"],
+      "layoutTemplate": "road",
+      "dangerLevel": 2,
+      "connectedLocationIds": ["loc_reservoir"]
+    },
+    "loc_ranger_station_9": {
+      "name": "Ranger Station 9",
+      "description": "A fire-watch tower on a bald ridge, its walls still pinned with the intact regional maps the rangers kept — trailheads, drainages, the whole spread of the Verdance drawn by hands that knew it. A find worth the climb. But something roosts on the observation deck now, and it does not like the stairs used.",
+      "tags": ["poi:infrastructure", "poi:lore", "poi:map-knowledge", "modern arcane"],
+      "layoutTemplate": "interior",
+      "dangerLevel": 2,
+      "connectedLocationIds": ["loc_bonelight_grove"]
+    },
+    "loc_reservoir": {
+      "name": "The Reservoir of the Unclaimed",
+      "description": "Raptures consume energy but not memory — and the residue, everything the demons could not use, settles like silt, and water gathers it. The dam's glass-still reservoir is generations full of it. It remembers faces: at dusk the lost mouth their final moments across the flat black water. The keepers call the contents the Unclaimed. To your sight it is the region's only archive of what the vanished saw last — and grieving families will pay for a reading, though the Ledger frowns on selling the dead.",
+      "tags": ["poi:mystery-site", "poi:archive", "modern arcane", "haunted"],
+      "layoutTemplate": "ruin",
+      "dangerLevel": 3,
+      "connectedLocationIds": ["loc_choir_cave"]
+    },
+    "loc_champions_cairn": {
+      "name": "A Champion's Cairn",
+      "description": "A burned ring in the moss, a rusted Legendary driven hilt-deep into the stone at its center, and bones buried beneath it — respectfully, by someone who came after. Whoever they were, She called them too, and it did not go well. Read the place and its vision plays like a prequel warning: a hero's last hour, offered to you as a lesson you would rather not need.",
+      "tags": ["poi:predecessor-site", "modern arcane", "grave"],
+      "layoutTemplate": "clearing",
+      "dangerLevel": 2,
+      "connectedLocationIds": ["loc_bonelight_grove", "loc_unfinished_map"]
+    },
+    "loc_unfinished_map": {
+      "name": "The Unfinished Map",
+      "description": "A collapsed hide-camp, and in its ruin a hand-drawn map of the region — good work, real trails, real names — with margin notes that get shorter and stranger toward the end, about things 'she didn't warn me about.' The map is a gift. The notes are the beginning of a question you were not supposed to ask this early.",
+      "tags": ["poi:predecessor-site", "poi:map-knowledge", "modern arcane"],
+      "layoutTemplate": "forest",
+      "dangerLevel": 1,
+      "connectedLocationIds": ["loc_stillborn_field"]
+    },
+    "loc_old_rapture": {
+      "name": "The Old Rapture",
+      "description": "A hamlet swallowed generations ago and gone all the way back to forest: doorframes grown into standing trees, a teacup cradled in a knot of roots, a chimney holding up a canopy. Nature has reclaimed the whole scene until it is almost beautiful. It is proof, if you needed it, that this war is ancient — and that the Verdance has done this grieving many times before.",
+      "tags": ["poi:rapture-ancient", "modern arcane", "overgrown"],
+      "layoutTemplate": "forest",
+      "dangerLevel": 1,
+      "connectedLocationIds": []
+    },
+    "loc_poachers_yard": {
+      "name": "The Poacher's Yard",
+      "description": "An organized crew stripping the forest on an industrial schedule — flatbeds, chain hoists, a yard stacked with more than any honest need — and somehow dodging the Ledger, so far. The locals hate them and cannot touch them. But the light comes a half-beat wrong over the yard now, and the keepers say Her patience with a debt this large is visibly ending. A moral fork with a clock on it.",
+      "tags": ["poi:faction-site", "modern arcane", "greed"],
+      "layoutTemplate": "clearing",
+      "dangerLevel": 2,
+      "connectedLocationIds": []
+    },
+    "loc_bonelight_grove": {
+      "name": "The Bonelight Grove",
+      "description": "A luminous, chaos-touched stand where the trees glow the soft white of old bone and rare materials bloom in the understory — alchemy and craft reagents worth a fortune to anyone who can carry them out. So do the things that eat gatherers. The grove gives generously and collects without mercy.",
+      "tags": ["poi:flora", "poi:materials", "modern arcane", "luminous"],
+      "layoutTemplate": "forest",
+      "dangerLevel": 3,
+      "connectedLocationIds": ["loc_choir_cave"]
+    },
+    "loc_stillborn_field": {
+      "name": "The Stillborn Field",
+      "description": "A failed rapture — the vanishing started and stopped halfway. Half-consumed echoes flicker at dusk, neither gone nor whole, caught mid-taking. The keepers forbid entry and cannot say why it happened; nobody understands it. Your sight, though, might read what stopped here — and that answer may matter more than anyone in the Verdance yet knows.",
+      "tags": ["poi:mystery-site", "modern arcane", "forbidden"],
+      "layoutTemplate": "clearing",
+      "dangerLevel": 3,
+      "connectedLocationIds": []
+    },
+    "loc_choir_cave": {
+      "name": "The Choir Cave",
+      "description": "Karst galleries where chaos-saturated air, drawn through the stone throats of the cave, sings with stolen voices — playback of the consumed. A dead woman's verse. A counting-song in children's voices from the Old Rapture. Deeper still, the cave sings voices no one living has heard yet: it receives before the region loses. An early-warning oracle, or the cruelest lure ever set — the vanished singing your name from the dark. The richest essence outside the Cold Door, and the depth disorients everyone who reaches for it.",
+      "tags": ["poi:cave", "poi:xp-vein", "modern arcane", "haunted"],
+      "layoutTemplate": "cave",
+      "dangerLevel": 3,
+      "connectedLocationIds": ["loc_cold_door"]
+    },
+    "loc_cold_door": {
+      "name": "The Cold Door",
+      "description": "A rapture that never cooled: a municipal cistern where the vanishing does not stop — it continues, slowly, still. Multiple strong guardian demons stand at it and never leave, exactly as the law of portals says they must. It is the region's known 'don't,' its single richest vein, and the place the Hollow Congregation delivers to. Everyone who matters agrees on one thing about the Cold Door: not yet.",
+      "tags": ["poi:portal", "poi:endgame", "modern arcane", "deadly"],
+      "layoutTemplate": "interior",
+      "dangerLevel": 4,
+      "connectedLocationIds": []
+    },
+    "loc_her_clearing": {
+      "name": "Her Clearing",
+      "description": "An unmarked meadow where the goddess manifests — the Elk's ground. You do not find it. It finds you, when She decides it should, and the finding is safe and terrifying in the same breath. Soft grass, level light, and the certainty, standing in it, that you are being read down to the seams.",
+      "tags": ["poi:story-gated", "modern arcane", "sacred", "numinous"],
+      "layoutTemplate": "clearing",
+      "dangerLevel": 0,
+      "connectedLocationIds": []
     }
   },
   "opening": {
     "questObjectiveFrom": "offer_clearance",
     "startLocationRef": "start",
     "knownLocations": [
-      "second_location"
+      "second_location",
+      "loc_waking_mile",
+      "loc_elkwater_crossing"
     ],
     "situation": "You wake on the fringe of the Green Static at dawn, unarmed, in clothes that are not the ones you fell in. A town hums to the north; the wrong woods breathe around you. Then a voice that is not sound gives you a window and a choice.",
     "authoredBeats": [
@@ -153,6 +325,40 @@
     }
   },
   "quests": {},
+  "factions": [
+    {
+      "factionId": "faction_root_shrine",
+      "name": "Root Shrine Keepers",
+      "disposition": "friendly-reserved",
+      "standing": 15,
+      "discovered": true,
+      "wants": "The Tree honored, the Ledger taught, the Stillborn Field left sealed."
+    },
+    {
+      "factionId": "faction_congregation",
+      "name": "The Hollow Congregation",
+      "disposition": "hostile-secret",
+      "standing": -30,
+      "discovered": false,
+      "wants": "The Lord's favor via tithed betrayals; feed and protect the Cold Door; remain unproven."
+    },
+    {
+      "factionId": "faction_elkwater",
+      "name": "Elkwater Crossing Community",
+      "disposition": "neutral-warm",
+      "standing": 8,
+      "discovered": true,
+      "wants": "Safety, medicine from St. Brigid's runs, news of the vanished, the traitor found."
+    },
+    {
+      "factionId": "faction_poachers_yard",
+      "name": "The Poacher's Yard Crew",
+      "disposition": "neutral-hostile",
+      "standing": -15,
+      "discovered": true,
+      "wants": "Maximum extraction before consequences arrive; deniability."
+    }
+  ],
   "fronts": [
     {
       "frontId": "front_salvage",
@@ -227,54 +433,53 @@
       }
     },
     {
-      "frontId": "front_queue",
-      "kind": "rival",
+      "frontId": "front_warm_house",
+      "kind": "opportunity",
       "foreground": false,
       "topology": "linear",
-      "title": "The Gate Queue",
-      "agenda": "The Seoul Assembly is forcing an international first-entry queue to the Tower with its own primacy — and quietly scouting the frontier for hunters whose growth curves don't add up.",
-      "revealState": "hidden",
+      "title": "The Warm House",
+      "agenda": "A family was taken from the Warm House mid-dinner; the trail out is the freshest in the Verdance, and the neighbors at Elkwater want to know which way it went before it goes cold.",
+      "revealState": "rumored",
       "groundedIn": {
-        "entityRefs": [
-          "npc_barkeep"
-        ],
+        "entityRefs": [],
         "locationRefs": [
-          "second_location"
+          "loc_warm_house",
+          "loc_elkwater_crossing"
         ]
       },
       "beats": [
         {
-          "beatId": "beat_scout",
-          "label": "The scout",
-          "telegraph": "A stranger in Assembly colors nurses a drink at the Stump and watches you a beat too long, then leaves a business card face-down on the bar.",
-          "brief": "An Assembly advance team is passing through Hollow Pine assessing frontier talent — and they have clocked your growth curve as statistically wrong.",
-          "decision": "Take the card and hear them out, or stay off the Assembly's map for as long as you can.",
+          "beatId": "beat_set_table",
+          "label": "The set table",
+          "telegraph": "At the Warm House the plates are still set and the kettle boiled dry, and to your sight the trail out the back door glows fresher than anything you have tracked.",
+          "brief": "A family was raptured from the Warm House within the day; the scene is whole and the essence-trail out is bright and recent — a bloodhound's dream and a mourner's nightmare.",
+          "decision": "Take the trail while it is warm, or leave the dead their privacy and walk away from the first fresh track you have found.",
           "trigger": {
             "descriptive": {
-              "onPlayerAt": "second_location"
+              "onPlayerAt": "loc_warm_house"
             }
           },
           "payload": {
             "fact": {
-              "text": "An Assembly advance team has flagged you: your growth curve reads as statistically impossible, and now someone above the frontier knows your face."
+              "text": "The Warm House was raptured within the day — the scene left pristine, and the essence-trail out the back is the freshest the player has seen."
             }
           }
         },
         {
-          "beatId": "beat_queue",
-          "label": "The queue",
-          "telegraph": "The newsfeed on the Stump's cracked screen leads with the Assembly's Gate Queue accord — numbered Tower-entry slots for signatory associations, none for independents.",
-          "brief": "The Assembly has announced the Gate Queue: the Tower's first entries go to signatory associations by number, and unaffiliated hunters get no slot at all.",
-          "decision": "Court a patron for a slot, or resolve to reach the Tower without anyone's permission.",
+          "beatId": "beat_which_way",
+          "label": "Which way it went",
+          "telegraph": "The neighbors down at Elkwater press you with the only question that matters to them, and the trail you read bends toward the mill road.",
+          "brief": "Elkwater's watch wants to know which way the Warm House family went; the fresh trail bends toward the Tithing Mill's recommended 'safe' route.",
+          "decision": "Tell the neighbors what the trail says and where it leads, or keep what your sight read to yourself until you understand the mill road.",
           "trigger": {
             "prescriptive": {
-              "requiresBeat": "beat_scout",
-              "minTurn": 22
+              "requiresBeat": "beat_set_table",
+              "minTurn": 16
             }
           },
           "payload": {
             "fact": {
-              "text": "The Gate Queue accord is signed — Tower entry is now rationed to association members, and an independent's only road in just got much longer."
+              "text": "The Warm House trail bends toward the Tithing Mill's recommended route — the same road the Hollow Congregation calls safe."
             }
           }
         }
@@ -286,67 +491,63 @@
         }
       ],
       "callbackQuery": {
-        "entityRefs": [
-          "npc_barkeep"
-        ],
+        "entityRefs": [],
         "keywords": [
-          "assembly",
-          "queue",
-          "tower",
-          "slot"
+          "warm house",
+          "trail",
+          "vanished",
+          "rapture"
         ]
       }
     },
     {
-      "frontId": "front_cordon",
+      "frontId": "front_congregation",
       "kind": "secret",
       "foreground": false,
       "topology": "linear",
-      "title": "The Quiet Cordon",
-      "agenda": "The Quiet Office believes EZ-44 is pre-bloom and means to close it — with Hollow Pine inside the line if the readings say so. The Office's math is right.",
+      "title": "The Hollow Congregation",
+      "agenda": "The mill-folk of the Tithing Mill are the Hollow Congregation — Tower-worshippers who buy the Lord's favor by betraying their own, guiding neighbors onto 'safe' routes that feed the Cold Door. They mean to stay unproven.",
       "revealState": "hidden",
       "groundedIn": {
-        "entityRefs": [
-          "npc_medic"
-        ],
+        "entityRefs": [],
         "locationRefs": [
-          "second_location",
-          "third_location"
+          "loc_tithing_mill",
+          "loc_cold_door"
         ]
       },
       "beats": [
         {
-          "beatId": "beat_readings",
-          "label": "The readings",
-          "telegraph": "Strangers with excellent manners and unmarked equipment quietly resurvey the Static's edge; Doc Han's clinic data starts going somewhere new.",
-          "brief": "Quiet Office assessors are resurveying EZ-44, and the town's own medic is feeding them readings — someone is building a case the zone is about to bloom.",
-          "decision": "Learn what the Office is measuring, or leave the containment specialists to their quiet math.",
+          "beatId": "beat_chalk",
+          "label": "The chalk marks",
+          "telegraph": "Fresh chalk marks appear on doorposts along the Mill's recommended 'safe' routes; a week later, one of those houses stands empty and pristine.",
+          "brief": "The Tithing Mill's 'safe' routes are marked in chalk, and the marked houses are the ones that vanish — the pattern is too neat to be chance, but there is no proof yet.",
+          "decision": "Warn the marked houses and tip your hand, or watch the marks and learn who is drawing them.",
           "trigger": {
             "prescriptive": {
-              "minTurn": 14
+              "minTurn": 18
             }
           },
           "payload": {
             "fact": {
-              "text": "The Quiet Office is resurveying EZ-44 and collecting the town's seep-readings — they are quietly building a case that the zone is pre-bloom."
+              "text": "Doorpost chalk marks along the Tithing Mill's recommended routes precede vanishings — the mill's 'safe' roads are a killing list."
             }
           }
         },
         {
-          "beatId": "beat_leak",
-          "label": "The line",
-          "telegraph": "A cordon proposal leaks to the Stump: a containment line drawn around EZ-44 — with Hollow Pine on the wrong side of it.",
-          "brief": "The Office's cordon proposal is public, and the line it draws puts Hollow Pine inside the zone it means to seal. And the Office's math is right.",
-          "decision": "Discredit the readings to save the town, or find out what the Office knows that the town would rather not.",
+          "beatId": "beat_handler_scent",
+          "label": "The handler-scent",
+          "telegraph": "Your sight snags on the chalk: the same handler-scent that clings to the fresh trails out of the taken homes is on the marks themselves.",
+          "brief": "The essence handler-scent on the doorpost chalk matches the trails out of raptured homes — the Congregation is not hiding from the demons; it is working with what leaves them, and the Mill supplies the Cold Door.",
+          "decision": "Take the read to Elkwater's watch as the traitor they have been hunting, or follow the mill road to the Cold Door and see the tithe delivered.",
           "trigger": {
             "prescriptive": {
-              "requiresBeat": "beat_readings",
-              "minTurn": 24
+              "requiresBeat": "beat_chalk",
+              "minTurn": 28
             }
           },
           "payload": {
             "fact": {
-              "text": "The Quiet Office's cordon would seal Hollow Pine inside EZ-44 — and the terrible part is that their readings are correct: something under the Static is waking."
+              "text": "The handler-scent on the Congregation's chalk matches the rapture trails — the Tithing Mill betrays its neighbors to the Cold Door for the Lord's favor."
             }
           }
         }
@@ -358,14 +559,13 @@
         }
       ],
       "callbackQuery": {
-        "entityRefs": [
-          "npc_medic"
-        ],
+        "entityRefs": [],
         "keywords": [
-          "cordon",
-          "office",
-          "bloom",
-          "readings"
+          "congregation",
+          "mill",
+          "chalk",
+          "tithe",
+          "cold door"
         ]
       }
     }
@@ -380,19 +580,19 @@
       }
     },
     {
-      "secretId": "secret_curve",
-      "text": "The Assembly isn't scouting talent. They're scouting anomalies — and the only growth curve on the frontier that breaks their models is yours.",
-      "frontRef": "front_queue",
+      "secretId": "secret_fresh_trail",
+      "text": "The Warm House trail doesn't wander like a drifting demon's. It goes straight for the mill road — because someone walked the family there on purpose.",
+      "frontRef": "front_warm_house",
       "reveal": {
-        "onEntityKnown": "npc_barkeep"
+        "onLocation": "loc_warm_house"
       }
     },
     {
-      "secretId": "secret_bloom",
-      "text": "The Office is right. The Stag is a symptom, not the disease; something under the Static is waking, and every other faction is arguing about property.",
-      "frontRef": "front_cordon",
+      "secretId": "secret_tithe",
+      "text": "The Congregation isn't hiding from the raptures. It's feeding them — neighbors tithed to the Cold Door for a favor from the thing at the bottom of the Tower.",
+      "frontRef": "front_congregation",
       "reveal": {
-        "onLocation": "third_location"
+        "onLocation": "loc_tithing_mill"
       }
     }
   ]
