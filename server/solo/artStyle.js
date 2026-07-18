@@ -41,12 +41,15 @@ export const DEFAULT_LIBRARY_STYLE = "dark-fantasy";
 // House fallback for the butler (today's production-quality lane).
 export const DEFAULT_STYLE = "dark-fantasy";
 
-// Canonical style -> ComfyUI checkpoint COOKBOOK (workflow registry; the report's
-// mapping table). anime = Illustrious (anime-native); dark-fantasy + realistic
-// both = Juggernaut (they share a cookbook, diverge in styleVocab blocks).
+// Canonical style -> checkpoint COOKBOOK — a human-readable REPORT table only.
+// NOT the live selection path: the live checkpoint is derived from the validated
+// exports via comfyui.checkpointForStyle (single source of truth). Keep these short
+// names in sync with the exports' checkpoints (see comfyui-checkpoint-drift.test):
+// anime = JANKU (Chunk-6, replaced Illustrious); dark-fantasy = nihilmania/YamerMIX;
+// realistic = Juggernaut.
 export const STYLE_COOKBOOK = Object.freeze({
-  anime: "Illustrious",
-  "dark-fantasy": "Juggernaut",
+  anime: "JANKU",
+  "dark-fantasy": "nihilmania",
   realistic: "Juggernaut"
 });
 

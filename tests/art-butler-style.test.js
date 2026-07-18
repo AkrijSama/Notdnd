@@ -80,9 +80,10 @@ test("lock: a style outside the world's allow-list is rejected at write time", (
 test("allowedStylesFor defaults to all styles; the cookbook table has a realistic row", () => {
   assert.deepEqual(allowedStylesFor({}), [...STYLES]);
   assert.deepEqual(allowedStylesFor({ artStyleOptions: { allowed: ["anime", "realistic"] } }), ["anime", "realistic"]);
-  // realistic shares the Juggernaut cookbook with dark-fantasy
+  // Cookbook report table tracks the exports' checkpoints (single source of truth):
+  // realistic=Juggernaut, dark-fantasy=nihilmania, anime=JANKU (Chunk-6 switch).
   assert.equal(STYLE_COOKBOOK.realistic, "Juggernaut");
-  assert.equal(STYLE_COOKBOOK["dark-fantasy"], "Juggernaut");
-  assert.equal(STYLE_COOKBOOK.anime, "Illustrious");
+  assert.equal(STYLE_COOKBOOK["dark-fantasy"], "nihilmania");
+  assert.equal(STYLE_COOKBOOK.anime, "JANKU");
   assert.equal(toCanonicalStyle("cinematic"), "realistic");
 });
