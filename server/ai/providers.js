@@ -742,9 +742,13 @@ async function dispatchImageProvider(provider, args) {
   if (p === "comfyui") {
     return comfyuiImage({
       prompt: args.prompt,
-      // The RAW style key (not the prompt suffix) — it selects the per-style
-      // ComfyUI workflow/checkpoint. The prompt already carries the styled text.
+      // The RAW style key (not the prompt suffix) — with the library KIND it
+      // selects the VALIDATED per-lane workflow export (portrait/scene/fullbody/
+      // item); the prompt already carries the styled text. referenceImageUrl
+      // drives the face-ref tailor for a fullbody with a committed portrait.
       style: args.style,
+      kind: args.kind,
+      referenceImageUrl: args.referenceImageUrl,
       seed: args.seed,
       width: args.width,
       height: args.height,
@@ -783,6 +787,7 @@ export async function generateImage({
   prompt = "",
   referenceImageUrl = null,
   style = "",
+  kind = null,
   seed = null,
   width = null,
   height = null,
@@ -791,9 +796,10 @@ export async function generateImage({
   providerPriority = IMAGE_PROVIDER_PRIORITY
 } = {}) {
   const styledPrompt = String(style || "").trim() ? `${prompt}, ${String(style).trim()} style` : prompt;
-  // The raw style key rides along for providers that select a workflow/checkpoint
-  // by style (comfyui); prompt-only providers ignore it.
-  const args = { prompt: styledPrompt, style, referenceImageUrl, seed, width, height, fetchImpl };
+  // The raw style key + the library KIND ride along for providers that select a
+  // validated per-lane workflow by (style, kind) — comfyui; prompt-only providers
+  // ignore both.
+  const args = { prompt: styledPrompt, style, kind, referenceImageUrl, seed, width, height, fetchImpl };
 
   const primary = String(provider || resolveImageProvider() || "mock").trim().toLowerCase();
 

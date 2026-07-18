@@ -1,8 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import { editImage, generateImage } from "../ai/providers.js";
-import { engineStyleForRun } from "./artStyle.js";
+import { engineStyleForRun, styleForRun } from "./artStyle.js";
 import { detectImageExt } from "../api/http.js";
+import { addAsset, libraryRoot } from "../../scripts/art/library.mjs";
 import {
   ensureLocationImageAsset,
   ensureNpcImageAssets,
@@ -12,6 +13,64 @@ import {
   updatePlayerPortrait
 } from "../db/repository.js";
 import { NPC_EXPRESSIONS } from "./schema.js";
+
+// GAP 2 (art-live-recipes): live-generated images join the curated library.
+// Default rating matches the batch cook's auto-keep (rating "keep" + an
+// "auto-keep" tag so the owner can re-review the walk-gen set), and face-kinds
+// are checked out to their run so an UNREVIEWED walk face never leaks into the
+// cross-run face pool. (See REPORT: a stricter default — rating null / unrated —
+// is a one-constant change if the owner prefers walk products stay out of every
+// keep query until reviewed.)
+const LIVE_INTAKE_RATING = "keep";
+
+function slugForTag(text) {
+  return String(text || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40);
+}
+
+// Land a live-generated image in the library (additive — the run still serves its
+// own asset at the run path). Best-effort: never throws, never blocks a turn.
+export function intakeToLibrary({ id, bytes, kind, run, subjectId = null, promptUsed = "", workflow = "", extraTags = [] }) {
+  try {
+    if (!bytes || !bytes.length || !id) {
+      return null;
+    }
+    const style = styleForRun(run, run?.world) || "";
+    const worldSlug = run?.world?.slug || run?.world?.name || null;
+    fs.mkdirSync(libraryRoot(), { recursive: true });
+    fs.writeFileSync(path.join(libraryRoot(), `${id}.png`), bytes);
+    const tags = [
+      `kind:${kind}`,
+      style ? `style:${style}` : null,
+      worldSlug ? `world:${slugForTag(worldSlug)}` : null,
+      kind === "scene" && subjectId ? `loc:${slugForTag(subjectId)}` : (subjectId ? `subject:${slugForTag(subjectId)}` : null),
+      "live",
+      "auto-keep",
+      ...extraTags
+    ].filter(Boolean);
+    const isFace = kind === "portrait" || kind === "fullbody";
+    return addAsset({
+      id,
+      origin: "generated",
+      creator: run?.userId ?? null,
+      world: worldSlug,
+      style,
+      kind,
+      tags,
+      rating: LIVE_INTAKE_RATING,
+      // Face-kinds are owned by their run (not pooled) until reviewed.
+      checkout: isFace && run?.runId ? { runId: run.runId, npcId: subjectId || null } : null,
+      workflow: workflow || "",
+      promptUsed: promptUsed || ""
+    });
+  } catch (error) {
+    logWorker("library intake failed", error);
+    return null;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Async NPC portrait worker.
@@ -373,9 +432,11 @@ const draftPortraits = new Map();
 // pass the base portrait as the IP-Adapter reference (image-to-image) where the
 // provider supports it, else fresh seed-locked txt2img. width/height default to
 // portrait when omitted.
-async function generateSlot({ runId, npcId, slot, assetId, prompt, style, referenceImageUrl, seed, width, height }) {
+async function generateSlot({ runId, npcId, slot, assetId, prompt, style, kind, referenceImageUrl, seed, width, height }) {
   try {
-    const result = await generateImage({ prompt, style, referenceImageUrl, seed, width, height });
+    // GAP 1: `kind` (portrait/scene/fullbody/item) routes the provider to the
+    // validated per-lane recipe; referenceImageUrl drives the face-ref tailor.
+    const result = await generateImage({ prompt, style, kind, referenceImageUrl, seed, width, height });
     const bytes = result?.bytes;
     if (!bytes || !bytes.length) {
       throw new Error("image provider returned no bytes");
@@ -389,7 +450,9 @@ async function generateSlot({ runId, npcId, slot, assetId, prompt, style, refere
     const uri = servedUriFor(runId, npcId, slot, ext);
     updateImageAssetStatus(runId, assetId, "generated", uri);
     countGeneratedImageForRun(runId);
-    return { slot, ok: true, uri };
+    // Return bytes + the serving workflow so the caller can do library intake
+    // (GAP 2) with the real recipe attribution.
+    return { slot, ok: true, uri, bytes, workflow: result?.workflow || null };
   } catch (error) {
     updateImageAssetStatus(runId, assetId, "failed", null);
     logWorker(`slot ${slot} failed for ${runId}/${npcId}`, error);
@@ -468,17 +531,32 @@ export async function runImageJob(job = {}) {
   if (baseAsset && baseAsset.status === "generated" && typeof baseAsset.uri === "string" && baseAsset.uri) {
     base = { slot: "base", ok: true, uri: baseAsset.uri, reused: true };
   } else {
+    const prompt = `${basePrompt}, neutral expression, ${artStyleDirection(style, "npc")}`;
     base = await generateSlot({
       runId,
       npcId,
       slot: "base",
       assetId: linked.base,
-      prompt: `${basePrompt}, neutral expression, ${artStyleDirection(style, "npc")}`,
+      prompt,
       style,
+      kind: "portrait",
       seed,
       referenceImageUrl: null,
       ...PORTRAIT_DIMENSIONS
     });
+    // GAP 2: land the NPC bust in the library (kind portrait).
+    if (base.ok && base.bytes) {
+      intakeToLibrary({
+        id: `live_${runId}_${npcId}_base`,
+        bytes: base.bytes,
+        kind: "portrait",
+        run,
+        subjectId: npcId,
+        promptUsed: prompt,
+        workflow: base.workflow,
+        extraTags: ["expr:neutral"]
+      });
+    }
   }
   // Expression variants are NOT generated here. They are produced lazily — one
   // at a time, when a talk beat actually needs a given expression — by
@@ -567,18 +645,42 @@ export async function runVnBodyImageJob(job = {}) {
     `a ${npc?.role || npcId}, dark fantasy, detailed`
   ).trim();
 
+  // FACE-REF FULLBODY: if the NPC has a committed bust portrait, hand it to the
+  // provider as the IPAdapter face reference so the sprite reads as the same
+  // character (the tailor path fires only when a validated tailor export exists
+  // for the run's style — realistic; anime/dark-fantasy/sketch have no tailor, so
+  // this degrades to a fresh txt2img standing sprite, never blocking).
+  const bustAsset = run?.imageAssets?.[linked.base] || null;
+  const faceRef = bustAsset && bustAsset.status === "generated" && typeof bustAsset.uri === "string" && bustAsset.uri
+    ? bustAsset.uri
+    : null;
+  const prompt = `${basePrompt}, ${vnBodyArtDirection(tone)}`;
   const vnBody = await generateSlot({
     runId,
     npcId,
     slot: "vnBody",
     assetId: linked.vnBody,
-    // Fresh txt2img standing sprite — no reference (manipulation is a later phase).
-    prompt: `${basePrompt}, ${vnBodyArtDirection(tone)}`,
+    prompt,
     style,
+    kind: "fullbody",
     seed,
-    referenceImageUrl: null,
+    referenceImageUrl: faceRef,
     ...VN_BODY_DIMENSIONS
   });
+  // GAP 2: land the fullbody sprite in the library (kind fullbody). identityRef
+  // links it to the bust it was tailored from when a face ref was used.
+  if (vnBody.ok && vnBody.bytes) {
+    intakeToLibrary({
+      id: `live_${runId}_${npcId}_vnBody`,
+      bytes: vnBody.bytes,
+      kind: "fullbody",
+      run,
+      subjectId: npcId,
+      promptUsed: prompt,
+      workflow: vnBody.workflow,
+      extraTags: ["pose:standing", ...(faceRef ? ["face-ref"] : [])]
+    });
+  }
   return { ok: true, vnBody };
 }
 
@@ -624,7 +726,9 @@ export async function runPlayerImageJob(job = {}) {
   const seed = playerPortraitSeed(merged, run.world || {});
 
   try {
-    const result = await generateImage({ prompt, style, seed, ...PLAYER_PORTRAIT_DIMENSIONS });
+    // The player portrait is a portrait-kind → routes through the validated
+    // portrait recipe for the run's style.
+    const result = await generateImage({ prompt, style, kind: "portrait", seed, ...PLAYER_PORTRAIT_DIMENSIONS });
     const bytes = result?.bytes;
     if (!bytes || !bytes.length) {
       throw new Error("image provider returned no bytes");
@@ -636,6 +740,16 @@ export async function runPlayerImageJob(job = {}) {
     const uri = servedUriFor(runId, "player", "base", ext);
     updatePlayerPortrait(runId, uri);
     countGeneratedImageForRun(runId);
+    // GAP 2: land the player portrait in the library (kind portrait).
+    intakeToLibrary({
+      id: `live_${runId}_player`,
+      bytes,
+      kind: "portrait",
+      run,
+      subjectId: "player",
+      promptUsed: prompt,
+      workflow: result?.workflow || null
+    });
     return { ok: true, uri };
   } catch (error) {
     logWorker(`player portrait failed for ${runId}`, error);
@@ -837,8 +951,9 @@ export async function runLocationImageJob(job = {}) {
   const folder = `location_${locationId}`;
 
   try {
-    // Location backgrounds are wide establishing shots -> landscape aspect.
-    const result = await generateImage({ prompt, style, seed, ...LANDSCAPE_DIMENSIONS });
+    // Location backgrounds are wide establishing shots -> the scene lane (routes
+    // through the validated scene/landscape recipe for the run's style).
+    const result = await generateImage({ prompt, style, kind: "scene", seed, ...LANDSCAPE_DIMENSIONS });
     const bytes = result?.bytes;
     if (!bytes || !bytes.length) {
       throw new Error("image provider returned no bytes");
@@ -855,6 +970,16 @@ export async function runLocationImageJob(job = {}) {
     const finalUri = seed != null ? `${uri}?v=${seed}` : uri;
     updateImageAssetStatus(runId, linked.assetId, "generated", finalUri);
     countGeneratedImageForRun(runId);
+    // GAP 2: land the scene backdrop in the library (kind scene, loc:<slug> tag).
+    intakeToLibrary({
+      id: `live_${runId}_loc_${locationId}`,
+      bytes,
+      kind: "scene",
+      run,
+      subjectId: locationId,
+      promptUsed: prompt,
+      workflow: result?.workflow || null
+    });
     return { ok: true, uri: finalUri };
   } catch (error) {
     updateImageAssetStatus(runId, linked.assetId, "failed", null);

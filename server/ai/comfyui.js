@@ -36,6 +36,148 @@
 // ---------------------------------------------------------------------------
 
 import fs from "node:fs";
+import path from "node:path";
+import { resolveRecipeFile, loadRecipe, injectWorkflow, isApiWorkflow, dimsFor } from "../../scripts/art/generate.mjs";
+import { toCanonicalStyle } from "../solo/artStyle.js";
+
+// GAP 1 (art-live-recipes): the live image path routes each (style, kind) through
+// the SAME validated per-lane workflow exports the batch cook uses. When a
+// validated API-format export resolves, the live generation injects into it
+// (prompt/negative/dims/seed by graph shape, the export's own samplers/LoRAs
+// preserved) instead of the generic style workflow. A missing/legacy recipe, or
+// any resolution problem, falls back to the generic path — generation never fails
+// for lack of a tuned recipe.
+
+function artWorkflowDir() {
+  return process.env.NOTDND_ART_WORKFLOW_DIR
+    ? path.resolve(process.env.NOTDND_ART_WORKFLOW_DIR)
+    : path.resolve(process.cwd(), "scripts/art/workflows");
+}
+
+// The checkpoint a resolved recipe carries (for serve attribution), or null.
+function checkpointFromGraph(graph) {
+  for (const node of Object.values(graph || {})) {
+    if (node && node.class_type === "CheckpointLoaderSimple") {
+      return node.inputs?.ckpt_name || null;
+    }
+  }
+  return null;
+}
+
+// The validated per-lane workflow FILENAME a live (style, kind) resolves to, or
+// null when it falls back to the generic style workflow. Pure routing decision
+// (no injection, no ComfyUI) — the kind-routing table + serve attribution read it.
+export function resolveLiveWorkflowFile(style, kind) {
+  if (!kind) return null;
+  const canon = toCanonicalStyle(style);
+  if (!canon) return null;
+  let recipeFile = null;
+  let recipe = null;
+  try {
+    recipeFile = resolveRecipeFile(canon, kind);
+    if (!recipeFile) return null;
+    recipe = loadRecipe(canon, kind);
+  } catch {
+    return null;
+  }
+  if (!isApiWorkflow(recipe)) return null;
+  return path.basename(recipeFile);
+}
+
+// The face-ref tailor filename for a style, or null (only realistic ships one).
+export function resolveLiveTailorFile(style) {
+  const canon = toCanonicalStyle(style);
+  if (!canon) return null;
+  const p = tailorRecipePath(canon);
+  return p ? path.basename(p) : null;
+}
+
+// Resolve a validated txt2img per-lane recipe for (style, kind). Returns
+// { workflow, workflowFile, checkpoint } or null (→ generic fallback). Uses the
+// LANE-SPEC dims (dimsFor) exactly like the batch cook, not the caller's dims.
+// NEVER throws.
+function resolveValidatedComfyWorkflow(style, kind, { positive, negative, seed }) {
+  if (!kind) return null;
+  const canon = toCanonicalStyle(style);
+  if (!canon) return null;
+  let recipeFile = null;
+  let recipe = null;
+  try {
+    recipeFile = resolveRecipeFile(canon, kind);
+    if (!recipeFile) return null;
+    recipe = loadRecipe(canon, kind);
+  } catch {
+    return null;
+  }
+  // Only API-format exports are "validated recipes"; a legacy per-style recipe
+  // (<style>.json) is not — let the generic style path own that fallback.
+  if (!isApiWorkflow(recipe)) return null;
+  const dims = dimsFor(recipe, kind);
+  try {
+    const workflow = injectWorkflow(recipe, { positive, negative, width: dims.width, height: dims.height, seed });
+    return { workflow, workflowFile: path.basename(recipeFile), checkpoint: checkpointFromGraph(workflow) };
+  } catch {
+    return null;
+  }
+}
+
+// The face-ref tailor export for a style (fullbody-<style>-tailor.json), or null.
+// Only realistic ships one today; other styles → null → documented fallback.
+function tailorRecipePath(canon) {
+  const p = path.join(artWorkflowDir(), `fullbody-${canon}-tailor.json`);
+  return fs.existsSync(p) ? p : null;
+}
+
+// Inject prompt + negative + LoadImage face-ref + batch into the tailor graph by
+// SHAPE (the tailorFullbody pattern), preserving IPAdapter/LoRA/sampler params.
+function injectTailorGraph(recipe, { positive, negative, imageName }) {
+  const g = JSON.parse(JSON.stringify(recipe));
+  const entries = Object.entries(g);
+  const sampler = entries.find(([, n]) => /KSampler/.test(n?.class_type || ""));
+  if (!sampler) return null;
+  const posId = sampler[1].inputs?.positive?.[0];
+  const negId = sampler[1].inputs?.negative?.[0];
+  const loadImage = entries.find(([, n]) => n?.class_type === "LoadImage");
+  const latent = entries.find(([, n]) => n?.class_type === "EmptyLatentImage");
+  if (!posId || !g[posId] || !negId || !g[negId] || !loadImage || !latent) return null;
+  if (typeof positive === "string") g[posId].inputs.text = positive;
+  if (typeof negative === "string") g[negId].inputs.text = negative;
+  g[loadImage[0]].inputs.image = imageName;
+  g[latent[0]].inputs.batch_size = 1;
+  return g;
+}
+
+// Read the reference image bytes (a /data served path → disk under cwd; an
+// absolute/file path → disk; an http(s) url → fetch) and upload to ComfyUI's
+// input dir, returning the uploaded filename or null. NEVER throws.
+async function uploadReferenceToComfy(base, referenceImageUrl, fetchImpl) {
+  try {
+    const ref = String(referenceImageUrl || "");
+    if (!ref) return null;
+    let bytes = null;
+    if (ref.startsWith("http://") || ref.startsWith("https://")) {
+      const r = await fetchImpl(ref);
+      if (!r.ok) return null;
+      bytes = Buffer.from(await r.arrayBuffer());
+    } else {
+      const diskPath = ref.startsWith("/") && !ref.startsWith("//")
+        ? (ref.startsWith("/data/") ? path.join(process.cwd(), ref.replace(/^\//, "")) : ref)
+        : ref.replace(/^file:\/\//, "");
+      if (!fs.existsSync(diskPath)) return null;
+      bytes = fs.readFileSync(diskPath);
+    }
+    const name = `liveref_${comfyuiSeed(ref, null)}.png`;
+    const form = new FormData();
+    form.append("image", new Blob([bytes]), name);
+    form.append("overwrite", "true");
+    const res = await fetchImpl(`${base}/upload/image`, { method: "POST", body: form });
+    if (!res.ok) return null;
+    const out = await res.json().catch(() => ({}));
+    return out.name || name;
+  } catch {
+    return null;
+  }
+}
 
 function env(name, fallback = "") {
   const inkborne = process.env[`INKBORNE_${name}`];
@@ -255,12 +397,54 @@ function sleep(ms) {
  * so generateImage's failover chain can move on to pollinations/cloudflare.
  * @param {{ prompt?: string, style?: string, seed?: number|null, width?: number|null, height?: number|null, fetchImpl?: typeof fetch }} args
  */
-export async function comfyuiImage({ prompt, style, seed, width, height, fetchImpl = fetch } = {}) {
+export async function comfyuiImage({ prompt, style, kind, seed, width, height, referenceImageUrl = null, fetchImpl = fetch } = {}) {
   const base = comfyuiBaseUrl();
   const connectTimeoutMs = Math.max(500, Number(env("COMFYUI_CONNECT_TIMEOUT_MS", "5000")) || 5000);
   const totalTimeoutMs = Math.max(5000, Number(env("COMFYUI_TIMEOUT_MS", "120000")) || 120000);
 
-  const { workflow, styleKey, checkpoint } = comfyuiWorkflowForStyle(style, { prompt, seed, width, height });
+  // GAP 1: prefer the validated per-lane recipe (or the face-ref tailor for a
+  // fullbody with a committed portrait). Fall back to the generic style workflow
+  // when no validated export exists — generation never fails for lack of a recipe.
+  const styleKeyGeneric = normalizeStyle(style);
+  const preset = STYLE_PRESETS[styleKeyGeneric];
+  const positive = String(prompt || "").trim() || "fantasy illustration";
+  const resolvedSeed = comfyuiSeed(prompt, seed);
+  let workflow;
+  let styleKey = styleKeyGeneric;
+  let checkpoint;
+  let workflowFile = "generic";
+
+  const canon = toCanonicalStyle(style);
+  // Face-ref tailor: fullbody + a committed portrait + a tailor export for this
+  // style. Uploads the reference and injects it as the IPAdapter LoadImage node.
+  let selected = null;
+  if (kind === "fullbody" && referenceImageUrl && canon && tailorRecipePath(canon)) {
+    try {
+      const imageName = await uploadReferenceToComfy(base, referenceImageUrl, fetchImpl);
+      if (imageName) {
+        const recipe = JSON.parse(fs.readFileSync(tailorRecipePath(canon), "utf8"));
+        const graph = injectTailorGraph(recipe, { positive, negative: preset.negative, imageName });
+        if (graph) {
+          selected = { workflow: graph, workflowFile: path.basename(tailorRecipePath(canon)), checkpoint: checkpointFromGraph(graph) };
+        }
+      }
+    } catch {
+      selected = null; // any tailor problem → fall through to txt2img
+    }
+  }
+  if (!selected) {
+    selected = resolveValidatedComfyWorkflow(style, kind, { positive, negative: preset.negative, seed: resolvedSeed });
+  }
+  if (selected) {
+    workflow = selected.workflow;
+    workflowFile = selected.workflowFile;
+    checkpoint = selected.checkpoint || null;
+  } else {
+    const generic = comfyuiWorkflowForStyle(style, { prompt, seed, width, height });
+    workflow = generic.workflow;
+    styleKey = generic.styleKey;
+    checkpoint = generic.checkpoint;
+  }
 
   // 1) Queue the workflow. This returns quickly even for slow renders, so the
   //    short deadline here only bites when ComfyUI is down/unreachable — the
@@ -354,8 +538,10 @@ export async function comfyuiImage({ prompt, style, seed, width, height, fetchIm
     bytes: Buffer.from(await imageRes.arrayBuffer()),
     url: viewUrl,
     // Surface the real serving attribution for the debug panel: the style key
-    // selected and the checkpoint that actually rendered this image.
+    // selected, the checkpoint that rendered, and WHICH validated workflow export
+    // (or "generic") produced it — so a live image's recipe is auditable.
     model: styleKey,
-    checkpoint
+    checkpoint,
+    workflow: workflowFile
   };
 }
