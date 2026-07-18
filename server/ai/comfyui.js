@@ -96,7 +96,7 @@ export function resolveLiveTailorFile(style) {
 // { workflow, workflowFile, checkpoint } or null (→ generic fallback). Uses the
 // LANE-SPEC dims (dimsFor) exactly like the batch cook, not the caller's dims.
 // NEVER throws.
-function resolveValidatedComfyWorkflow(style, kind, { positive, negative, seed }) {
+export function resolveValidatedComfyWorkflow(style, kind, { positive, negative, seed }) {
   if (!kind) return null;
   const canon = toCanonicalStyle(style);
   if (!canon) return null;
@@ -231,6 +231,113 @@ function normalizeStyle(style) {
   return STYLE_PRESETS[key] ? key : "illustrated";
 }
 
+// Per-provider ELF DEFENSE (belt-and-suspenders layer 2 for the 2026-07-18 elf-ears
+// relapse). Anime/fantasy SDXL checkpoints (Illustrious, JANKU, …) carry a strong
+// latent bias toward pointed ELF ears whenever a human is framed inside a fantasy
+// world. The shared prompt builder already asserts "rounded human ears" POSITIVELY
+// — that alone is enough for pollinations-class positive-only providers, but it does
+// NOT overcome the checkpoint bias on ComfyUI, which HAS a negative field. So on the
+// ComfyUI path we ALSO push elf/pointed-ear tokens into the negative, WEIGHTED
+// (anime checkpoints need emphatic tokens — the AGE-LAW precedent). Derived from the
+// positive so it is builder-agnostic (player, NPC, batch cook all covered) and
+// self-consistent: a real elf/half-elf declares "pointed ears" in the positive and
+// is never suppressed; non-human subjects (scenes/items) are left untouched.
+const ELF_DEFENSE_NEGATIVE = "(elf:1.5), (elf ears:1.5), (pointed ears:1.4), (fantasy elf:1.3)";
+
+export function elfDefenseFor(positive) {
+  const p = String(positive || "").toLowerCase();
+  // Real elf/half-elf: the builder puts "pointed ears" in the positive — do not fight it.
+  if (p.includes("pointed ears")) return "";
+  // Only defend an actual human/person subject; a scene or item has no ears to protect.
+  if (!/(human|person|rounded ears|rounded human)/.test(p)) return "";
+  return ELF_DEFENSE_NEGATIVE;
+}
+
+// Merge the elf defense into a style/recipe negative for a human portrait subject.
+// No-op (returns the negative unchanged) for elves and non-human subjects.
+export function withElfDefense(positive, negative) {
+  const extra = elfDefenseFor(positive);
+  if (!extra) return negative;
+  const neg = String(negative || "").trim();
+  return neg ? `${neg}, ${extra}` : extra;
+}
+
+// ── SEALED ANIME-LANE LAWS ───────────────────────────────────────────────────
+// The live path injects the caller's positive/negative INTO a workflow graph,
+// which OVERWRITES the validated recipe's own text nodes — so the batch cook's
+// block layer (scripts/art/prompts/blocks/anime.json) is bypassed and its sealed,
+// owner-PROVEN laws never reach the render. Re-assert them here, the per-provider
+// enforcement point (same principle as the elf defense):
+//   • QUALITY vocab (JANKU-family PROVEN): without it JANKU renders soft/sketchy.
+//   • NEGATIVE base + portrait law (multi-head/reference-sheet/sketch/monochrome)
+//     + AGE-LAW young-negation. The weighted ADULT + gender words live in the
+//     builder's positive (imageWorker); the young NEGATION lives here.
+// Falls back to inline sealed values if the block file is unreadable (never throws).
+const ANIME_BLOCK_FALLBACK = Object.freeze({
+  quality: "amazing quality, extremely detailed, very detailed",
+  negativeBase:
+    "lowres, worst quality, bad anatomy, bad hands, extra fingers, deformed, blurry, jpeg artifacts, watermark, signature, text, 3d, photorealistic"
+});
+// Cross-lane portrait law: one finished figure, no turnaround/sheet, no sketch.
+// The sheet/multi-view tokens carry a LIGHT weight — the real lever against the
+// 2×2-grid / model-sheet relapse is removing the "NOT a reference sheet" NEGATION
+// from the positive (which the model painted literally); heavy negative weights
+// (1.5–1.6) were tested and collapsed JANKU's palette to a flat saturated field,
+// so they are dialled back to ~1.25 (live-proof tuned 2026-07-18).
+const PORTRAIT_NEGATIVE_LAW =
+  "(character reference sheet:1.25), (model sheet:1.25), (multiple views:1.25), multiple angles, turnaround, (multiple heads:1.2), two heads, grid, split panel, contact sheet, extra heads, duplicate character, cropped head, sketch, rough sketch, unfinished, lineart only, monochrome, greyscale";
+// AGE LAW (negation half): keep the young default off adult subjects.
+const AGE_NEGATIVE_LAW = "child, kid, teenager, teen, young, youthful, baby face, chibi";
+
+let _animeBlock = null;
+function animeBlock() {
+  if (_animeBlock) return _animeBlock;
+  try {
+    const dir = process.env.NOTDND_ART_PROMPTS_DIR
+      ? path.resolve(process.env.NOTDND_ART_PROMPTS_DIR)
+      : path.resolve(process.cwd(), "scripts/art/prompts");
+    const raw = JSON.parse(fs.readFileSync(path.join(dir, "blocks", "anime.json"), "utf8"));
+    _animeBlock = {
+      quality: String(raw.quality || "").trim() || ANIME_BLOCK_FALLBACK.quality,
+      negativeBase: String(raw.negativeBase || "").trim() || ANIME_BLOCK_FALLBACK.negativeBase
+    };
+  } catch {
+    _animeBlock = ANIME_BLOCK_FALLBACK;
+  }
+  return _animeBlock;
+}
+
+function isCharacterSubject(positive) {
+  return /(character portrait|portrait of|\bhuman\b|\bperson\b|\bman\b|\bwoman\b|1girl|1boy)/i.test(String(positive || ""));
+}
+
+function joinCsv(parts) {
+  return parts.map((p) => String(p || "").trim()).filter(Boolean).join(", ");
+}
+
+// The single sealing point for the live ComfyUI prompt: elf defense (all lanes) +
+// the sealed anime-lane laws (quality vocab in the positive, full negative block).
+// Non-anime lanes keep their style preset negative + elf defense unchanged.
+export function sealPortraitPrompt(styleKey, positive, presetNegative) {
+  const pos0 = String(positive || "");
+  const elf = elfDefenseFor(pos0);
+  if (styleKey !== "anime") {
+    return { positive: pos0, negative: joinCsv([presetNegative, elf]) };
+  }
+  const block = animeBlock();
+  const isChar = isCharacterSubject(pos0);
+  const positiveOut = block.quality && !pos0.toLowerCase().includes(block.quality.toLowerCase())
+    ? joinCsv([block.quality, pos0]) // quality vocab LEADS (JANKU responds to it front-loaded)
+    : pos0;
+  const negativeOut = joinCsv([
+    block.negativeBase,
+    isChar ? PORTRAIT_NEGATIVE_LAW : "",
+    isChar ? AGE_NEGATIVE_LAW : "",
+    elf
+  ]);
+  return { positive: positiveOut, negative: negativeOut };
+}
+
 // Deterministic seed from the prompt when none is given (same policy as the
 // pollinations provider) so identical prompts re-render identically.
 function comfyuiSeed(prompt, seed) {
@@ -318,7 +425,11 @@ export function comfyuiWorkflowForStyle(style, { prompt, seed, width, height } =
   const w = Number(width) > 0 ? Math.trunc(Number(width)) : 512;
   const h = Number(height) > 0 ? Math.trunc(Number(height)) : 768;
   const resolvedSeed = comfyuiSeed(prompt, seed);
-  const positive = String(prompt || "").trim() || "fantasy illustration";
+  const rawPositive = String(prompt || "").trim() || "fantasy illustration";
+  // Seal the prompt: elf defense (all lanes) + the sealed anime-lane laws (quality
+  // vocab in the positive, full negative block). The batch cook's block layer is
+  // bypassed by graph injection, so it is re-asserted here.
+  const { positive, negative } = sealPortraitPrompt(styleKey, rawPositive, preset.negative);
 
   const workflowPath = env(`COMFYUI_WORKFLOW_${styleKey.toUpperCase()}`);
   if (workflowPath) {
@@ -340,7 +451,7 @@ export function comfyuiWorkflowForStyle(style, { prompt, seed, width, height } =
       checkpoint,
       workflow: instantiateWorkflow(template, {
         __PROMPT__: positive,
-        __NEGATIVE__: preset.negative,
+        __NEGATIVE__: negative,
         __SEED__: resolvedSeed,
         __WIDTH__: w,
         __HEIGHT__: h,
@@ -355,7 +466,7 @@ export function comfyuiWorkflowForStyle(style, { prompt, seed, width, height } =
     workflow: defaultWorkflow({
       checkpoint,
       positive,
-      negative: preset.negative,
+      negative,
       seed: resolvedSeed,
       width: w,
       height: h,
@@ -407,7 +518,12 @@ export async function comfyuiImage({ prompt, style, kind, seed, width, height, r
   // when no validated export exists — generation never fails for lack of a recipe.
   const styleKeyGeneric = normalizeStyle(style);
   const preset = STYLE_PRESETS[styleKeyGeneric];
-  const positive = String(prompt || "").trim() || "fantasy illustration";
+  const rawPositive = String(prompt || "").trim() || "fantasy illustration";
+  // Seal the prompt once (elf defense + sealed anime-lane laws) and apply to every
+  // graph this path can build — face-ref tailor, validated per-lane recipe, and the
+  // generic fallback (comfyuiWorkflowForStyle seals again from raw, idempotently) —
+  // so the laws can never be routed around by graph injection.
+  const { positive, negative } = sealPortraitPrompt(styleKeyGeneric, rawPositive, preset.negative);
   const resolvedSeed = comfyuiSeed(prompt, seed);
   let workflow;
   let styleKey = styleKeyGeneric;
@@ -423,7 +539,7 @@ export async function comfyuiImage({ prompt, style, kind, seed, width, height, r
       const imageName = await uploadReferenceToComfy(base, referenceImageUrl, fetchImpl);
       if (imageName) {
         const recipe = JSON.parse(fs.readFileSync(tailorRecipePath(canon), "utf8"));
-        const graph = injectTailorGraph(recipe, { positive, negative: preset.negative, imageName });
+        const graph = injectTailorGraph(recipe, { positive, negative, imageName });
         if (graph) {
           selected = { workflow: graph, workflowFile: path.basename(tailorRecipePath(canon)), checkpoint: checkpointFromGraph(graph) };
         }
@@ -433,7 +549,7 @@ export async function comfyuiImage({ prompt, style, kind, seed, width, height, r
     }
   }
   if (!selected) {
-    selected = resolveValidatedComfyWorkflow(style, kind, { positive, negative: preset.negative, seed: resolvedSeed });
+    selected = resolveValidatedComfyWorkflow(style, kind, { positive, negative, seed: resolvedSeed });
   }
   if (selected) {
     workflow = selected.workflow;

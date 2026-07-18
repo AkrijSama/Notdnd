@@ -103,11 +103,16 @@ const PORTRAIT_ART_DIRECTION =
 // face-inset composite literally produced turnaround sheets AND dragged in
 // fantasy-concept-art conventions that overrode the race descriptor (e.g. elf
 // ears on Humans). PLAYER_SINGLE_SUBJECT asserts one figure; PLAYER_NO_SHEET
-// negates the sheet behaviour. Both are part of every player art direction.
+// asserts a solo single image. BOTH ARE POSITIVE — a "NOT a reference sheet /
+// NO multiple poses" NEGATION backfires exactly like the elf bug did: a diffusion
+// model has no "NOT", so it read those words as POSITIVE "character reference
+// sheet, multiple poses, turnaround" tokens and PAINTED the 2×2 grid / 5-view
+// model sheet (2026-07-18 relapse). The sheet is now suppressed in the NEGATIVE
+// field on the ComfyUI lane (PORTRAIT_NEGATIVE_LAW); the positive only ASSERTS solo.
 const PLAYER_SINGLE_SUBJECT =
   "single character portrait, one figure, centered, three-quarter view, single subject, head and upper body";
 const PLAYER_NO_SHEET =
-  "NOT a character reference sheet, NO multiple poses, NO multiple angles, NO duplicate figures, NO turnaround, single image only";
+  "solo, one person only, a single portrait of one head, one continuous image";
 const PLAYER_PORTRAIT_ART_DIRECTION =
   `${PLAYER_SINGLE_SUBJECT}, painterly fantasy illustration, dramatic rim lighting, highly detailed, plain dark background, ${PLAYER_NO_SHEET}`;
 
@@ -272,8 +277,22 @@ function normalizePortraitCharacter(character = {}) {
         : null,
     background: isStr(character.background) ? character.background.trim() : null,
     pronouns: isStr(character.pronouns) ? character.pronouns.trim() : null,
+    gender: isStr(character.gender) ? character.gender.trim() : null,
     origin: isStr(character.origin) ? character.origin.trim() : null
   };
+}
+
+// AGE LAW (anime/nihilmania checkpoints default to ~young ~22yo without WEIGHTED
+// adult words — blocks/darkfantasy.json laneRule) + gender lock (anime checkpoints
+// are female-biased; a male MC renders female without an explicit male token, and
+// the player's gender otherwise never reaches the prompt). Weighted, per the law.
+function adultGenderPhrase(c = {}) {
+  const g = String(c.gender || "").toLowerCase();
+  const p = String(c.pronouns || "").toLowerCase();
+  let noun = null;
+  if (/\b(man|male|boy|masc)/.test(g) || /\b(he|him|his)\b/.test(p)) noun = "man";
+  else if (/\b(woman|female|girl|femme)/.test(g) || /\b(she|her|hers)\b/.test(p)) noun = "woman";
+  return noun ? `(adult ${noun}:1.3), mature adult` : "(adult:1.3), mature adult";
 }
 
 // Canon player identity: the Babel authored origin "The Beckoned" is a modern-day
@@ -356,7 +375,7 @@ export function buildPlayerPortraitPrompt(character = {}, world = {}) {
         .filter(Boolean)
         .join(" ") || MODERN_EARTH_SUBJECT;
     return (
-      `character portrait of ${beckonedSubject}, a modern-day person newly pulled into a ${tone} world, ` +
+      `character portrait of ${beckonedSubject}, ${adultGenderPhrase(c)}, a modern-day person newly pulled into a ${tone} world, ` +
       `${artStyleDirection(engineStyle, "player")}, ${MODERN_EARTH_EMPHASIS}`
     );
   }
@@ -382,7 +401,7 @@ export function buildPlayerPortraitPrompt(character = {}, world = {}) {
   const earEmphasis = !POINTED_EAR_RACES.has(raceKey)
     ? ", with naturally rounded human ears and a natural human face"
     : "";
-  return `character portrait of ${subject}, ${tone}, ${artStyleDirection(engineStyle, "player")}${earEmphasis}`;
+  return `character portrait of ${subject}, ${adultGenderPhrase(c)}, ${tone}, ${artStyleDirection(engineStyle, "player")}${earEmphasis}`;
 }
 
 // Deterministic seed from name+race+class+artStyle so identical core choices
@@ -809,7 +828,11 @@ export async function runDraftPortraitJob(job = {}) {
     // generation/redo uses generateImage. Same prompt base so the character holds.
     const result = editInstruction
       ? await editImage({ sourceImageUrl, instruction: editInstruction, prompt, style, seed, ...PLAYER_PORTRAIT_DIMENSIONS })
-      : await generateImage({ prompt, style, seed, ...PLAYER_PORTRAIT_DIMENSIONS });
+      // kind:"portrait" routes the draft through the SAME validated per-lane export
+      // the live run uses (portrait-<style>.json) instead of the generic style
+      // workflow — the 2026-07-18 draft/live divergence that served the generic
+      // Illustrious graph (no elf defense) for the owner's onboarding portrait.
+      : await generateImage({ prompt, style, kind: "portrait", seed, ...PLAYER_PORTRAIT_DIMENSIONS });
     const bytes = result?.bytes;
     if (!bytes || !bytes.length) {
       throw new Error("image provider returned no bytes");
