@@ -1895,6 +1895,42 @@ export function renderSoloTurnLifecycle(state = {}) {
   return parts.join("");
 }
 
+// COMMITTED AFFORDANCES chip row (affordances-map-law Part A). Renders
+// scene.affordances (server-derived from committed state) as a quiet capped row
+// ABOVE the input box — suggest, never limit. Cap 7 visible + a "more" overflow
+// chip (state.affordancesExpanded shows all). Gated chips render distinct with
+// the reason in title/aria; a tap on a gated chip shows the reason and does NOT
+// submit. An OK chip carries data-solo-affordance=<intent> and routes through the
+// same turn path as typing (delegated dispatch → onAttempt). "" when none.
+export const SOLO_AFFORDANCE_CAP = 7;
+export function renderSoloAffordances(state = {}) {
+  const scene = state.scene || {};
+  const all = Array.isArray(scene.affordances) ? scene.affordances.filter((a) => a && typeof a.label === "string" && typeof a.intent === "string") : [];
+  if (!all.length) {
+    return "";
+  }
+  const expanded = state.affordancesExpanded === true;
+  const overflow = all.length > SOLO_AFFORDANCE_CAP;
+  const visible = expanded || !overflow ? all : all.slice(0, SOLO_AFFORDANCE_CAP);
+  const chips = visible
+    .map((a) => {
+      const gated = a.feasibility === "gated";
+      const reason = typeof a.gateReason === "string" ? a.gateReason : "";
+      if (gated) {
+        return `<button type="button" class="solo-affordance is-gated" data-solo-affordance-gated="${escapeHtml(reason)}" aria-disabled="true" title="${escapeHtml(reason)}" aria-label="${escapeHtml(`${a.label}. Not possible: ${reason}`)}">${escapeHtml(a.label)}</button>`;
+      }
+      return `<button type="button" class="solo-affordance" data-solo-affordance="${escapeHtml(a.intent)}" data-source="${escapeHtml(String(a.source || ""))}" title="${escapeHtml(a.intent)}">${escapeHtml(a.label)}</button>`;
+    })
+    .join("");
+  const more = overflow
+    ? `<button type="button" class="solo-affordance solo-affordance-more" data-solo-affordances-more aria-expanded="${expanded ? "true" : "false"}">${expanded ? "less" : `more (${all.length - SOLO_AFFORDANCE_CAP})`}</button>`
+    : "";
+  const gateNote = typeof state.affordanceGateNote === "string" && state.affordanceGateNote
+    ? `<div class="solo-affordance-gatenote" role="status">${escapeHtml(state.affordanceGateNote)}</div>`
+    : "";
+  return `<div class="solo-affordances solo-measure" role="group" aria-label="Suggested actions">${chips}${more}</div>${gateNote}`;
+}
+
 export function renderSoloSceneInputBar(state = {}) {
   const confirmation = typeof state.npcCreatorConfirmation === "string" ? state.npcCreatorConfirmation : "";
 
@@ -2423,6 +2459,174 @@ export function renderSoloRollHistory(scene = {}, open = false) {
     </div>`;
 }
 
+// AFFORDANCES-MAP LAW (Part B) — region-graph render. Type glyphs per node (never
+// a generic circle); reuses the layout type set. Positions are a deterministic
+// client layout (BFS layers from current) — topology is committed, pixels are not.
+const REGION_TYPE_GLYPH = {
+  forest: "♣",
+  clearing: "⌇",
+  road: "⌁",
+  "town-approach": "∩",
+  "town-street": "⌂",
+  interior: "▢",
+  ruin: "▲",
+  cave: "◗"
+};
+
+// Deterministic BFS-layered positions (normalized 0..1) for the region nodes.
+function layoutRegionNodes(nodes, edges, current) {
+  const adj = {};
+  for (const n of nodes) {
+    adj[n.id] = [];
+  }
+  for (const e of edges) {
+    if (adj[e.a]) adj[e.a].push(e.b);
+    if (adj[e.b]) adj[e.b].push(e.a);
+  }
+  const level = {};
+  const queue = [];
+  if (current && adj[current]) {
+    level[current] = 0;
+    queue.push(current);
+  }
+  while (queue.length) {
+    const id = queue.shift();
+    for (const nb of adj[id] || []) {
+      if (level[nb] === undefined) {
+        level[nb] = level[id] + 1;
+        queue.push(nb);
+      }
+    }
+  }
+  let maxLevel = 0;
+  for (const v of Object.values(level)) {
+    maxLevel = Math.max(maxLevel, v);
+  }
+  // Nodes disconnected from current (revealed by map, not adjacent) trail after.
+  for (const n of nodes) {
+    if (level[n.id] === undefined) {
+      maxLevel += 1;
+      level[n.id] = maxLevel;
+    }
+  }
+  const byLevel = {};
+  for (const n of nodes) {
+    (byLevel[level[n.id]] = byLevel[level[n.id]] || []).push(n.id);
+  }
+  const cols = Math.max(1, maxLevel + 1);
+  const pos = {};
+  for (const [lvl, group] of Object.entries(byLevel)) {
+    group.sort();
+    const L = Number(lvl);
+    const x = cols === 1 ? 0.5 : L / (cols - 1);
+    group.forEach((id, i) => {
+      const y = group.length === 1 ? 0.5 : i / (group.length - 1);
+      pos[id] = { x, y };
+    });
+  }
+  return pos;
+}
+
+export function renderSoloRegionMap(scene = {}) {
+  const rm = scene && typeof scene.regionMap === "object" && scene.regionMap ? scene.regionMap : null;
+  const head = `<div class="solo-presence-head"><span class="solo-stat-kicker">The region</span><span class="solo-presence-loc" data-textfit>Known map</span></div>`;
+  const nodes = rm && Array.isArray(rm.nodes) ? rm.nodes : [];
+  if (!nodes.length) {
+    return `<div class="solo-region"><div class="solo-region-empty">No mapped ground yet — travel, or find a map, to chart the region.</div></div>`;
+  }
+  const edges = Array.isArray(rm.edges) ? rm.edges : [];
+  const goalByLoc = {};
+  for (const g of Array.isArray(rm.goalPins) ? rm.goalPins : []) {
+    if (g && g.locationId) {
+      (goalByLoc[g.locationId] = goalByLoc[g.locationId] || []).push(g);
+    }
+  }
+  const pos = layoutRegionNodes(nodes, edges, rm.current);
+  const W = 300;
+  const H = Math.max(150, Math.min(320, 70 + nodes.length * 26));
+  const M = 34;
+  const px = (nx) => M + nx * (W - 2 * M);
+  const py = (ny) => M + ny * (H - 2 * M);
+
+  const edgeSvg = edges
+    .map((e) => {
+      const pa = pos[e.a];
+      const pb = pos[e.b];
+      if (!pa || !pb) {
+        return "";
+      }
+      const x1 = px(pa.x);
+      const y1 = py(pa.y);
+      const x2 = px(pb.x);
+      const y2 = py(pb.y);
+      const cls = e.blocked ? "solo-region-edge is-blocked" : "solo-region-edge";
+      const line = `<line class="${cls}" x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" />`;
+      const mx = (x1 + x2) / 2;
+      const my = (y1 + y2) / 2;
+      const label = Number.isFinite(Number(e.travelTime))
+        ? `<text class="solo-region-edge-label" x="${mx.toFixed(1)}" y="${(my - 3).toFixed(1)}" text-anchor="middle">${escapeHtml(String(e.travelTime))}m</text>`
+        : "";
+      const block = e.blocked
+        ? `<text class="solo-region-edge-block" x="${mx.toFixed(1)}" y="${(my + 4).toFixed(1)}" text-anchor="middle" aria-label="blocked">✕</text>`
+        : "";
+      return line + label + block;
+    })
+    .join("");
+
+  const nodeSvg = nodes
+    .map((n) => {
+      const p = pos[n.id];
+      if (!p) {
+        return "";
+      }
+      const cx = px(p.x);
+      const cy = py(p.y);
+      const glyph = REGION_TYPE_GLYPH[n.type] || "◆";
+      const classes = ["solo-region-node", `solo-region-type-${escapeHtml(n.type)}`];
+      if (n.isCurrent) classes.push("is-current");
+      if (n.reachable) classes.push("is-reachable");
+      if (n.hazard) classes.push("is-hazard");
+      const goals = goalByLoc[n.id] || [];
+      const goalPin = goals.length
+        ? `<text class="solo-region-goalpin" x="${(cx + 11).toFixed(1)}" y="${(cy - 9).toFixed(1)}" text-anchor="middle" title="${escapeHtml(goals.map((g) => g.summary).join("; "))}">◎</text>`
+        : "";
+      const marker = n.isCurrent
+        ? `<circle class="solo-region-here" cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="14" />`
+        : "";
+      const frayed = n.unexploredExits > 0
+        ? `<text class="solo-region-frayed" x="${(cx - 11).toFixed(1)}" y="${(cy + 12).toFixed(1)}" text-anchor="middle" aria-label="${n.unexploredExits} unexplored">⋯</text>`
+        : "";
+      const name = `<text class="solo-region-name" x="${cx.toFixed(1)}" y="${(cy + 22).toFixed(1)}" text-anchor="middle">${escapeHtml(n.name)}</text>`;
+      const g = `${marker}<text class="solo-region-glyph" x="${cx.toFixed(1)}" y="${(cy + 5).toFixed(1)}" text-anchor="middle">${glyph}</text>${goalPin}${frayed}${name}`;
+      // Tap a REACHABLE node = a travel intent through the normal move pipeline
+      // (exits-equivalent). Revealed-but-distant nodes are shown, not tappable.
+      if (n.reachable) {
+        return `<g class="${classes.join(" ")}" role="button" tabindex="0" data-solo-action="move" data-location-id="${escapeHtml(n.id)}" aria-label="Travel to ${escapeHtml(n.name)}">${g}</g>`;
+      }
+      return `<g class="${classes.join(" ")}" aria-label="${escapeHtml(n.name)}">${g}</g>`;
+    })
+    .join("");
+
+  return `<div class="solo-region">${head}<svg class="solo-region-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Region map of known locations" preserveAspectRatio="xMidYMid meet">${edgeSvg}${nodeSvg}</svg></div>`;
+}
+
+// The zoom toggle (owner ruling: default LOCAL, region behind the toggle).
+export function renderSoloMapToggle(mapView = "local") {
+  const region = mapView === "region";
+  return `<div class="solo-map-toggle" role="group" aria-label="Map zoom">
+      <button type="button" class="solo-map-toggle-btn${region ? "" : " active"}" data-solo-map-view="local" aria-pressed="${region ? "false" : "true"}">Local</button>
+      <button type="button" class="solo-map-toggle-btn${region ? " active" : ""}" data-solo-map-view="region" aria-pressed="${region ? "true" : "false"}">Region</button>
+    </div>`;
+}
+
+// The map surface: toggle + the active view. Default local (Part A floor plan);
+// region graph (Part B) behind the toggle.
+export function renderSoloMapSurface(scene = {}, mapView = "local") {
+  const view = mapView === "region" ? "region" : "local";
+  const body = view === "region" ? renderSoloRegionMap(scene) : renderSoloPresenceMap(scene);
+  return `${renderSoloMapToggle(view)}${body}`;
+}
+
 export function renderSoloRightRail(state = {}) {
   const scene = state.scene || {};
   // Prefer the full server-side cast roster (all run.npcs with portrait URIs);
@@ -2489,7 +2693,7 @@ export function renderSoloRightRail(state = {}) {
         return clock ? `<div class="solo-rail-block solo-rail-clock">${clock}</div>` : "";
       })()}
       <div class="solo-rail-block solo-rail-presence">
-        ${renderSoloPresenceMap(scene)}
+        ${renderSoloMapSurface(scene, state.mapView)}
       </div>
       ${(() => {
         const goals = renderSoloGoals(scene);
@@ -2966,6 +3170,11 @@ export function renderSoloSceneShell(state = {}) {
                   <div data-solo-roll-banner>${renderSoloRollBanner(scene)}</div>
                   <div data-solo-dock-status>${renderSoloThinkingIndicator(state)}</div>
                   <div data-solo-turn-lifecycle>${renderSoloTurnLifecycle(state)}</div>
+                  <!-- COMMITTED AFFORDANCES (affordances-map-law Part A): a quiet
+                       chip row directly ABOVE the input; suggest, never limit —
+                       the text box stays primary. A tap submits the intent through
+                       the normal turn path; gated chips show a reason, never submit. -->
+                  <div data-solo-affordances>${renderSoloAffordances(state)}</div>
                   ${renderSoloSceneInputBar(state)}
                 </div>
               </div>
@@ -3025,6 +3234,7 @@ export function dispatchSoloClick(target, handlers = {}) {
   if ((el = closest("[data-solo-action='reload-scene']"))) { handlers.onReload?.(); return true; }
   if ((el = closest("[data-solo-turn-retry]"))) { handlers.onTurnRetry?.(); return true; }
   if ((el = closest("[data-solo-turn-discard]"))) { handlers.onTurnDiscard?.(); return true; }
+  if ((el = closest("[data-solo-map-view]"))) { handlers.onMapView?.({ view: el.getAttribute("data-solo-map-view") }); return true; }
   if ((el = closest("[data-solo-banner-dismiss]"))) { handlers.onDismissBanner?.(); return true; }
   if ((el = closest("[data-solo-home]"))) { handlers.onReturnHome?.(); return true; }
   if ((el = closest("[data-solo-exit]"))) { handlers.onExit?.(); return true; }
@@ -3034,6 +3244,17 @@ export function dispatchSoloClick(target, handlers = {}) {
   if ((el = closest("[data-solo-char-tab]"))) { handlers.onCharTab?.(); return true; }
   if ((el = closest("[data-solo-roll-history-close]"))) { handlers.onRollHistoryClose?.(); return true; }
   if ((el = closest("[data-solo-roll-history]"))) { handlers.onRollHistory?.(); return true; }
+  // COMMITTED AFFORDANCES: an OK chip submits its pre-typed intent through the
+  // SAME turn path as typing (onAttempt); a gated chip surfaces its reason and
+  // never submits; "more" toggles the overflow. Delegated on the stable root so
+  // fast-path-patched chips stay live. Gated is matched BEFORE the OK chip.
+  if ((el = closest("[data-solo-affordances-more]"))) { handlers.onAffordancesMore?.(); return true; }
+  if ((el = closest("[data-solo-affordance-gated]"))) { handlers.onAffordanceGate?.({ reason: el.getAttribute("data-solo-affordance-gated") || "" }); return true; }
+  if ((el = closest("[data-solo-affordance]"))) {
+    const intent = String(el.getAttribute("data-solo-affordance") || "").trim();
+    if (intent) { handlers.onAttempt?.({ intent }); }
+    return true;
+  }
   return false;
 }
 
@@ -3494,6 +3715,9 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     pendingTurn: null,
     queuedTurn: null,
     busy: null,
+    // Map zoom (affordances-map-law Part B): default LOCAL floor plan; the region
+    // graph is behind the toggle. In-memory per session (owner ruling).
+    mapView: "local",
     banner: "",
     // "info" => amber/gold one-time wait notice; anything else => the default
     // (reddish, alert-styled) error banner.
@@ -3520,6 +3744,10 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     // and the roll-history drawer (opened from the roll banner's magnifier).
     characterTabOpen: false,
     rollHistoryOpen: false,
+    // Affordance chip row (affordances-map-law Part A): overflow toggle + the
+    // transient in-fiction reason shown when a gated chip is tapped.
+    affordancesExpanded: false,
+    affordanceGateNote: "",
     dialogueActive: false,
     dialogueTyped: false,
     dialogueHistory: [],
@@ -3695,6 +3923,14 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     if (rollBannerEl && "innerHTML" in rollBannerEl) {
       rollBannerEl.innerHTML = renderSoloRollBanner(state.scene || {});
     }
+    // AFFORDANCES: re-derive the chip row in place — committed state (present
+    // cast, exits, goals, objects) shifts every turn, so a within-location turn
+    // must repaint the chips. Taps are delegated on the stable root, so patching
+    // innerHTML never orphans a handler.
+    const affordEl = root.querySelector("[data-solo-affordances]");
+    if (affordEl && "innerHTML" in affordEl) {
+      affordEl.innerHTML = renderSoloAffordances(state);
+    }
 
     // #15-full: repaint the right rail in place (rolls / clock / cast / exits).
     // Because it's no longer in stageSignature, patch it unconditionally on every
@@ -3771,11 +4007,14 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       onReturnHome: handleReturnHome,
       onGuestSave: handleGuestSave,
       onDismissBanner: handleDismissBanner,
+      onMapView: handleMapView,
       onMenuToggle: handleMenuToggle,
       onCharTab: handleCharTabToggle,
       onCharTabClose: handleCharTabClose,
       onRollHistory: handleRollHistoryToggle,
       onRollHistoryClose: handleRollHistoryClose,
+      onAffordancesMore: handleAffordancesMore,
+      onAffordanceGate: handleAffordanceGate,
       onMove: handleMove,
       onInspect: handleInspect,
       onTalk: handleTalk,
@@ -4167,6 +4406,17 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     render();
   }
 
+  // Map zoom toggle (affordances-map-law Part B): flip the map surface between the
+  // LOCAL floor plan and the REGION graph. Map-surface only — no input-dock touch.
+  function handleMapView({ view } = {}) {
+    const next = view === "region" ? "region" : "local";
+    if (state.mapView === next) {
+      return;
+    }
+    state.mapView = next;
+    render();
+  }
+
   // Character-sheet tab (portrait badge) + roll-history drawer (banner magnifier).
   // Each is a single-open drawer: opening one closes the other so they never stack.
   function handleCharTabToggle() {
@@ -4185,6 +4435,17 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
   }
   function handleRollHistoryClose() {
     state.rollHistoryOpen = false;
+    render();
+  }
+
+  // Affordance chip row: overflow toggle + a gated-chip's in-fiction reason.
+  function handleAffordancesMore() {
+    state.affordancesExpanded = !state.affordancesExpanded;
+    render();
+  }
+  function handleAffordanceGate({ reason } = {}) {
+    // A gated affordance never submits — it surfaces its committed-state reason.
+    state.affordanceGateNote = typeof reason === "string" ? reason : "";
     render();
   }
 
@@ -4627,6 +4888,8 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     if (!submittedText) {
       return;
     }
+    // A real submission clears any lingering gated-affordance reason.
+    state.affordanceGateNote = "";
     // A turn is already processing: QUEUE this one (one deep) with a visible chip,
     // clear the box so the composer is ready, and flush when the current turn
     // settles. Replacing an existing queued turn keeps only the newest (one deep).

@@ -2102,6 +2102,61 @@ button:disabled {
   cursor: default;
 }
 
+/* COMMITTED AFFORDANCES (affordances-map-law Part A): a quiet chip row above the
+   input. Deliberately understated so the text box stays visually primary —
+   suggest, never limit. Reduced-motion safe (transitions only, respected below). */
+.solo-affordances {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.solo-affordance {
+  padding: 4px 11px;
+  background: var(--inset, #070708);
+  border: 1px solid var(--border, #202024);
+  border-radius: 999px;
+  color: var(--text-2, #b0b3bb);
+  font-family: inherit;
+  font-size: 0.86rem;
+  line-height: 1.2;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+.solo-affordance:hover,
+.solo-affordance:focus-visible {
+  border-color: var(--accent, #c2c6cf);
+  color: var(--text-bright, #f1f2f5);
+}
+/* Gated (INFEASIBLE) chip: distinct, dashed, muted — informative, never a submit. */
+.solo-affordance.is-gated {
+  border-style: dashed;
+  color: var(--text-faint, #6e6150);
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+.solo-affordance.is-gated:hover,
+.solo-affordance.is-gated:focus-visible {
+  border-color: var(--border, #202024);
+  color: var(--text-2, #b0b3bb);
+}
+.solo-affordance-more {
+  font-style: italic;
+  color: var(--text-faint, #6e6150);
+}
+.solo-affordance-gatenote {
+  font-family: var(--font-body, Georgia, serif);
+  font-size: 0.85rem;
+  font-style: italic;
+  color: var(--text-2, #b0b3bb);
+  opacity: 0.9;
+  margin: -2px 0 8px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .solo-affordance { transition: none; }
+}
+
 /* ---- Character sheet tab ---- */
 .solo-character-sheet {
   padding: 28px 40px;
@@ -2181,6 +2236,31 @@ button:disabled {
 /* Always-on presence map (light, read-only) — surfaces scene.battleMap tokens.
    CSS grid places each token at its (x,y); no drag/movement/fog here. */
 .solo-rail-presence { padding-bottom: 4px; }
+
+/* AFFORDANCES-MAP LAW (Part B) — the zoom toggle + region graph. */
+.solo-map-toggle { display: inline-flex; gap: 2px; margin-bottom: 8px; border: 1px solid var(--border, #202024); border-radius: 7px; overflow: hidden; }
+.solo-map-toggle-btn {
+  border: none; background: var(--inset, #070708); color: var(--text-muted, #b8a98f);
+  font-size: 11px; letter-spacing: .04em; padding: 4px 12px; cursor: pointer;
+}
+.solo-map-toggle-btn.active { background: var(--accent, #c9a15b); color: var(--on-accent, #1c1308); font-weight: 700; }
+.solo-map-toggle-btn:not(.active):hover { color: var(--text, #e8dcc6); }
+.solo-region { display: flex; flex-direction: column; gap: 8px; }
+.solo-region-empty { color: var(--text-muted, #8b8e96); font-size: 12px; font-style: italic; padding: 14px 4px; }
+.solo-region-svg { width: 100%; height: auto; background: var(--inset, #070708); border: 1px solid var(--border, #202024); border-radius: 8px; }
+.solo-region-edge { stroke: var(--line-strong, #34343b); stroke-width: 1.4; }
+.solo-region-edge.is-blocked { stroke: var(--danger, #b4462f); stroke-dasharray: 4 3; stroke-width: 1.6; }
+.solo-region-edge-label { fill: var(--text-muted, #b8a98f); font-size: 8px; }
+.solo-region-edge-block { fill: var(--danger, #b4462f); font-size: 9px; font-weight: 700; }
+.solo-region-glyph { fill: var(--text, #e8dcc6); font-size: 15px; }
+.solo-region-name { fill: var(--text-muted, #b8a98f); font-size: 8px; }
+.solo-region-here { fill: none; stroke: var(--accent, #c9a15b); stroke-width: 1.6; opacity: .9; }
+.solo-region-node.is-current .solo-region-glyph { fill: var(--accent-bright, #e7e9ee); }
+.solo-region-node.is-reachable { cursor: pointer; }
+.solo-region-node.is-reachable:hover .solo-region-glyph { fill: var(--accent, #c9a15b); }
+.solo-region-node.is-hazard .solo-region-glyph { fill: var(--danger, #b4462f); }
+.solo-region-goalpin { fill: var(--accent, #c9a15b); font-size: 10px; }
+.solo-region-frayed { fill: var(--text-muted, #6b6e76); font-size: 11px; }
 .solo-presence { display: flex; flex-direction: column; gap: 8px; }
 .solo-presence-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
 .solo-presence-loc { font-size: 12px; font-weight: 600; color: var(--accent-bright, #e7e9ee); text-align: right; }

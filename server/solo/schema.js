@@ -53,6 +53,10 @@ const NPC_EXPRESSION_SET = new Set(NPC_EXPRESSIONS);
 // user-seeded with AI filling the gaps.
 export const NPC_ORIGINS = ["procedural", "user", "hybrid"];
 const NPC_ORIGIN_SET = new Set(NPC_ORIGINS);
+// Committed location service kinds (affordances-map-law Part A). Starter set;
+// world-books extend it later. Drives the service-sourced action affordances.
+export const LOCATION_SERVICE_KINDS = ["inn", "market", "training"];
+const LOCATION_SERVICE_KIND_SET = new Set(LOCATION_SERVICE_KINDS);
 // Persistent world weather (owner checklist item 1). "clear" is the universal
 // default; transient sky-family hazard objectStates OVERLAY the persistent value
 // while active (worldClock.deriveWeather is the single derived read).
@@ -696,6 +700,28 @@ export function validateLocation(location) {
   validateContentMetadata(location, errors);
   if (location.rest !== undefined) {
     appendNestedErrors(errors, "rest", validateRestMetadata(location.rest));
+  }
+  // Committed location SERVICES (affordances-map-law Part A) — inn/market/
+  // training, seeded by worldgen/world-book/scenario templates. Optional/
+  // additive: legacy locations omit it and stay valid. Each service is
+  // { kind (enum), label?, available? (default true), reason? }.
+  if (location.services !== undefined && location.services !== null) {
+    if (!Array.isArray(location.services)) {
+      push(errors, "services", "Expected array");
+    } else {
+      location.services.forEach((svc, index) => {
+        if (!isPlainObject(svc)) {
+          push(errors, `services.${index}`, "Expected object");
+          return;
+        }
+        validateEnum(svc.kind, LOCATION_SERVICE_KIND_SET, `services.${index}.kind`, errors);
+        validateOptionalString(svc.label, `services.${index}.label`, errors);
+        if (svc.available !== undefined) {
+          validateBoolean(svc.available, `services.${index}.available`, errors);
+        }
+        validateOptionalString(svc.reason, `services.${index}.reason`, errors);
+      });
+    }
   }
 
   if (location.searchDetails !== undefined) {

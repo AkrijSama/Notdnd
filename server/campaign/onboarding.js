@@ -364,6 +364,10 @@ export async function createOnboardingCampaign(userId, characterInfo = {}) {
   startLocation.description =
     "A rain-soaked tavern in Ashenmoor. Lamp oil, wet wool, and iron-rich blood. The keeper watches the door from behind the bar.";
   startLocation.tags = Array.from(new Set([...(startLocation.tags || []), "ashenmoor", "tavern"]));
+  // Committed service (affordances-map-law Part A): the tavern offers lodging, so
+  // a "rent a room" affordance is real here (and INFEASIBLE — gated — anywhere
+  // that lacks an inn service).
+  startLocation.services = [{ kind: "inn", label: "Take a room upstairs" }];
 
   run.npcs = run.npcs || {};
   // Mint a procedural identity for each starting-area NPC upfront, before the

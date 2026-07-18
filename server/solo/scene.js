@@ -8,6 +8,7 @@ import { conditionStatusPayload } from "./conditions.js";
 import { getVisibleEntities, validateVisibleEntity } from "./entities.js";
 import { generatePlaceholderGmNarration, validateGmSceneOutput } from "./gm.js";
 import { getAvailableMoves } from "./movement.js";
+import { buildRegionMapPayload } from "./regionMap.js";
 import {
   placeEntities as placeLayoutEntities,
   placeMarkers as placeLayoutMarkers,
@@ -17,6 +18,7 @@ import { getQuestPayload } from "./quests.js";
 import { getRecentDevelopment } from "./momentum.js";
 import { individualReputation, factionTierForStanding } from "./reputation.js";
 import { buildFallbackSuggestions, sceneSuggestionsKey } from "./suggestions.js";
+import { deriveAffordances } from "./affordances.js";
 import { getUsableInventoryItems } from "./useItem.js";
 import {
   NPC_EXPRESSIONS,
@@ -1416,6 +1418,10 @@ export function buildSoloScenePayload(run, options = {}) {
     // Discovered POIs ride on the persisted `location.state.discovered` flag, so
     // they're remembered across reopen/reload; undiscovered places stay fogged.
     areaMap: buildAreaMapPayload(run),
+    // MIDDLE MAP (affordances-map-law Part B): the knowledge-gated region graph —
+    // ONLY visited-or-map-revealed nodes + edges between them (hidden geography
+    // never crosses the wire). Rendered behind the local⇄region zoom toggle.
+    regionMap: buildRegionMapPayload(run),
     // MVP quest engine: active quests + the main quest (or null) for this run.
     quests: getQuestPayload(run),
     // D.5 narrative substrate: a thin thread summary (id/kind/status/revealState).
@@ -1483,6 +1489,11 @@ export function buildSoloScenePayload(run, options = {}) {
       ? run.suggestedActions.slice(0, 3)
       : null;
   payload.suggestedActions = cachedSuggestions || buildFallbackSuggestions(run);
+  // COMMITTED AFFORDANCES (affordances-map-law Part A): pre-typed action chips
+  // derived from committed state only (services/cast/exits/goals/objects +
+  // standing verbs), each with a two-tier feasibility flag. The client renders a
+  // capped row above the input; a tap submits the intent through the normal turn.
+  payload.affordances = deriveAffordances(run);
   if (!cachedSuggestions && typeof options.enqueueSuggestions === "function") {
     try {
       options.enqueueSuggestions(suggestionsKey);
