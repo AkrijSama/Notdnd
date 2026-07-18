@@ -64,6 +64,31 @@ function checkpointFromGraph(graph) {
   return null;
 }
 
+// SINGLE SOURCE OF TRUTH for a style's checkpoint: the validated per-lane exports
+// (the SAME files the batch cook reads via resolveRecipeFile). The live path must
+// NOT diverge from them via a parallel hardcoded table — that drift served the
+// retired Illustrious for anime long after the Chunk-6 JANKU switch (owner debug
+// window, 2026-07-18). Probes the canonical style's exports across kinds and
+// returns the first validated checkpoint; null → the caller falls back to the
+// STYLE_PRESETS checkpoint (last resort, only for a style with ZERO exports).
+const RECIPE_KINDS_FOR_CHECKPOINT = Object.freeze(["portrait", "fullbody", "scene", "item", "world-card", "landscape"]);
+export function checkpointForStyle(style) {
+  const canon = toCanonicalStyle(style);
+  if (!canon) return null;
+  for (const kind of RECIPE_KINDS_FOR_CHECKPOINT) {
+    try {
+      if (!resolveRecipeFile(canon, kind)) continue;
+      const recipe = loadRecipe(canon, kind);
+      if (!isApiWorkflow(recipe)) continue;
+      const ckpt = checkpointFromGraph(recipe);
+      if (ckpt) return ckpt;
+    } catch {
+      // a bad/unreadable recipe never blocks resolution — try the next kind
+    }
+  }
+  return null;
+}
+
 // The validated per-lane workflow FILENAME a live (style, kind) resolves to, or
 // null when it falls back to the generic style workflow. Pure routing decision
 // (no injection, no ComfyUI) — the kind-routing table + serve attribution read it.
@@ -198,12 +223,14 @@ function makeProviderError(message, code = "UPSTREAM_AI_ERROR", statusCode = 502
 }
 
 // The three locked campaign art styles (mirrors ART_STYLES in solo/worldGen.js).
-// Checkpoints map to the two SDXL models actually installed on the local rig
-// (see comfyui-8gb-freeze-constraint): Juggernaut XI (a versatile realistic /
-// painterly base) covers both illustrated and cinematic; Illustrious XL (an
-// anime-native SDXL) covers anime. Any of these is overridable per style via
-// NOTDND_COMFYUI_CHECKPOINT_<STYLE> or globally via NOTDND_COMFYUI_CHECKPOINT,
-// so a hosted rig with different files needs no code change.
+// These checkpoints are the LAST-RESORT fallback ONLY — used when a style has ZERO
+// validated exports. The live path derives its checkpoint from the exports first
+// (checkpointForStyle, the single source of truth); this table must never be the
+// primary source again (the anime→Illustrious drift that survived the Chunk-6 JANKU
+// switch — owner debug window 2026-07-18). The drift test keeps this row honest:
+// anime→JANKU (canonical anime export), illustrated→dark-fantasy lane (nihilmania),
+// cinematic→realistic lane (Juggernaut). Overridable per style via
+// NOTDND_COMFYUI_CHECKPOINT_<STYLE> or globally via NOTDND_COMFYUI_CHECKPOINT.
 // Negatives steer each style away from its most common failure mode.
 const STYLE_PRESETS = Object.freeze({
   illustrated: {
@@ -213,7 +240,7 @@ const STYLE_PRESETS = Object.freeze({
     cfg: 6.5
   },
   anime: {
-    checkpoint: "Illustrious-XL-v2.0.safetensors",
+    checkpoint: "JANKUTrainedChenkinNoobai_v777.safetensors",
     negative:
       "photorealistic, photograph, 3d render, western comic, text, watermark, signature, logo, blurry, lowres, deformed hands",
     cfg: 7
@@ -420,7 +447,8 @@ export function comfyuiWorkflowForStyle(style, { prompt, seed, width, height } =
   const styleKey = normalizeStyle(style);
   const preset = STYLE_PRESETS[styleKey];
   const checkpoint =
-    env(`COMFYUI_CHECKPOINT_${styleKey.toUpperCase()}`) || env("COMFYUI_CHECKPOINT") || preset.checkpoint;
+    env(`COMFYUI_CHECKPOINT_${styleKey.toUpperCase()}`) || env("COMFYUI_CHECKPOINT") ||
+    checkpointForStyle(styleKey) || preset.checkpoint;
   const steps = Math.max(1, Number(env("COMFYUI_STEPS", "25")) || 25);
   const w = Number(width) > 0 ? Math.trunc(Number(width)) : 512;
   const h = Number(height) > 0 ? Math.trunc(Number(height)) : 768;

@@ -7,7 +7,7 @@ import test from "node:test";
 
 process.env.NOTDND_MOCK_IMAGE = "false";
 
-const { comfyuiImage, comfyuiWorkflowForStyle, comfyuiBaseUrl } = await import("../server/ai/comfyui.js");
+const { comfyuiImage, comfyuiWorkflowForStyle, comfyuiBaseUrl, checkpointForStyle } = await import("../server/ai/comfyui.js");
 const { generateImage } = await import("../server/ai/providers.js");
 
 const PNG_BYTES = Buffer.from(
@@ -73,28 +73,27 @@ function startStubComfyui({ failWorkflow = false } = {}) {
 }
 
 // ── 3-STYLE TOGGLE: the locked art style selects the workflow ────────────────
-test("each locked art style maps to an installed checkpoint per the 2-model rig; unknown falls back to illustrated", () => {
+test("each locked art style derives its checkpoint from its validated export, not a hardcoded table", () => {
+  const saved = process.env.NOTDND_COMFYUI_CHECKPOINT;
   delete process.env.NOTDND_COMFYUI_CHECKPOINT;
-  const byStyle = Object.fromEntries(
-    ["illustrated", "anime", "cinematic"].map((s) => [s, comfyuiWorkflowForStyle(s, { prompt: "a ruined chapel" })])
-  );
-  // Style keys stay distinct (routing is per-style)...
-  assert.equal(byStyle.illustrated.styleKey, "illustrated");
-  assert.equal(byStyle.anime.styleKey, "anime");
-  assert.equal(byStyle.cinematic.styleKey, "cinematic");
-  // ...but on the local 8GB rig only two SDXL checkpoints are installed, so the
-  // three styles fold onto them: Juggernaut XI = illustrated + cinematic,
-  // Illustrious XL = anime (director-set map).
-  assert.equal(byStyle.illustrated.checkpoint, "Juggernaut-XI-byRunDiffusion.safetensors");
-  assert.equal(byStyle.cinematic.checkpoint, "Juggernaut-XI-byRunDiffusion.safetensors");
-  assert.equal(byStyle.anime.checkpoint, "Illustrious-XL-v2.0.safetensors");
-  assert.equal(
-    new Set(Object.values(byStyle).map((r) => r.checkpoint)).size,
-    2,
-    "three styles fold onto the two installed checkpoints"
-  );
-  const fallback = comfyuiWorkflowForStyle("watercolor-nonsense", { prompt: "x" });
-  assert.equal(fallback.styleKey, "illustrated", "unknown style falls back to illustrated");
+  try {
+    for (const s of ["illustrated", "anime", "cinematic"]) {
+      const r = comfyuiWorkflowForStyle(s, { prompt: "a ruined chapel" });
+      assert.equal(r.styleKey, s, `styleKey stays ${s}`);
+      // SINGLE SOURCE OF TRUTH: the live checkpoint equals the style's export
+      // checkpoint (checkpointForStyle), never a parallel preset table.
+      assert.equal(r.checkpoint, checkpointForStyle(s), `${s} checkpoint comes from the export`);
+    }
+    // The Chunk-6 switch specifically: anime serves JANKU, never retired Illustrious
+    // (the 2026-07-18 drift). Exhaustive per-lane coverage: comfyui-checkpoint-drift.
+    assert.match(comfyuiWorkflowForStyle("anime", { prompt: "x" }).checkpoint, /JANKU/);
+    assert.doesNotMatch(comfyuiWorkflowForStyle("anime", { prompt: "x" }).checkpoint, /Illustrious/);
+    const fallback = comfyuiWorkflowForStyle("watercolor-nonsense", { prompt: "x" });
+    assert.equal(fallback.styleKey, "illustrated", "unknown style falls back to illustrated");
+  } finally {
+    if (saved === undefined) delete process.env.NOTDND_COMFYUI_CHECKPOINT;
+    else process.env.NOTDND_COMFYUI_CHECKPOINT = saved;
+  }
 });
 
 test("the workflow graph carries prompt/seed/dimensions and per-style checkpoint env override wins", () => {
