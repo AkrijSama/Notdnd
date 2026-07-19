@@ -4425,6 +4425,15 @@ button:disabled {
 /* ---- Solo home (post-login / post-exit destination) ------------------- */
 .solo-topbar {
   justify-content: space-between;
+  /* STACKING FIX (2026-07-18): .topbar sets `backdrop-filter: blur(6px)`, which
+     creates a stacking context — that TRAPPED the account dropdown (z-index:50
+     resolved header-relative, not app-relative) BEHIND the content panels painted
+     later in the DOM. Lift the whole header context above all content AND the
+     drawer tier (roll-history / character drawers = z-index 40) so the dropdown
+     always wins, while staying below the true full-screen modals (VN 80 / NPC 90).
+     Both header states (guest + logged-in) share this container, so both are fixed. */
+  position: relative;
+  z-index: 60;
 }
 .solo-home-main {
   display: flex;
@@ -4509,6 +4518,45 @@ button:disabled {
     max-width: 34ch;
   }
 }
+
+/* Public ROADMAP list (right-rail zone, data-driven from /api/roadmap). */
+.solo-roadmap-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.solo-roadmap-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.solo-roadmap-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-1, #d8c9ad);
+}
+.solo-roadmap-desc {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-muted, #94856f);
+}
+.solo-roadmap-status {
+  align-self: flex-start;
+  margin-top: 2px;
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--line, rgba(214, 217, 224, 0.16));
+  color: var(--text-2, #b6a589);
+}
+.solo-roadmap-status--building { color: #8fce9b; border-color: rgba(143, 206, 155, 0.4); }
+.solo-roadmap-status--next { color: #d7b56b; border-color: rgba(215, 181, 107, 0.4); }
+.solo-roadmap-status--planned { color: #9aa7c0; border-color: rgba(154, 167, 192, 0.35); }
 
 .solo-home {
   position: relative;

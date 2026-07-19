@@ -1,0 +1,10 @@
+{
+  "_note": "PUBLIC roadmap shown on the home dashboard (/api/roadmap → home roadmap zone). Owner-editable. Rules: owner-safe only — NO internal codenames, NO dates, NO percentages. status is one of: building | next | planned. Delete this file (or empty items) and the panel hides cleanly.",
+  "items": [
+    { "title": "Combat", "description": "Turn-based battles with a readable queue", "status": "building" },
+    { "title": "Romance arcs", "description": "Relationships that remember", "status": "building" },
+    { "title": "Bestiary", "description": "The wilds get teeth", "status": "next" },
+    { "title": "Creator worlds", "description": "Build your own universe", "status": "planned" },
+    { "title": "Ads stay off until 20,000 players", "description": "A public promise", "status": "planned" }
+  ]
+}

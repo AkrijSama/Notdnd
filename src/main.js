@@ -6,6 +6,8 @@ import { createApiClient } from "./api/client.js";
 // never reached. Only homebrewManager survives — it IS used on the live solo path.
 import { renderHomebrewManager, bindHomebrewManager, homebrewDraftToItem, itemToDraft } from "./components/homebrewManager.js";
 import { renderOnboardingFlow, bindOnboardingFlow, validatePortraitUpload } from "./components/onboardingFlow.js";
+import { renderGuestAuthPanel, resolveAuthAction } from "./components/authPanel.js";
+import { renderModulesZone, renderRoadmapZone } from "./components/homeZones.js";
 import { soloRunActionLabel } from "./state/runLabels.js";
 import { ABILITIES, pointBuyCost, rollAbilityScores } from "../server/solo/dndData.js";
 import {
@@ -42,6 +44,9 @@ const uiState = {
   activeRealtimeCampaignId: null,
   showAuthPanel: false,
   showAccountMenu: false,
+  // Public roadmap rows (docs/roadmap-public.json via /api/roadmap). Empty until
+  // loaded / when the data file is absent → the home roadmap zone hides cleanly.
+  roadmap: [],
   // Manual custom homebrew content (user-authored). customContentItems = the raw
   // stored items (for the manager); customContent = the SRD-shaped catalogs the
   // character creator + build consume. showHomebrew toggles the manager view.
@@ -181,7 +186,8 @@ function renderSoloHeader(user, accountMenuOpen = false, skin = "ashen", fontSet
                       <div class="account-dropdown account-dropdown--wide" role="menu">
                         ${
                           user.isGuest
-                            ? `<button class="account-dropdown-item" role="menuitem" data-action="guest-save">Save your adventure</button>`
+                            ? `<button class="account-dropdown-item" role="menuitem" data-action="guest-save">Save your adventure</button>
+                        <button class="account-dropdown-item" role="menuitem" data-action="guest-signin">Sign In</button>`
                             : `<button class="account-dropdown-item" role="menuitem" data-action="open-account">Account Settings</button>
                         <button class="account-dropdown-item" role="menuitem" data-action="open-homebrew">Manage Homebrew</button>`
                         }
@@ -313,9 +319,10 @@ function renderSoloHome(state) {
   // (.solo-home) keeps its current readable width; on wide/ultrawide viewports the
   // reserved zones below FRAME the otherwise-empty leather so the space reads as
   // "a dashboard with room to grow" rather than a narrow column floating in black.
-  // These zones are decorative placeholders for future modules (featured worlds,
-  // dispatches/news, story templates) — aria-hidden, and collapsed on narrow
-  // screens (see .solo-home-zone display rules in styles.css). No real content yet.
+  // Reserved dashboard zones that FRAME the play column on wide viewports. The
+  // left rail (featured worlds) is still a placeholder; the right rail is the
+  // data-driven ROADMAP (hides when the data file is absent); the shelf is MODULES
+  // (world-scoped adventures — never "story templates", per world-module-law).
   return `
     <main class="panel main solo-home-main">
       <div class="solo-home-dashboard">
@@ -347,14 +354,8 @@ function renderSoloHome(state) {
               : ""
           }
         </section>
-        <aside class="solo-home-zone solo-home-zone-rail solo-home-zone-right" aria-hidden="true">
-          <span class="solo-home-zone-kicker">Dispatches</span>
-          <span class="solo-home-zone-note">Release notes and world news. Coming soon.</span>
-        </aside>
-        <div class="solo-home-zone solo-home-zone-shelf" aria-hidden="true">
-          <span class="solo-home-zone-kicker">Story Templates</span>
-          <span class="solo-home-zone-note">Ready-made premises and one-shots to spin up fast. Coming soon.</span>
-        </div>
+        ${renderRoadmapZone(uiState.roadmap)}
+        ${renderModulesZone()}
       </div>
     </main>
   `;
@@ -366,28 +367,12 @@ function renderAuthPanel(state) {
     return "";
   }
 
-  // A guest who opens the account panel is here for one thing: keeping their
-  // adventure. Registering upgrades the guest identity in place (same user id
-  // server-side), so every run they started stays theirs.
+  // A guest who opens the account panel can EITHER keep their adventure (register,
+  // which upgrades the guest identity in place — same user id, every run retained)
+  // OR sign in to an existing account. The register-only dead-end was the
+  // 2026-07-18 login diagnosis; renderGuestAuthPanel now serves both modes.
   if (user && user.isGuest) {
-    return `
-      <section class="module-card solo-guest-save-card">
-        <div class="module-header">
-          <h3>Save your adventure</h3>
-          <span class="tag">Playing as guest</span>
-        </div>
-        <p class="small">Create a free account to keep this adventure. Your progress stays exactly where it is.</p>
-        <form id="auth-form" class="field">
-          <input name="displayName" placeholder="Display Name" />
-          <input name="email" type="email" placeholder="email" required />
-          <input name="password" type="password" placeholder="password (min 8 chars)" required />
-          <button type="submit">Save my adventure</button>
-        </form>
-        <div class="inline">
-          <button class="ghost" data-action="dismiss-auth">Keep playing as guest</button>
-        </div>
-      </section>
-    `;
+    return renderGuestAuthPanel(uiState.authMode);
   }
 
   if (user) {
@@ -1266,12 +1251,15 @@ async function handleAuthSubmit(form) {
   const password = String(payload.get("password") || "");
   const displayName = String(payload.get("displayName") || "").trim();
 
-  // A signed-in guest submitting the auth form is saving their adventure — the
-  // server upgrades the guest identity in place, so this is always a register.
+  // The submit action follows the panel MODE, not guest-ness. A guest in register
+  // mode saves their adventure (upgrade-in-place); a guest in login mode signs in
+  // to an existing account (the 2026-07-18 fix — the old `wasGuest` force made the
+  // sign-in path unreachable).
   const wasGuest = Boolean(store.getState().auth?.user?.isGuest);
+  const action = resolveAuthAction(uiState.authMode);
 
   try {
-    if (uiState.authMode === "register" || wasGuest) {
+    if (action === "register") {
       await apiClient.register({ email, password, displayName });
     } else {
       await apiClient.login({ email, password });
@@ -1297,7 +1285,9 @@ async function handleAuthSubmit(form) {
       };
     }
     await loadCampaignMembers();
-    uiState.authMessage = wasGuest
+    // "Adventure saved" only when a guest actually upgraded in place (register);
+    // a guest who signed IN moved to a different account, so it's a plain sign-in.
+    uiState.authMessage = wasGuest && action === "register"
       ? `Adventure saved. Signed in as ${me.user.displayName}`
       : `Signed in as ${me.user.displayName}`;
     uiState.showAuthPanel = false;
@@ -1336,6 +1326,17 @@ function bindAppEvents() {
     button.addEventListener("click", () => {
       uiState.showAuthPanel = true;
       uiState.authMode = "register";
+      uiState.showAccountMenu = false;
+      scheduleRender();
+    });
+  });
+
+  // Guest → sign in to an existing account: open the auth panel straight into
+  // login mode (no sign-out-first dance — the 2026-07-18 dead-end fix).
+  appRoot.querySelectorAll("[data-action='guest-signin']").forEach((button) => {
+    button.addEventListener("click", () => {
+      uiState.showAuthPanel = true;
+      uiState.authMode = "login";
       uiState.showAccountMenu = false;
       scheduleRender();
     });
@@ -1515,21 +1516,21 @@ function bindAppEvents() {
     openHomebrewBtn.addEventListener("click", () => openHomebrew());
   }
 
-  const authLoginBtn = appRoot.querySelector("[data-action='auth-mode-login']");
-  if (authLoginBtn) {
-    authLoginBtn.addEventListener("click", () => {
+  // querySelectorAll: the auth-mode toggles now appear in more than one place
+  // (the standalone auth card AND inside the guest panel / its warning link).
+  appRoot.querySelectorAll("[data-action='auth-mode-login']").forEach((btn) => {
+    btn.addEventListener("click", () => {
       uiState.authMode = "login";
       scheduleRender();
     });
-  }
+  });
 
-  const authRegisterBtn = appRoot.querySelector("[data-action='auth-mode-register']");
-  if (authRegisterBtn) {
-    authRegisterBtn.addEventListener("click", () => {
+  appRoot.querySelectorAll("[data-action='auth-mode-register']").forEach((btn) => {
+    btn.addEventListener("click", () => {
       uiState.authMode = "register";
       scheduleRender();
     });
-  }
+  });
 
   const authForm = appRoot.querySelector("#auth-form");
   if (authForm) {
@@ -1852,6 +1853,14 @@ async function bootstrap() {
   // panel would never be seen — the player would bounce straight back into the
   // run they just left.
   const wantsSave = new URLSearchParams(window.location.search).get("save") === "1";
+
+  // Public roadmap (best-effort, non-blocking): absent/failed → empty → zone hides.
+  try {
+    const rm = await apiClient.roadmap();
+    uiState.roadmap = Array.isArray(rm?.items) ? rm.items : [];
+  } catch {
+    uiState.roadmap = [];
+  }
 
   let authenticated = false;
   try {

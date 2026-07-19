@@ -1579,7 +1579,7 @@ export function updateAiJobStatus({ jobId, status, result, providerName, modelVa
   writeToDisk();
 }
 
-export function registerUser({ email, password, displayName }) {
+export function registerUser({ email, password, displayName }, { origin = null } = {}) {
   ensureDb();
 
   const normalizedEmail = normalizeEmail(email);
@@ -1604,6 +1604,10 @@ export function registerUser({ email, password, displayName }) {
     resetToken: null,
     resetTokenExpiresAt: null,
     isAdmin: false,
+    // origin: "harness" stamps a test/selfplay/battery-born account at creation so
+    // counts/queries can exclude harness debris (the standing purge-ledger rule).
+    // null for a real player registration.
+    origin: origin || null,
     tier: DEFAULT_USER_TIER,
     createdAt: nowEpochSec()
   };
@@ -1626,7 +1630,7 @@ export function registerUser({ email, password, displayName }) {
 // id, so a guest who later registers keeps everything via upgradeGuestUser —
 // nothing is copied or moved. Guests can never be logged into (email is null, so
 // loginUser can't find them); their only key is the session token minted here.
-export function createGuestUser() {
+export function createGuestUser({ origin = null } = {}) {
   ensureDb();
 
   const user = {
@@ -1640,6 +1644,9 @@ export function createGuestUser() {
     resetTokenExpiresAt: null,
     isAdmin: false,
     isGuest: true,
+    // Harness-born guest (selfplay/battery) → origin "harness"; a real anonymous
+    // player → null. Lets counts exclude harness debris from day one.
+    origin: origin || null,
     tier: DEFAULT_USER_TIER,
     createdAt: nowEpochSec()
   };
@@ -1660,7 +1667,7 @@ export function createGuestUser() {
 // Promotes a guest to a full account IN PLACE — same user id, so every run,
 // campaign membership, and usage counter the guest accumulated is retained
 // without any migration. Validation mirrors registerUser exactly.
-export function upgradeGuestUser(userId, { email, password, displayName }) {
+export function upgradeGuestUser(userId, { email, password, displayName }, { origin = null } = {}) {
   ensureDb();
 
   const user = getUserById(userId);
@@ -1689,6 +1696,8 @@ export function upgradeGuestUser(userId, { email, password, displayName }) {
   user.passwordSalt = passwordRecord.salt;
   user.passwordIterations = passwordRecord.iterations;
   user.isGuest = false;
+  // Preserve an existing harness stamp; a harness-context upgrade also stamps it.
+  user.origin = origin || user.origin || null;
 
   const token = createSessionForUser(user.id);
   writeToDisk();
@@ -1817,6 +1826,99 @@ export function logoutSessionToken(token) {
     writeToDisk();
   }
   return changed;
+}
+
+// ── USER-DATA HYGIENE (2026-07-18) ───────────────────────────────────────────
+// The live DB is near-all harness debris (selfplay/battery/diagnostic runs).
+// classifyUserOrigin buckets a user; tagHarnessUsers stamps the additive
+// origin:"harness" field so counts/queries can exclude debris; purgeUser removes
+// one account + its sessions. tagHarnessUsers only LABELS — deletion of the old
+// debris set is a later owner-approved pass.
+const HARNESS_LOCAL_PREFIX = /^(selfplay|autograde|e2e|smoke|battery|test|walk|walkb|clk|healthbeat|cook)([_+.-]|$)/;
+
+/**
+ * Buckets a user: "seed" (admin/bootstrap), "guest" (anonymous, ambiguous — never
+ * auto-tagged, since a real player can be a guest), "harness" (test/selfplay/
+ * battery/diagnostic-born), or "human" (potentially a real registration).
+ * Conservative: only clear test scaffolding is called harness.
+ */
+export function classifyUserOrigin(user) {
+  if (!user || typeof user !== "object") {
+    return "human";
+  }
+  if (user.origin === "harness") {
+    return "harness";
+  }
+  if (user.isAdmin) {
+    return "seed";
+  }
+  const email = String(user.email || "").trim().toLowerCase();
+  if (!email) {
+    return "guest";
+  }
+  const at = email.indexOf("@");
+  const local = at >= 0 ? email.slice(0, at) : email;
+  const domain = at >= 0 ? email.slice(at + 1) : "";
+  if (domain.endsWith(".local") || domain.endsWith(".test")) {
+    return "harness"; // *.local / *.test = test/diagnostic scaffolding
+  }
+  if (["x.com", "x.io", "t.co"].includes(domain)) {
+    return "harness"; // battery scratch domains observed in the fixtures
+  }
+  if (/(_|\+)\d{9,}(@|$)/.test(email) || /\d{12,}/.test(local)) {
+    return "harness"; // timestamped local-parts (flow_1782…, verify+1782…)
+  }
+  if (HARNESS_LOCAL_PREFIX.test(local)) {
+    return "harness";
+  }
+  return "human";
+}
+
+/**
+ * Counts users per class and (when apply=true) stamps origin:"harness" on every
+ * harness-classified user not already stamped. Never touches guest/human/seed
+ * records. Returns { counts, tagged }.
+ * @param {{ apply?: boolean }} [opts]
+ */
+export function tagHarnessUsers({ apply = false } = {}) {
+  ensureDb();
+  const counts = { seed: 0, guest: 0, harness: 0, human: 0 };
+  let tagged = 0;
+  for (const user of Array.isArray(db.users) ? db.users : []) {
+    const cls = classifyUserOrigin(user);
+    counts[cls] = (counts[cls] || 0) + 1;
+    if (apply && cls === "harness" && user.origin !== "harness") {
+      user.origin = "harness";
+      tagged += 1;
+    }
+  }
+  if (apply && tagged > 0) {
+    writeToDisk();
+  }
+  return { counts, tagged };
+}
+
+/**
+ * Removes one user and ALL their sessions (in-memory + persisted). Targeted, safe
+ * purge for a known account. Returns { removedUser, removedSessions }.
+ * @param {string} userId
+ */
+export function purgeUser(userId) {
+  ensureDb();
+  const id = String(userId || "");
+  const beforeUsers = db.users.length;
+  const beforeSessions = db.sessions.length;
+  db.users = db.users.filter((u) => u.id !== id);
+  db.sessions = db.sessions.filter((s) => s.userId !== id);
+  if (db.userPrefsByUser && db.userPrefsByUser[id]) {
+    delete db.userPrefsByUser[id];
+  }
+  const removedUser = beforeUsers - db.users.length;
+  const removedSessions = beforeSessions - db.sessions.length;
+  if (removedUser > 0 || removedSessions > 0) {
+    writeToDisk();
+  }
+  return { removedUser, removedSessions };
 }
 
 export function getUserBySessionToken(token) {

@@ -150,6 +150,11 @@ export function createApiClient(baseUrl = "") {
     async getState() {
       return request("/api/state");
     },
+    async roadmap() {
+      // Public roadmap rows (owner-editable data file, no auth). Absent file →
+      // { ok, items: [] } so the caller hides the panel cleanly.
+      return request("/api/roadmap");
+    },
     async listSoloRuns() {
       return request("/api/solo/runs");
     },

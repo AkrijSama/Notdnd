@@ -125,6 +125,7 @@ import { interpretAttemptWithGm } from "./gm/attemptInterpreter.js";
 import { attributeSceneDialogue, resolveGmNarration } from "./solo/gmProvider.js";
 import { buildGmRuntimeStatus } from "./solo/gmSmoke.js";
 import { enqueueDraftPortrait, enqueueImageJob, enqueueLocationImageJob, enqueuePlayerImageJob, enqueueVnBodyImageJob, getDraftPortrait, imageWorkerStatus, locationCanonFragment, writeUploadedBasePortrait } from "./solo/imageWorker.js";
+import { recordRequest, shouldLogRequest, lastAuthEvents } from "./logging/requestLog.js";
 import { enqueueIdentityJob, runIdentityJob, backfillNpcMannerisms, buildVoiceDirective } from "./solo/npcIdentity.js";
 import { buildDisagreementDirective, detectComplianceViolations } from "./gm/disagreementAudit.js";
 import { captureDeclaredGoal, honorGoalsOnAttempt, buildGoalsDirective, detectGoalIgnored } from "./solo/goals.js";
@@ -294,6 +295,19 @@ function requireAuth(req) {
     });
   }
   return user;
+}
+
+// Harness-origin stamp at account creation (user-data hygiene 2026-07-18): a
+// request tagged as battery/harness traffic — the x-notdnd-battery header
+// (selfplay driving a live server) OR the NOTDND_BATTERY env (harness-spawned
+// server) — mints accounts stamped origin:"harness" so counts/queries can exclude
+// debris from day one. A real player request → null.
+function originForRequest(req) {
+  if (req && req.headers && req.headers["x-notdnd-battery"]) {
+    return "harness";
+  }
+  const v = String((process.env.NOTDND_BATTERY ?? process.env.INKBORNE_BATTERY) || "").trim().toLowerCase();
+  return v !== "" && v !== "0" && v !== "false" && v !== "off" ? "harness" : null;
 }
 
 // Soft daily session cap. Throws a 429 (with a clear upgrade message) when a
@@ -1765,10 +1779,42 @@ async function handleApi(req, res) {
         last: getLastTurnTiming(),
         recent: getRecentTurnTimings()
       },
+      // Auth observability (2026-07-18): the last few auth requests (method, path,
+      // status, ms, inbound identity) so failed logins are visible at a glance —
+      // family with the image.worker health line. No tokens/passwords/bodies.
+      auth: {
+        recent: lastAuthEvents()
+      },
       cloudChain,
       nodeEnv: build.nodeEnv,
       debugDefault: debugPanelDefault()
     });
+    return true;
+  }
+
+  // Public roadmap (item 6): owner-editable data file (docs/roadmap-public.json),
+  // NOT hardcoded strings. Absent/unreadable/malformed → { items: [] } so the
+  // client hides the panel cleanly. No auth, no release-notes machinery.
+  if (req.method === "GET" && url.pathname === "/api/roadmap") {
+    let items = [];
+    try {
+      const raw = fsSync.readFileSync(path.resolve(process.cwd(), "docs/roadmap-public.json"), "utf8");
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed?.items)) {
+        items = parsed.items
+          .filter((it) => it && typeof it.title === "string" && it.title.trim())
+          .map((it) => ({
+            title: String(it.title).trim(),
+            description: typeof it.description === "string" ? it.description.trim() : "",
+            status: ["building", "next", "planned"].includes(String(it.status || "").toLowerCase())
+              ? String(it.status).toLowerCase()
+              : ""
+          }));
+      }
+    } catch {
+      items = [];
+    }
+    writeJson(res, 200, { ok: true, items });
     return true;
   }
 
@@ -1834,9 +1880,10 @@ async function handleApi(req, res) {
       // promoted in place (same user id), so every run/campaign they started
       // as a guest is retained — "save your adventure", not "start over".
       const current = resolveAuthUser(req);
+      const origin = originForRequest(req);
       const result = current?.isGuest
-        ? upgradeGuestUser(current.id, payload)
-        : registerUser(payload);
+        ? upgradeGuestUser(current.id, payload, { origin })
+        : registerUser(payload, { origin });
       writeJson(res, 200, { ok: true, ...result });
     } catch (error) {
       routeError(res, error);
@@ -1850,7 +1897,7 @@ async function handleApi(req, res) {
   if (req.method === "POST" && url.pathname === "/api/auth/guest") {
     try {
       enforceAuthRateLimit(req);
-      const result = createGuestUser();
+      const result = createGuestUser({ origin: originForRequest(req) });
       writeJson(res, 200, { ok: true, ...result });
     } catch (error) {
       routeError(res, error);
@@ -4101,8 +4148,11 @@ const server = http.createServer(async (req, res) => {
   // Outer safety net: any unguarded throw in a route would otherwise become an
   // unhandled rejection and exit the process, taking down every player. Catch
   // it here, log with request context, and return a 500 instead of crashing.
+  const reqStartedAt = Date.now();
+  let loggedPath = null;
   try {
     if ((req.url || "").startsWith("/api/")) {
+      loggedPath = new URL(req.url, `http://${req.headers.host || "localhost"}`).pathname;
       // BATTERY GUARD: a request tagged by a test harness (selfplay/e2e/smoke
       // send x-notdnd-battery) runs in a battery-scoped context so the AI layer
       // skips the subscription-bound codex lane even on a server whose own env
@@ -4126,6 +4176,32 @@ const server = http.createServer(async (req, res) => {
       // routeError(res, error) derives the status from error.statusCode; force a
       // generic 500 (no internals leaked) without changing routeError.
       routeError(res, Object.assign(new Error("Internal server error"), { statusCode: 500, code: "INTERNAL_ERROR" }));
+    }
+  } finally {
+    // Request log (observability): one line per /api request with the final status
+    // and the INBOUND identity. In `finally` so it runs even on the early return
+    // and after routeError. Best-effort — resolveAuthUser/recordRequest never throw
+    // into the response. Static/asset serving is excluded by shouldLogRequest.
+    if (loggedPath && shouldLogRequest(loggedPath)) {
+      let userId = null;
+      let isGuest = false;
+      try {
+        const who = resolveAuthUser(req);
+        if (who) {
+          userId = who.id;
+          isGuest = Boolean(who.isGuest);
+        }
+      } catch {
+        // identity resolution is best-effort; log as anon on failure
+      }
+      recordRequest({
+        method: req.method,
+        path: loggedPath,
+        status: res.statusCode,
+        durationMs: Date.now() - reqStartedAt,
+        userId,
+        isGuest
+      });
     }
   }
 });
