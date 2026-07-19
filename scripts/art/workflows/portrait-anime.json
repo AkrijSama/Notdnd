@@ -50,7 +50,7 @@
       "add_noise": "enable",
       "noise_seed": 721897303308196,
       "steps": 26,
-      "cfg": 5.2,
+      "cfg": 4.0,
       "sampler_name": "euler_ancestral",
       "scheduler": "normal",
       "start_at_step": 0,
