@@ -47,8 +47,8 @@ test("favicon is present (SVG + PNG fallback) and wired in index.html", () => {
 
 test("logo.svg is transparent + theme-ready; favicon.svg adapts to both browser themes", () => {
   const logo = fs.readFileSync(path.resolve("src/assets/logo.svg"), "utf8");
-  assert.doesNotMatch(logo, /<rect[^>]*width="64"[^>]*height="64"/, "no full-bleed background rect (stays transparent)");
-  assert.match(logo, /scale\(-1,\s*1\)/, "vertical mirror symmetry (Rorschach)");
+  assert.doesNotMatch(logo, /<rect[^>]*width="(64|100%|200)"[^>]*height="(64|100%|300)"/, "no full-bleed background rect (stays transparent)");
+  assert.match(logo, /matrix\(-1|scale\(-1/, "vertical mirror symmetry (Rorschach)");
   const fav = fs.readFileSync(path.resolve("src/assets/favicon.svg"), "utf8");
   assert.match(fav, /prefers-color-scheme:\s*dark/, "favicon swaps fill for dark tab bars");
   assert.match(fav, /#16233a/, "brand ink for light tab bars");

@@ -1,26 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="currentColor" role="img" aria-label="Inkborne">
-  <!--
-    PLACEHOLDER MARK — a symmetric "Rorschach ink-sword" per the owner's brief
-    (vertical mirror symmetry, transparent background). Rendered in the header via
-    a CSS mask, so its color comes from `currentColor` and inverts with the theme
-    (paper-light on the dark header, ink-dark on light surfaces) rather than baking
-    one fill. DROP-IN REPLACE with inkborne-logo-1b-rorschach.svg at this same path;
-    keep a transparent background so the mask stays clean.
-  -->
-  <!-- central sword, on the mirror axis (x=32) -->
-  <path d="M32 4 L36 20 L34 45 L30 45 L28 20 Z"/>
-  <rect x="16" y="43" width="32" height="4" rx="2"/>
-  <rect x="30" y="47" width="4" height="9"/>
-  <circle cx="32" cy="57" r="3.4"/>
-  <!-- symmetric ink blots: right half + a mirrored copy -->
-  <g>
-    <path d="M39 28 q8 -3 10 4 q2 7 -5 8 q-6 0 -5 -7 q0 -3 0 -5 Z"/>
-    <circle cx="51" cy="22" r="2.1"/>
-    <circle cx="46" cy="39" r="1.5"/>
-  </g>
-  <g transform="translate(64,0) scale(-1,1)">
-    <path d="M39 28 q8 -3 10 4 q2 7 -5 8 q-6 0 -5 -7 q0 -3 0 -5 Z"/>
-    <circle cx="51" cy="22" r="2.1"/>
-    <circle cx="46" cy="39" r="1.5"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 300" width="200" height="300">
+  <defs>
+    <g id="b-half">
+      <path d="M100,44 C112,40 121,29 129,37 C121,47 131,53 127,61 C151,45 178,50 190,72 C198,89 183,99 168,94 C150,88 139,98 133,89 C127,98 131,112 123,118 C125,142 119,162 121,190 C122,212 113,224 109,242 C107,256 103,263 100,274 Z"/>
+      <path d="M138,116 C150,120 160,132 156,150 C152,164 140,160 136,146 C133,133 130,122 138,116 Z"/>
+      <circle cx="176" cy="112" r="4.5"/>
+    </g>
+  </defs>
+  <g fill="currentColor">
+    <use href="#b-half"/>
+    <use href="#b-half" transform="matrix(-1 0 0 1 200 0)"/>
   </g>
 </svg>
