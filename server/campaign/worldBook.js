@@ -544,7 +544,7 @@ export function mintDefaultFront(frontId, book) {
         telegraph: "Someone mentions there is more to this place than the quiet threshold suggests.",
         brief: `Word reaches you of ${pull}, a reason to go further in.`,
         decision: "Chase the rumor deeper in, or take your time on kept ground first.",
-        trigger: { descriptive: { keywords: ["ask", "explore", "look", "listen", "rumor"] } },
+        trigger: { descriptive: { onCanon: { keywords: ["ask", "explore", "look", "listen", "rumor"] } } },
         payload: { fact: { text: `There is more to ${book.name} than its quiet threshold: ${pull}.`.slice(0, 280) } }
       },
       {
