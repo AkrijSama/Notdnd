@@ -33,9 +33,11 @@ test("log entries and the location card carry the shared measure class", () => {
   assert.match(loc, /solo-location-card solo-measure/);
 });
 
-test("styles.css defines the ONE measure rule: 1856px cap, left-anchored (owner 2026-07-19)", () => {
-  // Measure law amendment: cap RAISED to 1856px (= 1920 − 2×32), left-anchored.
-  assert.match(css, /\.solo-measure \{[^}]*max-width: 1856px;[^}]*margin-left: 0;[^}]*margin-right: auto;[^}]*text-align: left;/s);
+test("styles.css defines the ONE measure rule: NO cap, left-anchored (owner overrule 2026-07-19)", () => {
+  // Measure cap REMOVED (final): measure = container width − 32px padding, at every
+  // width. max-width:none, left-anchored (margin-left:0, no auto-centering).
+  assert.match(css, /\.solo-measure \{[^}]*max-width: none;[^}]*margin-left: 0;[^}]*margin-right: 0;[^}]*text-align: left;/s);
+  assert.doesNotMatch(css, /\.solo-measure \{[^}]*max-width:\s*\d/s); // no px/ch cap
   assert.match(css, /\.solo-measure p \{[^}]*text-align: left;/s);
   // the root-cause shorthand: .solo-scene-opening horizontal margins stay auto so
   // the later .solo-measure longhands (left clamp / right auto) win the cascade

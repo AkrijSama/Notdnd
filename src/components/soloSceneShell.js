@@ -2798,11 +2798,15 @@ export function renderSoloStageHud(scene = {}, state = {}) {
   const clock = renderSoloClock(scene);
   const present = Array.isArray(scene.cast) ? scene.cast.filter((c) => c && c.present !== false).length : 0;
   const region = state.mapView === "region";
-  // OVERLAY GRID (owner 2026-07-19): a SINGLE ROW of peer items, order
-  // [Local|Region toggle] [Map] [time/weather chip] [Cast·Exits]. Flat 8px gaps via
-  // the flex row; no nested column wrapper (the old .solo-hud-map stacked toggle+Map
-  // vertically and piled up). The clock chip is omitted when absent (empty-state law)
-  // — the row simply has one fewer item; order + gaps hold.
+  const menuOpen = Boolean(state.menuOpen);
+  // OVERLAY ROW (owner 2026-07-19, append): ONE flush-top row of peer chips, anchored
+  // top:8/right:8 to mirror the portrait dock's top-left 8px corner. Order
+  // [Local|Region toggle] [Map] [time/weather] [Cast·Exits] [⚙ settings gear]. The
+  // gear now DOCKS INTO the row as its rightmost element (was a separate box floating
+  // above) so there is no orphan gear and no corner where it overlaps a drawer's close
+  // ✕ — when any drawer opens the whole row hides (:has rule in styles.css). Uniform
+  // 28px chip height across every item (the tighter of the two — the time chip shrinks
+  // to it). The clock chip is omitted when absent (empty-state law); order + gaps hold.
   return `
     <div class="solo-stage-hud" data-solo-stage-hud>
       <div class="solo-map-toggle" role="group" aria-label="Map zoom">
@@ -2812,6 +2816,15 @@ export function renderSoloStageHud(scene = {}, state = {}) {
       <button type="button" class="solo-hud-map-open" data-solo-scene-map aria-haspopup="dialog" aria-label="Open map" title="Open map">⤢ Map</button>
       ${clock ? `<div class="solo-hud-time">${clock}</div>` : ""}
       <button type="button" class="solo-hud-info" data-solo-scene-info aria-haspopup="dialog" aria-label="Cast and exits" title="Cast · Exits">☰ Cast${present ? ` ${present}` : ""} · Exits</button>
+      <div class="solo-settings${menuOpen ? " open" : ""}">
+        <button type="button" class="solo-settings-btn" data-solo-menu-toggle aria-haspopup="true" aria-expanded="${menuOpen ? "true" : "false"}" aria-label="Menu" title="Menu">⚙</button>
+        ${menuOpen ? `
+          <div class="solo-settings-menu solo-cog-menu" role="menu">
+            ${state.isGuest ? `<button type="button" class="solo-cog-item" data-solo-guest-save role="menuitem">Save your adventure</button>` : ""}
+            <button type="button" class="solo-cog-item" data-solo-exit role="menuitem">Leave Adventure</button>
+          </div>
+        ` : ""}
+      </div>
     </div>`;
 }
 
@@ -3215,15 +3228,8 @@ export function renderSoloSceneShell(state = {}) {
       data-solo-font="${fontSet}"
       style="${soloThemeVarString(skin, fontSet)};--solo-log-scale:${logScale};"
     >
-      <div class="solo-settings ${state.menuOpen ? "open" : ""}">
-        <button type="button" class="solo-settings-btn" data-solo-menu-toggle aria-haspopup="true" aria-expanded="${state.menuOpen ? "true" : "false"}" aria-label="Menu" title="Menu">⚙</button>
-        ${state.menuOpen ? `
-          <div class="solo-settings-menu solo-cog-menu" role="menu">
-            ${state.isGuest ? `<button type="button" class="solo-cog-item" data-solo-guest-save role="menuitem">Save your adventure</button>` : ""}
-            <button type="button" class="solo-cog-item" data-solo-exit role="menuitem">Leave Adventure</button>
-          </div>
-        ` : ""}
-      </div>
+      ${/* settings gear moved INTO the stage-HUD overlay row (owner 2026-07-19 append):
+           it is now that row's rightmost chip, not a separate box floating above. */""}
       ${
         state.isGuest
           ? `<div class="solo-guest-banner">

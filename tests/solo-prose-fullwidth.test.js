@@ -32,10 +32,11 @@ test("the character dock is a FLOATING OVERLAY (absolute), not a reserved column
 test("the reading area spans full width; the sealed measure still governs line length", () => {
   // main is flex:1 — with the dock out of flow it fills page-edge to the rail.
   assert.match(rule(".solo-game-main {"), /flex:\s*1/);
-  // MEASURE LAW AMENDMENT (owner 2026-07-19): the cap is RAISED to 1856px (= 1920 −
-   // 2×32px padding) so lines fill common desktop; ultrawide caps, container full-bleed.
+  // MEASURE CAP REMOVED (owner overrule 2026-07-19, final): NO cap at any width — the
+  // prose wraps only at the container's 32px padding. The measure = container − padding.
   const measure = rule(".solo-measure {");
-  assert.match(measure, /max-width:\s*1856px/);
+  assert.match(measure, /max-width:\s*none/);
+  assert.doesNotMatch(measure, /max-width:\s*\d/); // no px/ch cap survives
   assert.match(measure, /text-align:\s*left/);
 });
 
@@ -49,7 +50,8 @@ test("no centered max-width FRAME: the game surface kills #app's 1400px band", (
 test("prose is LEFT-ANCHORED at the measure, never a centered column (the ultrawide bands)", () => {
   // The measured column hugs the padded LEFT edge — margin-left:0, not auto.
   const child = rule(".solo-narration-log > * {");
-  assert.match(child, /max-width:\s*1856px/); // raised measure (amendment 2026-07-19)
+  assert.match(child, /max-width:\s*none/); // NO cap (owner overrule 2026-07-19)
+  assert.doesNotMatch(child, /max-width:\s*\d/); // no px/ch cap survives
   assert.match(child, /margin-left:\s*0/);
   assert.doesNotMatch(child, /margin-left:\s*auto/);
   assert.match(rule(".solo-log-entry {"), /margin:\s*0 0 34px/);

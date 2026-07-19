@@ -1536,13 +1536,13 @@ button:disabled {
 
 /* ---- Theme settings tucked behind a ⚙ button (top-right) ---- */
 .solo-settings {
-  /* Extreme top-right corner, ABOVE the overlay bar (owner 2026-07-19). Gear box =
-     top 8 + 38px btn = bottom 46; the HUD bar starts at top 52 → they never overlap
-     at any width (vertical separation is width-independent). */
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  z-index: 32;
+  /* Docked INTO the stage-HUD overlay row as its rightmost chip (owner 2026-07-19
+     append) — no longer a separate corner box floating above the bar. position:relative
+     anchors the dropdown menu; the HUD row owns placement (top:8/right:8) and hides the
+     whole row when a drawer opens, so the gear can never overlap a drawer's close ✕. */
+  position: relative;
+  display: flex;
+  align-items: center;
 }
 .solo-settings-btn {
   list-style: none;
@@ -1970,9 +1970,12 @@ button:disabled {
    overlap. Positioned BELOW the settings gear (top:52 > gear bottom 46) so the two
    never intersect at any width. */
 .solo-stage-hud {
+  /* Flush to the banner's TOP-RIGHT corner (owner 2026-07-19 append): top:8/right:8
+     mirrors the portrait dock's top-left 8px so the two corners align. ONE nowrap row,
+     the settings gear docked in as the rightmost chip. */
   position: absolute;
-  top: 52px;
-  right: 12px;
+  top: 8px;
+  right: 8px;
   z-index: 30;
   display: flex;
   flex-direction: row;
@@ -1981,7 +1984,32 @@ button:disabled {
   gap: 8px;
   pointer-events: none; /* the container is click-through; its chips re-enable */
 }
-.solo-stage-hud > * { pointer-events: auto; }
+/* UNIFORM CHIP HEIGHT (owner append): every row item is exactly 28px tall — the tighter
+   of the two options (the time chip shrinks to it rather than the rest growing to ~40).
+   box-sizing keeps padded buttons at 28; flex-center vertically aligns the content. */
+.solo-stage-hud > * { pointer-events: auto; height: 28px; box-sizing: border-box; display: inline-flex; align-items: center; }
+.solo-stage-hud .solo-settings-btn { width: 28px; height: 28px; }
+.solo-stage-hud .solo-map-toggle { margin-bottom: 0; align-items: stretch; }
+.solo-stage-hud .solo-hud-time { padding: 0 9px; }
+.solo-stage-hud .solo-hud-time .solo-clock-icon { width: 18px; height: 18px; }
+.solo-stage-hud .solo-hud-time .solo-clock { gap: 6px; font-size: 12px; align-items: center; }
+/* TIGHTER LOOK (owner append): in the compact 28px chip the clock is a SINGLE line —
+   the sun/moon glyph carries the phase and the number carries the time, so the stacked
+   phase/day sub-label is dropped here (it still shows in the drawers). This is what
+   keeps the time chip from overflowing the uniform row height. */
+.solo-stage-hud .solo-hud-time .solo-clock-phase { display: none; }
+.solo-stage-hud .solo-hud-time .solo-clock-time { font-size: 12px; line-height: 1; }
+.solo-stage-hud .solo-hud-info { align-self: center; }
+/* GEAR/ROW vs DRAWERS (owner 2026-07-19): the overlay row sits at the exact top-right
+   corner where a right-slide drawer's close ✕ lands. When ANY drawer/overlay is open
+   the whole row (incl. the docked gear) hides — the drawer is the active surface and
+   the row returns the instant it closes. Covers map, Cast·Exits, character sheet, and
+   roll history in ONE rule. */
+.solo-game-shell:has(.solo-scene-drawer.is-open) .solo-stage-hud,
+.solo-game-shell:has(.solo-char-tab.is-open) .solo-stage-hud,
+.solo-game-shell:has(.solo-roll-history-layer.is-open) .solo-stage-hud {
+  display: none;
+}
 .solo-map-toggle,
 .solo-hud-map-open,
 .solo-hud-time,
@@ -3175,13 +3203,13 @@ button:disabled {
    line for readability; margin-left:0 anchors it to the padded left edge; the
    reclaimed width to the RIGHT is breathing room inside the full container. */
 .solo-narration-log > * {
-  /* MEASURE LAW AMENDMENT (owner 2026-07-19): the line-length cap is RAISED to fill
-     a 1920 viewport minus the 2×32px padding (= 1856px). At <=1920 the text fills
-     the padded width; only >2200 ultrawide caps at 1856 (container stays full-bleed,
-     text left-anchored). */
-  max-width: 1856px;
+  /* MEASURE CAP REMOVED (owner overrule 2026-07-19, final): NO line-length cap at any
+     width — the prose wraps only at the container's 32px right padding, at 1280, 1920,
+     3440, all of it. No max-width, no max-inline-size, no ch measure here or on any
+     descendant. Left-anchored: margin-left:0 hugs the padded left edge. */
+  max-width: none;
   margin-left: 0;
-  margin-right: auto;
+  margin-right: 0;
 }
 /* The input dock shares the same measure so the type-here line sits under the
    text column rather than stretching the full ultrawide width. */
@@ -5373,12 +5401,13 @@ textarea.hb-input { min-height: 76px; resize: vertical; }
    margin bug) can zero the anchoring again.
    ========================================================================= */
 .solo-measure {
-  /* MEASURE LAW AMENDMENT (owner 2026-07-19): shared line-length cap = 1856px
-     (1920 − 2×32). Fills the padded width at <=1920, caps only on ultrawide; the
-     input dock carries .solo-measure so the type-line aligns with the prose. */
-  max-width: 1856px;
+  /* MEASURE CAP REMOVED (owner overrule 2026-07-19, final): the shared measure is now
+     "container width minus padding" at EVERY width — no cap. Prose and the input dock
+     (which carries .solo-measure) both fill the padded width and wrap only at the 32px
+     right inset; ultrawide no longer caps. Left-anchored, never centered. */
+  max-width: none;
   margin-left: 0;
-  margin-right: auto;
+  margin-right: 0;
   /* Body prose is never center-aligned. */
   text-align: left;
 }

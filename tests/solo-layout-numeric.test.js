@@ -2,10 +2,12 @@
 //   1. Horizontal inset viewport-edge→text = EXACTLY 32px each side (>=1280), 16px
 //      below. The reading container's padding is the ONLY contributor — every
 //      ancestor is 0 (no stacking, no border, no clamp gutters).
-//   2. Measure cap RAISED to 1856px (= 1920 − 2×32) — fills common desktop, caps
-//      only on ultrawide with the container still full-bleed.
-//   3. Overlay bar = one nowrap flex row (items can't overlap); the settings gear
-//      is vertically disjoint from the bar at ALL widths (width-independent).
+//   2. Measure has NO cap (owner overrule 2026-07-19, final) — prose wraps only at the
+//      container's 32px padding; right edge = viewport − 32 at every width.
+//   3. Overlay row = one nowrap flex row, flush top-right (8/8), the settings gear
+//      DOCKED IN as the rightmost chip at a uniform 28px height. When any drawer/overlay
+//      is open the whole row hides; the portrait dock never intersects a drawer's close
+//      ✕ at 1280/1920/3440 (numeric bounding-box proof).
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -63,45 +65,116 @@ test("inset audit: below 1280w the flat inset is 16px (prose + dock)", () => {
   assert.match(media, /\.solo-input-dock\s*\{\s*padding-left:\s*16px;\s*padding-right:\s*16px/);
 });
 
-// ── ITEM 2: MEASURE VALUE ────────────────────────────────────────────────────
-test("measure cap = 1856px on both the prose and the shared dock measure", () => {
-  assert.match(rule(".solo-narration-log > * {"), /max-width:\s*1856px/);
-  assert.match(rule(".solo-measure {"), /max-width:\s*1856px/);
-  // sanity: 1856 = 1920 − 2×32 (fills a 1920 viewport at 32px padding)
-  assert.equal(1920 - 2 * 32, 1856);
+// px value of a `prop: Npx` in a rule body (null if absent).
+const pxProp = (body, prop) => {
+  const m = new RegExp(prop + ":\\s*(\\d+)px").exec(body);
+  return m ? parseInt(m[1], 10) : null;
+};
+// resolve a CSS width token to pixels at viewport w: min(Apx,Bvw) / clamp(min,pref,max) / Npx.
+function widthAt(spec, w) {
+  let m = /min\(\s*(\d+)px\s*,\s*(\d+)vw\s*\)/.exec(spec);
+  if (m) return Math.min(parseInt(m[1], 10), (parseInt(m[2], 10) / 100) * w);
+  m = /clamp\(\s*(\d+)px\s*,\s*(\d+)vw\s*,\s*(\d+)px\s*\)/.exec(spec);
+  if (m) return Math.max(parseInt(m[1], 10), Math.min((parseInt(m[2], 10) / 100) * w, parseInt(m[3], 10)));
+  m = /(\d+)px/.exec(spec);
+  return m ? parseInt(m[1], 10) : 0;
+}
+const widthTok = (body) => /width:\s*(min\([^)]*\)|clamp\([^)]*\)|\d+px)/.exec(body)[1];
+
+// ── ITEM 2: MEASURE — NO CAP (owner overrule 2026-07-19, final) ───────────────
+test("measure has NO cap: prose + shared dock measure wrap only at the 32px padding", () => {
+  assert.match(rule(".solo-narration-log > * {"), /max-width:\s*none/);
+  assert.match(rule(".solo-measure {"), /max-width:\s*none/);
+  // no px/ch cap survives on EITHER rule (a nested cap would defeat the container)
+  assert.doesNotMatch(rule(".solo-narration-log > * {"), /max-(width|inline-size):\s*\d/);
+  assert.doesNotMatch(rule(".solo-measure {"), /max-(width|inline-size):\s*\d/);
 });
 
-// ── ITEM 3: OVERLAY GRID — no pile-up, bounding-box proof ─────────────────────
-test("overlay bar is ONE nowrap flex row with 8px gaps (items cannot overlap)", () => {
+test("numeric: uncapped prose right edge = viewport − 32px (within 40px) at 1280 / 1920 / 3440", () => {
+  // With no cap and a flat 32px container inset, the text block fills container − padding,
+  // so its right edge = W − 32 at every width — trivially within 40px of (W − 32).
+  const logH = hpad(rule(".solo-narration-log {"));
+  assert.equal(logH.right, 32, "reading container right inset is a flat 32px (>=1280)");
+  for (const w of [1280, 1920, 3440]) {
+    const rightEdge = w - logH.right; // no max-width → block width = container − padding
+    const target = w - 32;
+    assert.ok(Math.abs(target - rightEdge) <= 40, `right edge ${rightEdge} within 40 of ${target} @${w}w`);
+  }
+});
+
+// ── ITEM 3: OVERLAY ROW — one nowrap row, gear docked in, uniform height ───────
+test("overlay row is ONE nowrap flex row with 8px gaps, flush top-right (8/8)", () => {
   const hud = rule(".solo-stage-hud {");
   assert.match(hud, /display:\s*flex/);
   assert.match(hud, /flex-direction:\s*row/);
   assert.match(hud, /flex-wrap:\s*nowrap/);
   assert.match(hud, /gap:\s*8px/);
+  assert.match(hud, /top:\s*8px/);   // flush to the banner top (mirrors the dock's 8px)
+  assert.match(hud, /right:\s*8px/);
+  // the portrait dock's top-left corner aligns at the same 8px offset
+  assert.match(rule(".solo-game-sidebar {"), /top:\s*8px/);
+  assert.match(rule(".solo-game-sidebar {"), /left:\s*8px/);
 });
 
-test("overlay renders the 4 items in order: [toggle] [Map] [time] [Cast·Exits]", () => {
+test("overlay renders 5 items in order: [toggle] [Map] [time] [Cast·Exits] [⚙ gear]", () => {
   const html = renderSoloStageHud(
     { cast: [{ present: true }], worldTime: { clock: "07:00", phase: "day", day: 1 } },
-    { mapView: "local" }
+    { mapView: "local", menuOpen: false }
   );
-  const iToggle = html.indexOf("solo-map-toggle");
-  const iMap = html.indexOf("solo-hud-map-open");
-  const iTime = html.indexOf("solo-hud-time");
-  const iInfo = html.indexOf("solo-hud-info");
-  assert.ok(iToggle >= 0 && iMap >= 0 && iTime >= 0 && iInfo >= 0, "all 4 slots present");
-  assert.ok(iToggle < iMap && iMap < iTime && iTime < iInfo, "order [toggle][Map][time][Cast·Exits]");
+  const idx = ["solo-map-toggle", "solo-hud-map-open", "solo-hud-time", "solo-hud-info", "solo-settings"].map((c) => html.indexOf(c));
+  assert.ok(idx.every((i) => i >= 0), "all 5 slots present");
+  for (let k = 1; k < idx.length; k++) assert.ok(idx[k - 1] < idx[k], "row order [toggle][Map][time][Cast·Exits][gear]");
+  // the gear is the RIGHTMOST chip (docked into the row, no orphan box above)
+  assert.ok(html.lastIndexOf("solo-settings") > html.lastIndexOf("solo-hud-info"), "gear is rightmost");
 });
 
-test("bounding-box: settings gear is disjoint from the overlay bar at 1280 / 1920 / 3440", () => {
-  // Gear box: .solo-settings top + .solo-settings-btn height. HUD bar top.
-  const gearTop = parseInt(rule(".solo-settings {").match(/top:\s*(\d+)px/)[1], 10);
-  const gearH = parseInt(rule(".solo-settings-btn {").match(/height:\s*(\d+)px/)[1], 10);
-  const hudTop = parseInt(rule(".solo-stage-hud {").match(/top:\s*(\d+)px/)[1], 10);
-  const gearBottom = gearTop + gearH;
-  // Vertical separation is WIDTH-INDEPENDENT (fixed px top + fixed height), so the
-  // gear box and the bar box cannot intersect at any viewport width.
+test("the gear is DOCKED INTO the row (relative, in-flow), not a floating corner box", () => {
+  const s = rule(".solo-settings {");
+  assert.match(s, /position:\s*relative/);
+  assert.doesNotMatch(s, /position:\s*absolute/);
+});
+
+test("uniform chip height: every overlay row item is 28px — the tighter look (gear shrank 38→28)", () => {
+  const item = rule(".solo-stage-hud > * {");
+  assert.match(item, /height:\s*28px/);
+  assert.match(item, /box-sizing:\s*border-box/);
+  const gearBtn = rule(".solo-stage-hud .solo-settings-btn {");
+  assert.match(gearBtn, /width:\s*28px/);
+  assert.match(gearBtn, /height:\s*28px/);
+});
+
+// ── DRAWER-OPEN NO-OVERLAP (main task, item 2) ────────────────────────────────
+test("drawer-open: the whole overlay row (gear included) hides for EVERY drawer/overlay", () => {
+  // If the row is display:none while a drawer is open, gear/toggles/Cast·Exits can't
+  // intersect that drawer's close ✕ — one :has rule per drawer family.
+  const i = CSS.indexOf(":has(.solo-scene-drawer.is-open)");
+  assert.ok(i >= 0, "map + Cast·Exits (scene-drawer) hide rule present");
+  const block = CSS.slice(i, CSS.indexOf("}", i) + 1);
+  assert.match(block, /\.solo-stage-hud/);
+  assert.match(block, /display:\s*none/);
+  assert.match(CSS, /:has\(\.solo-char-tab\.is-open\)\s*\.solo-stage-hud/);        // character sheet
+  assert.match(CSS, /:has\(\.solo-roll-history-layer\.is-open\)\s*\.solo-stage-hud/); // roll history
+});
+
+test("bounding-box: the portrait dock never intersects a drawer's close ✕ at 1280 / 1920 / 3440", () => {
+  const dock = rule(".solo-game-sidebar {");
+  const dockLeft = pxProp(dock, "left");                 // 8
+  const dockWTok = widthTok(dock);                       // clamp(128,12vw,172)
+  const sceneWTok = widthTok(rule(".solo-scene-drawer-panel {"));   // min(420,92vw) — map + Cast·Exits
+  const rollWTok = widthTok(rule(".solo-roll-history-drawer {"));   // min(360,88vw)
+  const charWTok = widthTok(rule(".solo-char-tab {"));             // min(340,84vw), left-slide within the dock
+  // char-tab head close ✕: right-aligned inside a 14px-padded head, ~20px glyph →
+  // its LEFT edge sits ≈ (panel right − 14 − 20) = panel right − 34.
+  const CLOSE_INSET = 34;
   for (const w of [1280, 1920, 3440]) {
-    assert.ok(gearBottom <= hudTop, `gear.bottom(${gearBottom}) <= hud.top(${hudTop}) at ${w}w → no overlap`);
+    const dockRight = dockLeft + widthAt(dockWTok, w);
+    // RIGHT-slide drawers: the entire panel is right of the dock → any control inside is too
+    const sceneLeft = w - widthAt(sceneWTok, w);
+    const rollLeft = w - widthAt(rollWTok, w);
+    assert.ok(dockRight < sceneLeft, `dock.right ${dockRight.toFixed(0)} < map/info panel.left ${sceneLeft.toFixed(0)} @${w}`);
+    assert.ok(dockRight < rollLeft, `dock.right ${dockRight.toFixed(0)} < roll panel.left ${rollLeft.toFixed(0)} @${w}`);
+    // LEFT-slide char-tab shares the dock origin; its close ✕ sits near the panel's right edge
+    const charCloseLeft = dockLeft + widthAt(charWTok, w) - CLOSE_INSET;
+    assert.ok(dockRight < charCloseLeft, `dock.right ${dockRight.toFixed(0)} < char-tab close-✕.left ${charCloseLeft.toFixed(0)} @${w}`);
   }
 });
