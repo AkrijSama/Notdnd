@@ -5304,8 +5304,10 @@ textarea.hb-input { min-height: 76px; resize: vertical; }
      button live at the bottom-right, and an open debug card there intercepted
      clicks on Attempt. Anchoring top-right keeps the panel clear of the play
      controls. pointer-events:none on the wrapper (auto on its children) means
-     the empty gutter around the FAB/card never eats a click meant for the game. */
-  top: 14px;
+     the empty gutter around the FAB/card never eats a click meant for the game.
+     top:52 clears the stage overlay row (top:8, 28px chips → bottom ~36px) so the
+     debug FAB no longer overlaps the gear / Cast·Exits chips (owner 2026-07-19). */
+  top: 52px;
   z-index: 2147483000;
   pointer-events: none;
   font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
