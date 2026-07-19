@@ -331,7 +331,8 @@ export function spawnChaosling({ baseAnimalId, tier = 2, seed, forceSkill = null
   if (!block) return null;
   if (forceSkill) block = withForcedSkill(block, forceSkill, seed);
   if (name) block = Object.freeze({ ...block, name });
-  return registerStatBlock(block);
+  registerStatBlock(block); // CLI 2's registerStatBlock returns the id; hand back the BLOCK
+  return block;
 }
 
 /**
