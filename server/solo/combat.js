@@ -160,14 +160,7 @@ function selectEnemyIntent(run, combat, combatant, round) {
   if (!intents.length) {
     return { intentId: "wait", kind: "defend", telegraph: "watches, waiting", hidden: false };
   }
-  const seed = hashSeed(`${run.worldSeed || run.runId}|combat|${combat.combatId}|${round}|${combatant.combatantId}`);
-  const totalWeight = intents.reduce((s, i) => s + (i.weight || 1), 0);
-  let pick = seed % totalWeight;
-  let chosen = intents[0];
-  for (const intent of intents) {
-    pick -= intent.weight || 1;
-    if (pick < 0) { chosen = intent; break; }
-  }
+  const chosen = pickTacticIntent(run, combat, combatant, block, intents, round);
   return {
     intentId: chosen.intentId,
     kind: chosen.kind,
@@ -175,6 +168,60 @@ function selectEnemyIntent(run, combat, combatant, round) {
     telegraph: chosen.telegraph || "",
     hidden: chosen.hidden === true
   };
+}
+
+// TACTIC POLICY (A2, audit 5d548ac) — a small data-driven layer over the weighted
+// intents (Law-6), replacing the pure dice-bag. Rules, in order:
+//   (1) OPENER — a creature leads with its SIGNATURE on its first turn: the
+//       rider-bearing attack (the Grey opens with the chill-bite, so its tempo-sapping
+//       signature is FELT immediately), else the highest-weight attack.
+//   (2) BELOW-HALF SHIFT — a vicious creature turns DESPERATE (drops circling/defensive
+//       intents, presses attacks); a cowardly one leans defensive.
+//   (3) PRESS ADVANTAGE — if the player is already slowed/controlled, a vicious
+//       creature favors attacks to keep the tempo it just stole.
+// A block with NO behaviors falls back to the plain weighted pick (backward-compatible
+// with every existing creature + test). Deterministic (seeded), like before.
+function pickTacticIntent(run, combat, combatant, block, intents, round) {
+  const b = block?.behaviors || {};
+  const attacks = intents.filter((i) => i.kind === "attack");
+  // (1) Opener — first turn leads with the signature attack.
+  if (!combatant.hasOpened && attacks.length) {
+    const withRider = attacks.find((i) => (block?.attacks || []).some((a) => a.attackId === i.attackId && a.rider));
+    return withRider || attacks.reduce((m, i) => ((i.weight || 1) > (m.weight || 1) ? i : m), attacks[0]);
+  }
+  const hasBehaviors = b && (b.vicious || b.cowardly || b.defensive);
+  if (!hasBehaviors) return weightedPick(run, combat, combatant, intents, round); // backward-compatible
+  const hpFrac = (combatant.hp?.current ?? 0) / (combatant.hp?.max ?? 1);
+  const desperate = b.vicious && hpFrac <= 0.5;
+  const pressing = b.vicious && playerIsControlled(combat);
+  const pool = intents.map((i) => {
+    let w = i.weight || 1;
+    if (i.kind === "attack" && (desperate || pressing)) w *= 3;   // press the attack
+    if (i.kind !== "attack" && desperate) w = 0;                   // a desperate beast stops circling
+    if (i.kind !== "attack" && b.cowardly && hpFrac <= 0.5) w *= 2; // a coward turtles
+    return { intent: i, w: Math.max(0, w) };
+  }).filter((x) => x.w > 0);
+  const usable = pool.length ? pool : intents.map((i) => ({ intent: i, w: i.weight || 1 }));
+  const total = usable.reduce((s, x) => s + x.w, 0);
+  const seed = hashSeed(`${run.worldSeed || run.runId}|combat|${combat.combatId}|${round}|${combatant.combatantId}`);
+  let pick = seed % total;
+  for (const x of usable) { pick -= x.w; if (pick < 0) return x.intent; }
+  return usable[0].intent;
+}
+
+function weightedPick(run, combat, combatant, intents, round) {
+  const seed = hashSeed(`${run.worldSeed || run.runId}|combat|${combat.combatId}|${round}|${combatant.combatantId}`);
+  const total = intents.reduce((s, i) => s + (i.weight || 1), 0);
+  let pick = seed % total;
+  for (const intent of intents) { pick -= intent.weight || 1; if (pick < 0) return intent; }
+  return intents[0];
+}
+
+// Is the player currently under a tempo/turn-denial control (the signal a vicious
+// creature presses)? slow (the Grey's chill), stun, or sleep.
+function playerIsControlled(combat) {
+  const p = combat?.combatants?.player;
+  return Array.isArray(p?.conditions) && p.conditions.some((c) => ["slow", "stun", "sleep"].includes(c.engineStatus));
 }
 
 function livingEnemies(combat) {
@@ -375,7 +422,9 @@ function runEnemyTurnsUntilPlayer(run, combat, actions, options) {
 }
 
 function actionWeight(route) {
-  return route === "use_item" ? ACTION_WEIGHT.light : ACTION_WEIGHT.standard;
+  if (route === "use_item") return ACTION_WEIGHT.light;
+  if (route === "defend") return ACTION_WEIGHT.heavy; // guarding trades tempo for safety (the DEFEND tick trade)
+  return ACTION_WEIGHT.standard;
 }
 
 // The per-turn payload: the ORDER-ONLY forecast (never raw ticks) + wound-band
@@ -433,8 +482,53 @@ function resolvePlayerTurn(run, combat, playerAction, actions, options) {
     resolvePlayerStunt(run, combat, playerAction, actions, options);
     return;
   }
+  if (route === "focus") {
+    // Essence-sight FOCUS is the Babel MC's origin active; anyone else "studying" the
+    // foe gets a plain maneuver (a stunt for the opening).
+    if (playerHasFocus(run)) resolvePlayerFocus(run, combat, playerAction, actions, options);
+    else resolvePlayerStunt(run, combat, { ...playerAction, stuntEffect: "advantage_next_attack" }, actions, options);
+    return;
+  }
   // attack (default)
   resolvePlayerAttack(run, combat, playerAction, actions, options);
+}
+
+// The essence-sight FOCUS active (The Beckoned's origin grant). Others fall back to a
+// stunt (see resolvePlayerTurn).
+function playerHasFocus(run) {
+  const o = `${run.player?.origin || ""} ${run.player?.originFeat || ""}`.toLowerCase();
+  return /beckoned|status window|essence/.test(o) || Boolean(run.flags?.essenceSight);
+}
+
+// ESSENCE-SIGHT FOCUS (A2, the MC's defining trait as a combat verb): a one-turn READ.
+// It reveals the target's next intent (its telegraph + kind — the "intent weighting"
+// the audit asked to surface) AND grants advantage on the player's next attack against
+// that target (the bloodhound advantage). No damage; it spends the turn — info + an
+// opening traded for a turn of offense. Counters a hidden telegraph ("???").
+function resolvePlayerFocus(run, combat, playerAction, actions, options) {
+  const targetId = playerAction.target || livingEnemies(combat)[0]?.combatantId;
+  const enemy = combat.combatants[targetId];
+  if (!enemy) {
+    actions.push({ actor: "player", kind: "focus", target: null, note: "no_target", roll: null, damage: null, targetTransition: null });
+    return;
+  }
+  // Read (or select + lock) the target's next intent, so its telegraph is revealed even
+  // if the creature was masking it (telepathy's intent-mask is countered here).
+  const intent = combat.enemyIntents[targetId] || selectEnemyIntent(run, combat, enemy, combat.turn + 1);
+  combat.enemyIntents = combat.enemyIntents || {};
+  combat.enemyIntents[targetId] = intent;
+  enemy.revealed = true;
+  run.player.flags = run.player.flags || {};
+  run.player.flags.advantageNextAttack = true; // the read grants the opening
+  actions.push({
+    actor: "player",
+    kind: "focus",
+    target: targetId,
+    read: { intentId: intent.intentId, kind: intent.kind, telegraph: intent.telegraph || "" },
+    roll: null,
+    damage: null,
+    targetTransition: null
+  });
 }
 
 // THREE-BAND ATTACK (Ch3 Law 2 applied to combat, per the CTB spec §"survives
@@ -556,6 +650,7 @@ function resolveEnemyTurn(run, combat, enemy, actions, options) {
   // stat block also marks them injured (a wounded animal still bolts — the Grey).
   if (maybeEnemyFlee(run, combat, enemy, actions, options)) return;
   const intent = combat.enemyIntents[enemy.combatantId] || selectEnemyIntent(run, combat, enemy, combat.turn);
+  enemy.hasOpened = true; // the opener fires once; subsequent turns run the full policy
   if (intent.kind !== "attack") {
     // defend/other: mutate only combat state (no player damage).
     actions.push({ actor: enemy.combatantId, kind: intent.kind, intentId: intent.intentId, roll: null, damage: null, targetTransition: null });
@@ -581,7 +676,11 @@ function resolveEnemyTurn(run, combat, enemy, actions, options) {
   let transition = null;
   let riderApplied = null;
   if (hit && atk) {
-    const dmg = Math.max(1, rollDice(atk.damage, { rng: options.rng }).total);
+    let dmg = Math.max(1, rollDice(atk.damage, { rng: options.rng }).total);
+    // DEFEND (A2): a guarding player HALVES the blow that lands (in addition to the
+    // to-hit disadvantage above). The tempo cost of guarding is the heavier action
+    // weight (actionWeight("defend") = heavy) — damage reduction bought with tempo.
+    if (defending) dmg = Math.max(1, Math.ceil(dmg * 0.5));
     const rec = applyDamage(run, dmg, { crit, now: isoNow(options) });
     damageRecord = { amount: rec.amount, type: atk.damageType || "physical" };
     transition = rec.dead ? "dead" : rec.dying ? "dying" : rec.downed ? "downed" : "hurt";

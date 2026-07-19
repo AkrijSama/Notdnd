@@ -33,6 +33,7 @@ export const COMBAT_ACTIONS = Object.freeze([
   "flee",
   "use_item",
   "stunt",
+  "focus",
   "hold_on"
 ]);
 
@@ -71,6 +72,12 @@ const FLEE_RE =
 // not under flee.
 const DEFEND_RE =
   /\b(defend|defending|guard|guarding|block|blocking|parry|parrying|brace|bracing|shield|shielding|take cover|hunker|dodge|dodging|deflect|deflecting|on the defensive)\b/i;
+
+// FOCUS: the essence-sight read (the Babel MC's origin active) — study the foe for its
+// next intent + an opening. A deliberate one-turn maneuver, checked after flee/defend
+// (so "dodge" stays defend) and before attack/stunt (so "study it" isn't a bare swing).
+const FOCUS_RE =
+  /\b(focus|focusing|concentrate|concentrating|study|studying|examine|examining|size (?:it|him|her|them|up)|read (?:it|its|him|her|them|the)|sense|sensing|attune|attuning|essence[- ]?sight|look closer|get a read)\b/i;
 
 // USE-ITEM signal: an explicit consume/apply verb. Grounding (does the player
 // actually hold the named item?) is the caller's job via context.heldItems —
@@ -217,6 +224,12 @@ export function classifyCombatInput(intent, context = {}) {
   // (4) DEFEND.
   if (DEFEND_RE.test(text)) {
     return decision("defend", "turn", { confidence: "high", reason: "defend_verb" });
+  }
+
+  // (4b) FOCUS — the essence-sight read. The resolver decides whether it's the real
+  // read (Beckoned MC) or a plain maneuver (anyone else); both spend the turn.
+  if (FOCUS_RE.test(text)) {
+    return decision("focus", "turn", { confidence: "medium", reason: "focus_verb" });
   }
 
   // (5) USE ITEM — only when grounded on a real held item. A use verb naming an

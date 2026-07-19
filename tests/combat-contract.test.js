@@ -28,7 +28,7 @@ const soloEnemy = { enemies: [HOUND], heldItems: [POTION] };
 
 // ── sealed enums ─────────────────────────────────────────────────────────────
 test("action space + boons + costs are closed sets", () => {
-  assert.deepEqual(COMBAT_ACTIONS, ["attack", "defend", "flee", "use_item", "stunt", "hold_on"]);
+  assert.deepEqual(COMBAT_ACTIONS, ["attack", "defend", "flee", "use_item", "stunt", "focus", "hold_on"]);
   assert.deepEqual(COMBAT_STUNT_EFFECTS, [
     "advantage_next_attack",
     "enemy_disadvantage",
