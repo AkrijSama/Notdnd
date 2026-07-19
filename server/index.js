@@ -138,6 +138,7 @@ import { captureDeclaredGoal, honorGoalsOnAttempt, buildGoalsDirective, detectGo
 import { registerGoalThread, detectDemonstratedGoal, armDemonstratedAsk, detectDemonstratedAnswer, captureDemonstratedGoal, clearDemonstratedPrompt, detectGoalAcceptIntent, captureOfferedGoal, buildDemonstratedAskDirective } from "./solo/goalDoors.js";
 import { detectStarterZoneLostMotif } from "./solo/starterZone.js";
 import { detectFabricatedCombatNumbers, scrubFabricatedCombatNumbers } from "./solo/combatAudit.js";
+import { detectGeometryContradiction } from "./solo/geometryAudit.js";
 import { buildLayoutDirective, ensureLocationLayout } from "./solo/layout.js";
 import { enforceRomanceRegister, stripRomanceRegister, ROMANCE_CORRECTIVE_CLAUSE } from "./gm/romanceEnforcement.js";
 import { buildNpcIntroDirective, buildSoloScenePayload, collectNpcsWithPendingIntro } from "./solo/scene.js";
@@ -2447,6 +2448,15 @@ async function handleApi(req, res) {
           logTurnEvent(
             responseRun.runId,
             `combat-number SCRUBBED @${responseRun.combat?.combatId || "?"}: ${fab.scrubbed.map((p) => `"${p}"`).join(" | ")} user=${user?.id || "anon"}`
+          );
+        }
+        // GEOMETRY AUDITOR (B3): narration that invents a door/gate/wall/water the
+        // committed minted layout does not have (figurative language guarded). Log-only.
+        const geoContradictions = detectGeometryContradiction(gmNarration, responseRun);
+        if (geoContradictions.length > 0) {
+          logTurnEvent(
+            responseRun.runId,
+            `geometry-contradiction VIOLATION @${responseRun.currentLocationId}: ${geoContradictions.map((g) => `[${g.kind}] "${g.phrase}"`).join(" | ")} user=${user?.id || "anon"}`
           );
         }
       }
