@@ -140,6 +140,19 @@ export function renderBody(status) {
   ].join("");
 }
 
+// GM-KEY BANNER (audit 5d548ac #1): an ALWAYS-visible alert when the GM key is
+// missing/placeholder/invalid — so a keyless server can never masquerade as "the GM
+// went quiet." Pure + testable; "" when the key is fine (no banner). Driven by the
+// same /api/debug/status poll as the panel, but shown regardless of panel visibility.
+export function renderGmKeyBanner(status) {
+  const pf = status && status.preflight && status.preflight.gmKey;
+  if (!pf || pf.ok !== false) {
+    return "";
+  }
+  const reason = escape(pf.reason || "The AI GM key is missing or invalid.");
+  return `<div class="gmkey-banner" role="alert">⚠ AI GM offline — ${reason} Get a free key at openrouter.ai, set INKBORNE_LLM_API_KEY in .env, then restart.</div>`;
+}
+
 /**
  * Mounts the debug panel once. Idempotent — a second call is a no-op.
  * @param {{ debugStatus: () => Promise<object> }} apiClient
@@ -162,6 +175,14 @@ export function mountDebugPanel(apiClient) {
       <div class="dbg-body"></div>
     </section>`;
   document.body.appendChild(wrap);
+
+  // The always-visible GM-key banner (separate from the toggleable panel).
+  let banner = document.getElementById("inkborne-gmkey-banner");
+  if (!banner) {
+    banner = document.createElement("div");
+    banner.id = "inkborne-gmkey-banner";
+    document.body.appendChild(banner);
+  }
 
   const card = wrap.querySelector(".dbg-card");
   const body = wrap.querySelector(".dbg-body");
@@ -200,6 +221,11 @@ export function mountDebugPanel(apiClient) {
     try {
       const status = await apiClient.debugStatus();
       lastStatus = status;
+      // Update the always-visible key banner on every poll (shows even while the
+      // panel itself is hidden — the whole point of surfacing a keyless server).
+      if (banner) {
+        banner.innerHTML = renderGmKeyBanner(status);
+      }
       // On the very first successful poll, if the user has no stored preference,
       // adopt the server's default (dev → shown, prod → hidden).
       if (serverDefault === null) {

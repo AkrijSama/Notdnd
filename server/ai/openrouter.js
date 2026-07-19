@@ -280,12 +280,30 @@ export function resolveCloudChain() {
   return lanes.length ? lanes : null;
 }
 
-function rawApiKey() {
+// Values shipped in .env.example (or common paste-mistakes) that must be treated as
+// NO KEY. Leaving the placeholder in place was the #1 silent-failure trap (audit
+// 5d548ac): rawApiKey used to return it as a real key, so every turn fired a bogus
+// 401 and then quietly degraded to template prose — indistinguishable from "the GM
+// went quiet." A placeholder / whitespace value is now NO KEY, full stop.
+const PLACEHOLDER_API_KEYS = new Set([
+  "your_api_key_here", "your-api-key-here", "your_api_key", "changeme", "change_me",
+  "replace_me", "replace-me", "sk-your-key", "xxx", "todo", "none"
+]);
+function isPlaceholderApiKey(value) {
+  const v = String(value || "").trim().toLowerCase();
+  return v === "" || PLACEHOLDER_API_KEYS.has(v);
+}
+function rawEnvApiKey() {
   // INKBORNE_LLM_API_KEY is the primary name; NOTDND_LLM_API_KEY (legacy brand)
   // and OPENROUTER_API_KEY remain fallbacks so existing setups keep working.
   return String(
     (process.env.INKBORNE_LLM_API_KEY ?? process.env.NOTDND_LLM_API_KEY) || process.env.OPENROUTER_API_KEY || ""
   ).trim();
+}
+function rawApiKey() {
+  const raw = rawEnvApiKey();
+  // A placeholder / whitespace value is NO KEY — never a bogus Authorization header.
+  return isPlaceholderApiKey(raw) ? "" : raw;
 }
 
 function ensureApiKey() {
@@ -297,6 +315,40 @@ function ensureApiKey() {
     throw error;
   }
   return apiKey;
+}
+
+// Classify the GM key for the boot preflight + client banner. Distinguishes MISSING
+// (unset) from PLACEHOLDER (the .env.example value left in) from PRESENT — so the UI
+// can say exactly what's wrong and how to fix it.
+export function gmKeyState() {
+  const rawEnv = rawEnvApiKey();
+  if (rawEnv === "") return { state: "missing", ok: false, reason: "No GM key set — set INKBORNE_LLM_API_KEY in .env." };
+  if (isPlaceholderApiKey(rawEnv)) return { state: "placeholder", ok: false, reason: "The .env placeholder key is still in place — replace it with a real key." };
+  if (mockModeEnabled()) return { state: "mock", ok: true, reason: "Mock mode — no real GM key required." };
+  return { state: "present", ok: true, reason: "GM key present." };
+}
+
+// One cheap boot verification: a models-LIST GET (never a generation) confirms a real
+// key actually authenticates. Skipped in mock mode. Bounded timeout; never throws — a
+// transient network blip leaves a PRESENT key "unverified" (amber), not red.
+export async function verifyGmKey({ fetchImpl = globalThis.fetch, timeoutMs = 6000 } = {}) {
+  if (mockModeEnabled()) return { state: "mock", ok: true, verified: false, reason: "Mock mode — GM key not required." };
+  const ks = gmKeyState();
+  if (!ks.ok) return { ...ks, verified: false };
+  const key = rawApiKey();
+  const base = String(resolveLlmBaseUrl() || "").replace(/\/+$/, "");
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetchImpl(`${base}/models`, { method: "GET", headers: { Authorization: `Bearer ${key}` }, signal: ctrl.signal });
+    if (res.ok) return { state: "present", ok: true, verified: true, reason: "GM key verified (models list)." };
+    if (res.status === 401 || res.status === 403) return { state: "invalid", ok: false, verified: true, reason: `GM key rejected (HTTP ${res.status}) — check the key.` };
+    return { state: "present", ok: true, verified: false, reason: `Models list HTTP ${res.status}; key assumed usable.` };
+  } catch (err) {
+    return { state: "unreachable", ok: true, verified: false, reason: `Model API unreachable at boot (${String(err?.name || err)}); key unverified.` };
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 // --- Edition-routed GM provider ---------------------------------------------

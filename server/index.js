@@ -29,7 +29,12 @@ function loadDotenv() {
 loadDotenv();
 
 import { createAiJobProcessor } from "./ai/processor.js";
-import { generateNarrative, generateRaw, getCampaignUsage, getModelTiers, localFallbackEnabled, resolveCloudChain, resolveGmModel, runWithBatteryContext } from "./ai/openrouter.js";
+import { generateNarrative, generateRaw, getCampaignUsage, getModelTiers, gmKeyState, localFallbackEnabled, resolveCloudChain, resolveGmModel, runWithBatteryContext, verifyGmKey } from "./ai/openrouter.js";
+
+// GM key preflight (audit 5d548ac #1): the boot check caches the last verification so
+// /api/debug/status can surface a red row and the client can raise a banner. Initialized
+// synchronously from env, refined by the one models-list ping in the listen callback.
+let gmKeyPreflight = gmKeyState();
 import { getBuildInfo, initBuildInfo, getGmServe, getImageServe, debugPanelDefault } from "./runtimeStatus.js";
 import { appendTurnLog, logTurnEvent } from "./logging/sessionLog.js";
 import { startTurnTiming, getLastTurnTiming, getRecentTurnTimings } from "./logging/turnTiming.js";
@@ -1769,6 +1774,10 @@ async function handleApi(req, res) {
       build,
       // Anti-tamper item 1.2: the badge surface tells the truth about hooks.
       testHooks: testHooksEnabled(),
+      // Preflight (audit 5d548ac #1): the GM-key row. red (ok:false) → the client
+      // raises a banner and the owner knows the AI GM will not run, instead of a
+      // silent degrade to template prose.
+      preflight: { gmKey: gmKeyPreflight },
       gm: {
         configuredModel: resolveGmModel(),
         served: getGmServe(),
@@ -4446,4 +4455,28 @@ server.listen(port, host, () => {
   // an EADDRINUSE loop (where only [DB] prints and the port never binds).
   // eslint-disable-next-line no-console
   console.log(`[SERVER] Inkborne listening on port ${port} — build ${b.sha}${b.dirty ? " (dirty)" : ""} @ ${b.startedAt}`);
+
+  // GM KEY PREFLIGHT (audit 5d548ac #1). A missing/placeholder key is LOUD at boot,
+  // then confirmed by ONE cheap models-list ping (never a generation; skipped in mock
+  // mode). The result rides /api/debug/status so the client can raise a banner —
+  // never a silent 401 → template-prose degrade.
+  gmKeyPreflight = gmKeyState();
+  if (!gmKeyPreflight.ok) {
+    // eslint-disable-next-line no-console
+    console.error(
+      `\n  ┌──────────────────────────────────────────────────────────────┐\n` +
+      `  │  ⚠  GM KEY MISSING — the AI GM will NOT run.                   │\n` +
+      `  │  ${gmKeyPreflight.reason}\n` +
+      `  │  Get a FREE key at https://openrouter.ai and set               │\n` +
+      `  │  INKBORNE_LLM_API_KEY in .env, then restart.                   │\n` +
+      `  └──────────────────────────────────────────────────────────────┘\n`
+    );
+  }
+  verifyGmKey()
+    .then((result) => {
+      gmKeyPreflight = result;
+      // eslint-disable-next-line no-console
+      (result.ok ? console.log : console.error)(`[PREFLIGHT] GM key: ${result.reason}`);
+    })
+    .catch(() => { /* keep the synchronous state; never crash boot on a probe error */ });
 });
