@@ -39,7 +39,7 @@ const STARTING_NPCS = [
       {
         beatId: "tavern_keeper_greeting",
         label: "Greet the Tavern Keeper",
-        text: `The tavern keeper sets down a clean glass. "You're soaked through, ${characterName}. Sit by the fire. You look like someone who's heard the rumors about the missing shipment — and someone who might be fool enough to ask about them."`,
+        text: `The tavern keeper sets down a clean glass. "You're soaked through, ${characterName}. Sit by the fire. You look like someone who's heard the rumors about the missing shipment, and someone who might be fool enough to ask about them."`,
         revealed: false,
         repeatable: true,
         contentTags: [],
@@ -149,7 +149,7 @@ function buildQuestGiverBeats(world = {}, place = "this place") {
     {
       beatId: "beat_quest_main_arrival",
       label: "Why you came",
-      text: `So — you reached ${place}. What you came looking for begins here. There is no turning back now.`,
+      text: `So, you reached ${place}. What you came looking for begins here. There is no turning back now.`,
       revealed: false,
       repeatable: false,
       linkedQuestIds: ["quest_main"],
@@ -167,7 +167,7 @@ function buildQuestGiverBeats(world = {}, place = "this place") {
     {
       beatId: "beat_hint",
       label: "What comes next",
-      text: `If you mean to see this through, don't linger. Speak plainly with those who wait here — what you seek is closer than the road behind you.`,
+      text: `If you mean to see this through, don't linger. Speak plainly with those who wait here, what you seek is closer than the road behind you.`,
       revealed: false,
       repeatable: false,
       linkedQuestIds: [],
@@ -219,25 +219,25 @@ function buildStartAreaFeatures(world = {}, seed = 0) {
     detail(
       "start_location_ruins_hall",
       "The Collapsed Hall",
-      `The ${heart} is the heart of these ruins — fire-scarred pillars still hold a span of roof, dry and defensible. ` +
+      `The ${heart} is the heart of these ruins, fire-scarred pillars still hold a span of roof, dry and defensible. ` +
         `This is the shell you could make your own: clear the rubble and it becomes a hearth, a wall, a foothold in ${worldName}.`
     ),
     detail(
       "start_location_old_well",
       "The Old Well",
       `A stone well-mouth, half-choked with leaves and creeper. The rope is long rotted, but the shaft runs deep and the air off it ` +
-        `is cold and wet — there is water down there still, which means this place could keep someone alive.`
+        `is cold and wet, there is water down there still, which means this place could keep someone alive.`
     ),
     detail(
       "start_location_watch",
       "The Broken Watchpoint",
       `A ${watchpoint} leans at the tree-line, its stair half-swallowed by roots. From its top a watcher could see anyone ` +
-        `approaching through the ${tone} wood long before they reached the stones — the makings of a guarded threshold.`
+        `approaching through the ${tone} wood long before they reached the stones, the makings of a guarded threshold.`
     ),
     detail(
       "start_location_cache",
       "An Ash-Buried Cache",
-      `Under a fall of soot and forest litter, the corner of a buried strongbox shows — whoever held these ruins last left ` +
+      `Under a fall of soot and forest litter, the corner of a buried strongbox shows, whoever held these ruins last left ` +
         `in a hurry, or never left at all. Worth digging out: ruins like these reward the patient scavenger.`
     )
   ];
@@ -527,7 +527,7 @@ async function generateOpeningNarration({ campaignId, runId, message, playerName
     if (timer) {
       clearTimeout(timer);
     }
-    logTurnEvent(runId, `OPENING narration ERRORED after ${Date.now() - t0}ms (${String(error?.message || error).slice(0, 120)}) — deterministic opening used.`);
+    logTurnEvent(runId, `OPENING narration ERRORED after ${Date.now() - t0}ms (${String(error?.message || error).slice(0, 120)}), deterministic opening used.`);
     return fallback;
   }
 }
@@ -607,7 +607,7 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
     ? `# ${effectiveWorldName}\n\nTone: ${effectiveWorldTone}\n\n${isStr(sw?.flavor) ? sw.flavor : scenario.stakes || ""}\n\n` +
       `Opening: ${scenarioStartDesc}`
     : `# ${resolvedWorld.name}\n\nTone: ${resolvedWorld.tone}\n\n${resolvedWorld.description}\n\n` +
-      `Starting location: ${resolvedWorld.startingLocation.name} — ${resolvedWorld.startingLocation.description}`;
+      `Starting location: ${resolvedWorld.startingLocation.name}, ${resolvedWorld.startingLocation.description}`;
   await ensureCampaignMemoryDocsAsync(campaignId, { "World Overview": worldOverview });
   markStage("campaignDocs");
 
@@ -836,7 +836,7 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
         detailId: "third_location_relic",
         label: "A Half-Buried Relic",
         description:
-          `Something old juts from the dirt — a marker from before ${resolvedWorld.name} fell to its ${resolvedWorld.tone}. ` +
+          `Something old juts from the dirt, a marker from before ${resolvedWorld.name} fell to its ${resolvedWorld.tone}. ` +
           "The inscription is almost worn smooth, but a few words still hold.",
         revealed: false,
         contentTags: [],
@@ -849,7 +849,7 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
         detailId: "third_location_vista",
         label: "The View Beyond",
         description:
-          "From this vantage the full shape of what went wrong lies open across the land — and there is no mistaking " +
+          "From this vantage the full shape of what went wrong lies open across the land, and there is no mistaking " +
           "that the worst of it waits further on.",
         revealed: false,
         contentTags: [],
@@ -884,7 +884,7 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
         {
           beatId: "beat_far_arrival",
           label: "You came this far",
-          text: `Most turn back long before ${thirdLocation.name}. You didn't — and that tells me what kind of ending you're walking toward.`,
+          text: `Most turn back long before ${thirdLocation.name}. You didn't, and that tells me what kind of ending you're walking toward.`,
           revealed: false,
           repeatable: false,
           // Linked to the main quest: talking to the witness fires the final

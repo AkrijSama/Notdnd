@@ -244,10 +244,10 @@ export function keptGroundStart(book) {
   const authored = isPlainObject(book.startArea) ? book.startArea : null;
   const description = (authored && isNonEmptyString(authored.description))
     ? authored.description
-    : `The threshold of ${name}. The ground right here is quiet and kept: soft light, a clear path running plainly on toward ${region}, and everything easy to read. ${flavorSeed ? `(${flavorSeed}) ` : ""}Whatever is strange or dangerous in this world waits further in — here, on kept ground, the paths are honest and the way is plain.`;
+    : `The threshold of ${name}. The ground right here is quiet and kept: soft light, a clear path running plainly on toward ${region}, and everything easy to read. ${flavorSeed ? `(${flavorSeed}) ` : ""}Whatever is strange or dangerous in this world waits further in, here, on kept ground, the paths are honest and the way is plain.`;
   return {
     id: (authored && isNonEmptyString(authored.locationId)) ? authored.locationId : "start_location",
-    name: (authored && isNonEmptyString(authored.name)) ? authored.name : `${name} — Threshold`,
+    name: (authored && isNonEmptyString(authored.name)) ? authored.name : `${name}, Threshold`,
     description,
     // poi:start-area is the contract the anti-lost auditor + directive key on.
     tags: Array.from(new Set([...(Array.isArray(authored?.tags) ? authored.tags : []), "poi:start-area", "start-area"])),
@@ -323,7 +323,7 @@ function mintQuestSpine(book, poiIds, locations, encounter) {
   const threatName = encounter?.creatureName || "the thing that stalks the edge";
   const landmarkName = poiIds.length ? (locations[poiIds[0]]?.name || "the near landmark") : `the reach beyond ${worldName}`;
   const questOffers = {
-    offer_main: { title: `The pull of ${worldName}`, summary: `Follow the pull deeper in — ${temptation}.`.slice(0, 200), kind: "delivery" },
+    offer_main: { title: `The pull of ${worldName}`, summary: `Follow the pull deeper in, ${temptation}.`.slice(0, 200), kind: "delivery" },
     offer_side_threat: { title: "Cull the corruption at the edge", summary: `${threatName} has been seen near the kept ground. Put it down.`.slice(0, 200), kind: "task" },
     offer_side_landmark: { title: `Reach ${landmarkName}`, summary: `Make your way to ${landmarkName} and learn what it holds.`.slice(0, 200), kind: "task" }
   };
@@ -362,7 +362,7 @@ function mintStarterCast(book, start, poiIds, spine) {
       role: spec.role,
       at,
       ageClass: "adult",
-      romanceable: true, // R2: adult + not opted-out — stamped at mint (loader honors it)
+      romanceable: true, // R2: adult + not opted-out, stamped at mint (loader honors it)
       ...(faction && isNonEmptyString(faction.factionId) ? { factionId: faction.factionId } : {}),
       ...(offerId ? { questOffer: offerId } : {}),
       dialogueBeats: [{ label: spec.role, text: `${name} ${spec.beat}.` }]
@@ -385,7 +385,7 @@ export function compileWorldBook(wb = {}, opts = {}) {
   };
   const poiIds = [];
   for (const poi of book.pois) {
-    if (poi.id === start.id) { // author supplied their own start body — merge, keep the tag
+    if (poi.id === start.id) { // author supplied their own start body, merge, keep the tag
       locations[start.id] = mergeStart(locations[start.id], poi);
       continue;
     }
@@ -510,7 +510,7 @@ function mergeStart(startNode, poi) {
 function compilePoi(poi, id) {
   const node = {
     name: poi.name || id,
-    description: isNonEmptyString(poi.description) ? poi.description : `${poi.name || "A place"} — as yet unexplored.`,
+    description: isNonEmptyString(poi.description) ? poi.description : `${poi.name || "A place"}, as yet unexplored.`,
     tags: Array.from(new Set([
       ...(Array.isArray(poi.tags) ? poi.tags : []),
       poi.poiClass ? `poi:${slugify(poi.poiClass)}` : "poi:place"
@@ -542,7 +542,7 @@ export function mintDefaultFront(frontId, book) {
         beatId: `${id}_b1`,
         label: "A rumor takes shape",
         telegraph: "Someone mentions there is more to this place than the quiet threshold suggests.",
-        brief: `Word reaches you of ${pull} — a reason to go further in.`,
+        brief: `Word reaches you of ${pull}, a reason to go further in.`,
         decision: "Chase the rumor deeper in, or take your time on kept ground first.",
         trigger: { descriptive: { keywords: ["ask", "explore", "look", "listen", "rumor"] } },
         payload: { fact: { text: `There is more to ${book.name} than its quiet threshold: ${pull}.`.slice(0, 280) } }
@@ -551,7 +551,7 @@ export function mintDefaultFront(frontId, book) {
         beatId: `${id}_b2`,
         label: "The pull sharpens",
         telegraph: "The rumor hardens into something specific and close enough to act on.",
-        brief: "What was a rumor now has a place and a shape — the world is inviting a first real choice.",
+        brief: "What was a rumor now has a place and a shape, the world is inviting a first real choice.",
         decision: "Commit to the thread, or turn aside and let the world keep its secret a while.",
         trigger: { prescriptive: { requiresBeat: `${id}_b1`, minTurn: 8 } },
         payload: { fact: { text: `The pull of ${book.name} now has a shape you can act on.`.slice(0, 280) } }
@@ -565,7 +565,7 @@ export function mintDefaultSecret(secretId, frontRef, book, startId) {
   const id = isNonEmptyString(secretId) ? secretId : "secret_default";
   return {
     secretId: id,
-    text: `${book.name} keeps its real shape just past the threshold — the quiet ground is a courtesy, not the whole truth.`.slice(0, 280),
+    text: `${book.name} keeps its real shape just past the threshold, the quiet ground is a courtesy, not the whole truth.`.slice(0, 280),
     frontRef,
     reveal: { onLocation: startId || "start_location" }
   };

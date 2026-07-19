@@ -1794,6 +1794,20 @@ export const TRACE_CHIP_META = Object.freeze({
 });
 export const TRACE_BAND_WORD = Object.freeze({ bright: "Bright", clear: "Clear", faint: "Faint", cold: "Cold" });
 
+// DIEGETIC SIGHT PHRASES — CLIENT MIRROR of server/solo/essence.js SIGHT_PHRASES
+// (parity-tested: tests/sight-phrase-parity.test.js). The chip reads as the champion's
+// PERCEPTION, never the raw kind/band field names; the mechanical band rides the tooltip.
+export const SIGHT_PHRASES = Object.freeze({
+  trail: Object.freeze({ bright: "The trail burns fresh", clear: "The scent holds", faint: "A fading trace", cold: "Cold remnants linger" }),
+  mark: Object.freeze({ bright: "A mark, freshly cut", clear: "A mark holds its edge", faint: "A mark worn thin", cold: "An old mark, all but gone" }),
+  residue: Object.freeze({ bright: "Raw residue still clings", clear: "Residue lingers close", faint: "Residue thinning away", cold: "The faintest cold residue" })
+});
+function sightPhraseClient(kind, band) {
+  const k = SIGHT_PHRASES[kind] ? kind : "trail";
+  const b = SIGHT_PHRASES[k][band] ? band : "clear";
+  return SIGHT_PHRASES[k][b];
+}
+
 function traceChipMeta(kind) {
   return TRACE_CHIP_META[String(kind || "").toLowerCase()] || TRACE_CHIP_META.trail;
 }
@@ -1809,16 +1823,16 @@ export function renderSoloTraceChips(scene = {}) {
       const meta = traceChipMeta(kind);
       const band = String(t.band || "cold").toLowerCase();
       const bandWord = TRACE_BAND_WORD[band] || "Cold";
+      const phrase = sightPhraseClient(kind, band); // the champion's perception (diegetic)
       const dir = t.followable ? (t.direction ? `toward ${t.direction}` : "leading onward") : "";
       const scent = t.meta && typeof t.meta.handlerScent === "string" ? t.meta.handlerScent : "";
       const tipBody = [dir, scent].filter(Boolean).join(" · ");
       return `
-        <span class="solo-trace-chip trace-${band}" tabindex="0" data-trace-id="${escapeHtml(t.id || kind)}" aria-label="${escapeHtml(`${meta.word}. ${bandWord}. ${tipBody}`)}">
+        <span class="solo-trace-chip trace-${band}" tabindex="0" data-trace-id="${escapeHtml(t.id || kind)}" aria-label="${escapeHtml(`${phrase}. ${meta.word}, ${bandWord}. ${tipBody}`)}">
           <span class="solo-trace-glyph" aria-hidden="true">${meta.glyph}</span>
-          <span class="solo-trace-name">${escapeHtml(meta.word)}</span>
-          <span class="solo-trace-band">${escapeHtml(bandWord)}</span>
+          <span class="solo-trace-name">${escapeHtml(phrase)}</span>
           ${dir ? `<span class="solo-trace-dir">${escapeHtml(dir)}</span>` : ""}
-          <span class="solo-trace-tip" role="tooltip"><strong>${escapeHtml(meta.word)} · ${escapeHtml(bandWord)}</strong>${tipBody ? `<span>${escapeHtml(tipBody)}</span>` : ""}</span>
+          <span class="solo-trace-tip" role="tooltip"><strong>${escapeHtml(`${meta.word} · ${bandWord}`)}</strong>${tipBody ? `<span>${escapeHtml(tipBody)}</span>` : ""}</span>
         </span>`;
     })
     .join("");

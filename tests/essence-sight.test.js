@@ -142,7 +142,7 @@ test("essence (a): Warm House shows a bright trail + 'Follow the trail' affordan
   // the affordance chip appears (source: sight)
   const chip = deriveAffordances(run).find((a) => a.source === "sight");
   assert.ok(chip, "Follow-the-trail chip present");
-  assert.match(chip.label, /Follow the trail — bright/i);
+  assert.match(chip.label, /The trail burns fresh/i); // diegetic phrase (bright band), no em-dash, no raw field name
 
   // following the trail routes through the normal move pipeline and COMMITS
   const res = resolveSoloAction(run, { type: "attempt", actorId: "player", intent: chip.intent }, { now: T(1) });

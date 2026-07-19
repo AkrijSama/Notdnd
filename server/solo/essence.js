@@ -58,6 +58,43 @@ export const TRACE_BAND_META = Object.freeze({
   cold: { word: "Cold", order: 3 }
 });
 
+// DIEGETIC SIGHT PHRASES (Law-6, owner-tunable): the essence-sight affordance/chip label
+// reads as the CHARACTER'S PERCEPTION, never a field name or a raw band token (and never
+// with an em-dash — the ban). Keyed [kind][band]; an unknown kind falls back to trail
+// phrasing, an unknown band to `clear`. mark/residue carry phrasing distinct from a
+// trail. The mechanical band still rides the tooltip (traceBandTooltip) for clarity.
+export const SIGHT_PHRASES = Object.freeze({
+  trail: Object.freeze({
+    bright: "The trail burns fresh",
+    clear: "The scent holds",
+    faint: "A fading trace",
+    cold: "Cold remnants linger"
+  }),
+  mark: Object.freeze({
+    bright: "A mark, freshly cut",
+    clear: "A mark holds its edge",
+    faint: "A mark worn thin",
+    cold: "An old mark, all but gone"
+  }),
+  residue: Object.freeze({
+    bright: "Raw residue still clings",
+    clear: "Residue lingers close",
+    faint: "Residue thinning away",
+    cold: "The faintest cold residue"
+  })
+});
+export function sightPhrase(kind, band) {
+  const k = SIGHT_PHRASES[kind] ? kind : "trail";
+  const b = SIGHT_PHRASES[k][band] ? band : "clear";
+  return SIGHT_PHRASES[k][b];
+}
+// The mechanical strength read for a tooltip (the perception label stays diegetic).
+export function traceBandTooltip(kind, band) {
+  const kw = TRACE_KIND_META[kind]?.word || "Trace";
+  const bw = TRACE_BAND_META[band]?.word || "Clear";
+  return `${kw} · ${bw}`;
+}
+
 function isPlainObject(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }

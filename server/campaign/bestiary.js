@@ -115,7 +115,7 @@ const BASE_ANIMALS = Object.freeze({
     behaviors: Object.freeze({ vicious: false, cowardly: false }), loot: Object.freeze([]), tags: Object.freeze(["wildlife", "reptile"]) }),
   raven: Object.freeze({ statBlockId: "raven", name: "Raven", kind: "wildlife", tier: 1, maxHp: 3, ac: 13, dexMod: 3, xp: 10,
     attacks: Object.freeze([{ attackId: "peck", toHit: 3, damage: "1d3", damageType: "piercing" }]),
-    intents: Object.freeze([{ intentId: "harry", kind: "attack", attackId: "peck", weight: 1, telegraph: "dives, beating black wings at your eyes", hidden: false }, { intentId: "watch", kind: "defend", weight: 4, telegraph: "cocks its head, watching — it has seen something", hidden: false }]),
+    intents: Object.freeze([{ intentId: "harry", kind: "attack", attackId: "peck", weight: 1, telegraph: "dives, beating black wings at your eyes", hidden: false }, { intentId: "watch", kind: "defend", weight: 4, telegraph: "cocks its head, watching, it has seen something", hidden: false }]),
     behaviors: Object.freeze({ vicious: false, cowardly: true }), loot: Object.freeze([]), tags: Object.freeze(["wildlife", "bird", "omen"]) }),
   river_otter: Object.freeze({ statBlockId: "river_otter", name: "River otter", kind: "wildlife", tier: 1, maxHp: 5, ac: 12, dexMod: 3, xp: 10,
     attacks: Object.freeze([{ attackId: "bite", toHit: 2, damage: "1d4", damageType: "piercing" }]),
@@ -137,11 +137,11 @@ export const CHAOS_SKILLS = Object.freeze({
   "chaos-pack-aura": Object.freeze({ skillId: "chaos-pack-aura", tier: "low", family: "aura", name: "Chaos-Pack Aura",
     effect: "scaling-advantage", desc: "Allies within reach gain advantage that scales with how many chaos-touched stand together." }),
   "inverted-element": Object.freeze({ skillId: "inverted-element", tier: "low", family: "element", name: "Inverted Element",
-    effect: "element-x-wrong-rider", desc: "An elemental attack carries the WRONG rider — fire that chills, a bite that freezes.", mintTable: INVERTED_ELEMENT_TABLE }),
+    effect: "element-x-wrong-rider", desc: "An elemental attack carries the WRONG rider, fire that chills, a bite that freezes.", mintTable: INVERTED_ELEMENT_TABLE }),
   "charm-person": Object.freeze({ skillId: "charm-person", tier: "high", family: "mind", name: "Charm Person",
     effect: "charm", desc: "Bends a single mind toward trust it did not earn." }),
   "vision-share": Object.freeze({ skillId: "vision-share", tier: "high", family: "mind", name: "Vision Share",
-    effect: "vision-share", desc: "Pushes what it sees into another's eyes — a shared, unbidden vision." }),
+    effect: "vision-share", desc: "Pushes what it sees into another's eyes, a shared, unbidden vision." }),
   "telepathy": Object.freeze({ skillId: "telepathy", tier: "high", family: "mind", name: "Telepathy",
     effect: "telepathy", desc: "Speaks mind-to-mind, wordless, across a room or a valley." })
 });

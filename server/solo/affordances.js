@@ -16,7 +16,7 @@
 
 import { combatActive } from "./combat.js";
 import { activeGoals } from "./goals.js";
-import { followableTrailsAtCurrent } from "./essence.js";
+import { followableTrailsAtCurrent, sightPhrase, traceBandTooltip } from "./essence.js";
 import { entityNature } from "./entityNature.js";
 
 function isPlainObject(v) {
@@ -152,13 +152,17 @@ function objectAffordances(location) {
 function trailAffordances(run) {
   const out = [];
   for (const trail of followableTrailsAtCurrent(run)) {
-    const band = isStr(trail.bandWord) ? trail.bandWord.toLowerCase() : "clear";
+    const band = isStr(trail.bandWord) ? trail.bandWord.toLowerCase() : (isStr(trail.band) ? trail.band.toLowerCase() : "clear");
+    const kind = isStr(trail.kind) ? trail.kind : "trail";
     out.push({
-      label: `Follow the trail — ${band}`,
-      // Phrased so detectMoveIntent's trail branch resolves it against committed
-      // state — and, crucially, NO directional cue word (onward/deeper/…) so that
-      // where no trail is committed it falls through to a normal attempt instead
-      // of the forward-exploration heuristic committing a stray move.
+      // DIEGETIC LABEL (Law-6 phrase table): the character's PERCEPTION, never a field
+      // name or a raw band, and never with an em-dash (the ban). The mechanical band
+      // rides the hint/tooltip for players who want the strength read.
+      label: sightPhrase(kind, band),
+      hint: traceBandTooltip(kind, band),
+      // Phrased so detectMoveIntent's trail branch resolves it against committed state,
+      // with NO directional cue word (onward/deeper) so a location with no committed
+      // trail falls through to a normal attempt instead of a stray forward move.
       intent: "I follow the essence trail my sight reads.",
       source: "sight",
       feasibility: "ok"
