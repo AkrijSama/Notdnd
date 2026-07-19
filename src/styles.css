@@ -1525,7 +1525,10 @@ button:disabled {
      stage reaches the viewport top (owner spec: full-bleed completion). */
   width: 100vw;
   margin-left: calc(50% - 50vw);
-  padding: 0 clamp(16px, 2.4vw, 56px) 18px;
+  /* NUMERIC LAYOUT LAW (owner 2026-07-19, absolute): the shell adds ZERO horizontal
+     inset. The ONLY horizontal inset between viewport edge and text is the reading
+     container's flat 32px padding (16px < 1280) — no stacking. */
+  padding: 0 0 18px;
   background: var(--bg, #1c1510);
   color: var(--text, #d9dbe0);
   font-family: var(--font-body, Georgia, "Times New Roman", serif);
@@ -1533,10 +1536,13 @@ button:disabled {
 
 /* ---- Theme settings tucked behind a ⚙ button (top-right) ---- */
 .solo-settings {
+  /* Extreme top-right corner, ABOVE the overlay bar (owner 2026-07-19). Gear box =
+     top 8 + 38px btn = bottom 46; the HUD bar starts at top 52 → they never overlap
+     at any width (vertical separation is width-independent). */
   position: absolute;
-  top: 14px;
-  right: clamp(16px, 2.4vw, 56px);
-  z-index: 30;
+  top: 8px;
+  right: 8px;
+  z-index: 32;
 }
 .solo-settings-btn {
   list-style: none;
@@ -1620,10 +1626,11 @@ button:disabled {
   display: flex;
   gap: 0;
   align-items: stretch;
-  border-radius: 10px;
+  /* Full-bleed: no framed-card border/radius (they would add a 1px horizontal
+     inset between viewport edge and text — forbidden by the numeric layout law). */
+  border-radius: 0;
   overflow: hidden;
-  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.4);
-  border: 1px solid var(--border, #202024);
+  border: 0;
   min-height: 620px;
   /* Anchor for the floating character dock overlay (owner ruling 2026-07-19:
      NO reserved left column, ever — the reading area spans full width minus the
@@ -1957,18 +1964,26 @@ button:disabled {
    over the scene banner (map widget + time/weather chip top-right) or lives in an
    on-demand drawer (Cast · Exits + the reactive panels; the full map).
    =========================================================================== */
+/* OVERLAY GRID (owner 2026-07-19): ONE anchored bar, top-right of the banner, a
+   SINGLE ROW with fixed 8px gaps — order [Local|Region toggle] [Map] [time chip]
+   [Cast·Exits]. flex + nowrap ⇒ the items lay out sequentially and can never
+   overlap. Positioned BELOW the settings gear (top:52 > gear bottom 46) so the two
+   never intersect at any width. */
 .solo-stage-hud {
   position: absolute;
-  top: 10px;
+  top: 52px;
   right: 12px;
   z-index: 30;
   display: flex;
-  align-items: flex-start;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
   gap: 8px;
   pointer-events: none; /* the container is click-through; its chips re-enable */
 }
 .solo-stage-hud > * { pointer-events: auto; }
-.solo-hud-map,
+.solo-map-toggle,
+.solo-hud-map-open,
 .solo-hud-time,
 .solo-hud-info {
   background: rgba(12, 12, 15, 0.82);
@@ -1977,7 +1992,6 @@ button:disabled {
   box-shadow: 0 8px 22px rgba(0, 0, 0, 0.5);
   color: var(--text, #d9dbe0);
 }
-.solo-hud-map { display: flex; flex-direction: column; gap: 5px; padding: 6px; }
 .solo-hud-map-open {
   font-size: 12px;
   padding: 4px 8px;
@@ -2088,7 +2102,7 @@ button:disabled {
   background: var(--accent, #c2c6cf);
   filter: brightness(1.08);
 }
-.solo-scene-input { padding: 18px 28px 22px; max-width: none; }
+.solo-scene-input { padding: 18px 0 22px; max-width: none; }
 .solo-scene-input-row { display: flex; gap: 12px; align-items: stretch; }
 .solo-scene-field {
   flex: 1;
@@ -2965,7 +2979,8 @@ button:disabled {
   min-width: 0;
   min-height: 0;
   height: 100%;
-  border-right: 1px solid var(--border, #202024);
+  /* the dead right-column edge is gone (owner 2026-07-19); a 1px edge here would
+     add an asymmetric right-only inset — forbidden by the numeric layout law. */
 }
 
 /* =========================================================================
@@ -3149,10 +3164,10 @@ button:disabled {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
-  /* Generous, viewport-scaled LEFT/right inset (owner ruling 2026-07-19): the
-     reading area's left edge = viewport edge + standard padding; on ultrawide the
-     inset grows so the text isn't lost against the corner. */
-  padding: 18px clamp(24px, 2.6vw, 60px) 16px;
+  /* NUMERIC LAYOUT LAW (owner 2026-07-19, absolute): horizontal inset = FLAT 32px
+     at >=1280w (16px below). This is the ONLY horizontal inset between viewport edge
+     and text — every ancestor contributes 0. NO clamp, NO stacking. */
+  padding: 18px 32px 16px;
 }
 /* Owner ruling 2026-07-19 (supersedes the centered-column spec): the container is
    FULL-BLEED; the sealed measure governs only TEXT line-length, LEFT-ANCHORED
@@ -3160,7 +3175,11 @@ button:disabled {
    line for readability; margin-left:0 anchors it to the padded left edge; the
    reclaimed width to the RIGHT is breathing room inside the full container. */
 .solo-narration-log > * {
-  max-width: 75ch;
+  /* MEASURE LAW AMENDMENT (owner 2026-07-19): the line-length cap is RAISED to fill
+     a 1920 viewport minus the 2×32px padding (= 1856px). At <=1920 the text fills
+     the padded width; only >2200 ultrawide caps at 1856 (container stays full-bleed,
+     text left-anchored). */
+  max-width: 1856px;
   margin-left: 0;
   margin-right: auto;
 }
@@ -3175,8 +3194,17 @@ button:disabled {
 .solo-input-dock {
   flex: none;
   background: var(--bg, #050506);
-  padding: 14px 24px 10px;
+  /* Same flat 32px horizontal inset as the prose (16px < 1280) — the type-line
+     sits directly under the text column. border-top is vertical, no h-inset. */
+  padding: 14px 32px 10px;
   border-top: 1px solid var(--border, #202024);
+}
+
+/* NUMERIC LAYOUT LAW (owner 2026-07-19): below 1280w the flat horizontal inset
+   drops from 32px to 16px, for BOTH the prose and the input dock. */
+@media (max-width: 1279px) {
+  .solo-narration-log { padding-left: 16px; padding-right: 16px; }
+  .solo-input-dock { padding-left: 16px; padding-right: 16px; }
 }
 
 /* #32 THIN CHECK-RESULT STRIP + #33 THREE DISTINCT BANDS. One compact row on the
@@ -3314,7 +3342,7 @@ button:disabled {
 .solo-narration-empty {
   color: var(--muted, #8b8e96);
   font-style: italic;
-  padding: 24px 6px;
+  padding: 24px 0;
   font-size: 1.05rem;
 }
 /* World-entry opening narration: prominent GM voice at the top of the scene,
@@ -3533,12 +3561,10 @@ button:disabled {
   .solo-game-content { min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
 }
 
-/* Ultrawide ( >1600px ): give the centre column more breathing room. */
-@media (min-width: 1600px) {
-  .solo-game-shell { padding-left: clamp(40px, 5vw, 160px); padding-right: clamp(40px, 5vw, 160px); }
-  .solo-settings { right: clamp(40px, 5vw, 160px); }
-  .solo-scene-center .solo-location-copy { padding-left: 48px; padding-right: 48px; }
-}
+/* Ultrawide: NO extra horizontal inset (numeric layout law 2026-07-19). The old
+   clamp(40..160) shell padding + 48px location-copy padding STACKED on the reading
+   inset — forbidden. Horizontal inset is a flat 32px everywhere >=1280; ultrawide
+   is handled by the measure cap (1856px), not by growing the container padding. */
 
 @media (max-width: 1080px) {
   .solo-game-frame { flex-direction: column; min-height: 0; }
@@ -5347,12 +5373,12 @@ textarea.hb-input { min-height: 76px; resize: vertical; }
    margin bug) can zero the anchoring again.
    ========================================================================= */
 .solo-measure {
-  /* Owner final call (screenshot 2026-07-09): prose fills the reading area
-     edge-to-edge like it originally did — no column cap, no left anchor. The
-     narration log's own padding is the only inset. */
-  max-width: none;
+  /* MEASURE LAW AMENDMENT (owner 2026-07-19): shared line-length cap = 1856px
+     (1920 − 2×32). Fills the padded width at <=1920, caps only on ultrawide; the
+     input dock carries .solo-measure so the type-line aligns with the prose. */
+  max-width: 1856px;
   margin-left: 0;
-  margin-right: 0;
+  margin-right: auto;
   /* Body prose is never center-aligned. */
   text-align: left;
 }

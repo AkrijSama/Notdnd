@@ -2798,15 +2798,18 @@ export function renderSoloStageHud(scene = {}, state = {}) {
   const clock = renderSoloClock(scene);
   const present = Array.isArray(scene.cast) ? scene.cast.filter((c) => c && c.present !== false).length : 0;
   const region = state.mapView === "region";
+  // OVERLAY GRID (owner 2026-07-19): a SINGLE ROW of peer items, order
+  // [Local|Region toggle] [Map] [time/weather chip] [Cast·Exits]. Flat 8px gaps via
+  // the flex row; no nested column wrapper (the old .solo-hud-map stacked toggle+Map
+  // vertically and piled up). The clock chip is omitted when absent (empty-state law)
+  // — the row simply has one fewer item; order + gaps hold.
   return `
     <div class="solo-stage-hud" data-solo-stage-hud>
-      <div class="solo-hud-map" data-solo-hud-map>
-        <div class="solo-map-toggle solo-hud-map-toggle" role="group" aria-label="Map zoom">
-          <button type="button" class="solo-map-toggle-btn${region ? "" : " active"}" data-solo-map-view="local" aria-pressed="${region ? "false" : "true"}">Local</button>
-          <button type="button" class="solo-map-toggle-btn${region ? " active" : ""}" data-solo-map-view="region" aria-pressed="${region ? "true" : "false"}">Region</button>
-        </div>
-        <button type="button" class="solo-hud-map-open" data-solo-scene-map aria-haspopup="dialog" aria-label="Open map" title="Open map">⤢ Map</button>
+      <div class="solo-map-toggle" role="group" aria-label="Map zoom">
+        <button type="button" class="solo-map-toggle-btn${region ? "" : " active"}" data-solo-map-view="local" aria-pressed="${region ? "false" : "true"}">Local</button>
+        <button type="button" class="solo-map-toggle-btn${region ? " active" : ""}" data-solo-map-view="region" aria-pressed="${region ? "true" : "false"}">Region</button>
       </div>
+      <button type="button" class="solo-hud-map-open" data-solo-scene-map aria-haspopup="dialog" aria-label="Open map" title="Open map">⤢ Map</button>
       ${clock ? `<div class="solo-hud-time">${clock}</div>` : ""}
       <button type="button" class="solo-hud-info" data-solo-scene-info aria-haspopup="dialog" aria-label="Cast and exits" title="Cast · Exits">☰ Cast${present ? ` ${present}` : ""} · Exits</button>
     </div>`;

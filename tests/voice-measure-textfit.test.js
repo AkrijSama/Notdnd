@@ -33,9 +33,9 @@ test("log entries and the location card carry the shared measure class", () => {
   assert.match(loc, /solo-location-card solo-measure/);
 });
 
-test("styles.css defines the ONE measure rule: full-bleed prose, left-aligned (owner final)", () => {
-  // Owner final call: prose fills the reading area — no cap, no anchor.
-  assert.match(css, /\.solo-measure \{[^}]*max-width: none;[^}]*margin-left: 0;[^}]*margin-right: 0;[^}]*text-align: left;/s);
+test("styles.css defines the ONE measure rule: 1856px cap, left-anchored (owner 2026-07-19)", () => {
+  // Measure law amendment: cap RAISED to 1856px (= 1920 − 2×32), left-anchored.
+  assert.match(css, /\.solo-measure \{[^}]*max-width: 1856px;[^}]*margin-left: 0;[^}]*margin-right: auto;[^}]*text-align: left;/s);
   assert.match(css, /\.solo-measure p \{[^}]*text-align: left;/s);
   // the root-cause shorthand: .solo-scene-opening horizontal margins stay auto so
   // the later .solo-measure longhands (left clamp / right auto) win the cascade
@@ -97,8 +97,8 @@ test("readHealedLogScale self-heals a stale/invalid persisted value", () => {
 test("the input bar carries the shared measure class — dock can never misalign from prose", () => {
   const bar = renderSoloSceneInputBar({ attemptDraft: "" });
   assert.match(bar, /class="solo-scene-input solo-measure"/);
-  // the dock's horizontal inset matches the narration log's (24px)
-  assert.match(css, /\.solo-input-dock \{[^}]*padding: 14px 24px 10px;/s);
+  // the dock's horizontal inset matches the narration log's flat 32px (owner 2026-07-19)
+  assert.match(css, /\.solo-input-dock \{[^}]*padding: 14px 32px 10px;/s);
   // the bespoke dock 75ch rule is gone — one measure rule governs both
   assert.doesNotMatch(css, /\.solo-input-dock \.solo-scene-input \{[^}]*max-width: 75ch/s);
 });
