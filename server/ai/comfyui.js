@@ -304,6 +304,11 @@ const ANIME_BLOCK_FALLBACK = Object.freeze({
   quality: "masterpiece, best quality, newest, very aesthetic, absurdres, highres",
   styleVocab: "anime coloring, cel shading, flat color, clean line art, crisp lineart, vibrant color palette, sharp focus, 2d",
   portraitBackground: "simple background, soft gradient background",
+  // HUMAN-only (owner acceptance batch 00226-00229): color anti-washout + wardrobe floor.
+  characterVocab: "rich color, warm skin tone, healthy complexion, fully clothed",
+  // HUMAN-only: the widened kemonomimi/animal-ear suppression + no-shirtless. NOT in
+  // negativeBase — a blanket animal-ear negative would strip a real creature's ears.
+  humanNegative: "(animal ears:1.4), kemonomimi, cat ears, rabbit ears, bunny ears, floppy ears, cat boy, monster boy, furry, shirtless, bare chest, topless",
   negativeBase:
     "lowres, worst quality, bad anatomy, bad hands, extra fingers, deformed, blurry, jpeg artifacts, watermark, signature, text, 3d, photorealistic, realistic, painterly, oil painting, digital painting, western comic, comic book, monochrome, greyscale, sepia, yellow tint, gold tint, orange tint, red wash, crimson wash, red tint, single-color palette, limited palette, duotone, muted colors, desaturated, oversaturated, blown highlights, heavy rim light, solid color background, plain background, plain color backdrop, red background, yellow background, orange background, aircraft, airplane, biplane, warplane, fighter plane, jet, propeller plane, vehicle"
 });
@@ -330,6 +335,8 @@ function animeBlock() {
       quality: String(raw.quality || "").trim() || ANIME_BLOCK_FALLBACK.quality,
       styleVocab: String(raw.styleVocab || "").trim() || ANIME_BLOCK_FALLBACK.styleVocab,
       portraitBackground: String(raw.portraitBackground || "").trim() || ANIME_BLOCK_FALLBACK.portraitBackground,
+      characterVocab: String(raw.characterVocab || "").trim() || ANIME_BLOCK_FALLBACK.characterVocab,
+      humanNegative: String(raw.humanNegative || "").trim() || ANIME_BLOCK_FALLBACK.humanNegative,
       negativeBase: String(raw.negativeBase || "").trim() || ANIME_BLOCK_FALLBACK.negativeBase
     };
   } catch {
@@ -411,11 +418,20 @@ export function sealPortraitPrompt(styleKey, positive, presetNegative) {
   if (isChar && block.portraitBackground && !pos0.toLowerCase().includes("simple background")) {
     lead.push(block.portraitBackground);
   }
+  // HUMAN-only lessons (owner acceptance batch 00226-00229). elfDefenseFor fires
+  // only for an actual human/person subject (not elves, not animals), so it is the
+  // exact gate that keeps the kemonomimi/animal-ear suppression + warm-skin/clothed
+  // positives OFF real creatures — a wolf NPC keeps its ears.
+  const isHuman = Boolean(elf);
+  if (isHuman && block.characterVocab && !pos0.toLowerCase().includes("warm skin tone")) {
+    lead.push(block.characterVocab);
+  }
   const positiveOut = lead.length ? joinCsv([...lead, pos0]) : pos0;
   const negativeOut = joinCsv([
     block.negativeBase,
     isChar ? PORTRAIT_NEGATIVE_LAW : "",
     isChar ? AGE_NEGATIVE_LAW : "",
+    isHuman ? block.humanNegative : "",
     elf,
     genderLock,
     sceneGuard

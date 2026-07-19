@@ -14,7 +14,8 @@ import {
   comfyuiWorkflowForStyle,
   resolveValidatedComfyWorkflow,
   elfDefenseFor,
-  withElfDefense
+  withElfDefense,
+  sealPortraitPrompt
 } from "../server/ai/comfyui.js";
 import { buildPlayerPortraitPrompt } from "../server/solo/imageWorker.js";
 
@@ -98,6 +99,24 @@ test("Elf character: pointed ears kept, no elf block injected", () => {
   const { workflow } = comfyuiWorkflowForStyle("anime", { prompt: elfPositive });
   const negative = String(workflow["7"].inputs.text || "");
   assert.doesNotMatch(negative, /\(elf:/i, "the weighted elf block is NOT added for an elf");
+});
+
+// ── kemonomimi / wardrobe / color fold (owner acceptance batch 00226-00229, cfg 3.5) ──
+// JANKU grafts cat/bunny ears onto humans; the human-portrait defense now also
+// suppresses that + shirtless, and adds warm-color positives. HUMAN-gated (same signal
+// as the elf defense), so a real animal keeps its ears — never blanket in negativeBase.
+test("anime human fold: kemonomimi + wardrobe suppressed, warm-color added — humans ONLY", () => {
+  const human = sealPortraitPrompt("anime", "character portrait of a human man, rounded human ears, adult", "");
+  assert.match(human.negative, /\(animal ears:1\.4\)/i, "the animal-ear graft is suppressed for a human");
+  assert.match(human.negative, /kemonomimi/i);
+  assert.match(human.negative, /shirtless/i, "wardrobe floor for a human");
+  assert.match(human.positive, /warm skin tone/i, "warm-color positive for a human");
+
+  // A committed animal must NEVER get the kemonomimi/ear suppression — it would strip
+  // the creature's real ears (the owner's Babel world is anime-locked and has a wolf).
+  const animal = sealPortraitPrompt("anime", "a large grey wolf, lean and scarred, standing in a clearing, full body", "");
+  assert.doesNotMatch(animal.negative, /kemonomimi|\(animal ears/i, "an animal keeps its real ears");
+  assert.doesNotMatch(animal.positive, /warm skin tone/i, "no human skin positive on an animal");
 });
 
 // ── unit: the derivation itself ─────────────────────────────────────────────────
