@@ -46,7 +46,7 @@ test("run.threads and run.combat default clean and validate", () => {
 test("a combat combatant referencing a missing NPC fails validation (roster integrity)", () => {
   const run = createDefaultSoloRun({ now: T(0) });
   run.combat = {
-    combatId: "cbt_1", status: "active", round: 1, turnIndex: 0, turnOrder: ["player", "enm_1"],
+    combatId: "cbt_1", status: "active", turn: 1, now: 0,
     combatants: { player: { kind: "player" }, enm_1: { kind: "enemy", npcId: "npc_ghost", statBlockId: "waylayer", hp: { current: 12, max: 12 }, ac: 13 } },
     enemyIntents: {}
   };
@@ -59,7 +59,7 @@ test("a combat combatant referencing a missing NPC fails validation (roster inte
 test("combat: entry → win writes a canonical fact and clears run.combat", () => {
   const run = armedFighterRun(T(0));
   placeCollector(run);
-  const entry = enterCombatFromAttackIntent(run, { targetNpcId: "npc_collector", intent: "attack the collector" }, { now: T(1), fixedRolls: [20, 2, 18, 3], rng: () => 0.99 });
+  const entry = enterCombatFromAttackIntent(run, { targetNpcId: "npc_collector", intent: "attack the collector" }, { now: T(1), fixedRolls: [13, 3, 18, 3], rng: () => 0.99 });
   assert.equal(entry.ok, true);
   assert.equal(combatActive(run), true);
   let guard = 0;
@@ -78,10 +78,10 @@ test("combat: a question spends no turn (ask ≠ act inside the fight)", () => {
   const run = armedFighterRun(T(0));
   placeCollector(run);
   enterCombatFromAttackIntent(run, { targetNpcId: "npc_collector", intent: "attack the collector" }, { now: T(1), fixedRolls: [20, 2, 3, 3], rng: () => 0.1 });
-  const roundBefore = run.combat.round;
+  const turnBefore = run.combat.turn;
   const res = resolveCombatInput(run, { intent: "how hurt is the collector?" }, { now: T(2) });
   assert.ok(res.clarify, "a question routes to clarify");
-  assert.equal(run.combat.round, roundBefore, "the round did not advance");
+  assert.equal(run.combat.turn, turnBefore, "the turn did not advance (ask ≠ act)");
 });
 
 test("combat: the in-combat menu replaces the exploration menu while active", () => {
@@ -156,7 +156,7 @@ test("JUNCTION: thread escalates → enters combat → resolves → advances the
   assert.equal(r.npcs.npc_collector.flags.hostile, true);
 
   // combat — entered via an attack on the beat-placed collector.
-  step({ type: "attempt", actorId: "player", intent: "I draw my blade and attack the collector" }, { now: T(4), fixedRolls: [20, 2, 18, 3], rng: () => 0.99 });
+  step({ type: "attempt", actorId: "player", intent: "I draw my blade and attack the collector" }, { now: T(4), fixedRolls: [13, 3, 18, 3], rng: () => 0.99 });
   assert.equal(combatActive(r), true, "combat entered via the reeve-collector beat");
   let guard = 0;
   while (combatActive(r) && guard++ < 6) {

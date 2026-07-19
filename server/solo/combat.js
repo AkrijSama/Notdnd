@@ -1,29 +1,34 @@
-// D.4 PHASE 1 — THE COMBAT RESOLVER (positionless, JRPG-style rounds).
+// D.4 — THE COMBAT RESOLVER (positionless, CTB-timed).
 //
-// Combat state is SERVER-OWNED TRUTH; the LLM narrates rounds and never
-// adjudicates them (docs/inkborne-combat-d4-spec.md §3, phase0-contract §5).
-// This module owns the fight: initiative, rounds, the attack/defend/flee/
-// use_item/hold_on/stunt resolvers, seeded telegraphed enemy intents, and the
-// won/lost/fled close. It consumes the FROZEN in-combat interpreter
+// Combat state is SERVER-OWNED TRUTH; the LLM narrates turns and never adjudicates
+// them (docs/inkborne-combat-d4-spec.md §3, phase0-contract §5). This module owns
+// the fight: the attack/defend/flee/use_item/hold_on/stunt resolvers, seeded
+// telegraphed enemy intents, three-band resolution, and the won/lost/fled close.
+// The turn CLOCK is the CTB queue (ctb.js, docs/handbook/ctb-turn-engine-spec.md
+// [LOCKED]) — no rounds, no initiative; Speed (from DEX, luck excluded) sets the
+// order and the order-only forecast. It consumes the FROZEN in-combat interpreter
 // (combatContract.js classifyCombatInput) as its deterministic input layer, the
 // bestiary (statBlockId resolution), and the existing lethality spine
 // (death.js applyDamage) — so the whole death machinery composes with zero new
 // lethality code. `ALLOWED_EFFECT_TYPES` is untouched: combat mutations are
 // resolver output, exactly like movement (coherence leak #2).
 //
-// One HTTP action = one full round: the player's chosen action resolves, then
-// every living enemy executes its committed (telegraphed) intent, all inside the
-// single action result. The player-drop rule (spec §2.4 / phase0 §2): combat
-// ends the moment the player reaches 0 HP; the dying-turn loop owns the
-// aftermath, with the momentum/thread clock frozen.
+// One HTTP action = one PLAYER decision: the player's action resolves, then the CTB
+// queue runs every enemy whose next_tick precedes the player's next turn, and control
+// returns to the player. The player-drop rule (spec §2.4 / phase0 §2): combat ends the
+// moment the player reaches 0 HP; the dying-turn loop owns the aftermath, clock frozen.
 
 import { rollD20, rollDice, abilityModifier } from "../rules/dice.js";
-import { resolveAbilityCheck } from "./rules.js";
+import { resolveAbilityCheck, bandFromMargin, RESOLUTION_BANDS } from "./rules.js";
 import { applyDamage, getHp, isDying, isDead } from "./death.js";
 import { awardXp } from "./progression.js";
 import { grantItemToRun } from "./search.js";
 import { resolveStatBlock, DEFAULT_STAT_BLOCK_ID } from "../campaign/bestiary.js";
 import { classifyCombatInput, COMBAT_STUNT_EFFECTS } from "./combatContract.js";
+import { advanceCombatRounds } from "./worldClock.js";
+import {
+  seedCombatantQueue, nextActor, commitTurn, buildForecast, ACTION_WEIGHT
+} from "./ctb.js";
 
 // Deterministic non-negative hash (same construction as momentum/quests) — the
 // seed for telegraph selection, so a run replays identically.
@@ -96,9 +101,8 @@ function playerAC(run) {
   if (typeof run?.player?.ac === "number") return run.player.ac;
   return 10 + playerAbilityMod(run, "dexterity");
 }
-function playerInitiativeMod(run) {
-  const d = playerDerived(run);
-  if (typeof d.initiative === "number") return d.initiative;
+// DEX modifier feeds CTB Speed (the ONLY queue input — luck excluded, §2.2).
+function playerDexMod(run) {
   return playerAbilityMod(run, "dexterity");
 }
 function playerProficiency(run) {
@@ -214,39 +218,37 @@ export function enterCombatFromAttackIntent(run, { targetNpcId, intent }, option
     hp: { current: block.maxHp, max: block.maxHp },
     ac: block.ac,
     dexMod: block.dexMod || 0,
-    initiative: 0,
     conditions: [],
-    morale: "steady"
+    morale: "steady",
+    revealed: true // v1 entry is a face-off, not an ambush → visible in the forecast
   };
 
-  // Initiative (D.4 §3.3): player d20 + init mod, enemy d20 + dex mod; ties → player.
-  const playerInit = rollD20(options) + playerInitiativeMod(run);
-  const enemyInit = rollD20(options) + enemy.dexMod;
-  enemy.initiative = enemyInit;
-  const playerFirst = playerInit >= enemyInit;
-  const turnOrder = playerFirst ? ["player", combatantId] : [combatantId, "player"];
-
+  // CTB start (ctb-turn-engine-spec §3.4): NO initiative roll. Every combatant
+  // enters at next_tick = standard delay; the queue (Speed from DEX) decides order.
+  const player = { kind: "player", combatantId: "player", name: "You", dexMod: playerDexMod(run) };
   const combat = {
     combatId,
     status: "active",
-    round: 1,
-    turnOrder,
-    turnIndex: 0,
-    combatants: { player: { kind: "player" }, [combatantId]: enemy },
+    turn: 1, // player-decision counter (replaces the JRPG round; clock is `now`)
+    now: 0, // CTB queue clock, integer ticks
+    queueSeed: hashSeed(`${run.worldSeed || run.runId}|queue|${combatId}`),
+    combatants: { player, [combatantId]: enemy },
     enemyIntents: {},
+    forecast: [],
     startedAt: isoNow(options),
-    endedAtRound: null,
-    outcome: null,
-    initiative: { player: playerInit, [combatantId]: enemyInit }
+    endedAtTurn: null,
+    outcome: null
   };
-  // Round-1 intent is selected at round start (before the player acts).
+  seedCombatantQueue(player, { now: 0 });
+  seedCombatantQueue(enemy, { now: 0 });
   combat.enemyIntents[combatantId] = selectEnemyIntent(run, combat, enemy, 1);
   run.combat = combat;
 
-  // The declared attack IS round 1's player action.
+  // The initiator gets the opening strike: the player's declared attack is turn 1,
+  // applied before the queue governs (you struck first to open the fight).
   const playerAction = { route: "attack", target: combatantId };
-  const combatRound = resolveRound(run, playerAction, { ...options, entryIntent: intent });
-  return { ok: true, run, combatRound };
+  const combatTurn = resolveCombatTurn(run, playerAction, { ...options, entryIntent: intent });
+  return { ok: true, run, combatRound: combatTurn };
 }
 
 /**
@@ -275,7 +277,7 @@ export function resolveCombatInput(run, action, options = {}) {
   if (action.type === "use_item" || action.combatAction === "use_item") {
     const itemId = action.itemId || action.item || null;
     const playerAction = { route: "use_item", itemId };
-    const combatRound = resolveRound(run, playerAction, options);
+    const combatRound = resolveCombatTurn(run, playerAction, options);
     return { ok: true, run, combatRound };
   }
 
@@ -283,7 +285,7 @@ export function resolveCombatInput(run, action, options = {}) {
   const decision = classifyCombatInput(action.intent, context);
 
   if (decision.route === "clarify") {
-    // No turn spent; the round does not advance, no enemy acts (phase0 §1.3).
+    // No turn spent; the queue does not advance, no enemy acts (phase0 §1.3).
     return { ok: true, run, clarify: { reason: decision.reason, ask: decision.ask } };
   }
   const playerAction = {
@@ -293,67 +295,104 @@ export function resolveCombatInput(run, action, options = {}) {
     stuntEffect: decision.stuntEffect || null,
     intent: action.intent
   };
-  const combatRound = resolveRound(run, playerAction, options);
+  const combatRound = resolveCombatTurn(run, playerAction, options);
   return { ok: true, run, combatRound };
 }
 
-// ── the round ─────────────────────────────────────────────────────────────────
-// One round: resolve each combatant's turn in initiative order (the player's
-// declared action + each living enemy's committed intent), then close or advance.
-function resolveRound(run, playerAction, options = {}) {
+// ── the turn (CTB) ──────────────────────────────────────────────────────────────
+// One HTTP action = one PLAYER decision. The player's chosen action resolves, then
+// the CTB queue runs every enemy whose next_tick precedes the player's next turn,
+// and control returns to the player. There are no rounds and no initiative — the
+// queue (Speed from DEX) is the clock (ctb-turn-engine-spec §1).
+function resolveCombatTurn(run, playerAction, options = {}) {
   const combat = run.combat;
-  const round = combat.round;
   const actions = [];
-  const order = combat.turnOrder;
 
-  for (const id of order) {
-    if (combat.status !== "active") break;
-    if (id === "player") {
-      resolvePlayerTurn(run, combat, playerAction, actions, options);
-      if (combat.status === "fled") { closeCombat(run, combat, "fled", options); break; }
-    } else {
-      const enemy = combat.combatants[id];
-      if (!enemy || (enemy.hp?.current ?? 0) <= 0) continue; // dead enemies don't act
-      resolveEnemyTurn(run, combat, enemy, actions, options);
-      if ((getHp(run.player).current ?? 0) <= 0) {
-        // Player-drop rule: combat ends the instant the player drops (§2.4).
-        combat.status = "lost";
-        closeCombat(run, combat, "lost", options);
-        break;
-      }
-    }
+  // 1. The player's turn.
+  resolvePlayerTurn(run, combat, playerAction, actions, options);
+  if (combat.status === "fled") { closeCombat(run, combat, "fled", options); return buildTurnResult(run, combat, actions); }
+  // The player-drop rule can fire on the player's OWN turn (an at-cost counter-blow).
+  if ((getHp(run.player).current ?? 0) <= 0 && combat.status === "active") {
+    combat.status = "lost"; closeCombat(run, combat, "lost", options); return buildTurnResult(run, combat, actions);
+  }
+  if (combat.status === "active") {
+    commitTurn(combat, combat.combatants.player, { weight: actionWeight(playerAction.route) });
   }
 
-  // Round end — victory check + next-round telegraphs.
-  let nextIntents = [];
+  // 2. Victory the instant the last enemy drops (no wasted enemy phase).
+  if (combat.status === "active" && livingEnemies(combat).length === 0) {
+    combat.status = "won"; closeCombat(run, combat, "won", options); return buildTurnResult(run, combat, actions);
+  }
+
+  // 3. Run the queue until it is the player's turn again (or the fight ends).
+  runEnemyTurnsUntilPlayer(run, combat, actions, options);
+
+  // 4. Close or advance to the next player decision.
   if (combat.status === "active") {
     if (livingEnemies(combat).length === 0) {
-      combat.status = "won";
-      closeCombat(run, combat, "won", options);
+      combat.status = "won"; closeCombat(run, combat, "won", options);
+    } else if ((getHp(run.player).current ?? 0) <= 0) {
+      combat.status = "lost"; closeCombat(run, combat, "lost", options);
     } else {
-      combat.round += 1;
+      combat.turn += 1;
       for (const enemy of livingEnemies(combat)) {
-        combat.enemyIntents[enemy.combatantId] = selectEnemyIntent(run, combat, enemy, combat.round);
+        if (!combat.enemyIntents[enemy.combatantId]) {
+          combat.enemyIntents[enemy.combatantId] = selectEnemyIntent(run, combat, enemy, combat.turn);
+        }
       }
-      nextIntents = livingEnemies(combat).map((e) => ({
-        id: e.combatantId,
-        telegraph: combat.enemyIntents[e.combatantId]?.hidden ? "coils, unreadable" : combat.enemyIntents[e.combatantId]?.telegraph || ""
-      }));
     }
   }
+  return buildTurnResult(run, combat, actions);
+}
 
+// Drive the CTB queue: while a fight is live and the NEXT actor is an enemy, resolve
+// its committed (telegraphed) intent, advance its queue slot, and pick its next
+// intent. Stop when the player is next to act. The player-drop rule ends combat the
+// instant the player reaches 0 HP (the guard caps a pathological loop).
+function runEnemyTurnsUntilPlayer(run, combat, actions, options) {
+  let guard = 0;
+  while (combat.status === "active" && guard < 64) {
+    guard += 1;
+    const actor = nextActor(combat);
+    if (!actor || actor.kind === "player") break; // hand the decision back to the player
+    resolveEnemyTurn(run, combat, actor, actions, options);
+    if ((getHp(run.player).current ?? 0) <= 0) {
+      combat.status = "lost"; closeCombat(run, combat, "lost", options); break;
+    }
+    commitTurn(combat, actor, { weight: ACTION_WEIGHT.standard });
+    combat.enemyIntents[actor.combatantId] = selectEnemyIntent(run, combat, actor, combat.turn + 1);
+  }
+}
+
+function actionWeight(route) {
+  return route === "use_item" ? ACTION_WEIGHT.light : ACTION_WEIGHT.standard;
+}
+
+// The per-turn payload: the ORDER-ONLY forecast (never raw ticks) + wound-band
+// enemies (never raw enemy HP — the narrator speaks wounds). Persists the forecast
+// on combat so the scene payload serves the same truth.
+function buildTurnResult(run, combat, actions) {
   const hp = getHp(run.player);
+  const forecast = combat.status === "active"
+    ? buildForecast(combat, { isRevealed: (c) => c.kind === "player" || c.revealed !== false })
+    : [];
+  combat.forecast = forecast;
   return {
     combatId: combat.combatId,
-    round,
+    turn: combat.turn,
+    round: combat.turn, // back-compat alias for readers that still key on "round"
     status: combat.status,
     location: { locationId: run.currentLocationId, name: run.locations?.[run.currentLocationId]?.name || "" },
     actions,
+    forecast,
     playerHp: { current: hp.current, max: hp.max, status: run.player.status },
     enemies: Object.values(combat.combatants)
       .filter((c) => c.kind === "enemy")
       .map((c) => ({ id: c.combatantId, name: c.name, hpBand: enemyHpBand(c), morale: c.morale })),
-    nextIntents,
+    nextIntents: livingEnemies(combat).map((e) => ({
+      id: e.combatantId,
+      telegraph: combat.enemyIntents[e.combatantId]?.hidden ? "coils, unreadable" : combat.enemyIntents[e.combatantId]?.telegraph || ""
+    })),
     outcome: combat.outcome || null
   };
 }
@@ -372,7 +411,7 @@ function resolvePlayerTurn(run, combat, playerAction, actions, options) {
   }
   if (route === "defend") {
     run.player.flags = run.player.flags || {};
-    run.player.flags.defendingUntilRound = combat.round + 1; // disadvantage on attacks against the player until next turn
+    run.player.flags.defendingUntilRound = combat.turn + 1; // disadvantage on attacks against the player until next turn
     actions.push({ actor: "player", kind: "defend", roll: null, damage: null, targetTransition: null });
     return;
   }
@@ -388,6 +427,11 @@ function resolvePlayerTurn(run, combat, playerAction, actions, options) {
   resolvePlayerAttack(run, combat, playerAction, actions, options);
 }
 
+// THREE-BAND ATTACK (Ch3 Law 2 applied to combat, per the CTB spec §"survives
+// untouched"). margin = attack total − enemy AC → success / success-at-a-cost (the
+// drama band: the hit lands AND a cost commits — damage BOTH ways) / failure-with-
+// consequence (miss + the enemy gains edge; never "nothing happens"). Crit (nat 20)
+// forces success + doubles the die; fumble (nat 1) forces failure.
 function resolvePlayerAttack(run, combat, playerAction, actions, options) {
   const targetId = playerAction.target || livingEnemies(combat)[0]?.combatantId;
   const enemy = combat.combatants[targetId];
@@ -396,30 +440,61 @@ function resolvePlayerAttack(run, combat, playerAction, actions, options) {
     return;
   }
   const profile = playerAttackProfile(run);
-  const d20 = rollD20(options);
+  const advantage = Boolean(run.player.flags?.advantageNextAttack);
+  if (run.player.flags) run.player.flags.advantageNextAttack = false;
+  const rolls = advantage ? [rollD20(options), rollD20(options)] : [rollD20(options)];
+  const d20 = advantage ? Math.max(...rolls) : rolls[0];
   const crit = d20 === 20;
+  const fumble = d20 === 1;
   const toHit = d20 + playerProficiency(run) + profile.mod;
-  const hit = crit || (d20 !== 1 && toHit >= enemy.ac);
+  const margin = toHit - enemy.ac;
+  const band = fumble ? RESOLUTION_BANDS.FAILURE : crit ? RESOLUTION_BANDS.SUCCESS : bandFromMargin(margin);
+
   let damage = 0;
-  if (hit) {
-    if (profile.unarmed) {
-      damage = Math.max(1, 1 + profile.mod) * (crit ? 2 : 1);
-    } else {
-      const base = rollDice(profile.die, { rng: options.rng }).total + (crit ? rollDice(profile.die, { rng: options.rng }).total : 0);
-      damage = Math.max(1, base + profile.mod);
-    }
+  let cost = null;
+  if (band !== RESOLUTION_BANDS.FAILURE) {
+    damage = rollWeaponDamage(profile, crit, options);
     enemy.hp.current = Math.max(0, enemy.hp.current - damage);
+    if (band === RESOLUTION_BANDS.SUCCESS_AT_COST) {
+      // The drama band: a real cost commits alongside the hit — the enemy lands a
+      // parting nip in the same exchange (Ch3 "Resource = your own vitality"),
+      // routed through the real death spine so a lethal cost still ends the fight.
+      cost = resolveAtCostBite(run, enemy, options);
+    }
+  } else {
+    // Failure with consequence: the miss leaves you exposed — the enemy's next
+    // strike gains edge. The scene is left different, never "try again".
+    enemy.flags = { ...(enemy.flags || {}), edgeNextTurn: true };
   }
-  const transition = !hit ? null : enemy.hp.current <= 0 ? "dead" : enemyHpBand(enemy);
+  const transition = band === RESOLUTION_BANDS.FAILURE ? null : enemy.hp.current <= 0 ? "dead" : enemyHpBand(enemy);
   if (enemy.hp.current <= 0) enemy.morale = "broken";
   actions.push({
     actor: "player",
     kind: "attack",
     target: targetId,
-    roll: { total: toHit, vs: "ac", dc: enemy.ac, hit, crit },
-    damage: hit ? { amount: damage, type: profile.unarmed ? "bludgeoning" : "physical" } : null,
+    band,
+    roll: { total: toHit, vs: "ac", dc: enemy.ac, margin, crit, fumble },
+    damage: damage > 0 ? { amount: damage, type: profile.unarmed ? "bludgeoning" : "physical" } : null,
+    cost,
     targetTransition: transition
   });
+}
+
+function rollWeaponDamage(profile, crit, options) {
+  if (profile.unarmed) return Math.max(1, 1 + profile.mod) * (crit ? 2 : 1);
+  const base = rollDice(profile.die, { rng: options.rng }).total + (crit ? rollDice(profile.die, { rng: options.rng }).total : 0);
+  return Math.max(1, base + profile.mod);
+}
+
+// The at-cost counter-blow: a REDUCED hit from the enemy in the same exchange (half
+// its normal damage, floored at 1) — a committed cost, never a free full turn.
+function resolveAtCostBite(run, enemy, options) {
+  const block = resolveStatBlock(enemy.statBlockId);
+  const atk = block?.attacks?.[0];
+  if (!atk) return null;
+  const raw = Math.max(1, Math.ceil(rollDice(atk.damage, { rng: options.rng }).total / 2));
+  const rec = applyDamage(run, raw, { now: isoNow(options) });
+  return { kind: "counter", amount: rec.amount, type: atk.damageType || "physical", from: enemy.combatantId };
 }
 
 function resolvePlayerFlee(run, combat, actions, options) {
@@ -463,7 +538,7 @@ function resolvePlayerStunt(run, combat, playerAction, actions, options) {
 }
 
 function resolveEnemyTurn(run, combat, enemy, actions, options) {
-  const intent = combat.enemyIntents[enemy.combatantId] || selectEnemyIntent(run, combat, enemy, combat.round);
+  const intent = combat.enemyIntents[enemy.combatantId] || selectEnemyIntent(run, combat, enemy, combat.turn);
   if (intent.kind !== "attack") {
     // defend/other: mutate only combat state (no player damage).
     actions.push({ actor: enemy.combatantId, kind: intent.kind, intentId: intent.intentId, roll: null, damage: null, targetTransition: null });
@@ -471,12 +546,15 @@ function resolveEnemyTurn(run, combat, enemy, actions, options) {
   }
   const block = resolveStatBlock(enemy.statBlockId);
   const atk = (block?.attacks || []).find((a) => a.attackId === intent.attackId) || block?.attacks?.[0];
-  const defending = run.player.flags?.defendingUntilRound && combat.round <= run.player.flags.defendingUntilRound;
+  const defending = run.player.flags?.defendingUntilRound && combat.turn <= run.player.flags.defendingUntilRound;
   const disadvantage = Boolean(defending) || Boolean(enemy.flags?.disadvantageNextTurn);
-  if (enemy.flags) enemy.flags.disadvantageNextTurn = false;
-  // Enemy attack vs the player's REAL AC (finally load-bearing).
-  const rolls = disadvantage ? [rollD20(options), rollD20(options)] : [rollD20(options)];
-  const d20 = disadvantage ? Math.min(...rolls) : rolls[0];
+  const advantage = Boolean(enemy.flags?.edgeNextTurn); // from a player's failure band
+  if (enemy.flags) { enemy.flags.disadvantageNextTurn = false; enemy.flags.edgeNextTurn = false; }
+  // Net edge/burden cancel (2d20 keep high/low; both → straight roll). Enemy attack
+  // vs the player's REAL AC.
+  const net = (advantage ? 1 : 0) - (disadvantage ? 1 : 0);
+  const rolls = net !== 0 ? [rollD20(options), rollD20(options)] : [rollD20(options)];
+  const d20 = net > 0 ? Math.max(...rolls) : net < 0 ? Math.min(...rolls) : rolls[0];
   const crit = d20 === 20;
   const toHit = d20 + (atk?.toHit ?? 0);
   const hit = crit || (d20 !== 1 && toHit >= playerAC(run));
@@ -526,7 +604,10 @@ function closeCombat(run, combat, status, options) {
   }
 
   combat.outcome = { result: status, defeated: defeated.map((c) => ({ combatantId: c.combatantId, npcId: c.npcId, name: c.name })), xp, loot };
-  combat.endedAtRound = combat.round;
+  combat.endedAtTurn = combat.turn;
+  // The fight burned game-time: advance the world clock by the turns spent (6s each),
+  // the lawful post-combat clock hook (worldClock.advanceCombatRounds).
+  advanceCombatRounds(run, combat.turn || 1, { now });
 
   // Canonical fact — stable, keyword-bearing text the thread engine reads. Enemy
   // display names carry the meaningful noun (e.g. "collector"), so an onCanon

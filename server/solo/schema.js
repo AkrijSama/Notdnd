@@ -1195,9 +1195,10 @@ export function validateCombatState(combat) {
   }
   validateRequiredString(combat.combatId, "combatId", errors);
   validateEnum(combat.status, COMBAT_STATUSES, "status", errors);
-  validateNumber(combat.round, "round", errors);
-  validateNumber(combat.turnIndex, "turnIndex", errors);
-  validateStringArray(combat.turnOrder, "turnOrder", errors);
+  // CTB shape (ctb-turn-engine-spec): `turn` is the player-decision counter, `now` is
+  // the integer queue clock. The old round/turnIndex/turnOrder are gone.
+  validateNumber(combat.turn, "turn", errors);
+  validateNumber(combat.now, "now", errors);
   if (!isPlainObject(combat.combatants)) {
     push(errors, "combatants", "Expected object");
   } else {

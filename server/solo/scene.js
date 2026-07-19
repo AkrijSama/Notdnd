@@ -1305,9 +1305,10 @@ function buildCombatSummary(run) {
   return {
     combatId: combat.combatId,
     status: combat.status,
-    round: combat.round,
-    turnOrder: combat.turnOrder || [],
-    turnIndex: combat.turnIndex ?? 0,
+    turn: combat.turn ?? 1,
+    // ORDER-ONLY turn forecast (ctb-turn-engine-spec §6): the upcoming actor order,
+    // never raw ticks. Enemies appear; hidden/unrevealed foes are filtered out.
+    forecast: Array.isArray(combat.forecast) ? combat.forecast : [],
     enemies,
     outcome: combat.outcome ?? null
   };
