@@ -124,7 +124,7 @@ import { buildAttemptContext, buildAttemptProviderInput, classifyIntentAuthority
 import { interpretAttemptWithGm } from "./gm/attemptInterpreter.js";
 import { attributeSceneDialogue, resolveGmNarration } from "./solo/gmProvider.js";
 import { buildGmRuntimeStatus } from "./solo/gmSmoke.js";
-import { enqueueDraftPortrait, enqueueImageJob, enqueueLocationImageJob, enqueuePlayerImageJob, enqueueVnBodyImageJob, getDraftPortrait, imageWorkerStatus, locationCanonFragment, writeUploadedBasePortrait } from "./solo/imageWorker.js";
+import { enqueueDraftPortrait, enqueueImageJob, enqueueLocationImageJob, enqueuePlayerImageJob, enqueueVnBodyImageJob, getDraftPortrait, imageWorkerStatus, locationCanonFragment, parseIdentityEdit, pronounsToGender, writeUploadedBasePortrait } from "./solo/imageWorker.js";
 import { recordRequest, shouldLogRequest, lastAuthEvents } from "./logging/requestLog.js";
 import { enqueueIdentityJob, runIdentityJob, backfillNpcMannerisms, buildVoiceDirective } from "./solo/npcIdentity.js";
 import { buildDisagreementDirective, detectComplianceViolations } from "./gm/disagreementAudit.js";
@@ -932,6 +932,17 @@ function buildThreadsDirective(run) {
 // narration model reads them as truth instead of guessing off the name — half of
 // the enforcement pair (repairNarrationPronouns is the post-narration back-stop).
 function buildPronounDirective(run) {
+  const clauses = [];
+  // The PLAYER's declared pronouns ride first (identity-as-state, 2026-07-18): the
+  // champion's committed pronouns are truth, never inferred. A legacy character
+  // with none set stays neutral (no clause) until they declare it.
+  const player = run?.player;
+  const playerPron = typeof player?.pronouns === "string" && player.pronouns.trim()
+    ? player.pronouns.trim()
+    : (typeof player?.gender === "string" && player.gender.trim() ? player.gender.trim() : "");
+  if (playerPron) {
+    clauses.push(`${player.displayName || player.name || "the player character"} (${playerPron})`);
+  }
   const present = Object.values(run?.npcs || {}).filter(
     (npc) =>
       npc &&
@@ -939,13 +950,13 @@ function buildPronounDirective(run) {
       npc.status !== "gone" &&
       (typeof npc.pronouns === "string" && npc.pronouns.trim() || typeof npc.gender === "string" && npc.gender.trim())
   );
-  if (present.length === 0) {
+  for (const npc of present) {
+    clauses.push(`${npc.generatedName || npc.displayName || npc.role} (${npc.pronouns || npc.gender})`);
+  }
+  if (clauses.length === 0) {
     return "";
   }
-  const list = present
-    .map((npc) => `${npc.generatedName || npc.displayName || npc.role} (${npc.pronouns || npc.gender})`)
-    .join(", ");
-  return ` COMMITTED PRONOUNS: ${list}. Refer to each of these characters with EXACTLY these pronouns — never swap, drift, or infer different ones.`;
+  return ` COMMITTED PRONOUNS: ${clauses.join(", ")}. Refer to each of these characters with EXACTLY these pronouns — never swap, drift, or infer different ones.`;
 }
 
 // COMMITTED MANNERISMS (spit-ban vacuum fill): present NPCs' committed physical
@@ -2379,7 +2390,17 @@ async function handleApi(req, res) {
       // class as phantom rejection (the server's pronouns are truth). Repairs are
       // logged so a drifting model is visible.
       if (typeof gmNarration === "string" && gmNarration.trim()) {
-        const pronounFix = repairNarrationPronouns(gmNarration, Object.values(responseRun.npcs || {}));
+        // The PLAYER is audited too, keyed to their DECLARED gender (identity-as-
+        // state): a narration that misgenders the champion is repaired like an NPC.
+        // Legacy characters with no declared gender are simply not audited (neutral).
+        const p = responseRun.player;
+        const playerGender = typeof p?.gender === "string" && p.gender.trim() ? p.gender.trim() : pronounsToGender(p?.pronouns);
+        const playerName = p?.displayName || p?.name;
+        const auditRecords = Object.values(responseRun.npcs || {});
+        if (playerGender && typeof playerName === "string" && playerName.trim().length >= 3) {
+          auditRecords.unshift({ gender: playerGender, displayName: playerName, generatedName: playerName });
+        }
+        const pronounFix = repairNarrationPronouns(gmNarration, auditRecords);
         if (pronounFix.repairs.length > 0) {
           gmNarration = pronounFix.text;
           logTurnEvent(
@@ -3272,10 +3293,18 @@ async function handleApi(req, res) {
         editInstruction: instruction,
         sourceImageUrl: typeof payload?.sourceImageUrl === "string" ? payload.sourceImageUrl : ""
       });
+      // IDENTITY-AS-STATE: an identity-class edit ("male", "she", "older") is a
+      // FIELD change, not token soup — return the resolved identity so the client
+      // COMMITS it onto the character (every later gen/redo then carries it).
+      const parsedIdentity = parseIdentityEdit(instruction);
+      const identity = (parsedIdentity.pronouns || parsedIdentity.ageClass)
+        ? { pronouns: parsedIdentity.pronouns, gender: parsedIdentity.gender, ageClass: parsedIdentity.ageClass }
+        : null;
       writeJson(res, 200, {
         ok: true,
         draftId,
         status: "generating",
+        identity,
         consistentEdit: pollinationsEditConfigured(),
         entitlement: entitlementSummary(user, { byok })
       });

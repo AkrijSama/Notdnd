@@ -21,18 +21,25 @@ test("step 1 (Identity) renders name/pronouns/portrait + progress", () => {
   assert.match(html, /Create Your Character/);
   assert.match(html, /1\. Identity/);
   assert.match(html, /data-cw-input="name"/);
-  assert.match(html, /data-cw-input="pronouns"/);
+  // Pronouns is now a REQUIRED He/She/They/Custom chip choice (identity-as-state).
+  assert.match(html, /data-cw-pronouns="he\/him"/);
+  assert.match(html, /data-cw-pronouns="she\/her"/);
+  assert.match(html, /data-cw-pronouns="they\/them"/);
+  assert.match(html, /data-cw-pronouns="custom"/);
   assert.match(html, /data-cw-portraitmode="generate"/);
   assert.match(html, /data-cw-next/);
 });
 
-test("Identity pronouns field defaults to he/him", () => {
-  // Unset pronouns -> the field shows he/him as the default (owner default).
+test("Identity pronouns default to he/him (chip active); a chosen value wins", () => {
+  // Unset pronouns -> the He/him chip is active (owner default).
   const html = wizard({ step: 1 });
-  assert.match(html, /data-cw-input="pronouns"[^>]*value="he\/him"/);
-  // A chosen value still wins (she/her / they/them remain selectable).
+  assert.match(html, /class="onb-chip active"[^>]*data-cw-pronouns="he\/him"|data-cw-pronouns="he\/him"[^>]*class="onb-chip active"|onb-chip active" data-cw-pronouns="he\/him"/);
+  // A chosen value activates its chip instead.
   const she = wizard({ step: 1, pronouns: "she/her" });
-  assert.match(she, /data-cw-input="pronouns"[^>]*value="she\/her"/);
+  assert.match(she, /onb-chip active" data-cw-pronouns="she\/her"/);
+  // Custom opens a free-text field.
+  const custom = wizard({ step: 1, pronouns: "xe/xem" });
+  assert.match(custom, /data-cw-input="pronouns"[^>]*value="xe\/xem"/);
 });
 
 test("step 2 (Race) renders all races as selectable cards", () => {

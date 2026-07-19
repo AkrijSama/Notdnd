@@ -15,6 +15,16 @@ import {
 // in-game character tab. No state, no I/O.
 // ---------------------------------------------------------------------------
 
+// Declared gender from declared pronouns (identity-as-state). Local to keep the
+// module self-contained (mirrors schema.deriveGenderFromPronouns).
+function deriveGenderFromPronouns(pronouns) {
+  const s = String(pronouns || "").toLowerCase();
+  if (/\b(she|her|hers)\b/.test(s)) return "female";
+  if (/\b(they|them|their)\b/.test(s)) return "nonbinary";
+  if (/\b(he|him|his)\b/.test(s)) return "male";
+  return null;
+}
+
 function normalizedScores(baseAbilityScores = {}) {
   const base = {};
   for (const ability of ABILITIES) {
@@ -136,6 +146,12 @@ export function toRunPlayer(character, basePlayer = {}) {
   player.race = character?.race || null;
   player.background = character?.background || null;
   player.pronouns = character?.pronouns || null;
+  // Declared gender (identity-as-state): explicit field wins, else derived from
+  // the declared pronouns (he→male, she→female, they→nonbinary). Committed truth
+  // for the portrait gender token + the pronoun audit.
+  player.gender = (typeof character?.gender === "string" && character.gender.trim())
+    ? character.gender.trim()
+    : deriveGenderFromPronouns(character?.pronouns);
   player.level = character?.level || player.level || 1;
   // Milestone truth (Ch7 delta Phase 1): creation levels ARE milestones under
   // the identity mapping; clamp to the chassis cap (vault input max is 20).

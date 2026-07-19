@@ -619,7 +619,12 @@ function defaultCharacterState() {
   return {
     step: 1,
     name: "",
-    pronouns: "",
+    // Declared identity (identity-as-state): pronouns is a REQUIRED He/She/They/
+    // Custom choice; gender derives from it and is the SOLE source of the portrait
+    // gender token. Pre-filled to the owner default (he/him) so it's committed.
+    pronouns: "he/him",
+    gender: "male",
+    pronounsMode: "preset",
     portraitMode: "generate",
     race: "",
     characterClass: "",
@@ -682,6 +687,18 @@ function charField(field, value) {
   // Race/class/background drive the portrait. Once both race AND class are set,
   // (re)generate the draft portrait so it's ready by the Review step. Debounced
   // 500ms so rapidly flipping through race/class doesn't fire a request per click.
+  scheduleDraftPortrait();
+  scheduleRender();
+}
+
+// Declared pronouns (identity-as-state): a He/She/They/Custom choice sets BOTH the
+// committed pronouns and the derived gender (the SOLE portrait gender-token source).
+// "custom" opens a free-text field; gender then derives from whatever is typed.
+function setPronouns(value) {
+  const custom = value === "custom";
+  const pronouns = custom ? "" : String(value || "");
+  const gender = /\b(she|her)\b/i.test(pronouns) ? "female" : /\b(they|them)\b/i.test(pronouns) ? "nonbinary" : /\b(he|him)\b/i.test(pronouns) ? "male" : null;
+  uiState.onboarding.character = { ...(uiState.onboarding.character || defaultCharacterState()), pronouns, gender, pronounsMode: custom ? "custom" : "preset" };
   scheduleDraftPortrait();
   scheduleRender();
 }
@@ -822,6 +839,7 @@ async function maybeRequestDraftPortrait() {
         characterClass: c.characterClass,
         background: c.background,
         pronouns: c.pronouns,
+        gender: c.gender,
         // Authored origin (The Beckoned) drives the modern-Earth portrait framing
         // so the creator preview matches the run portrait (portrait-canon fix).
         origin: c.origin
@@ -958,7 +976,7 @@ async function submitPortraitEdit(rawInstruction) {
   scheduleRender();
   try {
     const res = await apiClient.editDraftPortrait({
-      character: { name: c.name, race: c.race, characterClass: c.characterClass, background: c.background, pronouns: c.pronouns, origin: c.origin },
+      character: { name: c.name, race: c.race, characterClass: c.characterClass, background: c.background, pronouns: c.pronouns, gender: c.gender, origin: c.origin },
       world: { tone: world.tone, artStyle: world.artStyle, name: world.name },
       instruction,
       sourceImageUrl: sourceUri,
@@ -1019,7 +1037,12 @@ function revertPortraitVersion(id) {
 }
 function charInput(field, value) {
   // text fields: update state without re-render so the caret is preserved
-  uiState.onboarding.character = { ...(uiState.onboarding.character || defaultCharacterState()), [field]: value };
+  const patch = { [field]: value };
+  // Custom pronouns free-text still derives the committed gender (identity-as-state).
+  if (field === "pronouns") {
+    patch.gender = /\b(she|her)\b/i.test(value) ? "female" : /\b(they|them)\b/i.test(value) ? "nonbinary" : /\b(he|him)\b/i.test(value) ? "male" : null;
+  }
+  uiState.onboarding.character = { ...(uiState.onboarding.character || defaultCharacterState()), ...patch };
 }
 function charMethod(method) {
   const c = uiState.onboarding.character || defaultCharacterState();
@@ -1091,6 +1114,7 @@ async function enterWorld() {
   // missing, but never trust the UI gate alone. Surface what's still required.
   const missing = [];
   if (!(typeof c.name === "string" && c.name.trim().length > 0)) missing.push("a character name");
+  if (!(typeof c.pronouns === "string" && c.pronouns.trim().length > 0)) missing.push("pronouns");
   if (!c.race) missing.push("a race");
   if (!c.characterClass) missing.push("a class");
   if (missing.length > 0) {
@@ -1104,6 +1128,7 @@ async function enterWorld() {
       character: {
         name: c.name,
         pronouns: c.pronouns,
+        gender: c.gender,
         race: c.race,
         characterClass: c.characterClass,
         background: c.background,
@@ -1728,6 +1753,7 @@ function renderApp() {
         onConfirmWorld: confirmWorld,
         onCharStep: charStep,
         onCharField: charField,
+        onCharPronouns: setPronouns,
         onCharInput: charInput,
         onPortraitRedo: redoDraftPortrait,
         onPortraitFile: handlePortraitFile,

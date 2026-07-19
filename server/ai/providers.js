@@ -590,6 +590,7 @@ export async function editImage({
   instruction = "",
   prompt = "",
   style = "",
+  kind = null,
   seed = null,
   width = null,
   height = null,
@@ -607,9 +608,13 @@ export async function editImage({
       // Never hard-fail a player's edit — degrade to the regenerate fallback below.
     }
   }
+  // The FREEFORM tweak folds onto the (identity-correct, rebuilt-from-state) base
+  // prompt — gender is already a WEIGHTED token in `prompt`, so tail detail text
+  // no longer fights it. `kind` forwards the validated per-lane recipe routing so
+  // the regenerate fallback shares the ONE portrait path (not the generic graph).
   const tweak = String(instruction || "").trim();
   const editedPrompt = tweak ? `${prompt}, ${tweak}` : prompt;
-  const result = await generateImage({ prompt: editedPrompt, style, seed, width, height, fetchImpl });
+  const result = await generateImage({ prompt: editedPrompt, style, kind, seed, width, height, fetchImpl });
   return { ...result, edited: false };
 }
 

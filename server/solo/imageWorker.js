@@ -317,6 +317,7 @@ function normalizePortraitCharacter(character = {}) {
     background: isStr(character.background) ? character.background.trim() : null,
     pronouns: isStr(character.pronouns) ? character.pronouns.trim() : null,
     gender: isStr(character.gender) ? character.gender.trim() : null,
+    ageClass: isStr(character.ageClass) ? character.ageClass.trim() : null,
     origin: isStr(character.origin) ? character.origin.trim() : null
   };
 }
@@ -325,13 +326,81 @@ function normalizePortraitCharacter(character = {}) {
 // adult words — blocks/darkfantasy.json laneRule) + gender lock (anime checkpoints
 // are female-biased; a male MC renders female without an explicit male token, and
 // the player's gender otherwise never reaches the prompt). Weighted, per the law.
+// DECLARED IDENTITY is the SOLE source of the gender token — never inferred token
+// soup: gender derives from the committed pronouns (he→man, she→woman), and an
+// age-class field (elderly/young) modifies the weighted age word (never minor).
 function adultGenderPhrase(c = {}) {
   const g = String(c.gender || "").toLowerCase();
   const p = String(c.pronouns || "").toLowerCase();
+  const age = String(c.ageClass || "").toLowerCase();
   let noun = null;
   if (/\b(man|male|boy|masc)/.test(g) || /\b(he|him|his)\b/.test(p)) noun = "man";
   else if (/\b(woman|female|girl|femme)/.test(g) || /\b(she|her|hers)\b/.test(p)) noun = "woman";
-  return noun ? `(adult ${noun}:1.3), mature adult` : "(adult:1.3), mature adult";
+  // Age word: adult by default; elderly/young modifiers per the identity edit. The
+  // "mature adult" anchor stays for adult/young (the anti-minor guard); elderly
+  // swaps to aged language.
+  let ageWord = "adult";
+  let anchor = "mature adult";
+  if (/eld|old|senior|aged/.test(age)) { ageWord = "elderly"; anchor = "older adult, aged features"; }
+  else if (/young/.test(age)) { ageWord = "young adult"; anchor = "mature adult"; }
+  return noun ? `(${ageWord} ${noun}:1.3), ${anchor}` : `(${ageWord}:1.3), ${anchor}`;
+}
+
+// ── IDENTITY-AS-STATE (2026-07-18 refine-inverts-gender fix) ─────────────────
+// A "refine" edit like "Male character" must not fight unweighted tail token-soup
+// (the old editImage `${prompt}, ${tweak}` merge). It UPDATES the committed
+// identity field (pronouns/gender/age-class), then the prompt is REBUILT from
+// state with the WEIGHTED gender token + opposite-gender purge (the negative,
+// added in comfyui.sealPortraitPrompt). Only identity-class tokens are parsed as
+// field changes; everything else stays a freeform visual tweak.
+const ID_MALE_RE = /\b(male|man|men|boy|masculine|guy|dude|gentleman|he\/him|he|him)\b/i;
+const ID_FEMALE_RE = /\b(female|woman|women|girl|feminine|lady|gal|she\/her|she|her|hers)\b/i;
+const ID_NB_RE = /\b(non-?binary|enby|androgynous|they\/them|gender-?neutral)\b/i;
+const ID_OLD_RE = /\b(old|older|elderly|aged|senior)\b/i;
+const ID_YOUNG_RE = /\b(young|younger|youthful)\b/i;
+// Identity words stripped from the freeform remainder once absorbed into a field.
+const ID_STRIP_RE = /\b(male|female|man|men|woman|women|boy|girl|masculine|feminine|masc|femme|guy|dude|gentleman|lady|gal|non-?binary|enby|androgynous|gender-?neutral|he\/him|she\/her|they\/them|\bhe\b|\bhim\b|\bshe\b|\bher\b|\bhers\b|old|older|elderly|aged|senior|young|younger|youthful|character|gender|make(?:\s+(?:the\s+)?(?:character|them|him|her|it))?|turn\s+(?:the\s+)?(?:character|them|him|her|it)?\s*into|a|an|the|into)\b/gi;
+
+export function pronounsToGender(pronouns) {
+  const s = String(pronouns || "").toLowerCase();
+  if (/\b(he|him|his)\b/.test(s)) return "male";
+  if (/\b(she|her|hers)\b/.test(s)) return "female";
+  if (/\b(they|them|their)\b/.test(s)) return "nonbinary";
+  return null;
+}
+
+// Parse a refine instruction into declared-field changes + the freeform remainder.
+export function parseIdentityEdit(instruction) {
+  const raw = String(instruction || "").trim();
+  const t = raw.toLowerCase();
+  let pronouns = null;
+  if (ID_NB_RE.test(t)) pronouns = "they/them";
+  else if (ID_MALE_RE.test(t)) pronouns = "he/him";
+  else if (ID_FEMALE_RE.test(t)) pronouns = "she/her";
+  let ageClass = null;
+  if (ID_OLD_RE.test(t)) ageClass = "elderly";
+  else if (ID_YOUNG_RE.test(t)) ageClass = "young-adult";
+  let freeform = raw;
+  if (pronouns || ageClass) {
+    freeform = raw.replace(ID_STRIP_RE, " ").replace(/[\s,]{2,}/g, " ").replace(/^[\s,]+|[\s,]+$/g, "").trim();
+  }
+  return { pronouns, gender: pronouns ? pronounsToGender(pronouns) : null, ageClass, freeform };
+}
+
+// Apply the parsed identity to a character, returning the updated character (state),
+// the freeform remainder, and whether any identity field changed.
+export function applyIdentityEdit(character = {}, instruction = "") {
+  const parsed = parseIdentityEdit(instruction);
+  const changed = Boolean(parsed.pronouns || parsed.ageClass);
+  const updated = { ...character };
+  if (parsed.pronouns) {
+    updated.pronouns = parsed.pronouns;
+    updated.gender = parsed.gender;
+  }
+  if (parsed.ageClass) {
+    updated.ageClass = parsed.ageClass;
+  }
+  return { character: updated, freeform: parsed.freeform, changed, identity: { pronouns: updated.pronouns || null, gender: updated.gender || null, ageClass: updated.ageClass || null } };
 }
 
 // Canon player identity: the Babel authored origin "The Beckoned" is a modern-day
@@ -852,25 +921,33 @@ export async function runDraftPortraitJob(job = {}) {
   }
 
   draftPortraits.set(draftId, { status: "generating", uri: null });
-  const prompt = buildPlayerPortraitPrompt(character, world);
+  const editInstruction = typeof job.editInstruction === "string" ? job.editInstruction.trim() : "";
+  const sourceImageUrl = typeof job.sourceImageUrl === "string" ? job.sourceImageUrl.trim() : "";
+  // IDENTITY-AS-STATE (2026-07-18): a refine edit's identity-class tokens ("male",
+  // "she", "older") UPDATE the committed character; the prompt is REBUILT from that
+  // state with the WEIGHTED gender token — it never fights an unweighted tail
+  // append. Only the non-identity remainder stays a freeform visual tweak. This is
+  // the SINGLE path — same builder + validated per-lane recipe (kind:"portrait") +
+  // sealPortraitPrompt as draft/live; the parallel `${prompt}, ${tweak}` merge is gone.
+  const applied = editInstruction ? applyIdentityEdit(character, editInstruction) : { character, freeform: "", changed: false };
+  const effChar = applied.character;
+  const freeform = String(applied.freeform || "").trim();
+  const prompt = buildPlayerPortraitPrompt(effChar, world);
   const style = engineStyleForRun(null, world);
   // Offset the deterministic seed by the redo nonce so a reroll produces a
   // genuinely different image (not the same one under a fresh id). Seed also
-  // varies by art style so a style change yields a different image.
-  const seed = playerPortraitSeed(character, world) + Math.trunc(Number(job.nonce) || 0) * 100003;
-  const editInstruction = typeof job.editInstruction === "string" ? job.editInstruction.trim() : "";
-  const sourceImageUrl = typeof job.sourceImageUrl === "string" ? job.sourceImageUrl.trim() : "";
+  // varies by art style so a style change yields a different image. An identity
+  // edit shifts the seed too (the prompt materially changed).
+  const seed = playerPortraitSeed(effChar, world) + Math.trunc(Number(job.nonce) || 0) * 100003 + (applied.changed ? 991 : 0);
 
   try {
-    // A conversational edit routes through editImage (kontext-first edit of the
-    // current portrait, regenerate fallback when no funded key); a plain
-    // generation/redo uses generateImage. Same prompt base so the character holds.
-    const result = editInstruction
-      ? await editImage({ sourceImageUrl, instruction: editInstruction, prompt, style, seed, ...PLAYER_PORTRAIT_DIMENSIONS })
-      // kind:"portrait" routes the draft through the SAME validated per-lane export
-      // the live run uses (portrait-<style>.json) instead of the generic style
-      // workflow — the 2026-07-18 draft/live divergence that served the generic
-      // Illustrious graph (no elf defense) for the owner's onboarding portrait.
+    // A FREEFORM visual tweak (scar, hair) routes through editImage (kontext-first
+    // edit of the current portrait, regenerate fallback) on the identity-correct
+    // rebuilt base — now with kind:"portrait" so it uses the SAME validated recipe.
+    // An identity-only edit OR a plain generation/redo generates cleanly from state
+    // (kind:"portrait" → portrait-<style>.json + sealPortraitPrompt).
+    const result = freeform
+      ? await editImage({ sourceImageUrl, instruction: freeform, prompt, style, kind: "portrait", seed, ...PLAYER_PORTRAIT_DIMENSIONS })
       : await generateImage({ prompt, style, kind: "portrait", seed, ...PLAYER_PORTRAIT_DIMENSIONS });
     const bytes = result?.bytes;
     if (!bytes || !bytes.length) {

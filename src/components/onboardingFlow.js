@@ -383,8 +383,23 @@ function renderCharIdentity(c, portrait = {}) {
       <div class="onb-identity-fields">
         <div class="onb-field"><label>Character name</label>
           <input data-cw-input="name" maxlength="60" placeholder="Ser Rowan Vale" value="${esc(c.name || "")}" /></div>
-        <div class="onb-field"><label>Pronouns</label>
-          <input data-cw-input="pronouns" maxlength="30" placeholder="he/him" value="${esc(c.pronouns || "he/him")}" /></div>
+        ${(() => {
+          // Declared pronouns: a REQUIRED He/She/They/Custom choice; defaults to
+          // the owner default (he/him) so it is always committed. Gender derives
+          // from it and is the SOLE portrait gender token (identity-as-state).
+          const pron = c.pronouns || "he/him";
+          const presets = ["he/him", "she/her", "they/them"];
+          const isCustom = c.pronounsMode === "custom" || (Boolean(c.pronouns) && !presets.includes(c.pronouns));
+          return `<div class="onb-field"><label>Pronouns</label>
+          <div class="onb-chips">
+            ${[["he/him", "He/him"], ["she/her", "She/her"], ["they/them", "They/them"]]
+              .map(([v, l]) => renderChip(l, !isCustom && pron === v, `data-cw-pronouns="${v}"`))
+              .join("")}
+            ${renderChip("Custom", isCustom, 'data-cw-pronouns="custom"')}
+          </div>
+          ${isCustom ? `<input data-cw-input="pronouns" maxlength="30" placeholder="xe/xem" value="${esc(c.pronouns || "")}" />` : ""}
+        </div>`;
+        })()}
         <div class="onb-field"><label>Portrait</label>
           <div class="onb-chips">
             ${renderChip("Let the GM imagine them", mode === "generate", 'data-cw-portraitmode="generate"')}
@@ -608,6 +623,7 @@ function renderCharacterWizard(state) {
   const missingRequirements = isLast
     ? [
         { ok: typeof c.name === "string" && c.name.trim().length > 0, label: "Enter a character name" },
+        { ok: typeof c.pronouns === "string" && c.pronouns.trim().length > 0, label: "Choose pronouns" },
         { ok: Boolean(c.race), label: "Choose a race" },
         { ok: Boolean(c.characterClass), label: "Choose a class" }
       ].filter((req) => !req.ok).map((req) => req.label)
@@ -929,6 +945,9 @@ export function bindOnboardingFlow(root, handlers = {}) {
   });
   root.querySelectorAll("[data-cw-portraitmode]").forEach((button) => {
     button.addEventListener("click", () => handlers.onCharField?.("portraitMode", button.getAttribute("data-cw-portraitmode")));
+  });
+  root.querySelectorAll("[data-cw-pronouns]").forEach((button) => {
+    button.addEventListener("click", () => handlers.onCharPronouns?.(button.getAttribute("data-cw-pronouns")));
   });
   // Upload-my-own portrait: hand the chosen File to the app (validation +
   // upload live in main.js so errors surface in the preview state).

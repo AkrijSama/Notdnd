@@ -168,6 +168,16 @@ function isString(value) {
   return typeof value === "string" && value.trim().length > 0;
 }
 
+// Declared gender from declared pronouns (identity-as-state). Mirror of
+// imageWorker.pronounsToGender; kept local so schema stays self-contained.
+function deriveGenderFromPronouns(pronouns) {
+  const s = String(pronouns || "").toLowerCase();
+  if (/\b(she|her|hers)\b/.test(s)) return "female";
+  if (/\b(they|them|their)\b/.test(s)) return "nonbinary";
+  if (/\b(he|him|his)\b/.test(s)) return "male";
+  return null;
+}
+
 function isOptionalString(value) {
   return value === undefined || value === null || typeof value === "string";
 }
@@ -594,6 +604,10 @@ export function validatePlayerState(player) {
   validateOptionalString(player.characterClass, "characterClass", errors);
   validateOptionalString(player.background, "background", errors);
   validateOptionalString(player.pronouns, "pronouns", errors);
+  // DECLARED GENDER (identity-as-state) — optional/additive; legacy runs validate
+  // without it. The SOLE committed source of the portrait gender token + the
+  // pronoun audit's expected gender.
+  validateOptionalString(player.gender, "gender", errors);
   validateOptionalString(player.portraitUri, "portraitUri", errors);
   validateOptionalNumber(player.proficiencyBonus, "proficiencyBonus", errors);
   if (player.status !== undefined && player.status !== null) {
@@ -1744,6 +1758,10 @@ export function createDefaultSoloRun(options = {}) {
       // picks otherwise in the Identity step; the GM is told these so it never
       // has to guess (see gmProvider/voice).
       pronouns: isString(options.pronouns) ? options.pronouns : "he/him",
+      // Declared gender, derived from the declared pronouns when not given
+      // explicitly (he→male, she→female, they→nonbinary). Committed truth for the
+      // portrait gender token + pronoun audit (identity-as-state, 2026-07-18).
+      gender: isString(options.gender) ? options.gender : deriveGenderFromPronouns(isString(options.pronouns) ? options.pronouns : "he/him"),
       // Milestone track (Ch7 delta Phase 1): milestone is server truth; level
       // is its computed display mirror (identity mapping until a world book
       // supplies a real one — they coincide by construction).

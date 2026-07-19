@@ -338,6 +338,21 @@ function isCharacterSubject(positive) {
   return /(character portrait|portrait of|\bhuman\b|\bperson\b|\bman\b|\bwoman\b|1girl|1boy)/i.test(String(positive || ""));
 }
 
+// GENDER LOCK (2026-07-18 refine-inverts-gender fix). The declared gender is a
+// WEIGHTED token in the positive ("(adult man:1.3)"); ENFORCE it by purging the
+// opposite gender in the NEGATIVE (ComfyUI honors negatives; anime checkpoints are
+// female-biased, so a male MC needs female actively suppressed). Single-sourced
+// from the positive so draft, refine, and live all lock identically. `female`
+// contains `male` and `woman` contains `man` only mid-word, so \b guards are safe.
+function genderLockNegative(positive) {
+  const p = String(positive || "").toLowerCase();
+  const hasMan = /\badult man\b/.test(p) || /\bmale\b/.test(p) || /\b1boy\b/.test(p);
+  const hasWoman = /\badult woman\b/.test(p) || /\bfemale\b/.test(p) || /\b1girl\b/.test(p);
+  if (hasMan && !hasWoman) return "1girl, woman, female, feminine, girl";
+  if (hasWoman && !hasMan) return "1boy, man, male, masculine, boy";
+  return "";
+}
+
 function joinCsv(parts) {
   return parts.map((p) => String(p || "").trim()).filter(Boolean).join(", ");
 }
@@ -348,8 +363,9 @@ function joinCsv(parts) {
 export function sealPortraitPrompt(styleKey, positive, presetNegative) {
   const pos0 = String(positive || "");
   const elf = elfDefenseFor(pos0);
+  const genderLock = isCharacterSubject(pos0) ? genderLockNegative(pos0) : "";
   if (styleKey !== "anime") {
-    return { positive: pos0, negative: joinCsv([presetNegative, elf]) };
+    return { positive: pos0, negative: joinCsv([presetNegative, elf, genderLock]) };
   }
   const block = animeBlock();
   const isChar = isCharacterSubject(pos0);
@@ -360,7 +376,8 @@ export function sealPortraitPrompt(styleKey, positive, presetNegative) {
     block.negativeBase,
     isChar ? PORTRAIT_NEGATIVE_LAW : "",
     isChar ? AGE_NEGATIVE_LAW : "",
-    elf
+    elf,
+    genderLock
   ]);
   return { positive: positiveOut, negative: negativeOut };
 }
