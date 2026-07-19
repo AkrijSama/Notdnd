@@ -54,10 +54,13 @@ test("prose is LEFT-ANCHORED at the measure, never a centered column (the ultraw
   assert.match(rule(".solo-log-entry {"), /margin:\s*0 0 34px/);
 });
 
-test("the right rail remains a real column; mobile stacks (no floating dock)", () => {
-  assert.ok(CSS.includes(".solo-game-rail"), "right rail column present");
-  // At <=1080px the frame stacks and the dock returns to normal flow — still no
-  // reserved LEFT column (it's a full-width top band on mobile).
+test("the right-rail CSS is fully gone (no orphan column cruft); mobile still stacks the dock", () => {
+  // The owner ruled the right column dead (2026-07-19). The container CSS must not
+  // linger — a dead .solo-game-rail rule would green a "rail survives" test while
+  // nothing renders it. Its former contents live in .solo-info-drawer now.
+  assert.ok(!CSS.includes(".solo-game-rail"), "no .solo-game-rail rules remain in the stylesheet");
+  // At <=1080px the frame stacks and the floating dock returns to normal flow —
+  // still no reserved LEFT column (it's a full-width top band on mobile).
   const mobile = CSS.slice(CSS.indexOf("@media (max-width: 1080px)"));
   assert.match(mobile, /\.solo-game-sidebar[\s\S]*?position:\s*static/);
 });

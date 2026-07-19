@@ -2647,20 +2647,11 @@ button:disabled {
   .solo-map-view .solo-map-board { width: 100%; }
 }
 
-/* ---- Right rail ---- */
-.solo-game-rail {
-  width: clamp(200px, 15vw, 280px);
-  flex: none;
-  background: var(--panel, #171009);
-  background-image: var(--texture, none);
-  background-size: var(--texture-size, auto);
-  border-left: 1px solid var(--border, #202024);
-  overflow-y: auto;
-  /* Reserve a clean top band for the absolutely-positioned settings cog
-     (.solo-settings: top 14px + 38px tall = ~52px) so it gets its own corner
-     and never overlaps the "Where you are" header at the rail's top. */
-  padding-top: 46px;
-}
+/* ---- Info-drawer blocks (was the right rail) ----
+   NO RIGHT COLUMN (owner ruling 2026-07-19): the rail is gone. Its former
+   contents — Cast · Exits + the reactive search/talk/entity panels — now live
+   in the on-demand info drawer (.solo-info-drawer). These block/clock/goal rules
+   are still used INSIDE that drawer and the floating HUD clock, so they stay. */
 .solo-rail-block { padding: 18px 20px; border-bottom: 1px solid var(--border, #202024); }
 /* #40 world-clock indicator: sun/moon icon (phase-tinted) + time + phase/day. */
 .solo-rail-clock { padding-top: 12px; padding-bottom: 12px; }
@@ -3514,8 +3505,8 @@ button:disabled {
     radial-gradient(130% 95% at 50% 8%, #2a1f14, var(--inset, #070708) 72%);
 }
 
-/* Right-rail result panels sit flush inside their rail blocks. */
-.solo-game-rail .module-card {
+/* Result panels sit flush inside their info-drawer blocks (was the right rail). */
+.solo-info-drawer .module-card {
   margin: 0;
   border: none;
   background: transparent;
@@ -3551,8 +3542,7 @@ button:disabled {
 
 @media (max-width: 1080px) {
   .solo-game-frame { flex-direction: column; min-height: 0; }
-  .solo-game-sidebar,
-  .solo-game-rail { width: auto; border: none; border-bottom: 1px solid var(--border, #202024); }
+  .solo-game-sidebar { width: auto; border: none; border-bottom: 1px solid var(--border, #202024); }
   /* Mobile stacks vertically — the dock returns to normal flow (top of the
      stack, full width); no floating overlay and still no reserved LEFT column. */
   .solo-game-sidebar,
