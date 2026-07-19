@@ -130,6 +130,7 @@ import { enqueueIdentityJob, runIdentityJob, backfillNpcMannerisms, buildVoiceDi
 import { buildDisagreementDirective, detectComplianceViolations } from "./gm/disagreementAudit.js";
 import { captureDeclaredGoal, honorGoalsOnAttempt, buildGoalsDirective, detectGoalIgnored } from "./solo/goals.js";
 import { detectStarterZoneLostMotif } from "./solo/starterZone.js";
+import { detectFabricatedCombatNumbers } from "./solo/combatAudit.js";
 import { buildLayoutDirective, ensureLocationLayout } from "./solo/layout.js";
 import { enforceRomanceRegister, stripRomanceRegister, ROMANCE_CORRECTIVE_CLAUSE } from "./gm/romanceEnforcement.js";
 import { buildNpcIntroDirective, buildSoloScenePayload, collectNpcsWithPendingIntro } from "./solo/scene.js";
@@ -2398,6 +2399,16 @@ async function handleApi(req, res) {
           logTurnEvent(
             responseRun.runId,
             `starter-zone-lost VIOLATION @${responseRun.currentLocationId}: ${lostMotifs.map((m) => `"${m.phrase}"`).join(" | ")} user=${user?.id || "anon"}`
+          );
+        }
+        // COMBAT NARRATION AUDITOR (D.4): the combat directive says speak wounds in
+        // bands, never raw HP/damage numbers. A fabricated/leaked number inside a live
+        // fight is narrated-state drift — flag it. Log-only; the directive is the law.
+        const fabNumbers = detectFabricatedCombatNumbers(gmNarration, responseRun.combat);
+        if (fabNumbers.length > 0) {
+          logTurnEvent(
+            responseRun.runId,
+            `combat-number VIOLATION @${responseRun.combat?.combatId || "?"}: ${fabNumbers.map((f) => `[${f.kind}] "${f.phrase}"`).join(" | ")} user=${user?.id || "anon"}`
           );
         }
       }

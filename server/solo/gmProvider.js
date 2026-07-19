@@ -256,6 +256,7 @@ export function buildProviderPromptMessages(gmInput, options = {}) {
     policyProfileId: gmInput.policyProfileId,
     location,
     worldTime: gmInput.worldTime || null,
+    combat: gmInput.combat || null,
     visibleEntities: gmInput.visibleEntities || [],
     availableMoves: gmInput.availableMoves || [],
     availableActions: gmInput.availableActions || [],
@@ -297,10 +298,19 @@ export function buildProviderPromptMessages(gmInput, options = {}) {
     ? `COMMITTED TIME: it is ${wt.clock} (${wt.phase}). Narrate light, sky, and shadow consistent with ${wt.phase}. Do NOT narrate a different time of day than the clock — no moonlight/nightfall in daylight, no daylight at night.`
     : null;
 
+  // COMBAT DIRECTIVE (D.4 / CTB): combat state is server-owned truth; the narrator
+  // voices the COMMITTED resolution and never adjudicates it. Speak WOUNDS in bands,
+  // never raw HP/damage numbers; hold the fixed queue order; never invent extra blows.
+  const cbt = gmInput.combat && gmInput.combat.status === "active" ? gmInput.combat : null;
+  const combatNote = cbt
+    ? `COMBAT is live (turn ${cbt.turn}). Narrate ONLY the committed resolution of this turn — the outcome band (a clean hit / a hit at a cost / a miss), the wounds dealt, any status applied, and each enemy's telegraphed move and how it landed. Speak WOUNDS in BANDS (steady / bloodied / down), NEVER a raw HP total or a damage number — the server owns the numbers. Hold the fixed turn order; do NOT invent extra attacks, misses, new enemies, or a different outcome than the one given. Enemies present: ${cbt.enemies.map((e) => `${e.name} (${e.wound}${e.telegraph ? `; telegraphs: ${e.telegraph}` : ""}${e.statuses.length ? `; ${e.statuses.join(", ")}` : ""})`).join(" | ") || "none"}. Upcoming order: ${cbt.forecast.join(" → ") || "you"}.`
+    : null;
+
   const system = [
     INKBORNE_GM_VOICE,
     "SOURCE OF TRUTH: only use the provided scene input as truth. If data is missing, keep it ambiguous instead of inventing.",
     clockNote,
+    combatNote,
     "Mention the current location and visible entities naturally when relevant.",
     "Avoid final IP lore invention: do not invent or reference established franchise/IP lore.",
     "Strict constraints: do not mutate state, do not create durable canon, and do not invent persisted items, NPCs, quests, rewards, locations, relationships, inventory, hidden exits, or unavailable actions.",

@@ -18,6 +18,7 @@
 // Pure functions only — no I/O, no Date.now (age reads run.world.time.minutes,
 // the server-owned world clock). Additive + resume-safe: a legacy run with no
 // run.essenceTraces reads as "no traces" everywhere.
+import { resolveStatBlock, sightReadableSkills } from "../campaign/bestiary.js";
 
 // ── TUNABLE STRENGTH TABLE (regional law 6) ──────────────────────────────────
 // Trail strength = recency: age (world-clock minutes since birth) → a band. The
@@ -178,8 +179,50 @@ export function buildSightPayload(run) {
     // map-item reveal (the map renders it fogged/dashed; see regionMap.js).
     sightReveals: traces
       .filter((t) => t.followable)
-      .map((t) => ({ locationId: t.targetLocationId, band: t.band }))
+      .map((t) => ({ locationId: t.targetLocationId, band: t.band })),
+    // THE BLOODHOUND ADVANTAGE (combat sight): a sightReadable creature co-located
+    // with the MC has its carried chaos skills READ before the fight — "you read: a
+    // bite that chills". PLAYER-PERSPECTIVE only, like every sight field.
+    readableEnemies: locationId ? readableEnemiesAt(run, locationId) : []
   };
+}
+
+// Turn a carried chaos skill into the bloodhound's read — a short, in-fiction phrase.
+// An inverted-element mint reads "a <element> that <rider>s" ("a bite that chills").
+export function readChaosSkillPhrase(skill) {
+  if (!skill) return null;
+  if (skill.skillId === "inverted-element" && skill.mint && skill.mint.element) {
+    const rider = String(skill.mint.rider || "");
+    const verb = !rider ? "turns wrong" : /s$/.test(rider) ? rider : `${rider}s`;
+    return `a ${skill.mint.element} that ${verb}`;
+  }
+  if (skill.skillId === "chaos-pack-aura") return "a pack that feeds on numbers";
+  return skill.name ? String(skill.name).toLowerCase() : null;
+}
+
+// The read phrases for a stat block's sightReadable carried skills (for the enemy
+// combat card — the MC's sight reads the corruption it is fighting).
+export function readStatBlockSkills(statBlockId) {
+  return sightReadableSkills(resolveStatBlock(statBlockId)).map(readChaosSkillPhrase).filter(Boolean);
+}
+
+/**
+ * The sightReadable creatures co-located with the player, with their carried chaos
+ * skills read into short phrases. The essence-sight bloodhound edge: the MC reads a
+ * creature's corruption BEFORE engaging it. Player-perspective (rides scene.sight).
+ */
+export function readableEnemiesAt(run, locationId) {
+  const npcs = run?.npcs || {};
+  const out = [];
+  for (const npc of Object.values(npcs)) {
+    if (!isPlainObject(npc) || npc.currentLocationId !== locationId) continue;
+    if (npc.status === "dead" || npc.flags?.defeated === true) continue;
+    const statBlockId = npc.statBlockId || npc.flags?.statBlockId;
+    if (!isString(statBlockId)) continue;
+    const reads = sightReadableSkills(resolveStatBlock(statBlockId)).map(readChaosSkillPhrase).filter(Boolean);
+    if (reads.length) out.push({ npcId: npc.npcId, name: resolveStatBlock(statBlockId)?.name || npc.displayName || "a corrupted thing", reads });
+  }
+  return out;
 }
 
 // The followable trails at the run's current location (for the affordance chip).

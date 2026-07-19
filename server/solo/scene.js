@@ -10,7 +10,7 @@ import { getVisibleEntities, validateVisibleEntity } from "./entities.js";
 import { generatePlaceholderGmNarration, validateGmSceneOutput } from "./gm.js";
 import { getAvailableMoves } from "./movement.js";
 import { buildRegionMapPayload } from "./regionMap.js";
-import { buildSightPayload } from "./essence.js";
+import { buildSightPayload, readStatBlockSkills } from "./essence.js";
 import {
   placeEntities as placeLayoutEntities,
   placeMarkers as placeLayoutMarkers,
@@ -1302,6 +1302,8 @@ function buildCombatSummary(run) {
       // status chips in the condition-chip idiom (top-left, contrast-backed) — the
       // same renderer the player portrait uses, fed enemy-card conditions.
       conditions: combatConditionsPayload(c),
+      // sight-read chaos skills on the card (the bloodhound edge: "a bite that chills").
+      reads: readStatBlockSkills(c.statBlockId),
       intent: combat.enemyIntents?.[id] || null
     });
   }

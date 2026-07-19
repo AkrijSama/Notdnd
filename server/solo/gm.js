@@ -69,6 +69,25 @@ function compactLocation(location = {}) {
   };
 }
 
+// COMBAT GROUNDING for the narrator: WOUND BANDS only (never raw HP), the committed
+// order-only forecast, each enemy's telegraphed intent + sight-read + statuses. The
+// narrator speaks in wounds; the client UI shows the player's own true numbers.
+function compactCombat(combat) {
+  if (!combat || typeof combat !== "object" || combat.status !== "active") return null;
+  return {
+    status: combat.status,
+    turn: combat.turn,
+    forecast: Array.isArray(combat.forecast) ? combat.forecast.map((s) => (s.isPlayer ? "you" : s.displayName)) : [],
+    enemies: (Array.isArray(combat.enemies) ? combat.enemies : []).map((e) => ({
+      name: e.name,
+      wound: e.hpBand, // steady | bloodied | down — never a number
+      telegraph: e.intent?.telegraph || null,
+      reads: Array.isArray(e.reads) ? e.reads : [],
+      statuses: (Array.isArray(e.conditions) ? e.conditions : []).map((c) => c.name)
+    }))
+  };
+}
+
 function compactEntity(entity = {}) {
   return {
     entityId: entity.entityId,
@@ -212,6 +231,7 @@ export function buildGmSceneInput(scenePayload, options = {}) {
     policyProfileId: scenePayload.policyProfileId || policyProfile.policyProfileId,
     location: compactLocation(scenePayload.location || {}),
     worldTime,
+    combat: compactCombat(scenePayload.combat),
     visibleEntities,
     availableMoves: asArray(scenePayload.availableMoves)
       .filter((move) => allowedByPolicy(move, policyProfile))
