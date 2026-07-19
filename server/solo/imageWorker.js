@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { editImage, generateImage } from "../ai/providers.js";
 import { engineStyleForRun, styleForRun } from "./artStyle.js";
+import { deriveWeather, deriveClock } from "./worldClock.js";
 import { detectImageExt } from "../api/http.js";
 import { addAsset, libraryRoot } from "../../scripts/art/library.mjs";
 import {
@@ -170,9 +171,14 @@ const PLAYER_PORTRAIT_ART_DIRECTION =
 // sits in front of — a wide establishing shot, not a centered subject. This is the
 // composition cue ONLY; the per-style aesthetic (painterly / anime / cinematic)
 // lives in each style's `location` surface so a scene matches the run's art style.
+// SCENE FRAMING LAW (owner ruling 2026-07-19): scene art is the PLAYER'S VIEW, not
+// an aerial/postcard vista. Eye-level camera, ground/floor in the lower third,
+// canon features in the midground, sky no more than the upper third. (Vocabulary
+// tuned to what JANKU obeys; the negative guard bans aerial/bird's-eye/sky-only.)
 const LOCATION_COMPOSITION =
-  "wide establishing shot, landscape orientation, environmental scene, " +
-  "atmospheric depth, background backdrop, no people, no characters";
+  "eye-level shot, ground level view, standing on the ground, " +
+  "foreground detail in the lower third, midground the main features, sky only in the upper third, " +
+  "landscape orientation, environmental scene, natural depth, path leading into the scene, no people, no characters";
 
 // Per-art-style base direction. generateImage() appends ", <style> style" as the
 // medium cue (providers.js); this base must AGREE with that cue instead of always
@@ -281,7 +287,10 @@ function referenceUrlFor(servedUri) {
 // landscape (768x512) for location establishing shots ("wide establishing
 // shot" prompts need a landscape aspect, not a portrait one).
 const PORTRAIT_DIMENSIONS = { width: 512, height: 768 };
-const LANDSCAPE_DIMENSIONS = { width: 768, height: 512 };
+// Landscape lane at the display band's native ratio (owner ruling 2026-07-19): the
+// banner shows a wide strip, so generate at 1344x768 (7:4) rather than 768x512 and
+// let the UI crop anchor CENTER-BOTTOM (keep the ground, sacrifice sky).
+const LANDSCAPE_DIMENSIONS = { width: 1344, height: 768 };
 // Square for the character-sheet composite (player + draft portraits only).
 const PLAYER_PORTRAIT_DIMENSIONS = { width: 1024, height: 1024 };
 // Tall VN-sprite aspect for the full-body NPC overlay (NOT the square composite):
@@ -1048,11 +1057,60 @@ export function locationCanonFragment(location = {}) {
   return firstSentence.replace(/\s+/g, " ").trim().slice(0, 200);
 }
 
+// SCENE CANON-FROM-STATE (owner ruling 2026-07-19): do for scenes what 0462bb6 did
+// for portraits — ONE builder fed from COMMITTED STATE as MANDATORY structured
+// slots, not optional flavor. The location's OWN doc text is the source of truth,
+// quote-mined deterministically (the corruption/unease lives PAST sentence 1 — the
+// old first-sentence-only fragment produced generic postcards). Slots: canon
+// description, danger register, committed weather/sky, world-clock time-of-day,
+// era, and the TONE LAW (beautiful AND wrong). Framing/negatives ride the art
+// direction + the seal.
+function sceneCanonSubject(desc) {
+  const d = String(desc || "").replace(/\s+/g, " ").trim();
+  // Enough of the committed POI text to carry the corruption markers (shimmer,
+  // spiral moss, wrong light), not just the opening clause.
+  return d ? d.slice(0, 340) : "";
+}
+function sceneDangerRegister(level) {
+  const n = Number(level);
+  if (!Number.isFinite(n)) return "";
+  if (n >= 4) return "oppressive dread, deadly stillness";
+  if (n >= 3) return "tense, dangerous air";
+  if (n >= 2) return "unsettled, on edge";
+  if (n >= 1) return "wary quiet";
+  return "";
+}
+function sceneWeatherFragment(run) {
+  const w = deriveWeather(run);
+  return ({ cloudy: "overcast sky", rain: "rain, wet ground", storm: "storm clouds, dark sky", snow: "falling snow", fog: "low fog, mist" })[w] || "";
+}
+function sceneTimeFragment(run) {
+  const t = run?.world?.time || {};
+  const phase = typeof t.phase === "string" ? t.phase : deriveClock(Number(t.minutes) || 0).phase;
+  return ({ dawn: "dawn light, low sun", day: "flat daylight", dusk: "dusk, fading amber light", night: "night, pale moonlight" })[phase] || "";
+}
+function sceneEraFragment(era) {
+  return /pacific northwest|modern|present|earth/i.test(String(era || "")) ? "present-day modern Earth setting" : "";
+}
+export function buildScenePrompt(run, location = {}, locationId = "") {
+  const name = isStr(location?.name) ? location.name.trim() : locationId;
+  const world = run?.world || {};
+  const tone = isStr(world.tone) ? world.tone.trim() : "dark fantasy";
+  const slots = [
+    name,
+    sceneCanonSubject(location?.description),
+    sceneWeatherFragment(run),
+    sceneTimeFragment(run),
+    sceneDangerRegister(location?.state?.dangerLevel),
+    sceneEraFragment(world.era),
+    // TONE LAW: the Verdance is beautiful AND wrong — a generic postcard is a FAIL.
+    "beautiful yet subtly wrong, uneasy stillness, faint shimmer in the air, over-still water, off light",
+    tone
+  ];
+  return slots.filter(Boolean).join(", ");
+}
 function buildLocationPromptFallback(run, location, locationId) {
-  const name = location && typeof location.name === "string" && location.name ? location.name : locationId;
-  const tone = run?.world?.tone || "dark fantasy";
-  const canon = locationCanonFragment(location);
-  return canon ? `${name}, ${canon}, ${tone}` : `${name}, ${tone}`;
+  return buildScenePrompt(run, location, locationId);
 }
 
 /**

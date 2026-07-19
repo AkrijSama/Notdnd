@@ -362,15 +362,23 @@ function joinCsv(parts) {
 // The single sealing point for the live ComfyUI prompt: elf defense (all lanes) +
 // the sealed anime-lane laws (quality vocab in the positive, full negative block).
 // Non-anime lanes keep their style preset negative + elf defense unchanged.
+// SCENE FRAMING GUARD (owner ruling 2026-07-19): a scene is the player's eye-level
+// view, never an aerial/postcard vista, and carries no aircraft/vehicles/modern
+// city/crowds unless the location's canon states them. Applied to NON-character
+// subjects only (a portrait has no framing to guard).
+const SCENE_FRAMING_NEGATIVE =
+  "aerial view, bird's-eye view, top-down view, drone shot, satellite view, sky focus, clouds close-up, horizon-only vista, aircraft, airplane, biplane, vehicle, car, modern city skyline, skyscrapers, crowd, group of people, person, people, human figure, character, 1girl, 1boy";
+
 export function sealPortraitPrompt(styleKey, positive, presetNegative) {
   const pos0 = String(positive || "");
   const elf = elfDefenseFor(pos0);
-  const genderLock = isCharacterSubject(pos0) ? genderLockNegative(pos0) : "";
+  const isChar = isCharacterSubject(pos0);
+  const genderLock = isChar ? genderLockNegative(pos0) : "";
+  const sceneGuard = isChar ? "" : SCENE_FRAMING_NEGATIVE;
   if (styleKey !== "anime") {
-    return { positive: pos0, negative: joinCsv([presetNegative, elf, genderLock]) };
+    return { positive: pos0, negative: joinCsv([presetNegative, elf, genderLock, sceneGuard]) };
   }
   const block = animeBlock();
-  const isChar = isCharacterSubject(pos0);
   // Quality vocab LEADS (JANKU responds to it front-loaded), then the palette/light
   // styleVocab — the natural-palette + even-light cue that pulls JANKU off its
   // grimdark red-monochrome collapse (2026-07-19 red-wash fix). Both are skipped
@@ -388,7 +396,8 @@ export function sealPortraitPrompt(styleKey, positive, presetNegative) {
     isChar ? PORTRAIT_NEGATIVE_LAW : "",
     isChar ? AGE_NEGATIVE_LAW : "",
     elf,
-    genderLock
+    genderLock,
+    sceneGuard
   ]);
   return { positive: positiveOut, negative: negativeOut };
 }

@@ -239,10 +239,11 @@ test("location art direction differs per art style (anime scene != cinematic sce
   assert.notEqual(cinematic, illustrated);
 });
 
-test("every location direction keeps the shared establishing-shot composition", () => {
+test("every location direction is the player's eye-level view with ground in frame (framing law)", () => {
   for (const style of ["illustrated", "anime", "cinematic"]) {
     const dir = artStyleDirection(style, "location");
-    assert.match(dir, /establishing shot/i, `${style} location composes as a banner`);
+    // Scene art is the PLAYER'S VIEW, not an aerial/postcard vista (owner ruling).
+    assert.match(dir, /eye-level|ground level/i, `${style} location is an eye-level ground view`);
     assert.match(dir, /no people, no characters/i, `${style} location has no subject`);
   }
 });
