@@ -120,7 +120,15 @@ export function renderBody(status) {
   }
 
   const dirty = b.dirty ? ` <span class="dbg-tag">dirty</span>` : "";
-  const buildValue = `<span class="dbg-ok">${escape(b.sha)}</span> <span class="dbg-sub">${escape(b.branch)}</span>${dirty}`;
+  // STALE gets a FACE (owner ruling 2026-07-19): the loaded SHA has fallen behind
+  // the repo tip on disk → the process is serving old code. Render LOUD (warn), not
+  // a quiet tag, naming the disk SHA + the fix. Clean+current gets a subtle tick so
+  // "what build am I on" is answered at a glance. build.stale/diskSha come from
+  // getBuildInfo (loaded-vs-disk, the stale-badge-trap fix).
+  const buildState = b.stale
+    ? ` <span class="dbg-warn">⚠ STALE — restart needed (disk ${escape(b.diskSha || "?")})</span>`
+    : ` <span class="dbg-ok" title="loaded code matches the repo tip">✓ current</span>`;
+  const buildValue = `<span class="dbg-ok">${escape(b.sha)}</span> <span class="dbg-sub">${escape(b.branch)}</span>${dirty}${buildState}`;
   const envClass = b.nodeEnv === "production" ? "dbg-warn" : "dbg-ok";
 
   return [
