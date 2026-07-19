@@ -290,11 +290,11 @@ test("F2: the GM provider prompt voices a REAL open offer and forbids inventing 
   assert.doesNotMatch(noOffer[0].content, /REAL work is on offer/, "no offer -> no note");
 });
 
-test("F1: the world step renders the start-mode choice, sandbox default, guided selectable", () => {
-  const sandboxHtml = renderOnboardingFlow({ step: "world", worldDef: {} });
+test("F1: a custom world picks its start-mode at creation (wizard review), sandbox default, guided selectable", () => {
+  const sandboxHtml = renderOnboardingFlow({ step: "character", worldDef: { userWorldId: "uw_x" }, character: { step: 6 } });
   assert.match(sandboxHtml, /How do you want to play\?/);
   assert.match(sandboxHtml, /class="onb-chip active" data-world-mode="sandbox"/, "sandbox is the active default");
   assert.match(sandboxHtml, /data-world-mode="guided"/, "guided adventure is offered");
-  const guidedHtml = renderOnboardingFlow({ step: "world", worldDef: { startMode: "guided" } });
+  const guidedHtml = renderOnboardingFlow({ step: "character", worldDef: { userWorldId: "uw_x", startMode: "guided" }, character: { step: 6 } });
   assert.match(guidedHtml, /class="onb-chip active" data-world-mode="guided"/, "guided selection is reflected");
 });

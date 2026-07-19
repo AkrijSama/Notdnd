@@ -39,6 +39,38 @@ const ART_STYLE_OPTIONS = [
   { id: "cinematic", label: "Dark Cinematic", blurb: "Moody, filmic key art", sample: "/public/assets/art-cinematic.jpg" }
 ];
 
+// The art-style picker (style-lock law: offered at CREATION for every world, authored
+// or custom). It moved off the world landing (now card-led) into the character wizard's
+// review step, so the player still chooses a visual register before entering.
+function renderArtStylePicker(def = {}) {
+  const artCards = ART_STYLE_OPTIONS.map(
+    (option) => `
+      <button type="button" class="onb-art-card ${(def.artStyle || "illustrated") === option.id ? "active" : ""}" data-world-artstyle="${option.id}">
+        <div class="onb-art-prev onb-art-${option.id}">${option.sample ? `<img class="onb-art-sample" src="${esc(option.sample)}" alt="${esc(option.label)} sample" loading="lazy" />` : ""}</div>
+        <div class="onb-art-label">${esc(option.label)}</div>
+        <div class="onb-art-blurb">${esc(option.blurb)}</div>
+      </button>`
+  ).join("");
+  return `
+    <div class="onb-field onb-art-field">
+      <label>Art style</label>
+      <div class="onb-art-grid" data-onb-art-picker>${artCards}</div>
+    </div>`;
+}
+
+// The sandbox-vs-guided play-mode choice for a CUSTOM world (authored worlds are set).
+// Moved off the landing into the wizard review alongside the art picker.
+function renderStartModePicker(def = {}) {
+  return `
+    <div class="onb-field onb-mode-field">
+      <label>How do you want to play?</label>
+      <div class="onb-chips">
+        ${renderChip("Open sandbox: a pure open world; your goals are your own", (def.startMode || "sandbox") === "sandbox", `data-world-mode="sandbox"`)}
+        ${renderChip("Guided adventure: a main quest, work to take on, and a destination", def.startMode === "guided", `data-world-mode="guided"`)}
+      </div>
+    </div>`;
+}
+
 // World-select cards (owner spec): image-led, PLAYER-FACING copy only — no
 // system jargon on this screen. The card component is the investment; per-world
 // art + copy are DATA (swap art/hook per world here, not in code). Art is
@@ -97,74 +129,25 @@ function renderUserWorldCard(card, active) {
 
 function renderWorldStep(state) {
   const def = state.worldDef || {};
-  const loading = Boolean(state.loading);
-  // Authored worlds (a world book / scenarioId) own their setting, opening, cast,
-  // and visual register — the generic worldgen inputs, sandbox/guided toggle, and
-  // art-style picker are all redundant and are suppressed below.
-  const authored = Boolean(def.scenarioId);
-  const toneChips = TONE_CHIPS.map((tone) => renderChip(tone, def.tone === tone, `data-world-tone="${esc(tone)}"`)).join("");
-  const artCards = ART_STYLE_OPTIONS.map(
-    (option) => `
-      <button type="button" class="onb-art-card ${(def.artStyle || "illustrated") === option.id ? "active" : ""}" data-world-artstyle="${option.id}">
-        <div class="onb-art-prev onb-art-${option.id}">${option.sample ? `<img class="onb-art-sample" src="${esc(option.sample)}" alt="${esc(option.label)} sample" loading="lazy" />` : ""}</div>
-        <div class="onb-art-label">${esc(option.label)}</div>
-        <div class="onb-art-blurb">${esc(option.blurb)}</div>
-      </button>`
-  ).join("");
-
+  // CARD-LED LANDING (onboarding-rework, now due since worlds are multiple): the
+  // first screen IS the world cards. Picking a ready-made world goes STRAIGHT to
+  // character creation; the "Custom World" card opens the creation wizard. There is
+  // no intermediate "Generate/Continue" button — the card is the entry. The legacy
+  // inline worldgen form (name/tone/flavor/art) is replaced by that wizard.
   return `
     <section class="onboarding-shell onb-world">
       <header class="onboarding-header">
-        <div class="tag">${authored ? "A World Awaits" : "World Builder"}</div>
-        <h2>${authored ? "Choose Your World" : "Define Your World"}</h2>
-        <p class="onb-disclaimer">${authored ? "This world is ready to play. Everything is set up for you. Just make your character and step in." : "Fields you leave blank will be imagined by the AI."}</p>
+        <div class="tag">A World Awaits</div>
+        <h2>Choose Your World</h2>
+        <p class="onb-disclaimer">Pick a world to step into, or imagine one of your own.</p>
       </header>
 
       <div class="onb-field onb-featured-world">
-        <label>Choose a world</label>
         <div class="onb-world-cards">
           ${WORLD_SELECT_CARDS.map((card) => renderWorldCard(card, (def.scenarioId || "") === card.scenarioId)).join("")}
           ${(Array.isArray(state.userWorlds) ? state.userWorlds : []).map((w) => renderUserWorldCard(w, def.userWorldId === w.userWorldId)).join("")}
         </div>
       </div>
-
-      ${authored ? "" : `
-      <div class="onb-field">
-        <label>World name</label>
-        <input data-world-field="name" maxlength="80" placeholder="The Shattered Realm" value="${esc(def.name || "")}" ${loading ? "disabled" : ""} />
-      </div>`}
-
-      ${authored ? "" : `
-      <div class="onb-field">
-        <label>Tone / setting</label>
-        <div class="onb-chips">${toneChips}</div>
-        <input data-world-field="tone" maxlength="60" placeholder="…or type your own" value="${esc(def.tone || "")}" ${loading ? "disabled" : ""} />
-      </div>
-
-      <div class="onb-field">
-        <label>Starting region / location name</label>
-        <input data-world-field="startingLocationName" maxlength="80" placeholder="The Ashen Wastes" value="${esc(def.startingLocationName || "")}" ${loading ? "disabled" : ""} />
-      </div>
-
-      <div class="onb-field">
-        <label>One sentence of world flavor</label>
-        <textarea data-world-field="flavor" maxlength="240" placeholder="A kingdom where magic was outlawed after the god-wars" ${loading ? "disabled" : ""}>${esc(def.flavor || "")}</textarea>
-      </div>
-
-      <div class="onb-field">
-        <label>How do you want to play?</label>
-        <div class="onb-chips">
-          ${renderChip("Open sandbox: a pure open world; your goals are your own", (def.startMode || "sandbox") === "sandbox", `data-world-mode="sandbox"`)}
-          ${renderChip("Guided adventure: a main quest, work to take on, and a destination", def.startMode === "guided", `data-world-mode="guided"`)}
-        </div>
-      </div>`}
-
-      <div class="onb-field">
-        <label>Art style</label>
-        <div class="onb-art-grid" data-onb-art-picker>${artCards}</div>
-      </div>
-
-      <button class="onb-primary" data-action="generate-world" ${loading ? "disabled" : ""}>${authored ? "Continue to character creation" : (loading ? "Generating…" : "Generate World")}</button>
       ${state.error ? `<div class="onboarding-error">${esc(state.error)}</div>` : ""}
     </section>
   `;
@@ -631,6 +614,13 @@ function renderCharacterWizard(state) {
     body = renderCharIdentity(c, portrait);
   }
   const isLast = step === 6;
+  // Style-lock law: the art-style picker rides the Review step (the last choice before
+  // entering) for EVERY world — the card-led landing no longer carries it. A custom
+  // world also picks its play mode (sandbox vs guided) here; authored worlds are set.
+  if (isLast) {
+    body += renderArtStylePicker(state.worldDef);
+    if (!authored) body += renderStartModePicker(state.worldDef);
+  }
 
   // Gate "Enter the World" on the three required character fields. Recomputed
   // every render, so the button re-enables live as the player fills fields in

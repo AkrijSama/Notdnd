@@ -554,13 +554,18 @@ function hbEdit(id) {
 // active state); free-text input does not (preserve caret), mirroring the
 // character form's onFieldChange.
 function onWorldFieldSelect(field, value) {
-  // The "Custom World" card (empty scenarioId) now opens the multi-step world creator
-  // instead of the legacy inline worldgen form. Babel (a real scenarioId) is unchanged.
+  // CARD-LED LANDING: the "Custom World" card (empty scenarioId) opens the multi-step
+  // world creator; a ready-made world card goes STRAIGHT to character creation (no
+  // intermediate button — the card is the entry).
   if (field === "scenarioId" && (value === "" || value == null)) {
     enterWorldCreator();
     return;
   }
   uiState.onboarding.worldDef = { ...(uiState.onboarding.worldDef || {}), [field]: value };
+  if (field === "scenarioId") {
+    confirmWorld(); // pre-fills the authored origin + advances to the character wizard
+    return;
+  }
   scheduleRender();
 }
 function onWorldFieldInput(field, value) {

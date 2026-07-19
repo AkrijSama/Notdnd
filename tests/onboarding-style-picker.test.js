@@ -8,24 +8,24 @@ import test from "node:test";
 import { renderOnboardingFlow } from "../src/components/onboardingFlow.js";
 import { lockRunArtStyle, styleForRun } from "../server/solo/artStyle.js";
 
-// ── client: picker appears ───────────────────────────────────────────────────
-test("art-style picker appears for an AUTHORED world (Babel) at creation", () => {
-  const html = renderOnboardingFlow({ step: "world", worldDef: { scenarioId: "babel" } });
-  assert.match(html, /Art style/, "the art-style field is rendered for authored worlds");
+// ── client: picker appears at CREATION (now on the wizard review, post card-led) ──
+test("art-style picker appears for an AUTHORED world (Babel) at creation — on the review step", () => {
+  const html = renderOnboardingFlow({ step: "character", worldDef: { scenarioId: "babel" }, character: { step: 6 } });
+  assert.match(html, /Art style/, "the art-style field is rendered at creation");
   assert.match(html, /data-onb-art-picker/, "the picker grid is present");
   assert.match(html, /data-world-artstyle="anime"/, "an art-style choice is selectable");
 });
 
-test("art-style picker still appears for a worldgen (non-authored) world", () => {
-  const html = renderOnboardingFlow({ step: "world", worldDef: { tone: "grimdark", artStyle: "anime" } });
+test("art-style picker appears for a CUSTOM world at creation, chosen style highlighted", () => {
+  const html = renderOnboardingFlow({ step: "character", worldDef: { userWorldId: "uw_x", artStyle: "anime" }, character: { step: 6 } });
   assert.match(html, /Art style/);
   assert.match(html, /class="onb-art-card active" data-world-artstyle="anime"/, "the chosen style is highlighted");
 });
 
-test("authored worlds still suppress the worldgen-only inputs (tone/name/flavor)", () => {
-  const html = renderOnboardingFlow({ step: "world", worldDef: { scenarioId: "babel" } });
-  assert.doesNotMatch(html, /World name/, "authored worlds own their setting — no name field");
-  assert.doesNotMatch(html, /One sentence of world flavor/, "no flavor field for authored worlds");
+test("the card-led landing carries NO worldgen inputs (they moved to the wizard)", () => {
+  const html = renderOnboardingFlow({ step: "world", worldDef: {}, userWorlds: [] });
+  assert.doesNotMatch(html, /World name/, "no name field on the landing");
+  assert.doesNotMatch(html, /One sentence of world flavor/, "no flavor field on the landing");
 });
 
 // ── server: honor an explicit choice, ignore an out-of-allowed one ───────────

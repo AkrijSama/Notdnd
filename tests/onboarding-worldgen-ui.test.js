@@ -2,20 +2,17 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { renderOnboardingFlow } from "../src/components/onboardingFlow.js";
 
-test("world-definition step renders fields, chips, art styles, and disclaimer", () => {
-  const html = renderOnboardingFlow({ step: "world", worldDef: { tone: "grimdark", artStyle: "anime" } });
-  assert.match(html, /Define Your World/);
-  assert.match(html, /imagined by the AI/);
-  assert.match(html, /data-world-field="name"/);
-  assert.match(html, /data-world-field="flavor"/);
-  assert.match(html, /data-action="generate-world"/);
-  // selected tone chip is active
-  assert.match(html, /class="onb-chip active" data-world-tone="grimdark"/);
-  // selected art style is active
-  assert.match(html, /class="onb-art-card active" data-world-artstyle="anime"/);
-  // The starting-location-type picker was removed from the sandbox flow (sandbox
-  // defaults to forest-ruins engine-side); assert it is genuinely gone.
-  assert.doesNotMatch(html, /data-world-loctype/);
+test("CARD-LED landing: the world step is world cards only — no inline form, no start button", () => {
+  const html = renderOnboardingFlow({ step: "world", worldDef: {}, userWorlds: [] });
+  assert.match(html, /Choose Your World/);
+  assert.match(html, /onb-world-cards/, "the cards are the landing");
+  assert.match(html, /data-world-scenario="babel"/, "the Babel card");
+  assert.match(html, /data-world-scenario=""/, "the Custom World card");
+  // the legacy inline worldgen form + its start button are GONE (the card is the entry)
+  assert.doesNotMatch(html, /data-action="generate-world"/, "no Generate/Continue start button");
+  assert.doesNotMatch(html, /data-world-field="name"/, "no inline world-name input");
+  assert.doesNotMatch(html, /data-world-field="flavor"/, "no inline flavor input");
+  assert.doesNotMatch(html, /data-world-artstyle/, "no inline art picker (custom picks in the wizard)");
 });
 
 test("world-preview step renders the generated world + confirm/regenerate controls", () => {
@@ -40,8 +37,8 @@ test("world-preview step renders the generated world + confirm/regenerate contro
   assert.match(html, /data-world-regen-field="startingLocationDescription"/);
 });
 
-test("world-definition step escapes user input", () => {
-  const html = renderOnboardingFlow({ step: "world", worldDef: { name: '"><script>x</script>' } });
+test("the landing escapes user-world card content", () => {
+  const html = renderOnboardingFlow({ step: "world", worldDef: {}, userWorlds: [{ userWorldId: "uw_x", title: '"><script>x</script>', tagline: "t" }] });
   assert.doesNotMatch(html, /<script>x<\/script>/);
   assert.match(html, /&lt;script&gt;/);
 });
