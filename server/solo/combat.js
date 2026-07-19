@@ -29,6 +29,7 @@ import { advanceCombatRounds } from "./worldClock.js";
 import {
   seedCombatantQueue, nextActor, commitTurn, buildForecast, ACTION_WEIGHT
 } from "./ctb.js";
+import { applyCombatStatus, tickStatusesOnTurnStart } from "./combatStatus.js";
 
 // Deterministic non-negative hash (same construction as momentum/quests) — the
 // seed for telegraph selection, so a run replays identically.
@@ -308,7 +309,12 @@ function resolveCombatTurn(run, playerAction, options = {}) {
   const combat = run.combat;
   const actions = [];
 
-  // 1. The player's turn.
+  // 1. The player's turn — statuses tick at turn start (poison/regen; ch8), then act.
+  const ptick = tickStatusesOnTurnStart(run, combat, combat.combatants.player, options);
+  if (ptick.length) actions.push({ actor: "player", kind: "status", events: ptick });
+  if ((getHp(run.player).current ?? 0) <= 0 && combat.status === "active") {
+    combat.status = "lost"; closeCombat(run, combat, "lost", options); return buildTurnResult(run, combat, actions);
+  }
   resolvePlayerTurn(run, combat, playerAction, actions, options);
   if (combat.status === "fled") { closeCombat(run, combat, "fled", options); return buildTurnResult(run, combat, actions); }
   // The player-drop rule can fire on the player's OWN turn (an at-cost counter-blow).
@@ -355,6 +361,10 @@ function runEnemyTurnsUntilPlayer(run, combat, actions, options) {
     guard += 1;
     const actor = nextActor(combat);
     if (!actor || actor.kind === "player") break; // hand the decision back to the player
+    // Statuses tick at the enemy's turn start; a poison tick can drop it before it acts.
+    const etick = tickStatusesOnTurnStart(run, combat, actor, options);
+    if (etick.length) actions.push({ actor: actor.combatantId, kind: "status", events: etick });
+    if ((actor.hp?.current ?? 0) <= 0) { actor.morale = "broken"; continue; } // died from a tick — leaves the queue (nextActor filters the dead)
     resolveEnemyTurn(run, combat, actor, actions, options);
     if ((getHp(run.player).current ?? 0) <= 0) {
       combat.status = "lost"; closeCombat(run, combat, "lost", options); break;
@@ -548,7 +558,9 @@ function resolveEnemyTurn(run, combat, enemy, actions, options) {
   const atk = (block?.attacks || []).find((a) => a.attackId === intent.attackId) || block?.attacks?.[0];
   const defending = run.player.flags?.defendingUntilRound && combat.turn <= run.player.flags.defendingUntilRound;
   const disadvantage = Boolean(defending) || Boolean(enemy.flags?.disadvantageNextTurn);
-  const advantage = Boolean(enemy.flags?.edgeNextTurn); // from a player's failure band
+  // Advantage from a player's failure band OR the chaos-pack aura (scaling-advantage
+  // when multiple chaos-touched stand together — verdance bestiary).
+  const advantage = Boolean(enemy.flags?.edgeNextTurn) || chaosPackAdvantage(combat, enemy);
   if (enemy.flags) { enemy.flags.disadvantageNextTurn = false; enemy.flags.edgeNextTurn = false; }
   // Net edge/burden cancel (2d20 keep high/low; both → straight roll). Enemy attack
   // vs the player's REAL AC.
@@ -560,11 +572,20 @@ function resolveEnemyTurn(run, combat, enemy, actions, options) {
   const hit = crit || (d20 !== 1 && toHit >= playerAC(run));
   let damageRecord = null;
   let transition = null;
+  let riderApplied = null;
   if (hit && atk) {
     const dmg = Math.max(1, rollDice(atk.damage, { rng: options.rng }).total);
     const rec = applyDamage(run, dmg, { crit, now: isoNow(options) });
     damageRecord = { amount: rec.amount, type: atk.damageType || "physical" };
     transition = rec.dead ? "dead" : rec.dying ? "dying" : rec.downed ? "downed" : "hurt";
+    // CHAOS RIDER (inverted-element): the attack carries the WRONG rider (the Grey's
+    // chaos_bite → "chill"), applied to the player on hit and compiled to one of the
+    // sealed ten (chill → Slow, which bends the player's CTB tempo). Suppressed if the
+    // blow drops the player (the fight is already over — the player-drop rule).
+    if (atk.rider && !rec.dead && !rec.dying) {
+      const applied = applyCombatStatus(combat, combat.combatants.player, atk.rider, { worldName: riderLabel(atk.rider), run });
+      if (applied) riderApplied = { rider: atk.rider, status: applied.engineStatus };
+    }
   }
   actions.push({
     actor: enemy.combatantId,
@@ -572,8 +593,24 @@ function resolveEnemyTurn(run, combat, enemy, actions, options) {
     intentId: intent.intentId,
     roll: { total: toHit, vs: "ac", dc: playerAC(run), hit, crit },
     damage: damageRecord,
+    rider: riderApplied,
     targetTransition: transition
   });
+}
+
+// Chaos-pack aura: the "scaling-advantage" skill grants edge when 2+ chaos-touched
+// share the field. In v1's 1-v-1 Limping Grey fight it never triggers (data-honest).
+function chaosPackAdvantage(combat, enemy) {
+  const block = resolveStatBlock(enemy.statBlockId);
+  const hasAura = (block?.carriedSkills || []).some((s) => s.skillId === "chaos-pack-aura");
+  if (!hasAura) return false;
+  const chaoslings = livingEnemies(combat).filter((c) => resolveStatBlock(c.statBlockId)?.kind === "chaosling");
+  return chaoslings.length >= 2;
+}
+
+function riderLabel(rider) {
+  const s = String(rider || "");
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : "";
 }
 
 // ── close ─────────────────────────────────────────────────────────────────────

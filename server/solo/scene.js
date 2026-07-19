@@ -5,6 +5,7 @@ import { MILESTONE_MAX, RANK_LADDER, tierForMilestone, displayLevelFor, rankForP
 import { babelStatBlock } from "./babelStats.js";
 import { deriveClock, deriveWeather } from "./worldClock.js";
 import { conditionStatusPayload } from "./conditions.js";
+import { combatConditionsPayload } from "./combatStatus.js";
 import { getVisibleEntities, validateVisibleEntity } from "./entities.js";
 import { generatePlaceholderGmNarration, validateGmSceneOutput } from "./gm.js";
 import { getAvailableMoves } from "./movement.js";
@@ -1298,7 +1299,9 @@ function buildCombatSummary(run) {
       hp: c.hp,
       hpBand: band,
       ac: c.ac,
-      conditions: c.conditions || [],
+      // status chips in the condition-chip idiom (top-left, contrast-backed) — the
+      // same renderer the player portrait uses, fed enemy-card conditions.
+      conditions: combatConditionsPayload(c),
       intent: combat.enemyIntents?.[id] || null
     });
   }
@@ -1496,6 +1499,15 @@ export function buildSoloScenePayload(run, options = {}) {
     run.suggestedActions.length >= 3
       ? run.suggestedActions.slice(0, 3)
       : null;
+  // In a fight, the player's COMBAT statuses (chilled/slowed, etc.) live on the CTB
+  // combatant, not run.player — merge them into the portrait conditions so they render
+  // as chips alongside any out-of-combat conditions (same top-left contrast idiom).
+  if (isPlainObject(run.combat) && run.combat.status === "active" && isPlainObject(payload.player)) {
+    const combatConds = combatConditionsPayload(run.combat.combatants?.player);
+    if (combatConds.length) {
+      payload.player.conditions = [...(Array.isArray(payload.player.conditions) ? payload.player.conditions : []), ...combatConds];
+    }
+  }
   payload.suggestedActions = cachedSuggestions || buildFallbackSuggestions(run);
   // COMMITTED AFFORDANCES (affordances-map-law Part A): pre-typed action chips
   // derived from committed state only (services/cast/exits/goals/objects +

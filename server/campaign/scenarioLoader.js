@@ -18,7 +18,8 @@ import { validateScenario } from "./scenarioSchema.js";
 import { validateSoloRun, createEmptyExpressionVariants } from "../solo/schema.js";
 import { resolveWorldArtStyle, stampArtStyle } from "../solo/artStyle.js";
 import { normalizeAgeClass, ensureFaction } from "../solo/reputation.js";
-import { seedEssenceTracesFromScenario } from "../solo/essence.js";
+import { seedEssenceTracesFromScenario, mintTraceFromSpawn, currentWorldMinutes } from "../solo/essence.js";
+import { resolveStatBlock } from "./bestiary.js";
 
 const SCENARIO_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "scenarios");
 
@@ -113,6 +114,56 @@ function instantiateThread(front, run) {
     callbackQuery: { entityIds: front.callbackQuery?.entityRefs || [], keywords: front.callbackQuery?.keywords || [] },
     flags: {}
   };
+}
+
+/**
+ * Commit authored `scenario.bestiary.placements` into the run: each placed creature
+ * becomes a HOSTILE NPC carrying its statBlockId (combat entry resolves the stat
+ * block off the NPC), plus the essence trail that leads the bloodhound to it. Never
+ * places a phantom (an unknown stat block is skipped); idempotent by npc id.
+ */
+export function placeBestiaryEncounters(run, scenario, { resolveLocationRef = (x) => x } = {}) {
+  const placements = Array.isArray(scenario?.bestiary?.placements) ? scenario.bestiary.placements : [];
+  run.npcs = run.npcs || {};
+  for (const p of placements) {
+    if (!p || typeof p !== "object" || !isString(p.statBlockId) || !isString(p.locationRef)) continue;
+    const block = resolveStatBlock(p.statBlockId);
+    if (!block) continue; // never place a phantom (coherence — unknown stat block)
+    const locId = resolveLocationRef(p.locationRef);
+    const npcId = `npc_${p.statBlockId}`;
+    if (!run.npcs[npcId]) {
+      run.npcs[npcId] = {
+        npcId,
+        displayName: block.name,
+        role: "hostile",
+        currentLocationId: locId,
+        known: false, // undiscovered until seen/read — the bloodhound reveals it
+        status: "present",
+        memoryFactIds: [],
+        expressionVariants: createEmptyExpressionVariants(),
+        tags: ["hostile", ...(Array.isArray(block.tags) ? block.tags : [])],
+        flags: { hostile: true, statBlockId: p.statBlockId, encounter: true },
+        statBlockId: p.statBlockId,
+        ageClass: "adult",
+        edition: "mainline",
+        policyProfileId: "mainline_default",
+        contentTags: [],
+        origin: "procedural",
+        dialogueBeats: []
+      };
+    }
+    // Seed the essence trail toward the encounter (fromRef sees it, heading towardRef).
+    const et = p.essenceTrail;
+    if (et && typeof et === "object" && isString(et.fromRef) && isString(et.towardRef)) {
+      const fromLoc = resolveLocationRef(et.fromRef);
+      mintTraceFromSpawn(
+        run,
+        { kind: "trail", trailTo: resolveLocationRef(et.towardRef), source: et.source || p.statBlockId, meta: { encounter: npcId } },
+        { id: `trace_${p.statBlockId}`, locationId: fromLoc, nowMinutes: currentWorldMinutes(run) }
+      );
+    }
+  }
+  return run;
 }
 
 /**
@@ -361,6 +412,12 @@ export function loadScenarioIntoRun(run, scenario, options = {}) {
       };
     }
   }
+
+  // 1.4. BESTIARY PLACEMENTS — authored encounters (e.g. the Limping Grey at the
+  // Waking Mile). Each commits a hostile NPC carrying its statBlockId (so combat
+  // entry grounds on a real, resolvable creature) and seeds the bloodhound essence
+  // trail toward it. Numbers stay owner-table (bestiary Law-6); this only PLACES.
+  placeBestiaryEncounters(run, scenario, { resolveLocationRef });
 
   // 1.5. FACTIONS — world-book faction seeds → run.factions via the existing
   // faction engine (ensureFaction). Minimal rows: name + standing + discovery.
