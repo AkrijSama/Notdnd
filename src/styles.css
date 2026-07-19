@@ -295,8 +295,28 @@ button.alt:hover {
 
 .brand {
   display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+}
+.brand-text {
+  display: flex;
   flex-direction: column;
   gap: 2px;
+}
+/* Header mark (src/assets/logo.svg). Painted via a CSS mask so its color is
+   `currentColor` and INVERTS WITH THE THEME (paper-light on the dark header,
+   ink-dark on a light surface) rather than baking one fill. Fixed 1.2em box →
+   vertically centered with the wordmark, no layout shift. */
+.brand-logo {
+  flex: none;
+  display: inline-block;
+  width: 1.2em;
+  height: 1.2em;
+  background-color: currentColor;
+  color: var(--accent-bright, #e7e9ee);
+  -webkit-mask: url("./assets/logo.svg") center / contain no-repeat;
+  mask: url("./assets/logo.svg") center / contain no-repeat;
 }
 
 /* Wordmark — gold hot-foil stamped into the leather header (the signature).

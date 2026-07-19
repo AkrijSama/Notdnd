@@ -8,6 +8,7 @@ import { renderHomebrewManager, bindHomebrewManager, homebrewDraftToItem, itemTo
 import { renderOnboardingFlow, bindOnboardingFlow, validatePortraitUpload } from "./components/onboardingFlow.js";
 import { renderGuestAuthPanel, resolveAuthAction } from "./components/authPanel.js";
 import { renderModulesZone, renderRoadmapZone } from "./components/homeZones.js";
+import { renderBrand } from "./components/brand.js";
 import { soloRunActionLabel } from "./state/runLabels.js";
 import { ABILITIES, pointBuyCost, rollAbilityScores } from "../server/solo/dndData.js";
 import {
@@ -168,10 +169,7 @@ function runDisplayTitle(run) {
 function renderSoloHeader(user, accountMenuOpen = false, skin = "ashen", fontSet = "tome") {
   return `
     <header class="topbar solo-topbar">
-      <div class="brand">
-        <h1>Inkborne</h1>
-        <span>AI RPG</span>
-      </div>
+      ${renderBrand()}
       <div class="inline">
         <span class="small">${user ? (user.isGuest ? "Playing as guest" : `Signed in: ${escapeHtml(user.displayName)}`) : "Not signed in"}</span>
         ${user && user.isGuest ? `<button data-action="guest-save">Save your adventure</button>` : ""}
