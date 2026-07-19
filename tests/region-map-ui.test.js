@@ -6,7 +6,8 @@ import {
   renderSoloRegionMap,
   renderSoloMapToggle,
   renderSoloMapSurface,
-  renderSoloRightRail,
+  renderSoloStageHud,
+  renderSoloMapDrawer,
   dispatchSoloClick
 } from "../src/components/soloSceneShell.js";
 
@@ -101,10 +102,14 @@ test("map surface: default (local) shows the floor plan, NOT the region graph", 
   assert.match(region, /solo-region-svg/, "region view draws the graph");
 });
 
-test("the rail defaults to the LOCAL map (mapView unset → local)", () => {
-  const html = renderSoloRightRail(regionScene());
-  assert.doesNotMatch(html, /solo-region-svg/, "rail opens on the local floor plan by default");
-  assert.match(html, /solo-map-toggle/, "the zoom toggle is available on the map surface");
+test("the map HUD widget carries the toggle; the map drawer defaults to LOCAL", () => {
+  // No right column (owner 2026-07-19): the map floats as a HUD widget over the
+  // banner (local/region toggle) and expands into the map drawer.
+  const hud = renderSoloStageHud(regionScene().scene, { mapView: undefined });
+  assert.match(hud, /solo-map-toggle/, "the zoom toggle is on the HUD map widget");
+  assert.match(hud, /data-solo-scene-map/, "the widget expands into the map drawer");
+  const drawer = renderSoloMapDrawer(regionScene().scene, { mapView: undefined });
+  assert.doesNotMatch(drawer, /solo-region-svg/, "the map opens on the local floor plan by default");
 });
 
 test("dispatchSoloClick maps the toggle button to onMapView", () => {

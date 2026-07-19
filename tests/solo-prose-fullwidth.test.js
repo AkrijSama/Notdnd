@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { renderSoloSceneShell } from "../src/components/soloSceneShell.js";
+import { renderSoloSceneShell, renderSoloStageHud, dispatchSoloClick } from "../src/components/soloSceneShell.js";
 
 const CSS = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "../src/styles.css"), "utf8");
 const rule = (selector) => {
@@ -62,9 +62,46 @@ test("the right rail remains a real column; mobile stacks (no floating dock)", (
   assert.match(mobile, /\.solo-game-sidebar[\s\S]*?position:\s*static/);
 });
 
-test("the shell renders dock + full-width main + rail (structure holds at every width)", () => {
+test("NO right column: dock + full-width main + stage HUD + drawers, rail absent", () => {
   const html = renderSoloSceneShell({ scene: { locationImageUri: null }, narrationLog: [{ id: "n1", text: "A beat." }] });
-  assert.match(html, /solo-portrait-dock-aside/); // the floating dock
+  assert.match(html, /solo-portrait-dock-aside/); // the floating dock (top-left)
   assert.match(html, /solo-game-main/); // the full-width reading area
-  assert.match(html, /solo-game-rail/); // the right rail column
+  assert.doesNotMatch(html, /solo-game-rail/); // the right rail is GONE (owner 2026-07-19)
+  assert.match(html, /solo-stage-hud/); // map + time/weather float on the banner
+  assert.match(html, /solo-info-drawer/); // cast/exits are an on-demand drawer
+  assert.match(html, /solo-map-drawer/); // the full map is an on-demand drawer
+});
+
+const clickTarget = (attrs) => ({
+  closest: (sel) => {
+    const key = sel.replace(/^\[|\]$/g, "");
+    return key in attrs ? { getAttribute: (a) => attrs[a === key ? key : a] ?? null } : null;
+  }
+});
+
+test("the stage-HUD toggles open the map / info drawers (open + close routes)", () => {
+  const calls = {};
+  const h = {
+    onSceneMap: () => { calls.map = true; },
+    onSceneMapClose: () => { calls.mapClose = true; },
+    onSceneInfo: () => { calls.info = true; },
+    onSceneInfoClose: () => { calls.infoClose = true; },
+    onMapView: (x) => { calls.view = x.view; }
+  };
+  dispatchSoloClick(clickTarget({ "data-solo-scene-map": "" }), h);
+  dispatchSoloClick(clickTarget({ "data-solo-scene-map-close": "" }), h);
+  dispatchSoloClick(clickTarget({ "data-solo-scene-info": "" }), h);
+  dispatchSoloClick(clickTarget({ "data-solo-scene-info-close": "" }), h);
+  dispatchSoloClick(clickTarget({ "data-solo-map-view": "region" }), h);
+  assert.deepEqual(calls, { map: true, mapClose: true, info: true, infoClose: true, view: "region" });
+});
+
+test("empty-state law: no dead boxes — the time chip hides with no clock, HUD stays compact", () => {
+  const noClock = renderSoloStageHud({ cast: [], regionMap: { current: "a", nodes: [], edges: [] } }, { mapView: "local" });
+  assert.doesNotMatch(noClock, /solo-hud-time/);
+  assert.match(noClock, /solo-hud-info/); // exits always exist → the toggle stays
+  assert.doesNotMatch(noClock, /Cast \d/);
+  const full = renderSoloStageHud({ cast: [{ present: true }], worldTime: { clock: "07:00", phase: "day", day: 1 } }, { mapView: "local" });
+  assert.match(full, /solo-hud-time/);
+  assert.match(full, /Cast 1/);
 });

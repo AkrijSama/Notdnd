@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-const { renderSoloClock, renderSoloRightRail } = await import("../src/components/soloSceneShell.js");
+const { renderSoloClock, renderSoloStageHud } = await import("../src/components/soloSceneShell.js");
 
 // #40 — the world clock (#14) is committed server-side and surfaced read-only in
 // the right rail. The client never recomputes; it reads scene.player.worldTime.
@@ -43,13 +43,14 @@ test("unknown phase degrades to day rather than breaking", () => {
   assert.match(html, /solo-clock-day/);
 });
 
-test("the right rail includes the clock block when worldTime is present", () => {
-  const html = renderSoloRightRail({ scene: { player: { worldTime: { day: 1, clock: "07:00", phase: "dawn" } }, cast: [] } });
-  assert.match(html, /solo-rail-clock/, "clock block is in the rail");
+test("the stage HUD floats the time/weather chip when worldTime is present", () => {
+  // No right column (owner 2026-07-19): the clock floats on the banner, not a rail.
+  const html = renderSoloStageHud({ player: { worldTime: { day: 1, clock: "07:00", phase: "dawn" } }, cast: [] }, { mapView: "local" });
+  assert.match(html, /solo-hud-time/, "the time/weather chip is on the stage HUD");
   assert.match(html, /07:00/);
 });
 
-test("the right rail omits the clock block for payloads without worldTime", () => {
-  const html = renderSoloRightRail({ scene: { cast: [] } });
-  assert.doesNotMatch(html, /solo-rail-clock/);
+test("the stage HUD omits the time chip for payloads without worldTime", () => {
+  const html = renderSoloStageHud({ cast: [] }, { mapView: "local" });
+  assert.doesNotMatch(html, /solo-hud-time/);
 });

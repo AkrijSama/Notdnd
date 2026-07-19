@@ -1950,6 +1950,82 @@ button:disabled {
   object-position: center bottom;
   display: block;
 }
+
+/* ===========================================================================
+   STAGE HUD + SCENE DRAWERS (owner ruling 2026-07-19: NO right column). The rail
+   is gone — the reading area spans edge to edge. What the rail held now floats
+   over the scene banner (map widget + time/weather chip top-right) or lives in an
+   on-demand drawer (Cast · Exits + the reactive panels; the full map).
+   =========================================================================== */
+.solo-stage-hud {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  z-index: 30;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  pointer-events: none; /* the container is click-through; its chips re-enable */
+}
+.solo-stage-hud > * { pointer-events: auto; }
+.solo-hud-map,
+.solo-hud-time,
+.solo-hud-info {
+  background: rgba(12, 12, 15, 0.82);
+  border: 1px solid var(--border, #202024);
+  border-radius: 10px;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.5);
+  color: var(--text, #d9dbe0);
+}
+.solo-hud-map { display: flex; flex-direction: column; gap: 5px; padding: 6px; }
+.solo-hud-map-open {
+  font-size: 12px;
+  padding: 4px 8px;
+  cursor: pointer;
+  background: var(--inset, #070708);
+  color: var(--text, #d9dbe0);
+  border: 1px solid var(--border, #202024);
+  border-radius: 8px;
+}
+.solo-hud-time { padding: 5px 9px; display: flex; align-items: center; }
+.solo-hud-info { font-size: 12px; padding: 8px 12px; cursor: pointer; align-self: flex-start; }
+.solo-hud-info:hover,
+.solo-hud-map-open:hover { color: var(--accent, #c9a15b); }
+
+/* Slide-in overlay drawers (map / info) — drawer-tier z, above the scene, below
+   modals. Hidden when closed (empty-state law: no dead boxes over the art). */
+.solo-scene-drawer { position: fixed; inset: 0; z-index: 46; pointer-events: none; }
+.solo-scene-drawer:not(.is-open) { display: none; }
+.solo-scene-drawer.is-open { pointer-events: auto; }
+.solo-scene-drawer-backdrop { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.5); }
+.solo-scene-drawer-panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(420px, 92vw);
+  overflow-y: auto;
+  background: var(--panel, #171009);
+  border-left: 1px solid var(--border, #202024);
+  box-shadow: -12px 0 40px rgba(0, 0, 0, 0.55);
+  padding: 14px 16px;
+}
+.solo-scene-drawer-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  font-weight: 600;
+  color: var(--text-bright, #f1f2f5);
+}
+.solo-scene-drawer-close { background: none; border: none; color: var(--text-muted, #8b8e96); font-size: 20px; cursor: pointer; line-height: 1; }
+
+/* Mobile: overlays stack, the map widget collapses to just its open button. */
+@media (max-width: 720px) {
+  .solo-stage-hud { flex-wrap: wrap; max-width: 60vw; gap: 6px; }
+  .solo-hud-map-toggle { display: none; } /* the toggle lives inside the map drawer on mobile */
+  .solo-scene-drawer-panel { width: 100vw; }
+}
 .solo-scene-art-pending {
   position: absolute;
   bottom: 10px;

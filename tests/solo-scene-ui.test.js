@@ -706,7 +706,10 @@ test("renderSoloSceneShell includes mobile-friendly layout markers", () => {
   const html = renderSoloSceneShell({ scene: sampleScene() });
   assert.match(html, /solo-scene-grid/);
   assert.match(html, /solo-scene-main/);
-  assert.match(html, /solo-scene-side/);
+  // No right column (owner 2026-07-19): the rail (solo-scene-side) is gone; the
+  // map/time float as the stage HUD, cast/exits are an on-demand drawer.
+  assert.doesNotMatch(html, /solo-scene-side/);
+  assert.match(html, /solo-stage-hud/);
 });
 
 // #15-full: action handlers are now DELEGATED — dispatchSoloClick(target) walks

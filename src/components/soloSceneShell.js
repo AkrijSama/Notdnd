@@ -2760,39 +2760,69 @@ export function renderSoloRightRail(state = {}) {
         .join("")
     : `<div class="solo-empty-state">No one is here yet. Use “Bring someone in” to add a character.</div>`;
 
-  // Recent-rolls RAIL panel removed (ui restructure): rolls now surface as the
-  // compact banner in the input dock + the roll-history drawer.
+  // NO RIGHT COLUMN (owner ruling 2026-07-19): the reading area spans edge to edge.
+  // What was the rail is now an on-demand INFO DRAWER (Cast · Exits + the reactive
+  // search/talk/entity panels), opened from the stage-HUD toggle. Map + clock float
+  // over the banner instead (renderSoloStageHud / renderSoloMapDrawer). Rolls stay
+  // in the input dock banner + the roll-history drawer.
+  const open = Boolean(state.sceneInfoOpen);
   return `
-    <aside class="solo-game-rail solo-scene-side">
-      ${(() => {
-        const clock = renderSoloClock(scene);
-        return clock ? `<div class="solo-rail-block solo-rail-clock">${clock}</div>` : "";
-      })()}
-      <div class="solo-rail-block solo-rail-presence">
+    <div class="solo-scene-drawer solo-info-drawer${open ? " is-open" : ""}" data-solo-scene-info-panel role="dialog" aria-label="Cast and exits" aria-hidden="${open ? "false" : "true"}">
+      ${open ? `<div class="solo-scene-drawer-backdrop" data-solo-scene-info-close aria-hidden="true"></div>` : ""}
+      <div class="solo-scene-drawer-panel">
+        <div class="solo-scene-drawer-head"><span>Cast · Exits</span><button type="button" class="solo-scene-drawer-close" data-solo-scene-info-close aria-label="Close">×</button></div>
+        ${(() => {
+          const goals = renderSoloGoals(scene);
+          return goals ? `<div class="solo-rail-block solo-rail-goals">${goals}</div>` : "";
+        })()}
+        <div class="solo-rail-block">
+          <div class="solo-stat-kicker">Cast</div>
+          <div class="solo-cast-list">${cast}</div>
+        </div>
+        <div class="solo-rail-block">${renderMovementPanel(scene)}</div>
+        <div class="solo-rail-block">${renderSearchResultPanel(state.searchResult, scene.discoveredDetails)}</div>
+        <div class="solo-rail-block">${renderTalkResultPanel(state.talkResult)}</div>
+        <div class="solo-rail-block">${renderEntityDetailPanel(state.detail)}</div>
+      </div>
+    </div>
+  `;
+}
+
+// STAGE HUD (owner ruling 2026-07-19): floating overlays on the scene banner,
+// drawer-tier z — a compact MAP widget top-right (local/region toggle intact,
+// click to expand into the map drawer), a TIME/WEATHER chip beside it (phase +
+// weather glyph from the committed weather law), and a slim Cast · Exits toggle
+// that opens the info drawer. Empty-state law: a chip with nothing to show hides
+// (the clock is absent on a legacy payload; the info toggle always has exits).
+export function renderSoloStageHud(scene = {}, state = {}) {
+  const clock = renderSoloClock(scene);
+  const present = Array.isArray(scene.cast) ? scene.cast.filter((c) => c && c.present !== false).length : 0;
+  const region = state.mapView === "region";
+  return `
+    <div class="solo-stage-hud" data-solo-stage-hud>
+      <div class="solo-hud-map" data-solo-hud-map>
+        <div class="solo-map-toggle solo-hud-map-toggle" role="group" aria-label="Map zoom">
+          <button type="button" class="solo-map-toggle-btn${region ? "" : " active"}" data-solo-map-view="local" aria-pressed="${region ? "false" : "true"}">Local</button>
+          <button type="button" class="solo-map-toggle-btn${region ? " active" : ""}" data-solo-map-view="region" aria-pressed="${region ? "true" : "false"}">Region</button>
+        </div>
+        <button type="button" class="solo-hud-map-open" data-solo-scene-map aria-haspopup="dialog" aria-label="Open map" title="Open map">⤢ Map</button>
+      </div>
+      ${clock ? `<div class="solo-hud-time">${clock}</div>` : ""}
+      <button type="button" class="solo-hud-info" data-solo-scene-info aria-haspopup="dialog" aria-label="Cast and exits" title="Cast · Exits">☰ Cast${present ? ` ${present}` : ""} · Exits</button>
+    </div>`;
+}
+
+// The MAP DRAWER — the full region/local map, opened from the HUD map widget.
+export function renderSoloMapDrawer(scene = {}, state = {}) {
+  const mapOpen = Boolean(state.sceneMapOpen);
+  return `
+    <div class="solo-scene-drawer solo-map-drawer${mapOpen ? " is-open" : ""}" data-solo-scene-map-panel role="dialog" aria-label="Map" aria-hidden="${mapOpen ? "false" : "true"}">
+      ${mapOpen ? `<div class="solo-scene-drawer-backdrop" data-solo-scene-map-close aria-hidden="true"></div>` : ""}
+      <div class="solo-scene-drawer-panel">
+        <div class="solo-scene-drawer-head"><span>Map</span><button type="button" class="solo-scene-drawer-close" data-solo-scene-map-close aria-label="Close map">×</button></div>
         ${renderSoloMapSurface(scene, state.mapView)}
       </div>
-      ${(() => {
-        const goals = renderSoloGoals(scene);
-        return goals ? `<div class="solo-rail-block solo-rail-goals">${goals}</div>` : "";
-      })()}
-      <div class="solo-rail-block">
-        <div class="solo-stat-kicker">Cast</div>
-        <div class="solo-cast-list">${cast}</div>
-      </div>
-      <div class="solo-rail-block">
-        ${renderMovementPanel(scene)}
-      </div>
-      <div class="solo-rail-block">
-        ${renderSearchResultPanel(state.searchResult, scene.discoveredDetails)}
-      </div>
-      <div class="solo-rail-block">
-        ${renderTalkResultPanel(state.talkResult)}
-      </div>
-      <div class="solo-rail-block">
-        ${renderEntityDetailPanel(state.detail)}
-      </div>
-    </aside>
-  `;
+    </div>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -3224,6 +3254,9 @@ export function renderSoloSceneShell(state = {}) {
                 <div class="solo-stage${state.dialogueActive && state.talkResult ? " vn-active" : ""}" data-solo-stage>
                   ${renderSoloUpgradePrompt(scene)}
                   ${renderSoloSceneArt(scene.locationImageUri, { locked: scene.locationImageLocked })}
+                  <!-- Floating HUD: portrait dock (top-left, in the frame), MAP
+                       widget + TIME/WEATHER chip + Cast·Exits toggle (top-right). -->
+                  <div data-solo-stage-hud-slot>${renderSoloStageHud(scene, state)}</div>
                   <div data-solo-outcome>${renderSoloActionOutcome(state)}</div>
                   ${renderSoloDialogueOverlay(state)}
                 </div>
@@ -3257,11 +3290,13 @@ export function renderSoloSceneShell(state = {}) {
             </div>
           </div>
         </main>
-        ${renderSoloRightRail(state)}
       </div>
       </div>
-      <!-- #49: the VN dialogue layer moved INTO the pinned stage (above); it is no
-           longer a full-screen modal appended here. -->
+      <!-- NO RIGHT COLUMN (owner ruling 2026-07-19): the rail is gone; its content
+           is the on-demand INFO DRAWER + the floating MAP DRAWER, opened from the
+           stage HUD. The VN dialogue layer lives in the pinned stage (above). -->
+      ${renderSoloRightRail(state)}
+      ${renderSoloMapDrawer(scene, state)}
       ${renderSoloRollHistory(scene, state.rollHistoryOpen)}
       ${renderNpcCreatorModal(state)}
     </section>
@@ -3311,6 +3346,12 @@ export function dispatchSoloClick(target, handlers = {}) {
   if ((el = closest("[data-solo-turn-retry]"))) { handlers.onTurnRetry?.(); return true; }
   if ((el = closest("[data-solo-turn-discard]"))) { handlers.onTurnDiscard?.(); return true; }
   if ((el = closest("[data-solo-map-view]"))) { handlers.onMapView?.({ view: el.getAttribute("data-solo-map-view") }); return true; }
+  // Stage-HUD drawers (owner ruling 2026-07-19): map widget → map drawer;
+  // Cast·Exits toggle → info drawer. Close routes checked before the open toggles.
+  if ((el = closest("[data-solo-scene-map-close]"))) { handlers.onSceneMapClose?.(); return true; }
+  if ((el = closest("[data-solo-scene-map]"))) { handlers.onSceneMap?.(); return true; }
+  if ((el = closest("[data-solo-scene-info-close]"))) { handlers.onSceneInfoClose?.(); return true; }
+  if ((el = closest("[data-solo-scene-info]"))) { handlers.onSceneInfo?.(); return true; }
   if ((el = closest("[data-solo-banner-dismiss]"))) { handlers.onDismissBanner?.(); return true; }
   if ((el = closest("[data-solo-home]"))) { handlers.onReturnHome?.(); return true; }
   if ((el = closest("[data-solo-exit]"))) { handlers.onExit?.(); return true; }
@@ -4015,14 +4056,21 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       affordEl.innerHTML = renderSoloAffordances(state);
     }
 
-    // #15-full: repaint the right rail in place (rolls / clock / cast / exits).
-    // Because it's no longer in stageSignature, patch it unconditionally on every
-    // fast-path turn. Its action handlers are delegated on the stable root, so
-    // replacing the rail node needs NO rebind. Guarded so the lightweight test
-    // mocks (no querySelector / outerHTML) simply skip it.
-    const railEl = typeof root.querySelector === "function" ? root.querySelector(".solo-game-rail") : null;
-    if (railEl && typeof railEl === "object" && "outerHTML" in railEl) {
-      railEl.outerHTML = renderSoloRightRail(state);
+    // No right rail (owner ruling 2026-07-19). The stage HUD (map widget + time/
+    // weather chip + Cast·Exits count) and the on-demand INFO/MAP drawers carry what
+    // the rail did; all change per turn (weather/time/exits/cast/search/talk), so
+    // repaint them in place. Handlers are delegated on the stable root — no rebind.
+    const hudEl = typeof root.querySelector === "function" ? root.querySelector("[data-solo-stage-hud-slot]") : null;
+    if (hudEl && "innerHTML" in hudEl) {
+      hudEl.innerHTML = renderSoloStageHud(state.scene || {}, state);
+    }
+    const infoEl = typeof root.querySelector === "function" ? root.querySelector("[data-solo-scene-info-panel]") : null;
+    if (infoEl && typeof infoEl === "object" && "outerHTML" in infoEl) {
+      infoEl.outerHTML = renderSoloRightRail(state);
+    }
+    const mapDrawerEl = typeof root.querySelector === "function" ? root.querySelector("[data-solo-scene-map-panel]") : null;
+    if (mapDrawerEl && typeof mapDrawerEl === "object" && "outerHTML" in mapDrawerEl) {
+      mapDrawerEl.outerHTML = renderSoloMapDrawer(state.scene || {}, state);
     }
 
     const busy = Boolean(state.busy);
@@ -4096,6 +4144,10 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       onCharTabClose: handleCharTabClose,
       onRollHistory: handleRollHistoryToggle,
       onRollHistoryClose: handleRollHistoryClose,
+      onSceneMap: handleSceneMapToggle,
+      onSceneMapClose: handleSceneMapClose,
+      onSceneInfo: handleSceneInfoToggle,
+      onSceneInfoClose: handleSceneInfoClose,
       onAffordancesMore: handleAffordancesMore,
       onAffordanceGate: handleAffordanceGate,
       onMove: handleMove,
@@ -4518,6 +4570,28 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
   }
   function handleRollHistoryClose() {
     state.rollHistoryOpen = false;
+    render();
+  }
+
+  // Stage-HUD drawers (owner ruling 2026-07-19): the floated map widget opens the
+  // MAP drawer; the Cast·Exits toggle opens the INFO drawer. Single-open per family
+  // (opening one closes the sibling scene drawer) so they never stack.
+  function handleSceneMapToggle() {
+    state.sceneMapOpen = !state.sceneMapOpen;
+    if (state.sceneMapOpen) state.sceneInfoOpen = false;
+    render();
+  }
+  function handleSceneMapClose() {
+    state.sceneMapOpen = false;
+    render();
+  }
+  function handleSceneInfoToggle() {
+    state.sceneInfoOpen = !state.sceneInfoOpen;
+    if (state.sceneInfoOpen) state.sceneMapOpen = false;
+    render();
+  }
+  function handleSceneInfoClose() {
+    state.sceneInfoOpen = false;
     render();
   }
 
