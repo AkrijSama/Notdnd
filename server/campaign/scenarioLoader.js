@@ -17,7 +17,7 @@ import { fileURLToPath } from "node:url";
 import { validateScenario } from "./scenarioSchema.js";
 import { validateSoloRun, createEmptyExpressionVariants } from "../solo/schema.js";
 import { resolveWorldArtStyle, stampArtStyle } from "../solo/artStyle.js";
-import { normalizeAgeClass, ensureFaction } from "../solo/reputation.js";
+import { normalizeAgeClass, ensureFaction, romanceableDefault } from "../solo/reputation.js";
 import { seedEssenceTracesFromScenario, mintTraceFromSpawn, currentWorldMinutes } from "../solo/essence.js";
 import { resolveStatBlock } from "./bestiary.js";
 
@@ -394,6 +394,12 @@ export function loadScenarioIntoRun(run, scenario, options = {}) {
         contentTags: []
       }))
     };
+    // A3.1 ROMANCE REACHABILITY (audit 5d548ac): authored cast gets the law-R2
+    // romanceable default — the SAME fail-closed age wall procedural NPCs get via
+    // mintNpcReputation — so romance is reachable in authored/user worlds, not only in
+    // sandbox runs. An explicit authored `romanceable:false` is honored; a non-adult
+    // ageClass can never become eligible (romanceableDefault checks isAdult first).
+    run.npcs[c.npcId].romanceable = c.romanceable === false ? false : romanceableDefault(run.npcs[c.npcId]);
     if (c.questOffer && scenario.questOffers?.[c.questOffer]) {
       const offer = scenario.questOffers[c.questOffer];
       // #51: a scenario offer must carry an acceptable `quest` payload — the accept
