@@ -55,7 +55,7 @@ export const NPC_ORIGINS = ["procedural", "user", "hybrid"];
 const NPC_ORIGIN_SET = new Set(NPC_ORIGINS);
 // Committed location service kinds (affordances-map-law Part A). Starter set;
 // world-books extend it later. Drives the service-sourced action affordances.
-export const LOCATION_SERVICE_KINDS = ["inn", "market", "training"];
+export const LOCATION_SERVICE_KINDS = ["inn", "market", "training", "quest-board", "lore"];
 const LOCATION_SERVICE_KIND_SET = new Set(LOCATION_SERVICE_KINDS);
 // Persistent world weather (owner checklist item 1). "clear" is the universal
 // default; transient sky-family hazard objectStates OVERLAY the persistent value

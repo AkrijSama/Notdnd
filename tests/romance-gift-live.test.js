@@ -132,20 +132,30 @@ test("a specifically-named unheld gift item is refused pre-roll by the existing 
 
 // ── FIX 2: tier-crossing cue ──────────────────────────────────────────────────
 
-test("cue: a romance-tier PROMOTION supersedes the generic warmth line", () => {
+test("cue: a friendship-tier crossing supersedes the generic line — PLATONIC register (two-track R1)", () => {
   const text = dispositionCueText({
     targetName: "Mara", meter: "affection", delta: 3,
     romanceTierBefore: "friendly", romanceTier: "close"
   });
-  assert.equal(text, "Something has shifted between you and Mara.");
+  // friendly→close is the FRIENDSHIP track — platonic vocabulary, never romance-coded.
+  assert.equal(text, "Mara counts you a real friend now.");
 });
 
-test("cue: a romance-tier DEMOTION renders the cooled line", () => {
+test("cue: a romance-tier PROMOTION (past the switch) uses the romantic register", () => {
+  const text = dispositionCueText({
+    targetName: "Mara", meter: "affection", delta: 3,
+    romanceTierBefore: "close", romanceTier: "courting"
+  });
+  assert.equal(text, "Something has deepened between you and Mara.");
+});
+
+test("cue: a romance-tier DEMOTION back to platonic renders the distant line", () => {
   const text = dispositionCueText({
     targetName: "Mara", meter: "affection", delta: -2,
     romanceTierBefore: "courting", romanceTier: "close"
   });
-  assert.equal(text, "Something has cooled between you and Mara.");
+  // resolves to close (platonic) → the platonic cooling line
+  assert.equal(text, "Mara feels more distant.");
 });
 
 test("cue: no crossing -> the generic line is unchanged (and null tiers never crash)", () => {

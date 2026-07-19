@@ -262,6 +262,13 @@ export function resolveTakeAction(run, action, options = {}) {
   location.searchDetails[index] = { ...detail, taken: true };
 
   const memoryFact = createTakeMemoryFact(updatedRun, action, detail, granted, { now, idFactory });
+  // D2 MAP-KNOWLEDGE: a takeable map item (Ranger Station 9's pinned maps, the
+  // Unfinished Map) stamps its committed map:* tag onto the take fact, so
+  // regionMap.mapKnowledgeReveals() unlocks the region nodes it charts (the reveal
+  // read already consumes map:* facts). Additive — ordinary takes are unaffected.
+  if (Array.isArray(detail.grantKnowledge) && detail.grantKnowledge.length) {
+    memoryFact.tags = [...new Set([...(memoryFact.tags || []), ...detail.grantKnowledge.map((t) => String(t))])];
+  }
   const timelineEvent = createTakeTimelineEvent(updatedRun, action, detail, granted, memoryFact, { now, idFactory });
   updatedRun.memoryFacts = [...(updatedRun.memoryFacts || []), memoryFact];
   location.memoryFactIds = [...new Set([...(location.memoryFactIds || []), memoryFact.factId])];

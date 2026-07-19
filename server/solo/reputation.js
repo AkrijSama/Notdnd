@@ -136,7 +136,134 @@ export function recomputeIndividualTiers(rel, npc) {
   if (!isPlainObject(rel)) return;
   if (!Number.isFinite(rel.affinity)) rel.affinity = aggregateAffinityFromMeters(rel.meters);
   rel.tier = tierForAffinity(rel.affinity);
-  rel.romanceTier = isRomanceEligible(npc) ? romanceTierForAffection(rel.meters?.affection ?? 0) : null;
+  // R1 TWO-TRACK: the STORED romanceTier is the GATED (effective) tier, never the raw
+  // meter tier — so no meter threshold auto-promotes past close.
+  rel.romanceTier = effectiveRomanceTier(rel, npc);
+}
+
+// ── ROMANCE TWO-TRACK + GATES + REJECTION (romance-legacy-law R1/R5/R8/R4) ─────
+// The affection METER accrues freely (charm/flirt/gift build it). But the romance
+// TRACK (courting→partner) is a separate axis from the friendship track
+// (stranger→friendly→close). Friendship tiers are platonic ALWAYS. Promotion past
+// `close` requires (R1) an explicit committed romantic switch AND (R5) a gate event
+// per tier. Without the switch, affection above the courting threshold stays PARKED
+// at close — the meter holds; the door needs the knock. Pure selection here; the
+// run-mutating commits live in relationships.js.
+export const ROMANCE_PLATONIC_CEILING = "close"; // highest tier reachable without the switch
+
+/**
+ * The GATED (effective) romance tier for a relationship: friendship tiers always;
+ * courting/partner only when the switch is open AND that tier's gate has passed.
+ * Pure. Returns null for a non-romanceable NPC.
+ */
+export function effectiveRomanceTier(rel, npc) {
+  if (!isRomanceEligible(npc)) return null;
+  const affection = isPlainObject(rel) ? (rel.meters?.affection ?? 0) : 0;
+  const raw = romanceTierForAffection(affection);
+  const closeRank = romanceTierRank(ROMANCE_PLATONIC_CEILING);
+  if (romanceTierRank(raw) <= closeRank) return raw; // stranger/friendly/close — platonic
+  // courting/partner requested by the meter — gate it:
+  if (!isPlainObject(rel) || rel.romanceOpen !== true) return ROMANCE_PLATONIC_CEILING; // PARKED (no switch)
+  const gates = Array.isArray(rel.romanceGatesPassed) ? rel.romanceGatesPassed : [];
+  const rawRank = romanceTierRank(raw);
+  if (rawRank >= romanceTierRank("partner") && gates.includes("courting") && gates.includes("partner")) return "partner";
+  if (rawRank >= romanceTierRank("courting") && gates.includes("courting")) return "courting";
+  return ROMANCE_PLATONIC_CEILING; // switch open, meter high, but the gate hasn't fired yet
+}
+
+/**
+ * Is a romance GATE pending for this relationship? A gate is owed when the switch is
+ * open, the affection meter has reached the next tier's threshold, and that tier's
+ * gate has not yet fired. Returns { tier, threshold } for the lowest owed tier, or
+ * null. Pure — reads committed state only.
+ */
+export function pendingRomanceGateSpec(rel, npc) {
+  if (!isRomanceEligible(npc) || !isPlainObject(rel) || rel.romanceOpen !== true) return null;
+  const affection = rel.meters?.affection ?? 0;
+  const gates = Array.isArray(rel.romanceGatesPassed) ? rel.romanceGatesPassed : [];
+  for (const tier of ["courting", "partner"]) {
+    const row = ROMANCE_TIERS.find((r) => r.tier === tier);
+    if (!row) continue;
+    // partner's gate can only be owed once courting's has passed.
+    if (tier === "partner" && !gates.includes("courting")) continue;
+    if (affection >= row.min && !gates.includes(tier)) return { tier, threshold: row.min };
+  }
+  return null;
+}
+
+// NPC STATION scaling (pauper vs queen register) for the gate-beat template. Read
+// from npc.station | npc.rank | a faction-honored heuristic. Law-6 owner-tunable.
+export const STATION_REGISTER = Object.freeze({
+  high: Object.freeze({ key: "high", register: "a courtly, weighed declaration — station and consequence in every word" }),
+  common: Object.freeze({ key: "common", register: "a plain, earnest declaration between equals" }),
+  low: Object.freeze({ key: "low", register: "a hushed, careful declaration, wary of who might see" })
+});
+export function stationRegisterFor(npc) {
+  const s = String(npc?.station || npc?.rank || "").toLowerCase();
+  if (/queen|king|lord|lady|noble|high|royal|prince|princess|duke|duchess/.test(s)) return STATION_REGISTER.high;
+  if (/pauper|beggar|servant|slave|outcast|urchin|low/.test(s)) return STATION_REGISTER.low;
+  return STATION_REGISTER.common;
+}
+
+/**
+ * Build the committed gate-event beat descriptor (R5): a template filled from
+ * committed identity + shared history (memoryFactIds count) + NPC station register.
+ * v1: this is the narration DIRECTIVE + cue; hand-authored gates for key figures
+ * remain content (ledger). Pure.
+ */
+export function romanceGateBeat(rel, npc, tier) {
+  const name = npc?.generatedName || npc?.displayName || npc?.role || "they";
+  const station = stationRegisterFor(npc);
+  const historyDepth = Array.isArray(rel?.memoryFactIds) ? rel.memoryFactIds.length : 0;
+  const shared = historyDepth >= 3 ? "everything you have been through together" : historyDepth >= 1 ? "the little you have shared" : "how new this still is";
+  return Object.freeze({
+    tier,
+    npcId: npc?.npcId ?? null,
+    station: station.key,
+    directive: `ROMANCE GATE (${tier}): ${name} makes ${station.register}. Voice it as a committed turning point that weighs ${shared}. Do NOT invent the outcome — the promotion resolves only after this beat.`,
+    cue: `${name} and you cross into ${tier}.`
+  });
+}
+
+// ── R8 REJECTION OUTCOMES ─────────────────────────────────────────────────────
+// A rebuffed initiation (either direction) resolves to ONE of four outcomes, minted
+// from the NPC's committed disposition × history, deterministic per seed. Server
+// selects; the narrator only voices it.
+export const REJECTION_OUTCOMES = Object.freeze(["grudge", "torch", "fade", "genuine_friends"]);
+function hashInt(value) { let h = 0; const s = String(value == null ? "" : value); for (let i = 0; i < s.length; i += 1) { h = (h * 31 + s.charCodeAt(i)) | 0; } return Math.abs(h); }
+/**
+ * Deterministically select a rejection outcome from committed disposition × history.
+ * High affinity + deep history → torch/genuine (they still care); low/negative →
+ * grudge; middling → fade. The seed makes it reproducible per (npc,run,event). Pure.
+ */
+export function selectRejectionOutcome(rel, npc, seed) {
+  const affinity = isPlainObject(rel) && Number.isFinite(rel.affinity) ? rel.affinity : 0;
+  const suspicion = isPlainObject(rel) ? (rel.meters?.suspicion ?? 0) : 0;
+  const history = Array.isArray(rel?.memoryFactIds) ? rel.memoryFactIds.length : 0;
+  const roll = hashInt(`reject|${npc?.npcId ?? ""}|${seed}`) % 100;
+  // Disposition bands (Law-6 tunable): hostility-leaning → grudge; warm+deep → torch;
+  // warm+shallow → genuine friends; else fade. The roll breaks ties within a band.
+  if (affinity < 0 || suspicion >= 8) return roll < 70 ? "grudge" : "fade";
+  if (affinity >= 25 && history >= 2) return roll < 55 ? "torch" : "genuine_friends";
+  if (affinity >= 12) return roll < 50 ? "genuine_friends" : (roll < 80 ? "fade" : "torch");
+  return roll < 65 ? "fade" : "genuine_friends";
+}
+
+// ── R4 LIGHTNING-STRIKE ───────────────────────────────────────────────────────
+// Extraordinary committed deeds may lawfully produce large one-beat affection
+// deltas — bounded (Law-6 table). Wired into the deed/consequence commit path.
+export const LIGHTNING_STRIKE_DELTAS = Object.freeze({
+  "faction-saved": 16,
+  "family-saved": 22,
+  "life-saved": 20,
+  "heirloom-returned": 12,
+  "home-defended": 14,
+  "great-shame-lifted": 18
+});
+export const LIGHTNING_STRIKE_MAX = 22; // hard ceiling — no single deed exceeds this
+export function lightningStrikeDelta(deedClass) {
+  const raw = LIGHTNING_STRIKE_DELTAS[String(deedClass || "").toLowerCase()] || 0;
+  return Math.max(0, Math.min(LIGHTNING_STRIKE_MAX, raw));
 }
 export function applyAffinityToRelationship(rel, npc, baseDelta, tags = []) {
   if (!isPlainObject(rel)) return null;
@@ -164,7 +291,9 @@ export function individualReputation(run, npcId) {
     tier: tierForAffinity(affinity),
     preferences: Array.isArray(npc.preferences) ? npc.preferences : [],
     romanceable: isRomanceEligible(npc),
-    romanceTier: isRomanceEligible(npc) ? romanceTierForAffection(rel?.meters?.affection ?? 0) : null,
+    // R1: the GATED romance tier (parked at close without the switch + gates).
+    romanceTier: effectiveRomanceTier(rel, npc),
+    romanceOpen: isPlainObject(rel) ? rel.romanceOpen === true : false,
     factionId: isString(npc.factionId) ? npc.factionId : null,
     // VISIBILITY: a tier is knowledge — surfaced only once the NPC is met/known.
     met: npc.known === true || npc.met === true || Boolean(rel)
@@ -262,17 +391,34 @@ export function applyFactionStanding(run, factionId, delta, options = {}) {
 export function applyReputationEffects(run, effects, options = {}) {
   const applied = [];
   for (const e of Array.isArray(effects) ? effects : []) {
-    if (!isPlainObject(e) || !isString(e.target) || !Number.isFinite(e.delta)) continue;
+    if (!isPlainObject(e) || !isString(e.target)) continue;
+    const hasDelta = Number.isFinite(e.delta) && e.delta !== 0;
+    // R4 LIGHTNING-STRIKE hook: a deed-class effect (faction-saved / family-saved /
+    // heirloom-returned class) on a quest/thread/consequence resolution lands a
+    // BOUNDED one-beat affection surge — the deed/consequence commit path.
+    const lightning = isString(e.deedClass) ? lightningStrikeDelta(e.deedClass) : 0;
+    if (!hasDelta && lightning <= 0) continue;
     if (isPlainObject(run.factions?.[e.target])) {
-      const r = applyFactionStanding(run, e.target, e.delta, { tags: e.tags });
-      if (r) applied.push({ kind: "faction", ...r });
+      if (hasDelta) {
+        const r = applyFactionStanding(run, e.target, e.delta, { tags: e.tags });
+        if (r) applied.push({ kind: "faction", ...r });
+      }
     } else if (isPlainObject(run.npcs?.[e.target])) {
       const rel = Object.values(run.relationships || {}).find(
         (r) => isPlainObject(r) && r.sourceEntityId === "player" && r.targetEntityId === e.target
       );
       if (rel) {
-        const r = applyAffinityToRelationship(rel, run.npcs[e.target], e.delta, e.tags);
-        if (r) applied.push({ kind: "individual", npcId: e.target, ...r });
+        if (lightning > 0) {
+          if (!isPlainObject(rel.meters)) rel.meters = {};
+          const affBefore = Number(rel.meters.affection) || 0;
+          rel.meters.affection = Math.max(-50, Math.min(50, affBefore + lightning)); // meter is [-50,50]
+          const r = applyAffinityToRelationship(rel, run.npcs[e.target], lightning, e.tags);
+          applied.push({ kind: "individual", npcId: e.target, deedClass: e.deedClass, lightning, ...r });
+        }
+        if (hasDelta) {
+          const r = applyAffinityToRelationship(rel, run.npcs[e.target], e.delta, e.tags);
+          if (r) applied.push({ kind: "individual", npcId: e.target, ...r });
+        }
       }
     }
   }

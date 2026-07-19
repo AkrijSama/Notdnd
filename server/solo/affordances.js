@@ -47,7 +47,11 @@ function standingAffordances(inCombat) {
 const SERVICE_META = {
   inn: { label: "Rent a room", intent: "I rent a room for the night." },
   market: { label: "Browse the market", intent: "I browse what the market has for sale." },
-  training: { label: "Seek training", intent: "I seek training to sharpen my skills." }
+  training: { label: "Seek training", intent: "I seek training to sharpen my skills." },
+  // Content plumbing (2026-07-19): non-travel contextual services that route as
+  // NORMAL intents through the turn path (the chip is a pre-typed intent, not a menu).
+  "quest-board": { label: "Check the notice board", intent: "I check the notice board for postings." },
+  lore: { label: "Ask about the region", intent: "I ask about the region and what's known of these parts." }
 };
 function serviceAffordances(location) {
   const services = Array.isArray(location?.services) ? location.services : [];

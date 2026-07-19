@@ -1,5 +1,6 @@
 import { completeSoloRun, fetchSoloGmScene, fetchSoloScene, postSoloAction, redoLocationImage, saveLocationImage } from "./soloSceneApi.js";
 import textFit from "../vendor/textFit.js";
+import { renderConditionChip, renderConditionChipRow } from "./conditionChips.js";
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -1845,51 +1846,20 @@ export function formatConditionDuration(remainingMinutes) {
 // edge — the name/effect/duration stay in the tooltip + aria label (unchanged
 // detail on hover/focus). Default false keeps the legacy HUD shape for callers.
 export function renderSoloConditionsHud(scene = {}, { compact = false } = {}) {
-  const conditions = (Array.isArray(scene.player?.conditions) ? scene.player.conditions : Array.isArray(scene.conditions) ? scene.conditions : [])
-    .filter((c) => c && (c.name || c.id));
-  if (!conditions.length) {
-    return ""; // empty state: nothing visible, no placeholder text
-  }
-  // Grouped, never interleaved: buffs → marks → neutral → control → debuffs.
-  // Stable within a group (server order preserved).
-  const ordered = conditions
-    .map((c, i) => ({ c, i, meta: conditionKindMeta(c.kind) }))
-    .sort((a, b) => a.meta.order - b.meta.order || a.i - b.i);
-  // Compact portrait chips cap at 4 visible; the rest collapse into a "+N" pill that
-  // opens the character sheet (owner append 2026-07-19). Non-compact (rail/sheet)
-  // shows them all.
-  const COMPACT_CAP = 4;
-  const visible = compact ? ordered.slice(0, COMPACT_CAP) : ordered;
-  const overflow = compact ? ordered.length - visible.length : 0;
-  const chips = visible
-    .map(({ c, meta }) => {
-      const kind = CONDITION_KIND_META[String(c.kind || "").toLowerCase()] ? String(c.kind).toLowerCase() : "neutral";
-      const name = String(c.name || c.id);
-      const duration = c.permanent ? "" : formatConditionDuration(c.remainingMinutes);
-      const remainText = c.permanent
-        ? "Lasts until cleared."
-        : duration
-          ? `Time remaining: ${duration}.`
-          : "";
-      const tipBody = [String(c.effect || "").trim(), remainText].filter(Boolean).join(" ");
-      return `
-        <span class="solo-cond-chip cond-${kind}${compact ? " is-compact" : ""}" tabindex="0" data-cond-id="${escapeHtml(c.id || name)}" aria-label="${escapeHtml(`${name}. ${meta.word}. ${tipBody}`)}">
-          <span class="solo-cond-glyph" aria-hidden="true">${meta.glyph}</span>
-          ${Number(c.stacks) > 1 ? `<span class="solo-cond-count" aria-hidden="true">${escapeHtml(c.stacks)}</span>` : ""}
-          ${compact ? "" : `<span class="solo-cond-name">${escapeHtml(name)}</span>`}
-          ${!compact && duration ? `<span class="solo-cond-time">${escapeHtml(duration)}</span>` : ""}
-          <span class="solo-cond-tip" role="tooltip">
-            <strong>${escapeHtml(name)} · ${meta.word}</strong>${tipBody ? `<span>${escapeHtml(tipBody)}</span>` : ""}
-          </span>
-        </span>`;
-    })
-    .join("");
-  // "+N" overflow pill (compact only): the hidden conditions live in the character
-  // sheet, so the pill opens it (same data-solo-char-tab route as the portrait badge).
-  const overflowChip = overflow > 0
-    ? `<button type="button" class="solo-cond-chip is-compact solo-cond-overflow" data-solo-char-tab aria-label="${escapeHtml(`${overflow} more condition${overflow === 1 ? "" : "s"} — open character sheet`)}" title="${escapeHtml(`${overflow} more — open sheet`)}">+${overflow}</button>`
-    : "";
-  return `<div class="solo-conditions${compact ? " solo-conditions-portrait" : " solo-measure"}" role="group" aria-label="Active conditions">${chips}${overflowChip}</div>`;
+  // Delegates to the SHARED condition-chip component (conditionChips.js) — the same
+  // idiom CLI 2's battle surface reuses. The portrait dock passes THIS surface's kind
+  // meta + duration formatter; grouping/cap/overflow/markup all live in the shared
+  // component. Compact caps at 4 with a "+N" pill into the character sheet.
+  const conditions = Array.isArray(scene.player?.conditions) ? scene.player.conditions : Array.isArray(scene.conditions) ? scene.conditions : [];
+  return renderConditionChipRow(conditions, {
+    compact,
+    cap: 4,
+    kindMeta: conditionKindMeta,
+    knownKind: (k) => Boolean(CONDITION_KIND_META[String(k || "").toLowerCase()]),
+    formatDuration: formatConditionDuration,
+    overflowAttr: "data-solo-char-tab",
+    wrapClass: "solo-measure"
+  });
 }
 
 // Shared compact PORTRAIT DOCK (ui restructure): the portrait stays visible and
@@ -2897,9 +2867,21 @@ export function dispositionCueText(change) {
   const tierAfter = typeof change.romanceTier === "string" ? change.romanceTier : null;
   if (tierBefore && tierAfter && tierBefore !== tierAfter) {
     const up = ROMANCE_TIER_ORDER.indexOf(tierAfter) > ROMANCE_TIER_ORDER.indexOf(tierBefore);
-    return up
-      ? `Something has shifted between you and ${name}.`
-      : `Something has cooled between you and ${name}.`;
+    // TWO-TRACK cue register (R1): friendship tiers (stranger/friendly/close) are
+    // PLATONIC always — no romance-coded language below the switch. Only courting/
+    // partner (reachable past the switch + gate) get the romantic register.
+    const PLATONIC = tierAfter === "stranger" || tierAfter === "friendly" || tierAfter === "close";
+    if (!PLATONIC) {
+      return up
+        ? `Something has deepened between you and ${name}.`
+        : `Something has cooled between you and ${name}.`;
+    }
+    if (up) {
+      return tierAfter === "close"
+        ? `${name} counts you a real friend now.`
+        : `${name} is warming to you.`;
+    }
+    return `${name} feels more distant.`;
   }
   const meter = typeof change.meter === "string" ? change.meter : "";
   const delta = Number(change.delta) || 0;

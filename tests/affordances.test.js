@@ -27,7 +27,7 @@ test("location.services validates; legacy locations without it stay valid", () =
   const run = baseRun();
   run.locations[run.currentLocationId].services = [{ kind: "inn", label: "Rooms" }, { kind: "market" }];
   assert.equal(validateSoloRun(run).ok, true);
-  assert.deepEqual(LOCATION_SERVICE_KINDS, ["inn", "market", "training"]);
+  assert.deepEqual(LOCATION_SERVICE_KINDS, ["inn", "market", "training", "quest-board", "lore"]);
   // Bogus kind rejects.
   run.locations[run.currentLocationId].services = [{ kind: "brothel" }];
   assert.equal(validateSoloRun(run).ok, false);

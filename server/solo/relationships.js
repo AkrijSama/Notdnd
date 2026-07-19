@@ -15,7 +15,16 @@
 // ---------------------------------------------------------------------------
 
 import crypto from "node:crypto";
-import { applyAffinityToRelationship, recomputeIndividualTiers, aggregateAffinityFromMeters } from "./reputation.js";
+import {
+  applyAffinityToRelationship,
+  recomputeIndividualTiers,
+  aggregateAffinityFromMeters,
+  isRomanceEligible,
+  pendingRomanceGateSpec,
+  romanceGateBeat,
+  selectRejectionOutcome,
+  lightningStrikeDelta
+} from "./reputation.js";
 
 const METERS = ["trust", "affection", "fear", "debt", "suspicion", "loyalty", "rivalry"];
 
@@ -235,3 +244,141 @@ export function commitGift(run, { npcId, itemId } = {}, options = {}) {
 }
 
 export const RELATIONSHIP_METERS = METERS;
+
+// ═══ ROMANCE TWO-TRACK + GATES + REJECTION + LIGHTNING (R1/R5/R8/R4 commits) ═══
+// The affection meter accrues via the normal social/gift routes above. These
+// functions own the ROMANCE TRACK: the explicit switch, the gate events, the
+// rejection outcomes, and the lightning-strike deed hook. Server-owned, pure
+// (mutate the passed run), narrator only voices what they commit.
+
+// Explicit romance-track-OPENING verbs (R1). Distinct from generic charm/flirt in
+// SOCIAL_METER_RULES, which only build the affection METER — these are the committed
+// "knock" that opens the door. A generic "flirt with X" both builds affection AND
+// opens (flirt is listed as an initiation door in the ruling).
+const ROMANTIC_OPEN_RE = /\b(confess|court|courting|woo|propose|proposing|ask(?:ing)?\s+(?:\w+\s+)?out\b|kiss(?:ing)?|profess|declare\s+(?:my\s+|your\s+)?(?:love|feelings)|make\s+a\s+move|flirt(?:ing)?\s+with)\b/i;
+/** Does this intent read as an explicit romance-track-opening action? Pure. */
+export function detectRomanticOpen(intent) {
+  return ROMANTIC_OPEN_RE.test(String(intent || ""));
+}
+
+function findPlayerRel(run, npcId) {
+  if (!isPlainObject(run) || !isPlainObject(run.relationships)) return null;
+  return Object.values(run.relationships).find((r) => isPlainObject(r) && r.sourceEntityId === "player" && r.targetEntityId === npcId) || null;
+}
+
+/**
+ * R1: open the romance track (the switch) on player→NPC. Only for a romance-eligible
+ * NPC. `initiator`: "player" (flirt/confess/court) or "npc" (a crush the player
+ * ACCEPTED). Idempotent. Returns { opened, initiator, romanceTier } or {opened:false}.
+ */
+export function openRomanceTrack(run, npcId, { initiator = "player", idFactory } = {}) {
+  const npc = run?.npcs?.[npcId];
+  if (!isRomanceEligible(npc)) return { opened: false, reason: "ineligible", npcId };
+  const rel = ensureRelationship(run, npcId, { idFactory });
+  const already = rel.romanceOpen === true;
+  rel.romanceOpen = true;
+  if (!rel.romanceOpenedBy) rel.romanceOpenedBy = initiator;
+  if (!Array.isArray(rel.romanceGatesPassed)) rel.romanceGatesPassed = [];
+  recomputeIndividualTiers(rel, npc);
+  return { opened: !already, initiator: rel.romanceOpenedBy, romanceTier: rel.romanceTier, npcId };
+}
+
+/** R5: the gate owed on this relationship (with its committed beat), or null. Read-only. */
+export function pendingRomanceGate(run, npcId) {
+  const npc = run?.npcs?.[npcId];
+  const rel = findPlayerRel(run, npcId);
+  const spec = pendingRomanceGateSpec(rel, npc);
+  if (!spec) return null;
+  return { ...spec, npcId, beat: romanceGateBeat(rel, npc, spec.tier) };
+}
+
+/**
+ * R5: commit a gate event — marks that tier's gate passed so the promotion resolves.
+ * Enforces order (partner's gate needs courting's first). Returns the committed gate
+ * with the tier crossing (romanceTierBefore/after), or null.
+ */
+export function commitRomanceGate(run, npcId, tier, { idFactory } = {}) {
+  const npc = run?.npcs?.[npcId];
+  if (!isRomanceEligible(npc)) return null;
+  const t = String(tier || "");
+  if (t !== "courting" && t !== "partner") return null;
+  const rel = ensureRelationship(run, npcId, { idFactory });
+  if (!Array.isArray(rel.romanceGatesPassed)) rel.romanceGatesPassed = [];
+  if (t === "partner" && !rel.romanceGatesPassed.includes("courting")) return null;
+  const before = rel.romanceTier;
+  if (!rel.romanceGatesPassed.includes(t)) rel.romanceGatesPassed.push(t);
+  recomputeIndividualTiers(rel, npc);
+  return { npcId, tier: t, romanceTierBefore: before, romanceTier: rel.romanceTier, beat: romanceGateBeat(rel, npc, t) };
+}
+
+/**
+ * R8: commit a rejection outcome (GRUDGE | TORCH | FADE | GENUINE_FRIENDS),
+ * DETERMINISTICALLY selected from committed disposition × history. `initiator` = who
+ * was rebuffed. Commits the outcome's disposition effect; closes the switch. Narrator
+ * only voices. Returns { outcome, ... } or null.
+ */
+export function commitRomanceRejection(run, npcId, { initiator = "player", seed, idFactory } = {}) {
+  const npc = run?.npcs?.[npcId];
+  if (!isPlainObject(npc)) return null;
+  const rel = ensureRelationship(run, npcId, { idFactory });
+  const s = seed != null ? String(seed) : `${run?.worldSeed || run?.runId || ""}|${npcId}|${rel.meters?.affection ?? 0}`;
+  const outcome = selectRejectionOutcome(rel, npc, s);
+  const before = { affinity: rel.affinity, suspicion: rel.meters.suspicion };
+  let torchSeed = null;
+  if (outcome === "grudge") {
+    rel.meters.suspicion = clampMeter(rel.meters.suspicion + 6);
+    rel.meters.rivalry = clampMeter((rel.meters.rivalry ?? 0) + 4);
+    applyAffinityToRelationship(rel, npc, -8);
+  } else if (outcome === "torch") {
+    // outward friendship kept + a SECRET thread-seed (covert-watching hook)
+    rel.flags = isPlainObject(rel.flags) ? rel.flags : {};
+    torchSeed = { npcId, secret: true, hook: "covert-watching", seededAtAffinity: rel.affinity };
+    rel.flags.torch = torchSeed;
+  } else if (outcome === "fade") {
+    applyAffinityToRelationship(rel, npc, -4); // interest decays
+  }
+  // GENUINE_FRIENDS: clean — no penalty. All outcomes close the romance switch.
+  rel.romanceOpen = false;
+  recomputeIndividualTiers(rel, npc);
+  return { npcId, initiator, outcome, seed: s, before, affinity: rel.affinity, suspicion: rel.meters.suspicion, romanceTier: rel.romanceTier, torchSeed };
+}
+
+/**
+ * Per-turn romance orchestration (the thin hook attempt.js calls once, alongside the
+ * gift/charm routes): (1) an explicit romantic intent on a non-failed turn OPENS the
+ * switch (R1); (2) if the affection meter has now reached the next tier's threshold
+ * with the switch open, the GATE fires as a committed beat this turn and the promotion
+ * resolves after it (R5). Returns { npcId, opened, gate } or null. Server-owned.
+ */
+export function applyRomanceTurn(run, { intent, targetId, success, dispositionChange, giftChange, idFactory } = {}) {
+  const npcId = dispositionChange?.targetNpcId || giftChange?.targetNpcId || resolveSocialTarget(run, { intent, targetId })?.npcId;
+  if (!npcId) return null;
+  if (!isRomanceEligible(run?.npcs?.[npcId])) return null;
+  let opened = null;
+  if (success !== false && detectRomanticOpen(intent)) {
+    opened = openRomanceTrack(run, npcId, { initiator: "player", idFactory });
+  }
+  let gate = null;
+  const owed = pendingRomanceGate(run, npcId);
+  if (owed) gate = commitRomanceGate(run, npcId, owed.tier, { idFactory });
+  if (!opened && !gate) return null;
+  return { npcId, opened, gate };
+}
+
+/**
+ * R4: apply a lightning-strike affection surge from an extraordinary committed deed
+ * (faction-saved / family-saved / heirloom-returned class). Bounded by the Law-6
+ * table + hard ceiling. Wire this into the deed/consequence commit path. Returns the
+ * committed change, or null when the deed class carries no delta.
+ */
+export function applyLightningStrike(run, npcId, deedClass, { idFactory } = {}) {
+  const npc = run?.npcs?.[npcId];
+  if (!isPlainObject(npc)) return null;
+  const delta = lightningStrikeDelta(deedClass);
+  if (delta <= 0) return null;
+  const rel = ensureRelationship(run, npcId, { idFactory });
+  const affectionBefore = rel.meters.affection ?? 0;
+  rel.meters.affection = clampMeter(affectionBefore + delta);
+  const change = applyAffinityToRelationship(rel, npc, delta);
+  return { npcId, deedClass, delta, affectionBefore, affectionAfter: rel.meters.affection, affinity: rel.affinity, affinityDelta: change?.delta ?? 0, romanceTier: rel.romanceTier };
+}

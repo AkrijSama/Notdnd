@@ -14,7 +14,7 @@ import { getUsableInventoryItems } from "./useItem.js";
 import { POLICY_VIOLATION_NARRATION, screenPlayerIntent } from "./safety.js";
 import { applyDamage, isIncapacitated } from "./death.js";
 import { advanceClock, ensureClock, sanitizeDurationMinutes, DEFAULT_OBSERVE_MINUTES, DEFAULT_ACTION_MINUTES, DEFAULT_CHECK_MINUTES } from "./worldClock.js";
-import { commitSocialDisposition, commitGift, resolveSocialTarget } from "./relationships.js";
+import { commitSocialDisposition, commitGift, resolveSocialTarget, applyRomanceTurn } from "./relationships.js";
 import { applyCondition, tickConditions } from "./conditions.js";
 
 const PROVIDER_OUTPUT_FIELDS = new Set([
@@ -2097,6 +2097,14 @@ export function resolveAttemptAction(run, action, options = {}) {
     ? commitGift(updatedRun, { npcId: giftIntent.npc.npcId, itemId: giftIntent.item.itemId }, options)
     : null;
 
+  // ROMANCE TWO-TRACK (R1/R5): an explicit romantic intent OPENS the switch; a
+  // threshold reached with the switch open FIRES the gate beat. Runs alongside the
+  // gift/charm routes above — additive, server-owned, narrator only voices it. Only
+  // acts on a romance-eligible present NPC; null otherwise.
+  const romanceTurn = (dispositionChange || giftChange || SOCIAL_INTENT_RE.test(String(context.intent || "")))
+    ? applyRomanceTurn(updatedRun, { intent: context.intent, targetId: context.targetId, success, dispositionChange, giftChange, idFactory: options?.idFactory })
+    : null;
+
   // WORLD CLOCK (#14). Commit the in-fiction time this action cost. The GM proposes
   // durationMinutes (its narrative discretion); the server sanity-bounds it and
   // advances world.time, re-deriving day / time-of-day / phase. When the GM omitted
@@ -2176,7 +2184,11 @@ export function resolveAttemptAction(run, action, options = {}) {
     // GIFT (romance-live wiring): the committed preference-priced transfer
     // ({ targetNpcId, targetName, itemId, itemName, delta, romanceTierBefore,
     // romanceTier, … }), or null. Same contract: server commits, narrator reads.
-    giftChange: giftChange || null
+    giftChange: giftChange || null,
+    // ROMANCE (R1/R5): { npcId, opened?, gate? } when this turn opened the romance
+    // switch or fired a gate beat; null otherwise. The gate carries a narration
+    // directive the GM voices as the turning-point beat. Server commits; narrator reads.
+    romanceTurn: romanceTurn || null
   };
 
   const memoryEffect = (providerOutput.proposedEffects || []).find((effect) => effect.type === "memory_fact" && isString(effect.text));
