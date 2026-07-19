@@ -11,6 +11,7 @@ import {
   pointBuyCost
 } from "../../server/solo/dndData.js";
 import { buildCharacter } from "../../server/solo/characterBuild.js";
+import { renderWorldCreator, bindWorldCreator } from "./worldCreator.js";
 
 const ONBOARDING_LOADING_PHRASES = [
   "Bribing the innkeeper...",
@@ -80,6 +81,20 @@ function renderChip(label, active, attr) {
   return `<button type="button" class="onb-chip ${active ? "active" : ""}" ${attr}>${esc(label)}</button>`;
 }
 
+// A user-created world card (the Worlds law: "Yours"). Selecting it carries a
+// userWorldId (not a scenarioId) into character creation.
+function renderUserWorldCard(card, active) {
+  return `
+    <button type="button" class="onb-world-card onb-world-card-user ${active ? "active" : ""}" data-world-userworld="${esc(card.userWorldId)}" aria-pressed="${active ? "true" : "false"}">
+      ${card.art ? `<img class="onb-world-card-art" src="${esc(card.art)}" alt="" loading="lazy" />` : `<span class="onb-world-card-art onb-world-card-art-empty" aria-hidden="true">✦</span>`}
+      <span class="onb-world-card-body">
+        <span class="onb-world-card-title">${esc(card.title)}</span>
+        <span class="onb-world-card-hook">${esc(card.hook || "A world you made.")}</span>
+        <span class="onb-world-card-badge">Yours</span>
+      </span>
+    </button>`;
+}
+
 function renderWorldStep(state) {
   const def = state.worldDef || {};
   const loading = Boolean(state.loading);
@@ -109,6 +124,7 @@ function renderWorldStep(state) {
         <label>Choose a world</label>
         <div class="onb-world-cards">
           ${WORLD_SELECT_CARDS.map((card) => renderWorldCard(card, (def.scenarioId || "") === card.scenarioId)).join("")}
+          ${(Array.isArray(state.userWorlds) ? state.userWorlds : []).map((w) => renderUserWorldCard(w, def.userWorldId === w.userWorldId)).join("")}
         </div>
       </div>
 
@@ -719,6 +735,10 @@ export function renderOnboardingFlow(onboardingState = {}) {
     return renderWorldStep(onboardingState);
   }
 
+  if (step === "world_create") {
+    return renderWorldCreator(onboardingState.worldCreator || {});
+  }
+
   if (step === "world_preview") {
     return renderWorldPreviewStep(onboardingState);
   }
@@ -868,6 +888,9 @@ function animateOnboardingLoading(root) {
 export function bindOnboardingFlow(root, handlers = {}) {
   animateOnboardingLoading(root);
 
+  // ---- Custom World creator (additive; no-ops unless the world_create step rendered) ----
+  bindWorldCreator(root, handlers);
+
   // ---- World generator (Ticket 39) ----
   root.querySelectorAll("[data-world-tone]").forEach((button) => {
     button.addEventListener("click", () => handlers.onWorldField?.("tone", button.getAttribute("data-world-tone")));
@@ -883,6 +906,10 @@ export function bindOnboardingFlow(root, handlers = {}) {
   // to a custom AI-generated world.
   root.querySelectorAll("[data-world-scenario]").forEach((button) => {
     button.addEventListener("click", () => handlers.onWorldField?.("scenarioId", button.getAttribute("data-world-scenario")));
+  });
+  // A user's own world card → straight into character creation for that world.
+  root.querySelectorAll("[data-world-userworld]").forEach((button) => {
+    button.addEventListener("click", () => handlers.onSelectUserWorld?.(button.getAttribute("data-world-userworld")));
   });
   // Library-first world-card art (art-plumbing item 3): consult the curated
   // library for a rated "keep" for this world and swap the static placeholder in

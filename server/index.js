@@ -39,6 +39,7 @@ import { handleQuickstartBuildPayload, handleQuickstartParsePayload } from "./ap
 import { createLemonSqueezyWebhookHandler } from "./api/lemonsqueezy.js";
 import { tokenFromRequest } from "./auth/httpAuth.js";
 import { createOnboardingCampaign, createWorldOnboardingRun } from "./campaign/onboarding.js";
+import { serviceDraft, serviceTwist, serviceSaveWorld, listWorldsForSelect, serviceDeleteWorld } from "./campaign/worldCreationService.js";
 import { generateWorld, regenerateWorldField } from "./solo/worldGen.js";
 import { engineStyleForRun } from "./solo/artStyle.js";
 import { resolveLibraryArt } from "./solo/artLibrary.js";
@@ -3260,6 +3261,9 @@ async function handleApi(req, res) {
         // D.5: an optional authored scenario (e.g. "the_shipment"). Campaign-mode
         // only; the loader gates it. Falls back to the INKBORNE_SCENARIO env flag.
         scenarioId: payload?.scenarioId || null,
+        // Custom World flow: an owner-scoped user world id, loaded via the additive
+        // user-world path in onboarding (getUserWorld is owner-scoped → isolation).
+        userWorldId: payload?.userWorldId || null,
         // C.13: the solo "new adventure" IS the sandbox flow (see onboardingFlow.js
         // — the loctype picker was removed because sandbox defaults to forest-ruins;
         // modules/campaigns carry their own start). Default to sandbox so a pure
@@ -3267,7 +3271,7 @@ async function handleApi(req, res) {
         // decision a), and the sandbox-gated behavior (C.5 quarry suppression,
         // player-authored goals) is actually REACHABLE live instead of inert. A
         // module/campaign start passes an explicit mode to opt back into the spine.
-        mode: payload?.mode || "sandbox"
+        mode: payload?.mode || (payload?.userWorldId ? "campaign" : "sandbox")
       });
       incrementSessionCount(user.id);
       writeJson(res, 200, { ok: true, ...result });
@@ -3465,6 +3469,90 @@ async function handleApi(req, res) {
       const removed = deleteUserHomebrew(user.id, id);
       if (!removed) {
         throw Object.assign(new Error("Custom content item not found."), { code: "NOT_FOUND", statusCode: 404 });
+      }
+      writeJson(res, 200, { ok: true, removed: true });
+    } catch (error) {
+      routeError(res, error);
+    }
+    return true;
+  }
+
+  // ── WORLD CREATOR (the Custom World flow) ──────────────────────────────────
+  // All owner-scoped (requireAuth → user.id). Draft/twist call the flash utility tier
+  // through the service (mockable in tests); save is deterministic compile + persist.
+  if (url.pathname === "/api/worlds" && req.method === "GET") {
+    try {
+      const user = requireAuth(req);
+      writeJson(res, 200, { ok: true, worlds: listWorldsForSelect(user.id) });
+    } catch (error) {
+      routeError(res, error);
+    }
+    return true;
+  }
+
+  if (url.pathname === "/api/worlds/draft" && req.method === "POST") {
+    try {
+      const user = requireAuth(req);
+      const payload = await readJsonBody(req);
+      const result = await serviceDraft({ creationId: payload?.creationId || user.id, interview: payload?.interview || {} });
+      writeJson(res, 200, result);
+    } catch (error) {
+      routeError(res, error);
+    }
+    return true;
+  }
+
+  if (url.pathname === "/api/worlds/twist" && req.method === "POST") {
+    try {
+      const user = requireAuth(req);
+      const payload = await readJsonBody(req);
+      const result = await serviceTwist({
+        creationId: payload?.creationId || user.id,
+        cardType: payload?.cardType,
+        card: payload?.card || {},
+        instruction: payload?.instruction || "",
+        context: payload?.context || {}
+      });
+      writeJson(res, 200, result);
+    } catch (error) {
+      routeError(res, error);
+    }
+    return true;
+  }
+
+  if (url.pathname === "/api/worlds/save" && req.method === "POST") {
+    try {
+      const user = requireAuth(req);
+      const payload = await readJsonBody(req);
+      const result = serviceSaveWorld({
+        userId: user.id,
+        creationId: payload?.creationId || user.id,
+        draft: payload?.draft || payload?.review || {},
+        interview: payload?.interview || {},
+        overrides: payload?.overrides || {},
+        art: payload?.art || null
+      });
+      if (!result.ok) {
+        throw Object.assign(new Error("World could not be compiled from the draft."), {
+          code: "INVALID_WORLD",
+          statusCode: 400,
+          validationErrors: result.errors
+        });
+      }
+      writeJson(res, 200, result);
+    } catch (error) {
+      routeError(res, error);
+    }
+    return true;
+  }
+
+  if (url.pathname.startsWith("/api/worlds/") && req.method === "DELETE") {
+    try {
+      const user = requireAuth(req);
+      const id = decodeURIComponent(url.pathname.slice("/api/worlds/".length)).replace(/\/+$/, "");
+      const { ok } = serviceDeleteWorld(user.id, id);
+      if (!ok) {
+        throw Object.assign(new Error("World not found."), { code: "NOT_FOUND", statusCode: 404 });
       }
       writeJson(res, 200, { ok: true, removed: true });
     } catch (error) {

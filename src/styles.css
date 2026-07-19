@@ -5641,3 +5641,50 @@ textarea.hb-input { min-height: 76px; resize: vertical; }
   min-width: 0;
   max-width: 100%;
 }
+
+/* ── Custom World creator (the productized Babel interview) ─────────────────── */
+.onb-wc { max-width: 720px; }
+.onb-wc-steps { display: flex; gap: 0.4rem; align-items: center; font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.7; margin-top: 0.35rem; }
+.onb-wc-step.is-current { opacity: 1; font-weight: 700; }
+.onb-wc-step.is-done { color: #8ad; }
+.onb-wc-step-sep { opacity: 0.4; }
+.onb-wc-lede { opacity: 0.82; line-height: 1.5; }
+.onb-wc-spark-input, .onb-wc-answer { width: 100%; box-sizing: border-box; resize: vertical; padding: 0.85rem 1rem; border-radius: 12px; font: inherit; line-height: 1.5; }
+.onb-wc-progress { font-size: 0.75rem; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.65; }
+.onb-wc-question { margin: 0.35rem 0 0.15rem; line-height: 1.3; }
+.onb-wc-help { opacity: 0.7; font-size: 0.92rem; margin: 0 0 0.6rem; }
+.onb-wc-actions { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; margin-top: 0.85rem; }
+.onb-wc-justbuild { margin-top: 1rem; background: none; border: none; color: inherit; opacity: 0.6; cursor: pointer; font: inherit; text-decoration: underline; }
+.onb-wc-justbuild:hover { opacity: 0.9; }
+.onb-ghost { background: transparent; border: 1px solid currentColor; opacity: 0.75; border-radius: 999px; padding: 0.5rem 1rem; cursor: pointer; font: inherit; }
+.onb-ghost:hover { opacity: 1; }
+.onb-wc-drafting { text-align: center; padding: 2rem 0; }
+.onb-wc-section { margin: 1.4rem 0; }
+.onb-wc-section h3 { display: flex; align-items: baseline; gap: 0.5rem; }
+.onb-wc-count { font-size: 0.75rem; opacity: 0.55; background: rgba(127,127,127,0.18); border-radius: 999px; padding: 0.05rem 0.5rem; }
+.onb-wc-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 0.7rem; }
+.onb-wc-card { border: 1px solid rgba(140,150,170,0.28); border-radius: 12px; padding: 0.8rem 0.9rem; display: flex; flex-direction: column; gap: 0.4rem; background: rgba(255,255,255,0.02); }
+.onb-wc-card.is-killed { opacity: 0.4; }
+.onb-wc-card.is-killed .onb-wc-card-title { text-decoration: line-through; }
+.onb-wc-card-head { display: flex; justify-content: space-between; gap: 0.5rem; align-items: baseline; }
+.onb-wc-card-title { font-weight: 700; }
+.onb-wc-card-tag { font-size: 0.72rem; opacity: 0.6; white-space: nowrap; }
+.onb-wc-card-body { margin: 0; font-size: 0.9rem; line-height: 1.45; opacity: 0.85; }
+.onb-wc-card-controls { display: flex; gap: 0.4rem; margin-top: auto; padding-top: 0.35rem; }
+.onb-chip { border: 1px solid rgba(140,150,170,0.4); background: transparent; border-radius: 999px; padding: 0.22rem 0.7rem; font-size: 0.78rem; cursor: pointer; color: inherit; }
+.onb-chip:hover { border-color: currentColor; }
+.onb-chip.is-kill:hover { border-color: #e06a6a; color: #e06a6a; }
+.onb-wc-twist { display: flex; gap: 0.4rem; margin-top: 0.5rem; }
+.onb-wc-twist-input { flex: 1; min-width: 0; padding: 0.4rem 0.6rem; border-radius: 8px; font: inherit; }
+.onb-wc-defaults { margin: 1.4rem 0; border-top: 1px solid rgba(140,150,170,0.2); padding-top: 0.6rem; }
+.onb-wc-drawer-toggle { background: none; border: none; color: inherit; cursor: pointer; font: inherit; font-weight: 600; display: flex; gap: 0.5rem; align-items: baseline; padding: 0.2rem 0; }
+.onb-wc-drawer-hint { font-weight: 400; opacity: 0.55; font-size: 0.82rem; }
+.onb-wc-defaults-body { display: grid; gap: 0.6rem; margin-top: 0.7rem; }
+.onb-wc-field { display: grid; gap: 0.2rem; font-size: 0.85rem; }
+.onb-wc-field input, .onb-wc-field select { padding: 0.45rem 0.6rem; border-radius: 8px; font: inherit; }
+.onb-wc-death, .onb-wc-advanced { font-size: 0.82rem; opacity: 0.7; line-height: 1.4; }
+.onb-wc-advanced { font-style: italic; }
+.onb-wc-stepin { margin-top: 1.6rem; }
+.onb-wc-stepin-note { opacity: 0.6; font-size: 0.85rem; }
+.onb-world-card-user .onb-world-card-art-empty { display: flex; align-items: center; justify-content: center; font-size: 2rem; opacity: 0.5; }
+.onb-world-card-badge { font-size: 0.68rem; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.7; }

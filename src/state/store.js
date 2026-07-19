@@ -288,11 +288,33 @@ export function createStore({ apiClient = null } = {}) {
     return apiClient.regenerateWorldField({ definition, field, salt });
   }
 
-  async function createWorldRun({ world = {}, character = {}, draftPortraitId = null, mode = "sandbox", scenarioId = null } = {}) {
+  async function createWorldRun({ world = {}, character = {}, draftPortraitId = null, mode = "sandbox", scenarioId = null, userWorldId = null } = {}) {
     if (!apiClient) {
       throw new Error("API client is required for world onboarding.");
     }
-    return apiClient.createWorldRun({ world, character, draftPortraitId, mode, scenarioId });
+    return apiClient.createWorldRun({ world, character, draftPortraitId, mode, scenarioId, userWorldId });
+  }
+
+  // ── Custom World creator wrappers ──────────────────────────────────────────
+  async function listWorlds() {
+    if (!apiClient) return { ok: true, worlds: [] };
+    return apiClient.listWorlds();
+  }
+  async function draftWorld(payload) {
+    if (!apiClient) throw new Error("API client is required for world drafting.");
+    return apiClient.draftWorld(payload);
+  }
+  async function twistWorldCard(payload) {
+    if (!apiClient) throw new Error("API client is required for world drafting.");
+    return apiClient.twistWorldCard(payload);
+  }
+  async function saveWorld(payload) {
+    if (!apiClient) throw new Error("API client is required to save a world.");
+    return apiClient.saveWorld(payload);
+  }
+  async function deleteWorld(worldId) {
+    if (!apiClient) throw new Error("API client is required to delete a world.");
+    return apiClient.deleteWorld(worldId);
   }
 
   return {
@@ -623,6 +645,21 @@ export function createStore({ apiClient = null } = {}) {
     },
     async createWorldRun(payload) {
       return createWorldRun(payload);
+    },
+    async listWorlds() {
+      return listWorlds();
+    },
+    async draftWorld(payload) {
+      return draftWorld(payload);
+    },
+    async twistWorldCard(payload) {
+      return twistWorldCard(payload);
+    },
+    async saveWorld(payload) {
+      return saveWorld(payload);
+    },
+    async deleteWorld(worldId) {
+      return deleteWorld(worldId);
     },
     async rollDice({ expression, label, actor }) {
       return syncOperationWithResult("roll_dice", {

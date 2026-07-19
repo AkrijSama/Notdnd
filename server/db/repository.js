@@ -265,6 +265,13 @@ function ensureDefaults(target) {
   target.userHomebrew = target.userHomebrew && typeof target.userHomebrew === "object" && !Array.isArray(target.userHomebrew)
     ? target.userHomebrew
     : {};
+  // User-created WORLDS (the Custom World flow), keyed by userId -> array of world
+  // records. Each record stores the source world-book + the compiled scenario. Worlds
+  // are owner-scoped (the Worlds law: characters never cross worlds); persisted via the
+  // kv catch-all (writeToDisk), exactly like userHomebrew.
+  target.userWorlds = target.userWorlds && typeof target.userWorlds === "object" && !Array.isArray(target.userWorlds)
+    ? target.userWorlds
+    : {};
   // Daily entitlement usage counters, keyed by userId -> { date: 'YYYY-MM-DD'
   // (UTC), images, sessions }. Resets at midnight UTC (the stored date no longer
   // matching today zeroes the counts on next access). Persisted via the kv
@@ -1014,6 +1021,66 @@ export function deleteUserHomebrew(userId, itemId) {
   if (db.userHomebrew[key].length === before) {
     return false;
   }
+  bumpStateVersion();
+  writeToDisk();
+  return true;
+}
+
+// ── USER WORLDS (the Custom World flow) ──────────────────────────────────────
+// Owner-scoped world storage mirroring userHomebrew. A world record is
+// { id, userId, name, tagline, art, worldBook, scenario, schemaVersion, createdAt }.
+
+/** List a user's created worlds (owner-scoped). Returns [] for an unknown user. */
+export function listUserWorlds(userId) {
+  ensureDb();
+  const key = String(userId || "").trim();
+  if (!key) return [];
+  const items = Array.isArray(db.userWorlds[key]) ? db.userWorlds[key] : [];
+  return deepClone(items);
+}
+
+/** Fetch one of a user's worlds by id (owner-scoped). Returns null if not the owner's. */
+export function getUserWorld(userId, worldId) {
+  ensureDb();
+  const key = String(userId || "").trim();
+  const id = String(worldId || "").trim();
+  if (!key || !id || !Array.isArray(db.userWorlds[key])) return null;
+  const found = db.userWorlds[key].find((w) => w && w.id === id);
+  return found ? deepClone(found) : null;
+}
+
+/**
+ * Store a validated user world, assigning it an id + createdAt. The caller compiles +
+ * validates the scenario (worldBook.compileWorldBook) BEFORE calling this. Returns the
+ * stored record. The record id is also used as the compiled scenario's scenarioId.
+ */
+export function addUserWorld(userId, world) {
+  ensureDb();
+  const key = String(userId || "").trim();
+  if (!key) throw makeError("BAD_REQUEST", "userId is required.", 400);
+  if (!world || typeof world !== "object") throw makeError("BAD_REQUEST", "A world record is required.", 400);
+  if (!Array.isArray(db.userWorlds[key])) db.userWorlds[key] = [];
+  const record = {
+    ...deepClone(world),
+    id: world.id && String(world.id).startsWith("uw_") ? String(world.id) : `uw_${crypto.randomBytes(8).toString("hex")}`,
+    userId: key,
+    createdAt: nowEpochSec()
+  };
+  db.userWorlds[key].unshift(record);
+  bumpStateVersion();
+  writeToDisk();
+  return deepClone(record);
+}
+
+/** Remove one of a user's worlds by id. Returns true if removed. */
+export function deleteUserWorld(userId, worldId) {
+  ensureDb();
+  const key = String(userId || "").trim();
+  const id = String(worldId || "").trim();
+  if (!key || !id || !Array.isArray(db.userWorlds[key])) return false;
+  const before = db.userWorlds[key].length;
+  db.userWorlds[key] = db.userWorlds[key].filter((entry) => entry && entry.id !== id);
+  if (db.userWorlds[key].length === before) return false;
   bumpStateVersion();
   writeToDisk();
   return true;

@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { applyOperation, createSoloRun, getSoloRun, listUserHomebrew, saveSoloRun } from "../db/repository.js";
+import { applyOperation, createSoloRun, getSoloRun, getUserWorld, listUserHomebrew, saveSoloRun } from "../db/repository.js";
 import { logTurnEvent } from "../logging/sessionLog.js";
 import { normalizeContentForBuild } from "../homebrew/customContent.js";
 import { ensureCampaignMemoryDocsAsync, rebuildCampaignIndex } from "../gm/memoryStore.js";
@@ -17,7 +17,7 @@ import { buildFarLocation, buildSecondLocation, generateWorld } from "../solo/wo
 import { createMainQuest } from "../solo/quests.js";
 import { lockRunArtStyle } from "../solo/artStyle.js";
 import { buildTrialQuest, TRIAL_QUEST_ID, buildDeliveryOffer } from "./authoredQuests.js";
-import { resolveRequestedScenario, loadScenarioIntoRun } from "./scenarioLoader.js";
+import { resolveRequestedScenario, resolveUserWorldScenario, loadScenarioIntoRun } from "./scenarioLoader.js";
 import { seedSandboxThreads } from "../solo/threads.js";
 import { seedFactions, mintNpcReputation, migrateReputation, normalizeAgeClass } from "../solo/reputation.js";
 
@@ -532,7 +532,7 @@ async function generateOpeningNarration({ campaignId, runId, message, playerName
   }
 }
 
-export async function createWorldOnboardingRun(userId, { world = {}, character = {}, draftPortraitId = null, mode = "campaign", scenarioId = null } = {}) {
+export async function createWorldOnboardingRun(userId, { world = {}, character = {}, draftPortraitId = null, mode = "campaign", scenarioId = null, userWorldId = null } = {}) {
   const actorUserId = String(userId || "").trim();
   if (!actorUserId) {
     const error = new Error("userId is required to create a world onboarding run.");
@@ -561,7 +561,17 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
   // into narration/suggestions. Resolved here (before the campaign + world-overview
   // doc) so the scenario's setting is the ONLY source of truth from the first byte.
   const sandbox = String(mode || "").trim().toLowerCase() === "sandbox";
-  const scenario = resolveRequestedScenario({ scenarioId, sandbox });
+  // AUTHORED scenario first (built-in id / env). If none, try an owner-scoped USER
+  // WORLD (the Custom World flow) — the SAME loadScenarioIntoRun pipeline, never in
+  // sandbox. getUserWorld is owner-scoped, so a foreign id resolves to nothing and
+  // simply falls back to worldgen (world isolation is enforced at this boundary).
+  let scenario = resolveRequestedScenario({ scenarioId, sandbox });
+  let userWorldRecord = null;
+  if (!scenario && !sandbox && isStr(userWorldId)) {
+    userWorldRecord = getUserWorld(actorUserId, userWorldId.trim());
+    scenario = resolveUserWorldScenario(userWorldRecord);
+    if (!scenario) userWorldRecord = null; // invalid/foreign record → worldgen fallback
+  }
   const scenarioActive = Boolean(scenario);
   // The effective setting: the scenario's authored world when active, else the
   // player-choice worldgen output. Drives the campaign record, the world-overview
@@ -992,6 +1002,14 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
   // hand-wired campaign block skipped above. Fail-loud on a dangling ref.
   if (scenarioActive) {
     loadScenarioIntoRun(run, scenario, { worldSeed });
+    // WORLD ISOLATION (the Worlds law): stamp a user world's id onto the run so the
+    // character is bound to exactly this world for its whole existence — characters
+    // never cross worlds. Authored runs already carry the scenarioId; user runs carry
+    // the userWorldId + a worldKind marker.
+    if (userWorldRecord) {
+      run.world.userWorldId = userWorldRecord.id;
+      run.world.worldKind = "user";
+    }
     // STYLE PICKER (style-lock law): the scenario loader stamps the world's DEFAULT
     // style. If the player ACTIVELY picked a style at creation, honor it over the
     // default. The client's art-style picker only sets world.artStyle on an explicit

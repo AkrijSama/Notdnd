@@ -53,6 +53,19 @@ export function resolveRequestedScenario({ scenarioId, sandbox }) {
   return loadScenarioFile(id);
 }
 
+// USER-WORLD PATH (additive, beside the authored resolver above). A user world (the
+// Custom World flow) stores a pre-compiled, pre-validated scenario
+// (server/campaign/worldBook.compileWorldBook). This returns that scenario for the
+// SAME loadScenarioIntoRun pipeline, or null if the record is absent/invalid — the
+// authored path, its env fallback, and its sandbox gate are all untouched. The caller
+// (onboarding) fetches the owner-scoped record; this validates it before load.
+export function resolveUserWorldScenario(userWorld) {
+  if (!userWorld || typeof userWorld !== "object") return null;
+  const scenario = userWorld.scenario && typeof userWorld.scenario === "object" ? userWorld.scenario : null;
+  if (!scenario) return null;
+  return validateScenario(scenario).ok ? scenario : null;
+}
+
 // ── ref rewriting (symbolic → real ids at load) ───────────────────────────────
 function resolveTrigger(trigger) {
   if (!trigger || typeof trigger !== "object") return {};

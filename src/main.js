@@ -6,6 +6,10 @@ import { createApiClient } from "./api/client.js";
 // never reached. Only homebrewManager survives — it IS used on the live solo path.
 import { renderHomebrewManager, bindHomebrewManager, homebrewDraftToItem, itemToDraft } from "./components/homebrewManager.js";
 import { renderOnboardingFlow, bindOnboardingFlow, validatePortraitUpload } from "./components/onboardingFlow.js";
+import {
+  defaultWorldCreatorState, creatorStartInterview, creatorAnswer, creatorSkip, creatorJustBuild,
+  creatorCreateReview, creatorKeep, creatorKill, creatorReplace
+} from "./components/worldCreator.js";
 import { renderGuestAuthPanel, resolveAuthAction } from "./components/authPanel.js";
 import { renderModulesZone, renderRoadmapZone } from "./components/homeZones.js";
 import { renderBrand } from "./components/brand.js";
@@ -550,6 +554,12 @@ function hbEdit(id) {
 // active state); free-text input does not (preserve caret), mirroring the
 // character form's onFieldChange.
 function onWorldFieldSelect(field, value) {
+  // The "Custom World" card (empty scenarioId) now opens the multi-step world creator
+  // instead of the legacy inline worldgen form. Babel (a real scenarioId) is unchanged.
+  if (field === "scenarioId" && (value === "" || value == null)) {
+    enterWorldCreator();
+    return;
+  }
   uiState.onboarding.worldDef = { ...(uiState.onboarding.worldDef || {}), [field]: value };
   scheduleRender();
 }
@@ -654,6 +664,160 @@ function confirmWorld() {
     character.origin = origin;
   }
   patchOnboarding({ step: "character", error: "", character });
+}
+
+// ---- Custom World creator handlers ----
+const WC_CARD_TYPE = { pois: "poi", factions: "faction", threatLadder: "threat" };
+function cardTypeFor(section) { return WC_CARD_TYPE[section] || "poi"; }
+
+function getWc() {
+  if (!uiState.onboarding.worldCreator) uiState.onboarding.worldCreator = defaultWorldCreatorState();
+  return uiState.onboarding.worldCreator;
+}
+function patchWc(wc) {
+  uiState.onboarding.worldCreator = wc;
+  scheduleRender();
+}
+function enterWorldCreator() {
+  const creationId = `wc_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+  patchOnboarding({ step: "world_create", worldCreator: { ...defaultWorldCreatorState(), creationId }, error: "" });
+}
+
+// Load the signed-in user's saved worlds so they render as their own cards on the
+// world-select screen (owner-scoped; the Worlds law).
+async function loadUserWorlds() {
+  try {
+    const res = await store.listWorlds();
+    uiState.onboarding.userWorlds = Array.isArray(res?.worlds) ? res.worlds : [];
+    scheduleRender();
+  } catch {
+    /* leave whatever is there; the built-in cards still render */
+  }
+}
+function onSelectUserWorld(userWorldId) {
+  const list = uiState.onboarding.userWorlds || [];
+  const w = list.find((x) => x.userWorldId === userWorldId);
+  const title = w?.title || "your world";
+  patchOnboarding({
+    worldDef: { ...(uiState.onboarding.worldDef || {}), userWorldId, scenarioId: "", name: title, title },
+    step: "character",
+    character: defaultCharacterState(),
+    error: ""
+  });
+}
+
+// Free-text fields update silently (no re-render) to preserve the caret, matching the
+// character form's data-cw-input convention.
+function onWcInput(field, value) {
+  const wc = getWc();
+  if (typeof field === "string" && field.startsWith("override:")) {
+    wc.overrides = { ...(wc.overrides || {}), [field.slice("override:".length)]: value };
+  } else if (typeof field === "string") {
+    wc[field] = value;
+  }
+}
+
+function onWcAction(action, args = {}) {
+  const wc = getWc();
+  switch (action) {
+    case "begin": {
+      const spark = (wc.spark || "").trim();
+      if (!spark) { patchWc({ ...wc, error: "Give me a sentence to start from." }); return; }
+      patchWc({ ...wc, interview: creatorStartInterview(spark), substep: "interview", answerDraft: "", error: "" });
+      return;
+    }
+    case "just-build-from-spark": {
+      patchWc({ ...wc, interview: creatorJustBuild(creatorStartInterview((wc.spark || "").trim())), error: "" });
+      runWorldDraft();
+      return;
+    }
+    case "answer": {
+      const iv = creatorAnswer(wc.interview || creatorStartInterview(wc.spark), wc.answerDraft || "");
+      const next = { ...wc, interview: iv, answerDraft: "" };
+      patchWc(next);
+      if (iv.status === "ready") runWorldDraft();
+      return;
+    }
+    case "skip": {
+      const iv = creatorSkip(wc.interview || creatorStartInterview(wc.spark));
+      const next = { ...wc, interview: iv, answerDraft: "" };
+      patchWc(next);
+      if (iv.status === "ready") runWorldDraft();
+      return;
+    }
+    case "just-build": {
+      patchWc({ ...wc, interview: creatorJustBuild(wc.interview || creatorStartInterview(wc.spark)) });
+      runWorldDraft();
+      return;
+    }
+    case "twist-open": {
+      const open = wc.twistOpen && wc.twistOpen.section === args.section && wc.twistOpen.id === args.id;
+      patchWc({ ...wc, twistOpen: open ? null : { section: args.section, id: args.id }, twistText: "" });
+      return;
+    }
+    case "twist-submit": runWorldTwist(args); return;
+    case "kill": patchWc({ ...wc, review: creatorKill(wc.review, args.section, args.id) }); return;
+    case "keep": patchWc({ ...wc, review: creatorKeep(wc.review, args.section, args.id) }); return;
+    case "toggle-defaults": patchWc({ ...wc, defaultsOpen: !wc.defaultsOpen }); return;
+    case "step-in": runWorldStepIn(); return;
+    default: return;
+  }
+}
+
+async function runWorldDraft() {
+  const wc = getWc();
+  patchWc({ ...wc, substep: "drafting", busy: true, error: "" });
+  try {
+    const res = await store.draftWorld({ creationId: wc.creationId, interview: getWc().interview });
+    const draft = res?.draft || {};
+    patchWc({ ...getWc(), draft, review: creatorCreateReview(draft), substep: "review", busy: false });
+  } catch (error) {
+    patchWc({ ...getWc(), substep: "interview", busy: false, error: String(error?.message || error || "Could not draft the world.") });
+  }
+}
+
+async function runWorldTwist(args = {}) {
+  const wc = getWc();
+  const { section, id } = args;
+  const card = (wc.review?.[section] || []).find((c) => c.id === id);
+  if (!card) return;
+  patchWc({ ...wc, busy: true, error: "" });
+  try {
+    const res = await store.twistWorldCard({
+      creationId: wc.creationId, cardType: cardTypeFor(section), card,
+      instruction: wc.twistText || "", context: { worldName: wc.review?.identity?.name || "" }
+    });
+    const next = res?.card || card;
+    patchWc({ ...getWc(), review: creatorReplace(getWc().review, section, id, next), twistOpen: null, twistText: "", busy: false });
+  } catch (error) {
+    patchWc({ ...getWc(), busy: false, error: String(error?.message || error || "Could not revise that card.") });
+  }
+}
+
+async function runWorldStepIn() {
+  const wc = getWc();
+  patchWc({ ...wc, busy: true, error: "" });
+  try {
+    const res = await store.saveWorld({ creationId: wc.creationId, draft: wc.review, interview: wc.interview, overrides: wc.overrides || {} });
+    const worldId = res?.worldId;
+    if (!worldId) throw new Error("Saving the world returned no id.");
+    const name = wc.review?.identity?.name || "your world";
+    // Hand off to character creation — the user world behaves like an authored world at
+    // run time (userWorldId → campaign mode), but uses the full character wizard since it
+    // declares no fixed origin. The world isolation stamp lands server-side at run mint.
+    const character = defaultCharacterState();
+    patchOnboarding({
+      step: "character",
+      worldDef: { ...(uiState.onboarding.worldDef || {}), userWorldId: worldId, scenarioId: "", name, title: name, artStyle: wc.overrides?.artStyle || uiState.onboarding.worldDef?.artStyle || "illustrated" },
+      worldCreator: { ...getWc(), busy: false },
+      // Surface the new world on the select screen immediately (no refetch needed).
+      userWorlds: [res?.world, ...(uiState.onboarding.userWorlds || [])].filter(Boolean),
+      character,
+      error: ""
+    });
+  } catch (error) {
+    patchWc({ ...getWc(), busy: false, error: String(error?.message || error || "Could not step into the world.") });
+  }
 }
 
 // ---- Character creation wizard handlers (Ticket 38) ----
@@ -1145,7 +1309,10 @@ async function enterWorld() {
       // scenario loader ignores a scenario for a sandbox run, so a picked world
       // forces mode:"campaign".
       scenarioId: uiState.onboarding.worldDef?.scenarioId || null,
-      mode: (uiState.onboarding.worldDef?.scenarioId || uiState.onboarding.worldDef?.startMode === "guided") ? "campaign" : "sandbox"
+      // Custom World: an owner-scoped user world also always runs campaign (the loader
+      // ignores a scenario/world for a sandbox run).
+      userWorldId: uiState.onboarding.worldDef?.userWorldId || null,
+      mode: (uiState.onboarding.worldDef?.scenarioId || uiState.onboarding.worldDef?.userWorldId || uiState.onboarding.worldDef?.startMode === "guided") ? "campaign" : "sandbox"
     });
     if (response?.runId) {
       stopDraftPortraitPoll();
@@ -1184,7 +1351,10 @@ async function startOnboarding(payload) {
       },
       // Same start-mode + authored-world wiring as the wizard path (F1).
       scenarioId: uiState.onboarding.worldDef?.scenarioId || null,
-      mode: (uiState.onboarding.worldDef?.scenarioId || uiState.onboarding.worldDef?.startMode === "guided") ? "campaign" : "sandbox"
+      // Custom World: an owner-scoped user world also always runs campaign (the loader
+      // ignores a scenario/world for a sandbox run).
+      userWorldId: uiState.onboarding.worldDef?.userWorldId || null,
+      mode: (uiState.onboarding.worldDef?.scenarioId || uiState.onboarding.worldDef?.userWorldId || uiState.onboarding.worldDef?.startMode === "guided") ? "campaign" : "sandbox"
     });
     if (response?.runId) {
       window.location.search = `?soloRunId=${encodeURIComponent(response.runId)}`;
@@ -1740,6 +1910,12 @@ function renderApp() {
   }
 
   if (onboardingVisible) {
+    // Lazily load the user's saved worlds once (guard against a refetch loop) so they
+    // appear as their own cards on the world-select screen.
+    if (uiState.user && uiState.onboarding.userWorlds === undefined) {
+      uiState.onboarding.userWorlds = [];
+      loadUserWorlds();
+    }
     const onboardingRoot = appRoot.querySelector("#onboarding-root");
     if (onboardingRoot) {
       bindOnboardingFlow(onboardingRoot, {
@@ -1751,6 +1927,9 @@ function renderApp() {
         onRegenerateWorld: regenerateWorld,
         onRegenerateField: regenerateWorldField,
         onConfirmWorld: confirmWorld,
+        onWcInput,
+        onWcAction,
+        onSelectUserWorld,
         onCharStep: charStep,
         onCharField: charField,
         onCharPronouns: setPronouns,
