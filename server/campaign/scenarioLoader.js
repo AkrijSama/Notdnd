@@ -19,7 +19,7 @@ import { validateSoloRun, createEmptyExpressionVariants } from "../solo/schema.j
 import { resolveWorldArtStyle, stampArtStyle } from "../solo/artStyle.js";
 import { normalizeAgeClass, ensureFaction, romanceableDefault } from "../solo/reputation.js";
 import { seedEssenceTracesFromScenario, mintTraceFromSpawn, currentWorldMinutes } from "../solo/essence.js";
-import { resolveStatBlock } from "./bestiary.js";
+import { resolveStatBlock, registerStatBlock } from "./bestiary.js";
 
 const SCENARIO_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "scenarios");
 
@@ -136,6 +136,15 @@ function instantiateThread(front, run) {
  * places a phantom (an unknown stat block is skipped); idempotent by npc id.
  */
 export function placeBestiaryEncounters(run, scenario, { resolveLocationRef = (x) => x } = {}) {
+  // A compiled USER world mints its own tier-1 threat (mintChaosling) and carries the
+  // block in bestiary.statBlocks — register those into the runtime overlay so the
+  // placement + combat resolve them (they are not in the frozen bestiary REGISTRY).
+  const statBlocks = scenario?.bestiary?.statBlocks;
+  if (statBlocks && typeof statBlocks === "object") {
+    for (const block of Array.isArray(statBlocks) ? statBlocks : Object.values(statBlocks)) {
+      registerStatBlock(block);
+    }
+  }
   const placements = Array.isArray(scenario?.bestiary?.placements) ? scenario.bestiary.placements : [];
   run.npcs = run.npcs || {};
   for (const p of placements) {
@@ -368,6 +377,7 @@ export function loadScenarioIntoRun(run, scenario, options = {}) {
   // 1. CAST — create the scenario's NPCs at resolved locations (replacing the
   // hand-wired cast). questOffer descriptors ride the NPC for the accept flow.
   for (const c of scenario.cast || []) {
+    const ageClass = normalizeAgeClass(c.ageClass);
     run.npcs[c.npcId] = {
       npcId: c.npcId,
       displayName: c.displayName || c.npcId,
@@ -379,7 +389,12 @@ export function loadScenarioIntoRun(run, scenario, options = {}) {
       expressionVariants: createEmptyExpressionVariants(),
       tags: [c.role || "stranger"],
       flags: {},
-      ageClass: normalizeAgeClass(c.ageClass), // scenario cast adult unless the scenario says child
+      ageClass, // scenario cast adult unless the scenario says child
+      // Romance eligibility (law R2): honor an explicit cast flag, else the age-first
+      // default. Previously scenario cast never got this (only worldgen did) — every
+      // compiled/authored cast NPC read as un-romanceable. (romanceable is stamped
+      // just below by the A3.1 reachability line; here we carry the compiled faction.)
+      ...(isString(c.factionId) ? { factionId: c.factionId } : {}),
       edition: "mainline",
       policyProfileId: "mainline_default",
       contentTags: [],

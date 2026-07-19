@@ -28,6 +28,7 @@
 // compilation is deterministic and testable.
 
 import { validateScenario, SCENARIO_SUBSTRATE_VERSION } from "./scenarioSchema.js";
+import { mintChaosling, listBaseAnimals } from "./bestiary.js";
 
 export const WORLD_BOOK_SCHEMA_VERSION = 1;
 
@@ -267,6 +268,109 @@ export function keptGroundStart(book) {
  * @param {string} [opts.scenarioId]       force the scenarioId (else derived from name)
  * @returns {{ scenario: object, validation: {ok, errors} }}
  */
+// ── B1: PEOPLE + PURPOSE — every compiled world gets a cast, a quest spine, a ─────
+// tier-1 starter encounter, and an essence hook, all minted DETERMINISTICALLY at
+// compile time (the pure/no-provider law) from the interview-derived world-book
+// fields, reusing the existing engines (mintChaosling / the cast+offer loader / the
+// essence trail). This is what kills "barren" creator worlds.
+
+// Deterministic non-negative index from a string seed (no Math.random — pure compile).
+function seedIndex(str, mod) {
+  let h = 0; const s = String(str || "");
+  for (let i = 0; i < s.length; i += 1) h = (h * 31 + s.charCodeAt(i)) | 0;
+  return mod ? Math.abs(h) % mod : Math.abs(h);
+}
+
+// The world's tier-1 threat, minted through the chaosling compositional rule (a base-
+// animal chassis + tier-1 bounded corruption) with world-flavored NAMING. The block is
+// carried in scenario.bestiary.statBlocks (the loader registers it); a placement drops
+// it at the first POI with an essence trail leading there — the bloodhound hook.
+function mintStarterEncounter(book, start, poiIds) {
+  const chassisList = listBaseAnimals();
+  if (!chassisList.length) return null;
+  const chassis = chassisList[seedIndex(`${book.name}|chassis`, chassisList.length)];
+  const seed = slugify(book.name, "world");
+  const block = mintChaosling(chassis, 1, seed);
+  if (!block) return null;
+  const baseDisplay = String(chassis).replace(/_/g, " ");
+  // A place-flavored epithet from the wilds bank, minus any leading article so we don't
+  // double it ("The The Long Grass elk" → "The Long-Grass elk").
+  const wildRaw = isNonEmptyString(book.nameBanks?.wilds?.[0]) ? book.nameBanks.wilds[0].replace(/^the\s+/i, "").trim() : "";
+  const creatureName = wildRaw ? `The ${wildRaw} ${baseDisplay}` : `The Corrupted ${baseDisplay}`;
+  const statBlockId = `uw_${seed}_threat`;
+  const statBlock = { ...block, statBlockId, name: creatureName };
+  const encounterLoc = poiIds[0] || start.id;
+  const placement = {
+    statBlockId,
+    locationRef: encounterLoc,
+    reachableFrom: start.id,
+    // the essence hook: a trail from the kept ground toward the encounter (only when
+    // the encounter sits at a distinct, graph-connected POI — else no phantom edge).
+    ...(encounterLoc !== start.id
+      ? { essenceTrail: { kind: "trail", fromRef: start.id, towardRef: encounterLoc, band: "fresh", source: statBlockId } }
+      : {})
+  };
+  return { statBlock, placement, creatureName, encounterLoc };
+}
+
+// The quest SPINE: 1 procedural MAIN (from the temptation — identity.tagline) + 2
+// authored-shape SIDES (threat = the starter encounter; landmark = the first POI).
+// Committed as questOffers that arrive DIEGETICALLY on acceptance (the babel pattern —
+// no cold objective asserted at start); the main wires opening.questObjectiveFrom.
+function mintQuestSpine(book, poiIds, locations, encounter) {
+  const worldName = book.name;
+  const temptation = isNonEmptyString(book.identity?.tagline) ? book.identity.tagline : (book.vibe || `what ${worldName} really is`);
+  const threatName = encounter?.creatureName || "the thing that stalks the edge";
+  const landmarkName = poiIds.length ? (locations[poiIds[0]]?.name || "the near landmark") : `the reach beyond ${worldName}`;
+  const questOffers = {
+    offer_main: { title: `The pull of ${worldName}`, summary: `Follow the pull deeper in — ${temptation}.`.slice(0, 200), kind: "delivery" },
+    offer_side_threat: { title: "Cull the corruption at the edge", summary: `${threatName} has been seen near the kept ground. Put it down.`.slice(0, 200), kind: "task" },
+    offer_side_landmark: { title: `Reach ${landmarkName}`, summary: `Make your way to ${landmarkName} and learn what it holds.`.slice(0, 200), kind: "task" }
+  };
+  return { questOffers, mainOfferId: "offer_main", offerIds: { main: "offer_main", side1: "offer_side_threat", side2: "offer_side_landmark" } };
+}
+
+// The starter CAST: 4-6 NPCs from the world's people-bank + faction dispositions, in
+// keeper / trader / quest-giver / wanderer / elder roles. romanceable is stamped HERE
+// (law R2: adult, not opted-out) and factionId carried — the loader honors both. The
+// offer-bearing roles ride the quest spine so purpose arrives through people.
+function mintStarterCast(book, start, poiIds, spine) {
+  const people = Array.isArray(book.nameBanks?.people) ? book.nameBanks.people : [];
+  const factions = Array.isArray(book.factions) ? book.factions : [];
+  const roleCycle = [
+    { role: "keeper", beat: "keeps the kept ground and reads its omens" },
+    { role: "trader", beat: "trades what the threshold's travelers need" },
+    { role: "quest-giver", beat: "carries word of work worth doing", offers: "main" },
+    { role: "wanderer", beat: "drifted in from further out and knows a little of the danger", offers: "side1" },
+    { role: "elder", beat: "remembers what this place was before", offers: "side2" }
+  ];
+  const count = Math.min(6, Math.max(4, people.length || 4));
+  const cast = [];
+  const usedIds = new Set();
+  for (let i = 0; i < count; i += 1) {
+    const name = isNonEmptyString(people[i]) ? people[i] : `Stranger of ${book.name} ${i + 1}`;
+    let npcId = `npc_${slugify(name, `p${i}`)}`;
+    while (usedIds.has(npcId)) npcId = `${npcId}x`;
+    usedIds.add(npcId);
+    const spec = roleCycle[i % roleCycle.length];
+    const faction = factions.length ? factions[i % factions.length] : null;
+    const at = i === 0 ? start.id : (poiIds[(i - 1) % Math.max(1, poiIds.length)] || start.id);
+    const offerId = spec.offers && spine ? spine.offerIds[spec.offers] : null;
+    cast.push({
+      npcId,
+      displayName: name,
+      role: spec.role,
+      at,
+      ageClass: "adult",
+      romanceable: true, // R2: adult + not opted-out — stamped at mint (loader honors it)
+      ...(faction && isNonEmptyString(faction.factionId) ? { factionId: faction.factionId } : {}),
+      ...(offerId ? { questOffer: offerId } : {}),
+      dialogueBeats: [{ label: spec.role, text: `${name} ${spec.beat}.` }]
+    });
+  }
+  return cast;
+}
+
 export function compileWorldBook(wb = {}, opts = {}) {
   const book = normalizeWorldBook(wb);
   let n = 0;
@@ -296,6 +400,33 @@ export function compileWorldBook(wb = {}, opts = {}) {
       new Set([...(locations[start.id].connectedLocationIds || []), ...poiIds.slice(0, 4)])
     );
   }
+
+  // 1.4. Ensure at least ONE "beyond" POI so a bare {name,vibe} world is more than a
+  // threshold — the cast, the encounter, and the trail need ground past the kept zone
+  // (the danger must never sit ON the kept ground — the anti-lost law).
+  if (!poiIds.length) {
+    const wild = isNonEmptyString(book.nameBanks?.wilds?.[0]) ? book.nameBanks.wilds[0] : `The Wilds of ${book.name}`;
+    const beyondId = `loc_${slugify(wild, "beyond")}`;
+    locations[beyondId] = {
+      name: wild,
+      description: `Past the kept ground, where ${book.name} stops being gentle. ${book.vibe || ""}`.trim(),
+      tags: ["wilderness"],
+      connectedLocationIds: [start.id],
+      dangerLevel: 1
+    };
+    poiIds.push(beyondId);
+    locations[start.id].connectedLocationIds = Array.from(new Set([...(locations[start.id].connectedLocationIds || []), beyondId]));
+  }
+
+  // 1.5. PEOPLE + PURPOSE (B1) — when the world-book didn't author its own cast/quests,
+  // mint a starter encounter, a quest spine, and a cast that rides it. Authored content
+  // always wins (never overwritten).
+  const authoredCast = Array.isArray(wb.cast) && wb.cast.length > 0;
+  const authoredQuests = isPlainObject(wb.questOffers) && Object.keys(wb.questOffers).length > 0;
+  const encounter = authoredCast ? null : mintStarterEncounter(book, start, poiIds);
+  const spine = authoredQuests ? null : mintQuestSpine(book, poiIds, locations, encounter);
+  const mintedCast = authoredCast ? wb.cast : mintStarterCast(book, start, poiIds, spine);
+  const mintedQuestOffers = authoredQuests ? wb.questOffers : (spine ? spine.questOffers : {});
 
   // 2. Fronts — honor authored fronts (cap 3); else mint one grounded default.
   const fronts = book.fronts.length
@@ -343,15 +474,18 @@ export function compileWorldBook(wb = {}, opts = {}) {
       knownLocations: [start.id],
       situation: isNonEmptyString(wb.opening?.situation)
         ? wb.opening.situation
-        : `You arrive at the threshold of ${book.name}. ${book.identity.tagline || book.vibe || ""}`.trim()
+        : `You arrive at the threshold of ${book.name}. ${book.identity.tagline || book.vibe || ""}`.trim(),
+      // The main quest arrives diegetically when the player reaches its offerer — no
+      // cold objective (the babel pattern). Only wired when the spine minted one.
+      ...(spine ? { questObjectiveFrom: spine.mainOfferId } : {})
     },
-    cast: Array.isArray(wb.cast) ? wb.cast : [],
-    questOffers: isPlainObject(wb.questOffers) ? wb.questOffers : {},
+    cast: mintedCast,
+    questOffers: mintedQuestOffers,
     quests: isPlainObject(wb.quests) ? wb.quests : {},
     factions: book.factions,
     fronts,
     secrets,
-    bestiary: compileBestiary(wb, book)
+    bestiary: compileBestiary(wb, book, encounter)
   };
   if (scenario.playerOrigin === undefined) delete scenario.playerOrigin;
 
@@ -439,21 +573,25 @@ export function mintDefaultSecret(secretId, frontRef, book, startId) {
 
 // v1 bestiary: carry the threat ladder + engine ref; reuse the base-animal + chaos-tree
 // machinery with world-flavored NAMING via nameBanks. Real per-world stat blocks = v2.
-function compileBestiary(wb, book) {
+function compileBestiary(wb, book, encounter) {
   if (isPlainObject(wb.bestiary)) {
     return {
       version: 1,
       engine: "server/campaign/bestiary.js",
       threatLadder: isPlainObject(wb.bestiary.threatLadder) ? wb.bestiary.threatLadder : book.threatLadder,
       placements: Array.isArray(wb.bestiary.placements) ? wb.bestiary.placements : [],
+      ...(isPlainObject(wb.bestiary.statBlocks) || Array.isArray(wb.bestiary.statBlocks) ? { statBlocks: wb.bestiary.statBlocks } : {}),
       ...(isNonEmptyString(wb.bestiary.doc) ? { doc: wb.bestiary.doc } : {})
     };
   }
+  // v2: carry the minted tier-1 threat (statBlocks) + its placement. The loader
+  // registers statBlocks into the runtime overlay so combat + placement resolve them.
   return {
     version: 1,
     engine: "server/campaign/bestiary.js",
     threatLadder: book.threatLadder,
-    placements: [],
-    nameFlavor: book.nameBanks // v1: names come from the banks; stat blocks are the base set
+    placements: encounter ? [encounter.placement] : [],
+    ...(encounter ? { statBlocks: { [encounter.statBlock.statBlockId]: encounter.statBlock } } : {}),
+    nameFlavor: book.nameBanks
   };
 }

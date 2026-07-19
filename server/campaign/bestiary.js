@@ -261,6 +261,24 @@ const LIMPING_GREY = Object.freeze({
 // (Rolled chaoslings are minted on demand via mintChaosling — not static rows.)
 const REGISTRY = Object.freeze({ ...STAT_BLOCKS, ...BASE_ANIMALS, ...LIMPING_GREY });
 
+// RUNTIME OVERLAY (world-creator v2): compiled USER worlds mint their own tier-1
+// threat via mintChaosling, which produces a block that is NOT in the frozen
+// REGISTRY. The scenario carries those blocks in bestiary.statBlocks; the loader
+// registers them here so a placement + combat can resolve them. Additive-only:
+// never shadows a frozen registry id (authored content always wins), ids are
+// world-seeded so cross-world collisions don't occur.
+const RUNTIME_STAT_BLOCKS = {};
+
+/** Register a minted stat block so resolveStatBlock can find it. Refuses to shadow
+ *  a frozen registry id and requires a non-empty statBlockId. Returns the id or null. */
+export function registerStatBlock(block) {
+  if (!block || typeof block !== "object") return null;
+  const id = typeof block.statBlockId === "string" ? block.statBlockId.trim() : "";
+  if (!id || REGISTRY[id]) return null; // never shadow authored/base content
+  RUNTIME_STAT_BLOCKS[id] = block;
+  return id;
+}
+
 // The default statBlockId for an attack on a present NPC that carries no explicit
 // hostile stat block (D.4 §2.2(1)).
 export const DEFAULT_STAT_BLOCK_ID = "civilian";
@@ -275,7 +293,7 @@ export function resolveStatBlock(statBlockId) {
   if (typeof statBlockId !== "string" || !statBlockId.trim()) {
     return null;
   }
-  return REGISTRY[statBlockId] || null;
+  return REGISTRY[statBlockId] || RUNTIME_STAT_BLOCKS[statBlockId] || null;
 }
 
 /**
