@@ -15,7 +15,19 @@ the re-download map. Discovered from the live installation + `grep` of
 
 Present in the directory but NOT referenced by any pipeline workflow (no recovery
 priority): `Illustrious-XL-v2.0.safetensors` (retired anime checkpoint, replaced by
-JANKU in Chunk-6), `sd_xl_base_1.0.safetensors`, `wildcardxXLFusion_fusionOG.safetensors`.
+JANKU in Chunk-6).
+
+**Archived off the SSD (2026-07-18)** to `/media/akrij/Data/comfyui-checkpoints-archive/`
+to reclaim root-disk space — unreferenced, re-downloadable if ever needed:
+
+| file | size | re-download source |
+|---|---|---|
+| `sd_xl_base_1.0.safetensors` | 6.94 GB | HuggingFace — `stabilityai/stable-diffusion-xl-base-1.0` (`sd_xl_base_1.0.safetensors`) |
+| `wildcardxXLFusion_fusionOG.safetensors` | 7.11 GB | CivitAI — "WildcardX-XL Fusion" (fusionOG version) |
+
+> Structure note (2026-07-18): `ComfyUI/models/checkpoints` was a symlink to
+> `comfyui_models_backup/checkpoints`; the indirection and the misleading `backup`
+> name were removed — checkpoints now live in a real `ComfyUI/models/checkpoints/`.
 
 ## LoRAs (`ComfyUI/models/loras/`)
 
