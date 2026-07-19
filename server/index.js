@@ -139,6 +139,7 @@ import { registerGoalThread, detectDemonstratedGoal, armDemonstratedAsk, detectD
 import { detectStarterZoneLostMotif } from "./solo/starterZone.js";
 import { detectFabricatedCombatNumbers, scrubFabricatedCombatNumbers } from "./solo/combatAudit.js";
 import { detectGeometryContradiction } from "./solo/geometryAudit.js";
+import { scrubNatureContradiction } from "./solo/natureAudit.js";
 import { buildLayoutDirective, ensureLocationLayout } from "./solo/layout.js";
 import { enforceRomanceRegister, stripRomanceRegister, ROMANCE_CORRECTIVE_CLAUSE } from "./gm/romanceEnforcement.js";
 import { buildNpcIntroDirective, buildSoloScenePayload, collectNpcsWithPendingIntro } from "./solo/scene.js";
@@ -2457,6 +2458,18 @@ async function handleApi(req, res) {
           logTurnEvent(
             responseRun.runId,
             `geometry-contradiction VIOLATION @${responseRun.currentLocationId}: ${geoContradictions.map((g) => `[${g.kind}] "${g.phrase}"`).join(" | ")} user=${user?.id || "anon"}`
+          );
+        }
+        // NATURE-CONTRADICTION (species coherence): a committed non-human ANIMAL narrated
+        // as a person (a man, his hands, he speaks) is a coherence crime that reached the
+        // owner. STRIP-OR-CORRECT here at the trim layer (teeth precedent) — the human
+        // noun becomes the committed species before the prose is served.
+        const nature = scrubNatureContradiction(gmNarration, responseRun);
+        if (nature.scrubbed.length > 0) {
+          gmNarration = nature.text;
+          logTurnEvent(
+            responseRun.runId,
+            `nature-contradiction SCRUBBED @${responseRun.currentLocationId}: ${nature.scrubbed.map((p) => `"${p}"`).join(" | ")} user=${user?.id || "anon"}`
           );
         }
       }

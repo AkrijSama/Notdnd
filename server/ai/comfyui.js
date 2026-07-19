@@ -367,14 +367,27 @@ function joinCsv(parts) {
 // city/crowds unless the location's canon states them. Applied to NON-character
 // subjects only (a portrait has no framing to guard).
 const SCENE_FRAMING_NEGATIVE =
-  "aerial view, bird's-eye view, top-down view, drone shot, satellite view, sky focus, clouds close-up, horizon-only vista, aircraft, airplane, biplane, vehicle, car, modern city skyline, skyscrapers, crowd, group of people, person, people, human figure, character, 1girl, 1boy";
+  "aerial view, bird's-eye view, top-down view, drone shot, satellite view, sky focus, clouds close-up, horizon-only vista, aircraft, airplane, biplane, vehicle, car, modern city skyline, skyscrapers, crowd, group of people, multiple people, empty floor, bare ground only, no subject";
+// THE HUMAN BAN (the biplane-net's "no humans unless a human is committed", owner ruling
+// 2026-07-19). Stray people in a scene are a coherence crime — EXCEPT when the committed
+// present subject is human/demon, in which case the scene prompt emits "lone figure" /
+// "demonic figure" and this ban is dropped so the committed person can render. "character"
+// is deliberately NOT here: it suppressed the committed BEAST (the Grey rendered as a bare
+// floor). A beast is a valid, required scene subject.
+const SCENE_HUMAN_NEGATIVE =
+  "person, people, human figure, human, man, woman, 1girl, 1boy";
+const HUMANOID_SUBJECT_RE = /\b(lone figure|demonic figure|human figure)\b/i;
 
 export function sealPortraitPrompt(styleKey, positive, presetNegative) {
   const pos0 = String(positive || "");
   const elf = elfDefenseFor(pos0);
   const isChar = isCharacterSubject(pos0);
   const genderLock = isChar ? genderLockNegative(pos0) : "";
-  const sceneGuard = isChar ? "" : SCENE_FRAMING_NEGATIVE;
+  // A scene keeps the framing guard; the human ban rides too UNLESS a humanoid
+  // (human/demon) subject is committed present (the scene prompt says so), so the one
+  // committed person renders while stray humans stay banned.
+  const humanoidScene = !isChar && HUMANOID_SUBJECT_RE.test(pos0);
+  const sceneGuard = isChar ? "" : joinCsv([SCENE_FRAMING_NEGATIVE, humanoidScene ? "" : SCENE_HUMAN_NEGATIVE]);
   if (styleKey !== "anime") {
     return { positive: pos0, negative: joinCsv([presetNegative, elf, genderLock, sceneGuard]) };
   }

@@ -11,6 +11,7 @@ import { generatePlaceholderGmNarration, validateGmSceneOutput } from "./gm.js";
 import { getAvailableMoves } from "./movement.js";
 import { buildRegionMapPayload } from "./regionMap.js";
 import { buildSightPayload, readStatBlockSkills } from "./essence.js";
+import { naturePhrase } from "./entityNature.js";
 import {
   placeEntities as placeLayoutEntities,
   placeMarkers as placeLayoutMarkers,
@@ -557,14 +558,23 @@ export function buildNpcIntroDirective(run) {
       : isString(npc.displayName)
         ? npc.displayName
         : npc.role;
+    // NATURE LINE (species/nature coherence): a creature's COMMITTED species/kind rides
+    // the prompt as a mandatory fact so the model can't invent a human. The narrator
+    // describes committed nature; it may NOT assign a species. The sight-read (the MC's
+    // bloodhound edge) rides too when it exists.
+    const nat = naturePhrase(npc);
+    const reads = nat ? readStatBlockSkills(npc.statBlockId || npc.flags?.statBlockId) : [];
+    const natureLine = nat
+      ? ` NATURE (committed truth — describe faithfully; you may NOT reassign its species or make it human): ${name} is ${nat}. It has no human speech, hands, or clothing — narrate it as what it is; its intelligence may read uncanny, but it is NOT a person.${reads.length ? ` You read: ${reads.join("; ")}.` : ""}`
+      : "";
     if (isString(npc.introInstructions)) {
-      return `- ${name} (${npc.role}): ${String(npc.introInstructions).trim()}`;
+      return `- ${name} (${npc.role}): ${String(npc.introInstructions).trim()}${natureLine}`;
     }
     const appearance = isString(npc.appearance) ? ` Appearance: ${npc.appearance.trim()}.` : "";
     return (
       `- ${name} (${npc.role}): FIRST APPEARANCE — this character has never been narrated before. ` +
       `Introduce them with a concrete presence beat (where they are, what they are doing) before they speak or act;` +
-      ` never treat them as already established.${appearance}`
+      ` never treat them as already established.${appearance}${natureLine}`
     );
   });
   return `Introduce the following NPC(s) naturally into the scene, following each directive:\n${lines.join("\n")}`;

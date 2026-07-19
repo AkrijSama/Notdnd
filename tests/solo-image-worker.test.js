@@ -241,12 +241,18 @@ test("location art direction differs per art style (anime scene != cinematic sce
   assert.notEqual(cinematic, illustrated);
 });
 
-test("every location direction is the player's eye-level view with ground in frame (framing law)", () => {
+test("every location direction is the player's eye-level view with a midground subject (framing law)", () => {
   for (const style of ["illustrated", "anime", "cinematic"]) {
     const dir = artStyleDirection(style, "location");
     // Scene art is the PLAYER'S VIEW, not an aerial/postcard vista (owner ruling).
     assert.match(dir, /eye-level|ground level/i, `${style} location is an eye-level ground view`);
-    assert.match(dir, /no people, no characters/i, `${style} location has no subject`);
+    // The framing law over-corrected to a bare floor; it now REQUIRES a midground subject,
+    // anchors the ground, limits the sky, and cues depth (owner ruling 2026-07-19). It must
+    // NOT forbid people — that ban suppressed the committed beast (the Grey → bare floor).
+    assert.match(dir, /clear subject.*midground|subject in the midground/i, `${style} location requires a midground subject`);
+    assert.match(dir, /lower third/i, `${style} location anchors the foreground`);
+    assert.match(dir, /sky only in the upper third/i, `${style} location limits the sky`);
+    assert.doesNotMatch(dir, /no people, no characters/i, `${style} location no longer bans subjects`);
   }
 });
 

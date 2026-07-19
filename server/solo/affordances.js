@@ -17,6 +17,7 @@
 import { combatActive } from "./combat.js";
 import { activeGoals } from "./goals.js";
 import { followableTrailsAtCurrent } from "./essence.js";
+import { entityNature } from "./entityNature.js";
 
 function isPlainObject(v) {
   return Boolean(v) && typeof v === "object" && !Array.isArray(v);
@@ -80,7 +81,19 @@ function castAffordances(run) {
     if (npc.status === "gone" || npc.status === "dead") continue;
     const name = npc.generatedName || npc.displayName || npc.role;
     if (!isStr(name)) continue;
-    out.push({ label: `Talk to ${clip(name, 22)}`, intent: `Talk to ${name}.`, source: "cast", feasibility: "ok" });
+    // NATURE-GATED AFFORDANCE (species coherence): "Talk to" is for the SOCIAL-CAPABLE
+    // rung (humans, bandits, demons — the threat ladder's social tier). A beast or a
+    // chaos-beast can't be talked to — it gets Face (hostile) / Approach (otherwise),
+    // never a Talk chip that implies human speech.
+    const nat = entityNature(npc);
+    if (nat && nat.socialCapable === false) {
+      const hostile = npc.flags?.hostile === true;
+      out.push(hostile
+        ? { label: `Face ${clip(name, 22)}`, intent: `Face ${name}.`, source: "cast", feasibility: "ok" }
+        : { label: `Approach ${clip(name, 22)}`, intent: `Approach ${name}.`, source: "cast", feasibility: "ok" });
+    } else {
+      out.push({ label: `Talk to ${clip(name, 22)}`, intent: `Talk to ${name}.`, source: "cast", feasibility: "ok" });
+    }
   }
   return out;
 }

@@ -15,6 +15,7 @@ import {
 } from "../db/repository.js";
 import { NPC_EXPRESSIONS } from "./schema.js";
 import { resolveStatBlock } from "../campaign/bestiary.js";
+import { entityNature } from "./entityNature.js";
 
 // GAP 2 (art-live-recipes): live-generated images join the curated library.
 // Default rating matches the batch cook's auto-keep (rating "keep" + an
@@ -178,8 +179,8 @@ const PLAYER_PORTRAIT_ART_DIRECTION =
 // tuned to what JANKU obeys; the negative guard bans aerial/bird's-eye/sky-only.)
 const LOCATION_COMPOSITION =
   "eye-level shot, ground level view, standing on the ground, " +
-  "foreground detail in the lower third, midground the main features, sky only in the upper third, " +
-  "landscape orientation, environmental scene, natural depth, path leading into the scene, no people, no characters";
+  "foreground detail anchoring the lower third, A CLEAR SUBJECT in the midground, sky only in the upper third, " +
+  "landscape orientation, environmental scene, natural depth, a path leading into the scene";
 
 // Per-art-style base direction. generateImage() appends ", <style> style" as the
 // medium cue (providers.js); this base must AGREE with that cue instead of always
@@ -1200,6 +1201,11 @@ export function buildScenePrompt(run, location = {}, locationId = "") {
   const tone = isStr(world.tone) ? world.tone.trim() : "dark fantasy";
   const slots = [
     name,
+    // MANDATORY MIDGROUND SUBJECT (owner ruling — the framing law over-corrected to
+    // floor-only). A committed present entity LEADS the prompt as the subject, SPECIES-TRUE
+    // and weighted (a wounded grey wolf beneath a tree), so the scene checkpoint's landscape
+    // bias can't drop it to an empty clearing. Falls to a canon feature when none present.
+    sceneEntitySubject(run, locationId || location?.locationId),
     sceneCanonSubject(location?.description),
     sceneWeatherFragment(run),
     sceneTimeFragment(run),
@@ -1210,6 +1216,34 @@ export function buildScenePrompt(run, location = {}, locationId = "") {
     tone
   ];
   return slots.filter(Boolean).join(", ");
+}
+
+// The species-true midground subject from a committed present entity (a beast appears
+// AS its species, never a human). Returns "" when the location is empty of entities —
+// then sceneCanonSubject carries the midground (a canon feature). Never invents people.
+function sceneEntitySubject(run, locationId) {
+  const here = locationId || run?.currentLocationId;
+  const present = Object.values(run?.npcs || {}).filter(
+    (n) => n && n.currentLocationId === here && n.status !== "gone" && n.status !== "dead"
+  );
+  if (!present.length) return "";
+  const npc = present[0];
+  const nat = entityNature(npc);
+  if (!nat) return "";
+  // The subject rides WEIGHTED so the checkpoint renders it — a mid-prompt species token
+  // loses to the landscape bias (1-of-2 empty clearings in the proof); the emphasis lands it.
+  if (nat.isAnimal) {
+    const cond = nat.injured ? "wounded " : "";
+    const corr = nat.corrupted ? "subtly corrupted " : "";
+    const sp = nat.species || "beast";
+    // Reads "animal, not humanoid" WITHOUT the words human/person/man/woman — those
+    // trip the character-portrait detector and would drop the scene framing guard.
+    return `(a single ${cond}${corr}${sp}:1.4), the clear midground subject, a four-legged ${sp} on all fours standing low on the ground beneath a tree, watchful, unmistakably a wild animal`;
+  }
+  if (nat.kind === "demon") return `(a single ${nat.corrupted ? "corrupted " : ""}demonic figure:1.3), the clear midground subject, standing on the ground`;
+  // human-kind: a lone person, midground (the negative human-ban is relaxed for these —
+  // the "lone figure" phrase is the gate the sealer keys on, so keep it verbatim).
+  return "(a single lone figure:1.25), the clear midground subject, standing on the ground";
 }
 function buildLocationPromptFallback(run, location, locationId) {
   return buildScenePrompt(run, location, locationId);
