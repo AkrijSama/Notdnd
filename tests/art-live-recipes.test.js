@@ -107,6 +107,43 @@ test("intake never throws or writes on empty bytes (dialogue-never-blocks discip
   });
 });
 
+// ── PROVENANCE GUARD — the 4 face/body intake sites (2026-07-19) ─────────────
+// The intake guard was scene-only in practice: only the scene site passed
+// `provider`, so the 4 face/body sites (enemyBody, NPC base bust, vnBody, player
+// portrait) never gave the guard anything to act on and would pool a failover.
+// generateSlot now threads `provider` and every site passes it. Each site must
+// REFUSE a non-comfyui serve-attribution (pollinations/cloudflare/fal failover,
+// or a mock placeholder) and still POOL a validated comfyui attribution.
+const FACE_BODY_SITES = [
+  { site: "enemyBody", id: "live_run_x_npc1_enemyBody", kind: "fullbody", subjectId: "npc1" },
+  { site: "npc base bust", id: "live_run_x_npc1_base", kind: "portrait", subjectId: "npc1" },
+  { site: "vnBody", id: "live_run_x_npc1_vnBody", kind: "fullbody", subjectId: "npc1" },
+  { site: "player portrait", id: "live_run_x_player", kind: "portrait", subjectId: "player" }
+];
+
+for (const s of FACE_BODY_SITES) {
+  test(`provenance guard: ${s.site} REFUSES a non-comfyui (failover/mock) attribution`, () => {
+    withTempLibrary((dir) => {
+      for (const bad of ["pollinations", "cloudflare", "fal", "placeholder", "local"]) {
+        const refused = intakeToLibrary({ id: s.id, bytes: PNG, kind: s.kind, run: sceneRun, subjectId: s.subjectId, provider: bad });
+        assert.equal(refused, null, `${s.site} pooled a "${bad}" attribution`);
+        assert.equal(fs.existsSync(path.join(dir, `${s.id}.png`)), false, `${s.site} wrote "${bad}" bytes into the library`);
+        assert.ok(!getAsset(s.id), `${s.site} left a "${bad}" sidecar behind`);
+      }
+    });
+  });
+
+  test(`provenance guard: ${s.site} still pools a validated comfyui attribution (checked out)`, () => {
+    withTempLibrary((dir) => {
+      const kept = intakeToLibrary({ id: s.id, bytes: PNG, kind: s.kind, run: sceneRun, subjectId: s.subjectId, provider: "comfyui" });
+      assert.ok(kept, `${s.site} refused a validated comfyui attribution`);
+      assert.equal(kept.kind, s.kind);
+      assert.deepEqual(kept.checkout, { runId: "run_x", npcId: s.subjectId }, "face/body is checked out to its run, never pooled unreviewed");
+      assert.ok(fs.existsSync(path.join(dir, `${s.id}.png`)));
+    });
+  });
+}
+
 // Dialogue-never-blocks: enqueue is fire-and-forget (returns synchronously, no await).
 test("enqueue is fire-and-forget — returns synchronously, never blocks the turn", async () => {
   const { enqueueVnBodyImageJob, enqueueLocationImageJob, enqueuePlayerImageJob } = await import("../server/solo/imageWorker.js");

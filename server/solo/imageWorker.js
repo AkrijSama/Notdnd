@@ -416,6 +416,7 @@ export async function runEnemyBodyImageJob(job = {}) {
       subjectId: npcId,
       promptUsed: prompt,
       workflow: enemyBody.workflow,
+      provider: enemyBody.provider || null,
       extraTags: ["pose:standing", "enemy", `statblock:${statBlockId || "?"}`]
     });
   }
@@ -734,9 +735,11 @@ async function generateSlot({ runId, npcId, slot, assetId, prompt, style, kind, 
     const uri = servedUriFor(runId, npcId, slot, ext);
     updateImageAssetStatus(runId, assetId, "generated", uri);
     countGeneratedImageForRun(runId);
-    // Return bytes + the serving workflow so the caller can do library intake
-    // (GAP 2) with the real recipe attribution.
-    return { slot, ok: true, uri, bytes, workflow: result?.workflow || null };
+    // Return bytes + the serving workflow AND the serve-attribution (provider) so
+    // the caller can do library intake (GAP 2) with the real recipe attribution.
+    // provider is what the intake provenance guard checks: only the validated
+    // comfyui path may be pooled; a pollinations/cloudflare failover must not.
+    return { slot, ok: true, uri, bytes, workflow: result?.workflow || null, provider: result?.provider || null };
   } catch (error) {
     updateImageAssetStatus(runId, assetId, "failed", null);
     logWorker(`slot ${slot} failed for ${runId}/${npcId}`, error);
@@ -838,6 +841,7 @@ export async function runImageJob(job = {}) {
         subjectId: npcId,
         promptUsed: prompt,
         workflow: base.workflow,
+        provider: base.provider || null,
         extraTags: ["expr:neutral"]
       });
     }
@@ -962,6 +966,7 @@ export async function runVnBodyImageJob(job = {}) {
       subjectId: npcId,
       promptUsed: prompt,
       workflow: vnBody.workflow,
+      provider: vnBody.provider || null,
       extraTags: ["pose:standing", ...(faceRef ? ["face-ref"] : [])]
     });
   }
@@ -1032,7 +1037,8 @@ export async function runPlayerImageJob(job = {}) {
       run,
       subjectId: "player",
       promptUsed: prompt,
-      workflow: result?.workflow || null
+      workflow: result?.workflow || null,
+      provider: result?.provider || null
     });
     return { ok: true, uri };
   } catch (error) {
