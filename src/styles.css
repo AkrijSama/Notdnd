@@ -1615,17 +1615,31 @@ button:disabled {
   box-shadow: 0 18px 50px rgba(0, 0, 0, 0.4);
   border: 1px solid var(--border, #202024);
   min-height: 620px;
+  /* Anchor for the floating character dock overlay (owner ruling 2026-07-19:
+     NO reserved left column, ever — the reading area spans full width minus the
+     right rail; the portrait dock FLOATS top-left over the prose). */
+  position: relative;
 }
 
-/* ---- Left character sidebar ---- */
+/* ---- Character dock: a FLOATING top-left OVERLAY, never a reserved column ----
+   Out of the flex flow (position:absolute) so .solo-game-main fills the full
+   width up to the right rail, prose flush to the page edge + padding. Compact
+   (portrait + name + the ☰ badge that opens the detail drawer — itself already
+   an overlay dialog). Drawer-tier z so it sits above the scene, below modals. */
 .solo-game-sidebar {
-  width: clamp(260px, 18vw, 340px);
-  flex: none;
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 40;
+  width: clamp(128px, 12vw, 172px);
+  max-height: calc(100% - 16px);
   overflow-y: auto;
   background: var(--panel, #171009);
   background-image: var(--texture, none);
   background-size: var(--texture-size, auto);
-  border-right: 1px solid var(--border, #202024);
+  border: 1px solid var(--border, #202024);
+  border-radius: 12px;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.55);
   display: flex;
   flex-direction: column;
 }
@@ -2627,8 +2641,11 @@ button:disabled {
 /* Compact portrait dock — overrides the wide sidebar clamp (2-class win).
    position:relative anchors the character-tab drawer that overlays out of it. */
 .solo-game-sidebar.solo-portrait-dock-aside {
-  width: clamp(116px, 11vw, 168px);
-  position: relative;
+  width: clamp(120px, 12vw, 172px);
+  /* OVERLAY, not a reserved column (owner ruling 2026-07-19, supersedes the prior
+     flush fix): absolute so the reading area is full width; overflow visible so
+     the ☰ badge + the detail drawer escape the compact dock bounds. */
+  position: absolute;
   overflow: visible;
 }
 .solo-portrait-dock-aside .solo-portrait {
@@ -3443,6 +3460,15 @@ button:disabled {
   .solo-game-frame { flex-direction: column; min-height: 0; }
   .solo-game-sidebar,
   .solo-game-rail { width: auto; border: none; border-bottom: 1px solid var(--border, #202024); }
+  /* Mobile stacks vertically — the dock returns to normal flow (top of the
+     stack, full width); no floating overlay and still no reserved LEFT column. */
+  .solo-game-sidebar,
+  .solo-game-sidebar.solo-portrait-dock-aside {
+    position: static;
+    max-height: none;
+    box-shadow: none;
+    border-radius: 0;
+  }
   /* Stack the scene's centre and NPC columns on narrow screens. */
   .solo-scene-layout { grid-template-columns: 1fr; height: auto; }
   .solo-scene-center { border-right: none; border-bottom: 1px solid var(--border, #202024); }
