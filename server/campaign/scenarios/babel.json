@@ -41,11 +41,12 @@
   "locations": {
     "start_location": {
       "name": "The Green Static — Fringe",
-      "description": "The corrupted edge of an old Pacific-Northwest rainforest, Exclusion Zone EZ-44. From here the air above the canopy shimmers like bad signal. Moss grows in spirals it should not know, the light comes a half-beat wrong, and compass needles agree with each other but not with the sun. North, past the tree-line, a diesel hum and a flagpole mark a town. Around you: the wrong woods.",
+      "description": "The near edge of an old Pacific-Northwest rainforest, Exclusion Zone EZ-44. The ground right here is quiet and kept: soft dawn light, moss underfoot, and a clear path running plainly north through the scrub toward the tree-line, where a diesel hum and a flagpole mark a town. Above the far canopy the air shimmers like bad signal — that shimmer is the boundary, and everything wrong waits on the other side of it. Here, on Her kept ground, the paths are honest and the way is easy to read.",
       "tags": [
         "modern arcane",
         "zone",
-        "wilderness"
+        "wilderness",
+        "poi:start-area"
       ]
     },
     "second_location": {
@@ -251,9 +252,9 @@
       "loc_waking_mile",
       "loc_elkwater_crossing"
     ],
-    "situation": "You wake on the fringe of the Green Static at dawn, unarmed, in clothes that are not the ones you fell in. A town hums to the north; the wrong woods breathe around you. Then a voice that is not sound gives you a window and a choice.",
+    "situation": "You wake on the fringe of the Green Static at dawn, unarmed, in clothes that are not the ones you fell in. A town hums to the north; the ground around you is quiet and kept, and the shimmer above the far canopy marks the boundary of the wrong woods beyond. Then a voice that is not sound gives you a window and a choice.",
     "authoredBeats": [
-      "The last of the old life is four seconds long: a restaurant, a glass set down, a bitter aftertaste that arrives too late, a floor tilting up to meet you. Then dark. Then wet pine needles against your cheek, cold coming up through the ground, and a body standing itself upright that is yours and isn't. Dawn light, filtered green and a half-beat wrong. You are unarmed, in clothes you have never owned. Somewhere north, a diesel generator coughs and catches.\n\nYou look around — the tree-line, the shimmer above the canopy, the flagpole past the trees — and then a VOICE arrives that does not use the air.",
+      "The last of the old life is four seconds long: a restaurant, a glass set down, a bitter aftertaste that arrives too late, a floor tilting up to meet you. Then dark. Then wet pine needles against your cheek, cold coming up through the ground, and a body standing itself upright that is yours and isn't. Dawn light, filtered green and cold. You are unarmed, in clothes you have never owned. Somewhere north, a diesel generator coughs and catches.\n\nYou look around — the tree-line, the shimmer above the canopy, the flagpole past the trees — and then a VOICE arrives that does not use the air.",
       "[ YOU ARE HEARD. ]\n\n[ THIS WORLD IS CALLED WHAT YOURS WAS CALLED. IT IS OLDER THAN IT LOOKS. AT ITS SOUTH POLE STANDS A TOWER OF ONE HUNDRED FLOORS. IT HAS ALWAYS STOOD. IT IS CALLED BABEL, AND IT HAS BEEN LEFT UNATTENDED TOO LONG. ]",
       "[ WHAT LEAKS FROM AN UNATTENDED TOWER IS CALLED CHAOS. IT SOAKS INTO GREEN THINGS AND RUNNING THINGS AND MAKES THEM WRONG. THE PEOPLE HERE FENCE IT, LICENSE IT, AND SELL TICKETS TO IT. THEY ARE MANAGING THE SYMPTOM. YOU ARE THE CURE. ]",
       "[ YOUR BODY SLEEPS ELSEWHERE. IT IS NOT DEAD. DO NOT CALL IT DEAD — I DO NOT. YOUR SOUL CROSSED, AND I HAVE PLACED IT WHERE IT CAN GROW. YOUR FLESH HERE IS MORTAL — GUARD IT. WHAT YOU ARE IS NOT — BUT THERE ARE THINGS BELOW THE WORLD THAT EAT WHAT YOU ARE, AND YOU WILL MEET THEM LAST. ]",

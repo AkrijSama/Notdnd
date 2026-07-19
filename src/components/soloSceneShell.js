@@ -1855,7 +1855,13 @@ export function renderSoloConditionsHud(scene = {}, { compact = false } = {}) {
   const ordered = conditions
     .map((c, i) => ({ c, i, meta: conditionKindMeta(c.kind) }))
     .sort((a, b) => a.meta.order - b.meta.order || a.i - b.i);
-  const chips = ordered
+  // Compact portrait chips cap at 4 visible; the rest collapse into a "+N" pill that
+  // opens the character sheet (owner append 2026-07-19). Non-compact (rail/sheet)
+  // shows them all.
+  const COMPACT_CAP = 4;
+  const visible = compact ? ordered.slice(0, COMPACT_CAP) : ordered;
+  const overflow = compact ? ordered.length - visible.length : 0;
+  const chips = visible
     .map(({ c, meta }) => {
       const kind = CONDITION_KIND_META[String(c.kind || "").toLowerCase()] ? String(c.kind).toLowerCase() : "neutral";
       const name = String(c.name || c.id);
@@ -1869,6 +1875,7 @@ export function renderSoloConditionsHud(scene = {}, { compact = false } = {}) {
       return `
         <span class="solo-cond-chip cond-${kind}${compact ? " is-compact" : ""}" tabindex="0" data-cond-id="${escapeHtml(c.id || name)}" aria-label="${escapeHtml(`${name}. ${meta.word}. ${tipBody}`)}">
           <span class="solo-cond-glyph" aria-hidden="true">${meta.glyph}</span>
+          ${Number(c.stacks) > 1 ? `<span class="solo-cond-count" aria-hidden="true">${escapeHtml(c.stacks)}</span>` : ""}
           ${compact ? "" : `<span class="solo-cond-name">${escapeHtml(name)}</span>`}
           ${!compact && duration ? `<span class="solo-cond-time">${escapeHtml(duration)}</span>` : ""}
           <span class="solo-cond-tip" role="tooltip">
@@ -1877,7 +1884,12 @@ export function renderSoloConditionsHud(scene = {}, { compact = false } = {}) {
         </span>`;
     })
     .join("");
-  return `<div class="solo-conditions${compact ? " solo-conditions-portrait" : " solo-measure"}" role="group" aria-label="Active conditions">${chips}</div>`;
+  // "+N" overflow pill (compact only): the hidden conditions live in the character
+  // sheet, so the pill opens it (same data-solo-char-tab route as the portrait badge).
+  const overflowChip = overflow > 0
+    ? `<button type="button" class="solo-cond-chip is-compact solo-cond-overflow" data-solo-char-tab aria-label="${escapeHtml(`${overflow} more condition${overflow === 1 ? "" : "s"} — open character sheet`)}" title="${escapeHtml(`${overflow} more — open sheet`)}">+${overflow}</button>`
+    : "";
+  return `<div class="solo-conditions${compact ? " solo-conditions-portrait" : " solo-measure"}" role="group" aria-label="Active conditions">${chips}${overflowChip}</div>`;
 }
 
 // Shared compact PORTRAIT DOCK (ui restructure): the portrait stays visible and

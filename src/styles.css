@@ -2794,27 +2794,53 @@ button:disabled {
 }
 .solo-portrait-badge:hover,
 .solo-portrait-badge:focus-visible { background: var(--panel, #171009); color: var(--accent-bright, #e7e9ee); }
-/* Conditions overlaid on the portrait's bottom edge (buffs/debuffs law). */
+/* Buff/debuff chips anchor to the portrait's TOP-LEFT corner and stack DOWNWARD as a
+   column (owner append 2026-07-19), 4px inset. The char-tab badge keeps the top-RIGHT
+   corner; opposite corners never overlap. Each chip is a solid dark pill + 1px light
+   border so it reads against ANY portrait palette — the old translucent chip vanished
+   over a yellow portrait. */
 .solo-portrait-conds {
   position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  padding: 4px;
+  top: 4px;
+  left: 4px;
+  right: auto;
+  bottom: auto;
+  padding: 0;
   display: flex;
+  /* leave the top-right badge corner clear so a long chip never slides under it */
+  max-width: calc(100% - 44px);
 }
 .solo-conditions-portrait {
   display: flex;
-  flex-wrap: wrap;
-  gap: 3px;
-  justify-content: center;
-  width: 100%;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 4px;
+  width: auto;
 }
-.solo-cond-chip.is-compact {
-  padding: 2px 5px;
-  gap: 0;
+.solo-portrait-conds .solo-cond-chip.is-compact {
+  padding: 2px 6px;
+  gap: 3px;
   font-size: 12px;
-  background: color-mix(in srgb, var(--inset, #070708) 78%, transparent);
+  border-radius: 999px;
+  /* the contrast backing: opaque dark pill + light hairline border */
+  background: rgba(10, 10, 12, 0.92);
+  border: 1px solid rgba(232, 234, 240, 0.55);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.55);
+  color: #e6e8ee;
+}
+/* accent: buffs = ok, debuffs = warn — the glyph carries the hue; a matching bright
+   border tint reads the class at a glance while keeping the pill's contrast. */
+.solo-portrait-conds .solo-cond-chip.is-compact.cond-buff { border-color: rgba(150, 210, 140, 0.9); }
+.solo-portrait-conds .solo-cond-chip.is-compact.cond-debuff { border-color: rgba(232, 130, 130, 0.95); }
+.solo-cond-count { font-size: 10px; font-weight: 700; line-height: 1; color: #e6e8ee; }
+/* the "+N" overflow pill (opens the character sheet) */
+.solo-cond-overflow {
+  font-size: 11px;
+  font-weight: 700;
+  color: #e6e8ee;
+  cursor: pointer;
 }
 .solo-dock-identity { padding: 10px 8px 12px; text-align: center; }
 .solo-dock-identity .solo-char-name { font-size: 15px; }

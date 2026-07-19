@@ -305,6 +305,12 @@ export function buildProviderPromptMessages(gmInput, options = {}) {
     "Avoid final IP lore invention: do not invent or reference established franchise/IP lore.",
     "Strict constraints: do not mutate state, do not create durable canon, and do not invent persisted items, NPCs, quests, rewards, locations, relationships, inventory, hidden exits, or unavailable actions.",
     "Do not change relationship values, do not claim the player chose an action, and do not mention unavailable actions or moves.",
+    // STARTER-ZONE ANTI-LOST LAW (owner ruling 2026-07-19): the Waking Mile + the
+    // Green Static Fringe are HER kept-clear ground. Disorientation motifs belong
+    // BEYOND the shimmer, never on the ground the player stands on here.
+    location.starterZone
+      ? "STARTER ZONE (Her kept-clear ground): the paths here are HONEST and orientation is NEVER in doubt. Do NOT narrate getting lost, disorientation, being turned around, a failing sense of direction, wandering, trails that vanish or lead nowhere, a track that is gone behind you, trees that shift or rearrange, a sun that hangs fixed, or woods that swallow the way. The shimmer at the zone's edge is a BOUNDARY MARKER, not a confusion field — the wrongness lives BEYOND it. Keep light soft, paths clear, and the way easy to read."
+      : null,
     "Respect the edition and policy profile. Never leak forbidden or blocked content into mainline scenes.",
     objective ? `The player is pursuing: ${objective}. Weave this goal naturally into scene framing and dialogue.` : null,
     advancedNote,

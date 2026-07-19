@@ -3,6 +3,7 @@ import {
   createDefaultMainlinePolicyProfile,
   validateEntityAgainstPolicy
 } from "./schema.js";
+import { isStarterZoneLocation } from "./starterZone.js";
 
 const GM_TONES = new Set(["neutral", "tense", "mysterious", "warm", "dangerous", "comic", "dramatic"]);
 
@@ -61,7 +62,10 @@ function compactLocation(location = {}) {
     name: location.name,
     description: location.description || "",
     state: location.state || {},
-    contentTags: location.contentTags || []
+    contentTags: location.contentTags || [],
+    // STARTER-ZONE ANTI-LOST LAW: surface the kept-clear flag so the narrator
+    // contract can add the anti-disorientation directive for this scene.
+    starterZone: isStarterZoneLocation(location)
   };
 }
 

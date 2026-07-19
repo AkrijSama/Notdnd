@@ -129,6 +129,7 @@ import { recordRequest, shouldLogRequest, lastAuthEvents } from "./logging/reque
 import { enqueueIdentityJob, runIdentityJob, backfillNpcMannerisms, buildVoiceDirective } from "./solo/npcIdentity.js";
 import { buildDisagreementDirective, detectComplianceViolations } from "./gm/disagreementAudit.js";
 import { captureDeclaredGoal, honorGoalsOnAttempt, buildGoalsDirective, detectGoalIgnored } from "./solo/goals.js";
+import { detectStarterZoneLostMotif } from "./solo/starterZone.js";
 import { buildLayoutDirective, ensureLocationLayout } from "./solo/layout.js";
 import { enforceRomanceRegister, stripRomanceRegister, ROMANCE_CORRECTIVE_CLAUSE } from "./gm/romanceEnforcement.js";
 import { buildNpcIntroDirective, buildSoloScenePayload, collectNpcsWithPendingIntro } from "./solo/scene.js";
@@ -2382,6 +2383,21 @@ async function handleApi(req, res) {
           logTurnEvent(
             responseRun.runId,
             `goal-ignored VIOLATION: ${ignoredGoals.map((g) => `"${g.summary}" [${g.goalId}] neither engaged nor lawfully obstructed — "${g.excerpt}"`).join(" | ")} user=${user?.id || "anon"}`
+          );
+        }
+        // STARTER-ZONE ANTI-LOST AUDITOR (owner ruling 2026-07-19): the Waking Mile
+        // and the Green Static Fringe are HER kept-clear ground — getting-lost /
+        // disorientation motifs are forbidden there (the wrongness lives BEYOND the
+        // shimmer). Flags only INSIDE starter-zone locations. Log-only; the location
+        // canon + the narrator directive are the contract.
+        const lostMotifs = detectStarterZoneLostMotif(
+          gmNarration,
+          responseRun.locations?.[responseRun.currentLocationId] || {}
+        );
+        if (lostMotifs.length > 0) {
+          logTurnEvent(
+            responseRun.runId,
+            `starter-zone-lost VIOLATION @${responseRun.currentLocationId}: ${lostMotifs.map((m) => `"${m.phrase}"`).join(" | ")} user=${user?.id || "anon"}`
           );
         }
       }
