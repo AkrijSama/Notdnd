@@ -614,5 +614,31 @@
         "onLocation": "loc_tithing_mill"
       }
     }
-  ]
+  ],
+  "bestiary": {
+    "version": 1,
+    "doc": "docs/worlds/babel/verdance-bestiary-v1.md",
+    "engine": "server/campaign/bestiary.js",
+    "threatLadder": {
+      "wildlife": "common",
+      "bandit": "uncommon (human-tier, social-capable)",
+      "chaosling": "uncommon",
+      "demon": "very-rare"
+    },
+    "placements": [
+      {
+        "statBlockId": "limping_grey",
+        "locationRef": "loc_waking_mile",
+        "reachableFrom": "start",
+        "note": "The Limping Grey — authored starter encounter, placed on the first exit from the Green Static fringe.",
+        "essenceTrail": {
+          "kind": "trail",
+          "fromRef": "start",
+          "towardRef": "loc_waking_mile",
+          "band": "fresh",
+          "source": "limping_grey"
+        }
+      }
+    ]
+  }
 }
