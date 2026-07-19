@@ -15,7 +15,6 @@
 // overflow "more"; the server returns the full ordered list.
 
 import { combatActive } from "./combat.js";
-import { getAvailableMoves } from "./movement.js";
 import { activeGoals } from "./goals.js";
 import { followableTrailsAtCurrent } from "./essence.js";
 
@@ -82,14 +81,11 @@ function castAffordances(run) {
   return out;
 }
 
-function exitAffordances(run) {
-  return getAvailableMoves(run).map((m) => ({
-    label: m.discovered ? `Go to ${clip(m.name, 22)}` : "Take the unexplored path",
-    intent: m.discovered ? `I head toward ${m.name}.` : "I head down the unexplored path to see where it leads.",
-    source: "exit",
-    feasibility: "ok"
-  }));
-}
+// TRAVEL IS NOT A CHIP (owner ruling 2026-07-19): exit/travel affordances were
+// removed from the chip row. Chips must not pre-reveal geography the player hasn't
+// engaged — discovery flows through play. Travel lives in the Exits rail and the
+// map ONLY. (Trail-following via essence-sight is NOT travel-by-geography: it's a
+// sight-driven pursuit of committed state, so it stays — see trailAffordances.)
 
 // A goal is actionable HERE when it's a Task (immediate doable anywhere) OR its
 // match tokens overlap this location (name / tags / committed object labels).
@@ -183,7 +179,6 @@ export function deriveAffordances(run) {
     ...goalAffordances(run, location),
     ...castAffordances(run),
     ...serviceAffordances(location),
-    ...objectAffordances(location),
-    ...exitAffordances(run)
+    ...objectAffordances(location)
   ]);
 }

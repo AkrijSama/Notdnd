@@ -112,15 +112,25 @@ Part B above).
   training as starter kinds), seeded by worldgen/world-book/scenario templates
   (additive `location.services`).
 - **Present cast** — talk-to per committed-present NPC.
-- **Exits** — travel-to per available move.
 - **Active goals** — pursue-here when the goal is actionable at this location.
 - **Committed objects / POIs** — examine per `objectStates` (weather/sky hazards
   excluded — not interactable).
+- **Sight trails** — "Follow the trail — <band>" per committed followable
+  essence-trail at the current location (MC-only; routes through the move pipeline
+  by tracking committed state — it is NOT geography-travel, see the ruling below).
 - **Standing verbs (SUPER-COMMON ONLY)** — Look around · Search the area ·
   Wait/Camp/Rest as context offers. Nothing else is a standing verb.
 
+### NO TRAVEL CHIPS (owner ruling 2026-07-19)
+Exit / travel affordances are **removed from the chip row**. A chip must never
+pre-reveal geography the player hasn't engaged — **discovery flows through play**.
+Travel lives in the **Exits rail and the map ONLY**, never as a chip. (Sight-trail
+"Follow the trail" stays: it is a sight-driven pursuit of *committed* state, not a
+listing of adjacent locations.)
+
 Each affordance = `{ label, intent, source, feasibility: "ok" | "gated",
-gateReason? }`. `source` ∈ {service, cast, exit, goal, object, standing}.
+gateReason? }`. `source` ∈ {service, cast, goal, object, sight, standing}
+(no `exit` — travel is not a chip).
 
 ## The two-tier feasibility law (owner ruling)
 - **INFEASIBLE** — committed state makes the verb impossible (rest during active
@@ -137,7 +147,7 @@ gateReason? }`. `source` ∈ {service, cast, exit, goal, object, standing}.
 - **Cap ~7 visible + an overflow "more" chip** (PROVISIONAL default cap = 7).
 - Gated chips render distinct, carry the reason on tap/tooltip, and never submit.
 - Order: the reliable floor (standing verbs incl. any gated Rest) first, then
-  contextual sources (goals, cast, services, objects, exits).
+  contextual sources (sight trails, goals, cast, services, objects). No exits.
 - During active combat, non-combat affordances are suppressed; only Look around
   and the gated Rest remain.
 

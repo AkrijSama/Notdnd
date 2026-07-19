@@ -46,7 +46,7 @@ test("derivation: standing verbs are the reliable floor (Look around, Search, Re
   assert.equal(list[0].label, "Look around");
 });
 
-test("derivation: service / cast / exit / goal / object sources each derive", () => {
+test("derivation: service / cast / goal / object sources each derive; travel is NOT a chip", () => {
   const run = baseRun();
   const loc = run.locations[run.currentLocationId];
   loc.services = [{ kind: "inn", label: "Take a room" }];
@@ -71,8 +71,11 @@ test("derivation: service / cast / exit / goal / object sources each derive", ()
   const obj = list.find((a) => a.source === "object");
   assert.ok(obj && /iron chest/i.test(obj.label));
   assert.ok(!list.some((a) => /the sky/i.test(a.label)), "sky/weather hazards are never examine chips");
-  // exit (start_location connects to second_location)
-  assert.ok(bySource(list, "exit").length >= 1, "an available move becomes a go-to affordance");
+  // TRAVEL IS NOT A CHIP (owner ruling 2026-07-19): even though start_location
+  // connects to second_location, NO exit/go-to chip is derived — travel lives in
+  // the Exits rail + map only, never pre-revealed as a chip.
+  assert.equal(bySource(list, "exit").length, 0, "exits never become chips");
+  assert.ok(!list.some((a) => /^Go to |unexplored path/i.test(a.label)), "no travel chips");
 });
 
 // ── TWO-TIER FEASIBILITY ─────────────────────────────────────────────────────
