@@ -302,8 +302,9 @@ export function withElfDefense(positive, negative) {
 // Falls back to inline sealed values if the block file is unreadable (never throws).
 const ANIME_BLOCK_FALLBACK = Object.freeze({
   quality: "amazing quality, extremely detailed, very detailed",
+  styleVocab: "anime illustration, clean cel shading, crisp line art, natural balanced color palette, full tonal range, soft ambient lighting, even gentle light, atmospheric depth",
   negativeBase:
-    "lowres, worst quality, bad anatomy, bad hands, extra fingers, deformed, blurry, jpeg artifacts, watermark, signature, text, 3d, photorealistic"
+    "lowres, worst quality, bad anatomy, bad hands, extra fingers, deformed, blurry, jpeg artifacts, watermark, signature, text, 3d, photorealistic, monochrome, red monochrome, red wash, crimson wash, single-color palette, oversaturated, heavy rim light, aircraft, airplane, biplane, warplane, jet, vehicle"
 });
 // Cross-lane portrait law: one finished figure, no turnaround/sheet, no sketch.
 // The sheet/multi-view tokens carry a LIGHT weight — the real lever against the
@@ -326,6 +327,7 @@ function animeBlock() {
     const raw = JSON.parse(fs.readFileSync(path.join(dir, "blocks", "anime.json"), "utf8"));
     _animeBlock = {
       quality: String(raw.quality || "").trim() || ANIME_BLOCK_FALLBACK.quality,
+      styleVocab: String(raw.styleVocab || "").trim() || ANIME_BLOCK_FALLBACK.styleVocab,
       negativeBase: String(raw.negativeBase || "").trim() || ANIME_BLOCK_FALLBACK.negativeBase
     };
   } catch {
@@ -369,9 +371,18 @@ export function sealPortraitPrompt(styleKey, positive, presetNegative) {
   }
   const block = animeBlock();
   const isChar = isCharacterSubject(pos0);
-  const positiveOut = block.quality && !pos0.toLowerCase().includes(block.quality.toLowerCase())
-    ? joinCsv([block.quality, pos0]) // quality vocab LEADS (JANKU responds to it front-loaded)
-    : pos0;
+  // Quality vocab LEADS (JANKU responds to it front-loaded), then the palette/light
+  // styleVocab — the natural-palette + even-light cue that pulls JANKU off its
+  // grimdark red-monochrome collapse (2026-07-19 red-wash fix). Both are skipped
+  // when already present so re-seals don't stack.
+  const lead = [];
+  if (block.quality && !pos0.toLowerCase().includes(block.quality.toLowerCase())) {
+    lead.push(block.quality);
+  }
+  if (block.styleVocab && !pos0.toLowerCase().includes("natural balanced color palette")) {
+    lead.push(block.styleVocab);
+  }
+  const positiveOut = lead.length ? joinCsv([...lead, pos0]) : pos0;
   const negativeOut = joinCsv([
     block.negativeBase,
     isChar ? PORTRAIT_NEGATIVE_LAW : "",

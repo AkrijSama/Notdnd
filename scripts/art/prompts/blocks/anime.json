@@ -1,9 +1,9 @@
 {
-  "blockVersion": 2,
+  "blockVersion": 3,
   "style": "anime",
   "_note": "quality is the JANKU-family TRAINED quality vocabulary (owner Chunk-6 verified, live): checkpoint JANKUTrainedChenkinNoobai_v777 replaced Illustrious and beat tuned Illustrious bare-checkpoint. WITH this vocab: full saturation/punch; WITHOUT it: soft/muted. Same sampler as the house standard (euler_ancestral/normal/26/cfg 5.2).",
-  "_TODO": "styleVocab is STILL an unproven placeholder (seeded from the legacy anime recipe). OWNER: tune it in the ComfyUI workbench and bump blockVersion. quality is now PROVEN (see _note) — do not treat it as a placeholder.",
+  "_TODO": "styleVocab: CLI draft — owner kitchen re-tune pending. Balances the JANKU red-monochrome collapse: grimdark tone words + rich-saturated-color on JANKU rendered a crimson wash on portraits and scenes (2026-07-19). Fix = a NATURAL-palette + even-ambient-light POSITIVE here (now wired live via sealPortraitPrompt) + red/monochrome/rim-light NEGATIVES in negativeBase. Dark != red: the mood stays, the crimson monochrome goes. quality is PROVEN (see _note) — not a placeholder.",
   "quality": "amazing quality, extremely detailed, very detailed",
-  "styleVocab": "anime illustration, clean line art, cel shaded, vibrant",
-  "negativeBase": "lowres, worst quality, bad anatomy, bad hands, extra fingers, deformed, blurry, jpeg artifacts, watermark, signature, text, 3d, photorealistic"
+  "styleVocab": "anime illustration, clean cel shading, crisp line art, natural balanced color palette, full tonal range, soft ambient lighting, even gentle light, atmospheric depth",
+  "negativeBase": "lowres, worst quality, bad anatomy, bad hands, extra fingers, deformed, blurry, jpeg artifacts, watermark, signature, text, 3d, photorealistic, monochrome, red monochrome, red wash, red tint, crimson wash, single-color palette, duotone, oversaturated, blown highlights, heavy rim light, harsh red rim light, aircraft, airplane, biplane, warplane, fighter plane, jet, propeller plane, vehicle"
 }
