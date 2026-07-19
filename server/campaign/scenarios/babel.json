@@ -86,6 +86,13 @@
         { "kind": "market", "label": "Trade at the ford market" },
         { "kind": "inn", "label": "Take a bunk at the crossing" },
         { "kind": "quest-board", "label": "Read the notice board" }
+      ],
+      "notices": [
+        { "noticeId": "notice_medicine", "questId": "quest_medicine_run", "register": "desperate", "text": "MEDICINE — the Aldous children are burning up with the ford-fever and we have nothing left. Anyone brave enough to run to St. Brigid's and back gets everything we can spare. Please. — Merrin" },
+        { "noticeId": "notice_warmhouse", "questId": "quest_warm_house", "register": "desperate", "text": "IT TOOK THE HALE HOUSE WHOLE. Plates still set, and something walked OUT. The trail's fresh from the Waking Mile and my sight says it's close. Coin and a bunk for whoever ends it before it circles back." },
+        { "noticeId": "notice_surveyor", "register": "rumor", "text": "LOST — a surveyor's kit on the Drowned Highway, brass and glass, worth a season's papers. Bring it to the ford, no questions asked." },
+        { "noticeId": "notice_tithing", "register": "warning", "text": "IF YOU'VE BEEN TO THE TITHING MILL and came back wrong, or came back with more than you carried in — speak to Ruth. Quietly. She's keeping count." },
+        { "noticeId": "notice_charter", "register": "warning", "text": "CHARTER ASSESSORS at the ford by week's end. Salvage papers in order or the zone's work goes to the licensed. You have been told." }
       ]
     },
     "loc_root_shrine": {
@@ -124,6 +131,24 @@
       "connectedLocationIds": ["loc_old_rapture"],
       "traceSeeds": [
         { "kind": "trail", "source": "st_brigids_rapture", "ageMinutes": 15840, "path": ["loc_old_rapture"] }
+      ],
+      "searchDetails": [
+        {
+          "detailId": "st_brigids_supplies",
+          "label": "the medicine shelves",
+          "description": "Behind a toppled crash-cart, a locked cabinet the looters missed — antibiotics, fever-reducers, clean saline. Enough to save a family.",
+          "revealed": false,
+          "takeable": true,
+          "takeKeywords": ["medicine", "supplies", "cabinet", "antibiotics", "drugs"],
+          "grantItem": { "itemId": "item_medicine_cache", "name": "case of medicine", "description": "St. Brigid's committed medical stock — enough for the fever at Elkwater.", "tags": ["medicine", "quest"] }
+        },
+        {
+          "detailId": "st_brigids_outbound_trail",
+          "label": "the ambulance doors",
+          "description": "The old trail leads OUT the ambulance bay — but a second, fresher track doubles back INWARD and out again: someone in chalk-marked robes has been here since the rapture, and left carrying more than medicine. The Hollow Congregation walked these halls.",
+          "revealed": false,
+          "takeable": false
+        }
       ]
     },
     "loc_warm_house": {
@@ -135,7 +160,15 @@
       "connectedLocationIds": ["loc_tithing_mill"],
       "traceSeeds": [
         { "kind": "trail", "source": "warm_house_rapture", "ageMinutes": 90, "path": ["loc_tithing_mill"] }
-      ]
+      ],
+      "spawnOnEnter": {
+        "npcId": "npc_warmhouse_born",
+        "baseAnimalId": "grey_wolf",
+        "tier": 3,
+        "seed": "warm_house_rapture",
+        "forceSkill": "charm-person",
+        "name": "The Thing That Was Born Here"
+      }
     },
     "loc_tithing_mill": {
       "name": "The Tithing Mill",
@@ -365,7 +398,24 @@
       "kind": "delivery"
     }
   },
-  "quests": {},
+  "quests": {
+    "quest_warm_house": {
+      "title": "The Warm House Hunt",
+      "summary": "Something was born in the emptied Hale house and walked out. Follow the fresh trail before it circles back.",
+      "stages": [
+        { "objective": "Follow the fresh trail from the Waking Mile to the Warm House.", "completion": { "kind": "reach_location", "targetId": "loc_warm_house" } },
+        { "objective": "The thing fled toward the Tithing Mill — corner what was born here, then follow where it leads.", "completion": { "kind": "reach_location", "targetId": "loc_tithing_mill" } }
+      ]
+    },
+    "quest_medicine_run": {
+      "title": "Elkwater's Notice — The Medicine Run",
+      "summary": "The Aldous children are dying of the ford-fever. St. Brigid's still has medicine on its shelves, if you'll risk the old rapture-site to bring it back.",
+      "stages": [
+        { "objective": "Reach St. Brigid's Regional Medical and recover the committed medical stock.", "completion": { "kind": "reach_location", "targetId": "loc_st_brigids" } },
+        { "objective": "Carry the medicine back to Elkwater Crossing before the fever takes the children.", "completion": { "kind": "reach_location", "targetId": "loc_elkwater_crossing" } }
+      ]
+    }
+  },
   "factions": [
     {
       "factionId": "faction_root_shrine",

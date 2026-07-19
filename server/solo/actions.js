@@ -4,6 +4,7 @@ import {
   resolveMovementAction,
   validateMovementAction
 } from "./movement.js";
+import { spawnChaoslingOnEnter } from "./chaoslingSpawn.js";
 import {
   createEntityDetailPayload,
   getVisibleEntities
@@ -874,6 +875,10 @@ export function resolveSoloAction(run, action, options = {}) {
         errors: movement.errors
       };
     }
+
+    // LIVE CHAOSLING SPAWN (A3.2): a location's spawnOnEnter mints a foe into the scene
+    // on arrival (once). The Warm House Hunt's rapture-born chaosling is placed this way.
+    spawnChaoslingOnEnter(movement.run, movement.run.currentLocationId);
 
     return finalizeQuestProgress(run, {
       ok: true,

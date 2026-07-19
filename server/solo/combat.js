@@ -33,6 +33,7 @@ import {
   applyCombatStatus, tickStatusesOnTurnStart,
   statusAttackDisadvantage, statusSkillsLocked, statusAsleep, statusMisdirects, wakeOnDamage, absorbWithShield
 } from "./combatStatus.js";
+import { reregisterMintedBlocks } from "./chaoslingSpawn.js";
 
 // Deterministic non-negative hash (same construction as momentum/quests) — the
 // seed for telegraph selection, so a run replays identically.
@@ -251,6 +252,7 @@ function enemyHpBand(c) {
  * @returns {{ ok, run, combatRound }} or {{ ok:false, code }}
  */
 export function enterCombatFromAttackIntent(run, { targetNpcId, intent }, options = {}) {
+  reregisterMintedBlocks(run); // restart-safety: a spawned foe's block resolves again
   const npc = run.npcs?.[targetNpcId];
   if (!npc) {
     return { ok: false, code: "COMBAT_NO_TARGET" };

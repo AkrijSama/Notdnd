@@ -303,6 +303,13 @@ export function loadScenarioIntoRun(run, scenario, options = {}) {
     if (loc.layout && typeof loc.layout === "object" && Array.isArray(loc.layout.cells)) {
       target.layout = JSON.parse(JSON.stringify(loc.layout));
     }
+    // A3.2 live-spawn: carry an authored spawnOnEnter chaosling spec so arriving there
+    // mints the encounter into the scene (server/solo/chaoslingSpawn.js).
+    if (loc.spawnOnEnter && typeof loc.spawnOnEnter === "object") {
+      target.spawnOnEnter = JSON.parse(JSON.stringify(loc.spawnOnEnter));
+    }
+    // A3.3: authored quest-board notices (desperate register) ride the location.
+    if (Array.isArray(loc.notices)) target.notices = JSON.parse(JSON.stringify(loc.notices));
   }
 
   // EDGE SYMMETRIZATION — authored adjacency is undirected (the regionMap and the
@@ -474,13 +481,20 @@ export function loadScenarioIntoRun(run, scenario, options = {}) {
   // fronts ground in and triggers read). Kept thin; the quest engine tolerates it.
   for (const [qid, q] of Object.entries(scenario.quests || {})) {
     if (run.quests[qid]) continue;
+    // A3.2: carry authored STAGES + completion when present, so a scenario quest is a
+    // real advanceable arc (reach_location / talk_beat), not just a static objective.
+    const authoredStages = Array.isArray(q.stages)
+      ? q.stages.map((s) => ({ objective: String(s.objective || ""), completion: s.completion })).filter((s) => s.completion && typeof s.completion === "object")
+      : null;
+    const stageZero = authoredStages && authoredStages.length ? authoredStages[0] : null;
     run.quests[qid] = {
       questId: qid,
       status: "active",
       stage: 0,
       title: q.title || qid,
       description: q.summary || q.description || "",
-      objective: q.summary || q.title || "",
+      objective: stageZero ? stageZero.objective : (q.summary || q.title || ""),
+      ...(stageZero ? { stages: authoredStages, completion: stageZero.completion } : {}),
       relatedEntityIds: [],
       memoryFactIds: [],
       authoredBy: "scenario",
