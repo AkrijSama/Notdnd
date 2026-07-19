@@ -62,7 +62,7 @@ function row(label, valueHtml, extraClass = "") {
   return `<div class="dbg-row ${extraClass}"><span class="dbg-k">${escape(label)}</span><span class="dbg-v">${valueHtml}</span></div>`;
 }
 
-function renderBody(status) {
+export function renderBody(status) {
   if (!status) {
     return `<div class="dbg-row"><span class="dbg-v dbg-muted">connecting…</span></div>`;
   }
@@ -88,13 +88,33 @@ function renderBody(status) {
     gmValue = `<span class="dbg-muted">${escape(gm.configuredModel || "·")}</span> <span class="dbg-sub">(configured, no turn served yet)</span>`;
   }
 
-  // Image: provider + checkpoint (comfyui) or model, what actually rendered.
+  // Image: provider + checkpoint (comfyui) or model, what actually rendered, PLUS
+  // the LIVE worker state. A local ComfyUI cook is ~40-70s on the constrained GPU;
+  // without an in-flight indicator the IMAGE line reads "none rendered yet" for the
+  // whole cook and a WORKING redo looks dead (the 2026-07-19 redo confusion — the
+  // job WAS enqueued and rendered, proven by the nonce-incremented draft ids). A
+  // wedged worker (image-worker autopsy) now shows loud, distinct from "cooking".
+  const worker = img.worker || {};
+  const queued = Number(worker.queueDepth) || 0;
+  let workerTag = "";
+  if (worker.wedged) {
+    const stuckS = Math.round((Number(worker.stuckMs) || 0) / 1000);
+    workerTag = ` <span class="dbg-warn">WEDGED${stuckS ? ` ${stuckS}s` : ""}</span>`;
+  } else if (worker.processing) {
+    workerTag = ` <span class="dbg-ok">cooking…${queued > 0 ? ` (+${queued} queued)` : ""}</span>`;
+  } else if (queued > 0) {
+    workerTag = ` <span class="dbg-sub">queued: ${queued}</span>`;
+  }
   let imgValue;
   if (imgServed) {
     const detail = imgServed.checkpoint || imgServed.model;
     const detailText = detail ? ` <span class="dbg-sub">${escape(detail)}</span>` : "";
     const mockTag = imgServed.mock ? ` <span class="dbg-tag">MOCK</span>` : "";
-    imgValue = `<span class="dbg-ok">${escape(imgServed.provider)}</span>${detailText}${mockTag} <span class="dbg-sub">· ${escape(ageLabel(imgServed.at))}</span>`;
+    imgValue = `<span class="dbg-ok">${escape(imgServed.provider)}</span>${detailText}${mockTag} <span class="dbg-sub">· ${escape(ageLabel(imgServed.at))}</span>${workerTag}`;
+  } else if (workerTag) {
+    // Nothing served yet, but the worker IS busy/wedged — show that, never the
+    // misleading "none rendered yet" while a job is actually cooking.
+    imgValue = `<span class="dbg-muted">${escape(img.configuredProvider || "·")}</span>${workerTag}`;
   } else {
     imgValue = `<span class="dbg-muted">${escape(img.configuredProvider || "·")}</span> <span class="dbg-sub">(configured, none rendered yet)</span>`;
   }
