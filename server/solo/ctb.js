@@ -191,5 +191,5 @@ function combatantsList(combat) {
 function isAlive(c) {
   if (!c) return false;
   if (c.kind === "player") return true; // the player leaves the queue via the player-drop rule, handled in combat.js
-  return (c.hp?.current ?? 0) > 0;
+  return (c.hp?.current ?? 0) > 0 && c.fled !== true; // a fled enemy has left the fight
 }

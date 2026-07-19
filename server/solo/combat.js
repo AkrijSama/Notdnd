@@ -178,7 +178,7 @@ function selectEnemyIntent(run, combat, combatant, round) {
 }
 
 function livingEnemies(combat) {
-  return Object.values(combat.combatants).filter((c) => c.kind === "enemy" && (c.hp?.current ?? 0) > 0);
+  return Object.values(combat.combatants).filter((c) => c.kind === "enemy" && (c.hp?.current ?? 0) > 0 && c.fled !== true);
 }
 function enemyHpBand(c) {
   const cur = c.hp?.current ?? 0;
@@ -517,7 +517,8 @@ function resolvePlayerFlee(run, combat, actions, options) {
     combat.status = "fled";
     // Real relocation (M.1): move to a connected location if one exists; never teleport to nowhere.
     const here = run.locations?.[run.currentLocationId];
-    const exits = Array.isArray(here?.connections) ? here.connections
+    const exits = Array.isArray(here?.connectedLocationIds) ? here.connectedLocationIds
+      : Array.isArray(here?.connections) ? here.connections
       : Array.isArray(here?.exits) ? here.exits.map((e) => e.locationId || e.toLocationId || e).filter(Boolean)
       : [];
     const dest = exits.find((id) => run.locations?.[id]);
@@ -548,6 +549,12 @@ function resolvePlayerStunt(run, combat, playerAction, actions, options) {
 }
 
 function resolveEnemyTurn(run, combat, enemy, actions, options) {
+  // MORALE (item 10): a wounded, outmatched creature may break and flee instead of
+  // fighting. Flee is a fortune's verb (luck MAY touch it) — the check is seeded, not
+  // a queue op. A fled creature COMMITS as fled: it stays ALIVE, leaves the fight, and
+  // the world remembers (a thread-seed fact at close). Vicious things hold unless the
+  // stat block also marks them injured (a wounded animal still bolts — the Grey).
+  if (maybeEnemyFlee(run, combat, enemy, actions, options)) return;
   const intent = combat.enemyIntents[enemy.combatantId] || selectEnemyIntent(run, combat, enemy, combat.turn);
   if (intent.kind !== "attack") {
     // defend/other: mutate only combat state (no player damage).
@@ -596,6 +603,36 @@ function resolveEnemyTurn(run, combat, enemy, actions, options) {
     rider: riderApplied,
     targetTransition: transition
   });
+}
+
+// Morale: is this enemy injured AND outmatched enough to consider bolting, and does
+// the seeded morale roll break it? Returns true if it fled (and commits the flee).
+function maybeEnemyFlee(run, combat, enemy, actions, options) {
+  const block = resolveStatBlock(enemy.statBlockId);
+  const b = block?.behaviors || {};
+  const hpFrac = (enemy.hp?.current ?? 0) / (enemy.hp?.max ?? 1);
+  const playerHp = getHp(run.player);
+  const playerFrac = (playerHp.current ?? 0) / (playerHp.max ?? 1);
+  const injured = hpFrac <= 0.34; // bloodied and then some
+  const outmatched = playerFrac >= 0.5; // the player is still strong
+  if (!injured || !outmatched) return false;
+  // Flee is a deliberate creature trait, not the default: only a COWARDLY creature or
+  // one the block marks INJURED (a wounded animal — the limping Grey) will break. A
+  // plain enforcer (the waylayer: not vicious, not cowardly) fights to the end.
+  const willConsider = b.cowardly === true || b.injured === true;
+  if (!willConsider) return false;
+  // Luck-confined flee check: deterministic per seed+turn; the lower the HP, the more
+  // likely to break. (Fortune's verb — never touches the queue/tempo.)
+  const roll = hashSeed(`${run.worldSeed || run.runId}|flee|${combat.combatId}|${enemy.combatantId}|${combat.turn}`) % 100;
+  const breakChance = Math.round((1 - hpFrac) * 70) + (b.cowardly ? 20 : 0); // ≤ ~90%
+  if (roll >= breakChance) return false;
+
+  enemy.fled = true;
+  enemy.morale = "broken";
+  const npc = run.npcs?.[enemy.npcId];
+  if (npc) { npc.flags = { ...(npc.flags || {}), fled: true, hostile: true, defeated: false }; npc.status = "active"; }
+  actions.push({ actor: enemy.combatantId, kind: "flee", roll: { chance: breakChance, hit: true }, damage: null, targetTransition: "fled" });
+  return true;
 }
 
 // Chaos-pack aura: the "scaling-advantage" skill grants edge when 2+ chaos-touched
@@ -651,8 +688,15 @@ function closeCombat(run, combat, status, options) {
   // trigger matches without any new plumbing.
   const factId = `fact_combat_${combat.combatId}`;
   const nameList = enemyNames.join(", ");
+  // An enemy that broke and fled COMMITS as fled (the world remembers — a thread-seed
+  // hook for a later re-encounter): it is alive, gone from the field, not a corpse.
+  const escaped = Object.values(combat.combatants).filter((c) => c.kind === "enemy" && c.fled === true);
+  const killedList = defeated.map((c) => c.name).join(", ");
+  const escapedList = escaped.map((c) => c.name).join(", ");
   const text =
-    status === "won" ? `You put down ${nameList} at ${locName}. ${nameList} is dead.`
+    status === "won" && defeated.length && escaped.length ? `You put down ${killedList} at ${locName}; ${escapedList} broke and fled, still out there.`
+    : status === "won" && escaped.length ? `${escapedList} broke and fled the field at ${locName}; still out there, and it will remember.`
+    : status === "won" ? `You put down ${killedList || nameList} at ${locName}. ${killedList || nameList} is dead.`
     : status === "fled" ? `You broke away from ${nameList} and slipped out of ${locName}; ${nameList} is still out there.`
     : `${nameList} left you bleeding at ${locName}.`;
   run.memoryFacts = run.memoryFacts || [];
