@@ -336,11 +336,14 @@ export async function verifyGmKey({ fetchImpl = globalThis.fetch, timeoutMs = 60
   const ks = gmKeyState();
   if (!ks.ok) return { ...ks, verified: false };
   const key = rawApiKey();
+  // resolveLlmBaseUrl is a CHAT-COMPLETIONS url; the models LIST lives at the API root
+  // (…/api/v1/chat/completions → …/api/v1/models). Strip the endpoint suffix first.
   const base = String(resolveLlmBaseUrl() || "").replace(/\/+$/, "");
+  const root = base.replace(/\/(?:chat\/completions|completions|responses)$/i, "");
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    const res = await fetchImpl(`${base}/models`, { method: "GET", headers: { Authorization: `Bearer ${key}` }, signal: ctrl.signal });
+    const res = await fetchImpl(`${root}/models`, { method: "GET", headers: { Authorization: `Bearer ${key}` }, signal: ctrl.signal });
     if (res.ok) return { state: "present", ok: true, verified: true, reason: "GM key verified (models list)." };
     if (res.status === 401 || res.status === 403) return { state: "invalid", ok: false, verified: true, reason: `GM key rejected (HTTP ${res.status}) — check the key.` };
     return { state: "present", ok: true, verified: false, reason: `Models list HTTP ${res.status}; key assumed usable.` };
