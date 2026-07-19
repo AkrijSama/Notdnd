@@ -269,8 +269,10 @@ function renderPortraitPreview(portrait = {}, options = {}) {
       </div>`;
   }
   if (status === "failed") {
+    // FORENSICS (2026-07-19): show WHY it failed (the classified reason), not a bare retry.
+    const failReason = esc(portrait.failReason || "Portrait generation didn't complete. Try again.");
     return `<div class="onb-portrait-preview${variant} onb-portrait-loading">
-        <small>Portrait generation didn't complete. Try again.</small>
+        <small class="onb-portrait-failreason">${failReason}</small>
         ${redoBtn}
       </div>`;
   }
@@ -582,7 +584,9 @@ function renderCharacterWizard(state) {
     editError: state.portraitEditError || "",
     consistentEdit: state.portraitConsistentEdit === true,
     // Upload-my-own path: the visible client-side validation error.
-    uploadError: typeof state.portraitUploadError === "string" ? state.portraitUploadError : ""
+    uploadError: typeof state.portraitUploadError === "string" ? state.portraitUploadError : "",
+    // FORENSICS: the classified reason a generation failed (server-provided).
+    failReason: typeof state.portraitFailReason === "string" ? state.portraitFailReason : ""
   };
   // SRD-shaped custom content catalogs (from the user's homebrew); additive to SRD.
   const custom = state.customContent || {};

@@ -54,8 +54,8 @@ test("sealed anime laws (human portrait): quality vocab, single-head, finished, 
   const { workflow } = comfyuiWorkflowForStyle("anime", { prompt: BECKONED_POSITIVE });
   const positive = String(workflow["6"].inputs.text || "");
   const negative = String(workflow["7"].inputs.text || "");
-  // JANKU quality vocab (fixes sketch/unfinished) — leads the positive.
-  assert.match(positive, /amazing quality, extremely detailed/i, "JANKU quality vocab present");
+  // JANKU booru quality register (v4 anime dialect) — leads the positive.
+  assert.match(positive, /masterpiece, best quality/i, "JANKU booru quality vocab present");
   // Multi-head / reference-sheet law (fixes the two heads).
   assert.match(negative, /multiple heads|two heads|extra heads/i, "multi-head defended");
   assert.match(negative, /reference sheet|model sheet|turnaround/i, "reference-sheet defended");

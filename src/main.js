@@ -947,6 +947,8 @@ function startDraftPortraitPoll(draftId, key) {
       }
       if (res?.status === "failed") {
         uiState.onboarding.draftPortraitStatus = "failed";
+        // FORENSICS (2026-07-19): surface WHY the portrait failed, not a bare retry.
+        uiState.onboarding.portraitFailReason = res?.reason || "The portrait failed to render. Try again, or continue and add one later.";
         uiState.onboarding.portraitEditPending = false;
         // Clear the key so the combo can be retried (e.g. on returning to the
         // Review step) instead of sticking on "failed" forever.

@@ -301,10 +301,11 @@ export function withElfDefense(positive, negative) {
 //     builder's positive (imageWorker); the young NEGATION lives here.
 // Falls back to inline sealed values if the block file is unreadable (never throws).
 const ANIME_BLOCK_FALLBACK = Object.freeze({
-  quality: "amazing quality, extremely detailed, very detailed",
-  styleVocab: "anime illustration, clean cel shading, crisp line art, natural balanced color palette, full tonal range, soft ambient lighting, even gentle light, atmospheric depth",
+  quality: "masterpiece, best quality, newest, very aesthetic, absurdres, highres",
+  styleVocab: "anime coloring, cel shading, flat color, clean line art, crisp lineart, vibrant color palette, sharp focus, 2d",
+  portraitBackground: "simple background, soft gradient background",
   negativeBase:
-    "lowres, worst quality, bad anatomy, bad hands, extra fingers, deformed, blurry, jpeg artifacts, watermark, signature, text, 3d, photorealistic, monochrome, red monochrome, red wash, crimson wash, single-color palette, oversaturated, heavy rim light, aircraft, airplane, biplane, warplane, jet, vehicle"
+    "lowres, worst quality, bad anatomy, bad hands, extra fingers, deformed, blurry, jpeg artifacts, watermark, signature, text, 3d, photorealistic, realistic, painterly, oil painting, digital painting, western comic, comic book, monochrome, greyscale, sepia, yellow tint, gold tint, orange tint, red wash, crimson wash, red tint, single-color palette, limited palette, duotone, muted colors, desaturated, oversaturated, blown highlights, heavy rim light, solid color background, plain background, plain color backdrop, red background, yellow background, orange background, aircraft, airplane, biplane, warplane, fighter plane, jet, propeller plane, vehicle"
 });
 // Cross-lane portrait law: one finished figure, no turnaround/sheet, no sketch.
 // The sheet/multi-view tokens carry a LIGHT weight — the real lever against the
@@ -328,6 +329,7 @@ function animeBlock() {
     _animeBlock = {
       quality: String(raw.quality || "").trim() || ANIME_BLOCK_FALLBACK.quality,
       styleVocab: String(raw.styleVocab || "").trim() || ANIME_BLOCK_FALLBACK.styleVocab,
+      portraitBackground: String(raw.portraitBackground || "").trim() || ANIME_BLOCK_FALLBACK.portraitBackground,
       negativeBase: String(raw.negativeBase || "").trim() || ANIME_BLOCK_FALLBACK.negativeBase
     };
   } catch {
@@ -397,11 +399,17 @@ export function sealPortraitPrompt(styleKey, positive, presetNegative) {
   // grimdark red-monochrome collapse (2026-07-19 red-wash fix). Both are skipped
   // when already present so re-seals don't stack.
   const lead = [];
-  if (block.quality && !pos0.toLowerCase().includes(block.quality.toLowerCase())) {
+  if (block.quality && !pos0.toLowerCase().includes("best quality")) {
     lead.push(block.quality);
   }
-  if (block.styleVocab && !pos0.toLowerCase().includes("natural balanced color palette")) {
+  if (block.styleVocab && !pos0.toLowerCase().includes("cel shading")) {
     lead.push(block.styleVocab);
+  }
+  // PORTRAIT BACKGROUND (v4 wash fix): a soft-gradient backdrop so JANKU stops painting
+  // the figure onto a flat single-color field — the red/gold monochrome wash's visible
+  // face. Portraits only; a scene owns its own background.
+  if (isChar && block.portraitBackground && !pos0.toLowerCase().includes("simple background")) {
+    lead.push(block.portraitBackground);
   }
   const positiveOut = lead.length ? joinCsv([...lead, pos0]) : pos0;
   const negativeOut = joinCsv([

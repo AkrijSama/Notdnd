@@ -195,9 +195,9 @@ const ART_STYLE_DIRECTION = {
     location: `painterly fantasy illustration, detailed environment, dramatic lighting, ${LOCATION_COMPOSITION}`
   },
   anime: {
-    npc: "anime portrait, clean line art, cel shaded, anime style, expressive face, upper body, plain background",
+    npc: "anime portrait, clean line art, cel shaded, anime style, expressive face, upper body, simple background, soft gradient background",
     player:
-      `${PLAYER_SINGLE_SUBJECT}, clean line art, cel shaded, anime style, expressive face, plain background, ${PLAYER_NO_SHEET}`,
+      `${PLAYER_SINGLE_SUBJECT}, clean line art, cel shaded, anime style, expressive face, simple background, soft gradient background, ${PLAYER_NO_SHEET}`,
     location: `anime background art, clean line art, cel shaded scenery, anime style, vibrant, ${LOCATION_COMPOSITION}`
   },
   cinematic: {
@@ -257,6 +257,27 @@ export function writeUploadedBasePortrait(runId, npcId, ext, bytes) {
 function logWorker(message, error) {
   // eslint-disable-next-line no-console
   console.error(`[imageWorker] ${message}${error ? `: ${String(error?.message || error)}` : ""}`);
+}
+
+// FAILURE FORENSICS (2026-07-19): a swallowed image failure used to reach the player as a
+// bare "failed" with no cause. Classify the error into a short PLAYER-FACING reason so the
+// creation UI can say WHY a portrait failed (and whether retrying is worth it), instead of
+// a silent retry. The raw error still goes to the worker log (logWorker) for the owner.
+export function classifyImageFailure(error) {
+  const m = String(error?.message || error || "").toLowerCase();
+  if (/did not complete within|timed out|timeout|deadline/.test(m)) {
+    return "The art server took too long (it may be busy or the GPU is loaded). Try again in a moment.";
+  }
+  if (/econnrefused|unreachable|fetch failed|network|socket/.test(m)) {
+    return "The art server is unreachable right now. Your character is saved; try the portrait again shortly.";
+  }
+  if (/no bytes|no image|no prompt_id|download failed/.test(m)) {
+    return "The art server returned no image. Try again, or continue and add a portrait later.";
+  }
+  if (/node_errors|invalid|workflow|checkpoint/.test(m)) {
+    return "The art recipe was rejected by the server. This is a setup issue, not your input.";
+  }
+  return "The portrait failed to render. Try again, or continue and add one later.";
 }
 
 // Entitlement metering: count a freshly-generated image against the owning
@@ -537,6 +558,11 @@ function isBeckonedOrigin(origin) {
 }
 const MODERN_EARTH_SUBJECT =
   "a present-day modern Earth human, ordinary contemporary real-world person, modern casual clothing";
+// ANIME variant (append: the Beckoned MUST render as CEL-SHADED ANIME, not western
+// semi-realism). Keep the modern-dress CANON, drop the "real-world / ordinary /
+// realistic person" tokens that pull JANKU toward a naturalistic western-comic face.
+const MODERN_EARTH_SUBJECT_ANIME =
+  "a modern Earth human, present-day person, contemporary modern clothing";
 // POSITIVE identity emphasis (NOT a negation). The live image path serves through
 // pollinations/flux, which is POSITIVE-PROMPT-ONLY — it has no negative-prompt
 // field, so a "NOT pointed elf ears" clause fed here renders the literal words
@@ -545,6 +571,11 @@ const MODERN_EARTH_SUBJECT =
 // identity plainly, no "NOT …" phrasing, no "elf" token.
 const MODERN_EARTH_EMPHASIS =
   "ordinary human with naturally rounded ears, natural human face, plain contemporary real-world appearance";
+// ANIME variant: keep the anti-elf rounded-ear assertion + modern framing, drop the
+// "natural human face / plain real-world appearance" realism pulls (the elf defense
+// negative still suppresses elf ears). Lets the anime dialect win the render.
+const MODERN_EARTH_EMPHASIS_ANIME =
+  "rounded human ears, modern-day contemporary look";
 
 // Shared prompt for the player + draft full-body character-sheet portrait.
 // Visual descriptors for the 10 creator races. Naming a race alone (e.g.
@@ -594,19 +625,23 @@ export function buildPlayerPortraitPrompt(character = {}, world = {}) {
     // that is really just the origin echoed back, so it never reads as a class.
     const realClass = c.characterClass && !isBeckonedOrigin(c.characterClass) ? c.characterClass : null;
     const realBackground = c.background && !isBeckonedOrigin(c.background) ? c.background : null;
+    // Anime lane renders the Beckoned as cel-shaded anime (modern-dress, not realism).
+    const isAnime = engineStyle === "anime";
+    const subjectPhrase = isAnime ? MODERN_EARTH_SUBJECT_ANIME : MODERN_EARTH_SUBJECT;
+    const emphasis = isAnime ? MODERN_EARTH_EMPHASIS_ANIME : MODERN_EARTH_EMPHASIS;
     const beckonedSubject =
       [
         c.name ? `${c.name},` : null,
         c.pronouns ? `${c.pronouns},` : null,
-        MODERN_EARTH_SUBJECT + ",",
+        subjectPhrase + ",",
         realClass,
         realBackground ? `${realBackground} background` : null
       ]
         .filter(Boolean)
-        .join(" ") || MODERN_EARTH_SUBJECT;
+        .join(" ") || subjectPhrase;
     return (
       `character portrait of ${beckonedSubject}, ${adultGenderPhrase(c)}, a modern-day person newly pulled into a ${tone} world, ` +
-      `${artStyleDirection(engineStyle, "player")}, ${MODERN_EARTH_EMPHASIS}`
+      `${artStyleDirection(engineStyle, "player")}, ${emphasis}`
     );
   }
   // Express the race's visual identity, not just its name, so uncommon races
@@ -1083,9 +1118,10 @@ export async function runDraftPortraitJob(job = {}) {
     draftPortraits.set(draftId, { status: "generated", uri });
     return { ok: true, uri };
   } catch (error) {
-    draftPortraits.set(draftId, { status: "failed", uri: null });
+    const reason = classifyImageFailure(error);
+    draftPortraits.set(draftId, { status: "failed", uri: null, reason });
     logWorker(`draft portrait failed for ${draftId}`, error);
-    return { ok: false };
+    return { ok: false, reason };
   }
 }
 
@@ -1101,7 +1137,7 @@ export function getDraftPortrait(draftId) {
   }
   const mem = draftPortraits.get(id);
   if (mem) {
-    return { status: mem.status, uri: mem.uri || null };
+    return { status: mem.status, uri: mem.uri || null, reason: mem.reason || null };
   }
   const onDisk = findDraftPortraitOnDisk(id);
   if (onDisk) {

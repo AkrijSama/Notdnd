@@ -33,7 +33,7 @@ test("player portrait (Babel Beckoned MC): frames a modern human, no 'elf' token
     { name: "Babel", tone: "modern arcane", artStyleOptions: { default: "anime" } }
   );
   assert.match(prompt, /modern Earth human/i, "canon HUMAN reaches the prompt");
-  assert.match(prompt, /rounded ears/i, "human ears asserted POSITIVELY");
+  assert.match(prompt, /rounded (human )?ears/i, "human ears asserted POSITIVELY");
   assert.doesNotMatch(prompt, /elf/i, "no 'elf' token — pollinations is positive-prompt-only and would render it");
 });
 

@@ -108,8 +108,8 @@ test("the workflow graph carries prompt/seed/dimensions and per-style checkpoint
     assert.equal(checkpoint, "my-local-anime.safetensors", "env checkpoint override wins");
     assert.equal(workflow["4"].inputs.ckpt_name, "my-local-anime.safetensors");
     assert.match(workflow["6"].inputs.text, /hollow pine at dusk/, "positive prompt lands in CLIP encode");
-    // Sealed anime-lane law: JANKU quality vocab leads the anime positive (2026-07-18).
-    assert.match(workflow["6"].inputs.text, /amazing quality/, "anime quality vocab present");
+    // Sealed anime-lane law: JANKU booru quality register leads the anime positive (v4, 2026-07-19).
+    assert.match(workflow["6"].inputs.text, /masterpiece, best quality/, "anime booru quality vocab present");
     assert.ok(workflow["7"].inputs.text.length > 0, "style negative present");
     assert.equal(workflow["3"].inputs.seed, 42);
     assert.equal(workflow["5"].inputs.width, 896);
