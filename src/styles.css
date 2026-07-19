@@ -210,6 +210,16 @@ button.alt:hover {
   margin: 0 auto;
   padding: 20px;
 }
+/* FULL-BLEED PLAY SURFACE (owner ruling 2026-07-19, absolute): the solo game
+   spans the ENTIRE viewport — no centered max-width frame, zero black bands on
+   wide/ultrawide monitors. Scoped to when the game shell is mounted so other
+   views keep the 1400px reading frame. The shell's own 100vw break-out then
+   resolves to a clean full-bleed (margin-left becomes ~0). */
+#app:has(.solo-game-shell) {
+  max-width: none;
+  margin: 0;
+  padding: 0;
+}
 
 .app-shell {
   display: grid;
@@ -1934,7 +1944,10 @@ button:disabled {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  object-position: center;
+  /* The banner shows a wide strip of a taller (1344x768) source: anchor the crop
+     CENTER-BOTTOM so the GROUND survives and the sky is what's sacrificed (owner
+     ruling 2026-07-19 — scene art is the player's eye-level view). */
+  object-position: center bottom;
   display: block;
 }
 .solo-scene-art-pending {
@@ -3069,15 +3082,19 @@ button:disabled {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
-  padding: 18px 24px 16px;
+  /* Generous, viewport-scaled LEFT/right inset (owner ruling 2026-07-19): the
+     reading area's left edge = viewport edge + standard padding; on ultrawide the
+     inset grows so the text isn't lost against the corner. */
+  padding: 18px clamp(24px, 2.6vw, 60px) 16px;
 }
-/* Owner spec (ultrawide readability): narration reads in a measured column —
-   max ~75ch, centered in the center column. Applies to every direct child the
-   log can host (turn entries, the paced opening, the location card, the empty
-   state); the reclaimed width becomes breathing margin. */
+/* Owner ruling 2026-07-19 (supersedes the centered-column spec): the container is
+   FULL-BLEED; the sealed measure governs only TEXT line-length, LEFT-ANCHORED
+   (never a centered column that reads as dead side-bands). max-width caps the
+   line for readability; margin-left:0 anchors it to the padded left edge; the
+   reclaimed width to the RIGHT is breathing room inside the full container. */
 .solo-narration-log > * {
   max-width: 75ch;
-  margin-left: auto;
+  margin-left: 0;
   margin-right: auto;
 }
 /* The input dock shares the same measure so the type-here line sits under the
@@ -3142,10 +3159,10 @@ button:disabled {
    reads my-action → what-happened → my-action, not an undifferentiated wall. A
    turn that has a player action gets a top divider + breathing room; the opening
    / ambient prose (no action header) flows without a false turn boundary. */
-/* Spacing pass (owner spec): real rhythm between turns. Horizontal margins stay
-   auto so entries center in the 75ch column (this rule is later in the file than
-   .solo-narration-log > * — shorthand zeros would override the centering). */
-.solo-log-entry { margin: 0 auto 34px; }
+/* Spacing pass: real rhythm between turns. Horizontal margins are LEFT-ANCHORED
+   (owner ruling 2026-07-19: no centered column) — margin-left 0 so entries hug the
+   padded left edge, matching .solo-narration-log > *. */
+.solo-log-entry { margin: 0 0 34px; }
 .solo-log-entry:last-child { margin-bottom: 10px; }
 .solo-log-entry.has-action { margin-top: 42px; padding-top: 26px; border-top: 1px solid var(--border, #202024); }
 .solo-log-entry.has-action:first-child { margin-top: 0; padding-top: 0; border-top: none; }

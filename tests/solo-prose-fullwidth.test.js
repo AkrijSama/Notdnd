@@ -38,6 +38,22 @@ test("the reading area spans full width; the sealed measure still governs line l
   assert.match(measure, /text-align:\s*left/);
 });
 
+test("no centered max-width FRAME: the game surface kills #app's 1400px band", () => {
+  // The whole viewport is used when the game shell is mounted (owner 2026-07-19).
+  const kill = rule("#app:has(.solo-game-shell) {");
+  assert.match(kill, /max-width:\s*none/);
+  assert.match(kill, /padding:\s*0/);
+});
+
+test("prose is LEFT-ANCHORED at the measure, never a centered column (the ultrawide bands)", () => {
+  // The measured column hugs the padded LEFT edge — margin-left:0, not auto.
+  const child = rule(".solo-narration-log > * {");
+  assert.match(child, /max-width:\s*75ch/); // readable line-length still governs
+  assert.match(child, /margin-left:\s*0/);
+  assert.doesNotMatch(child, /margin-left:\s*auto/);
+  assert.match(rule(".solo-log-entry {"), /margin:\s*0 0 34px/);
+});
+
 test("the right rail remains a real column; mobile stacks (no floating dock)", () => {
   assert.ok(CSS.includes(".solo-game-rail"), "right rail column present");
   // At <=1080px the frame stacks and the dock returns to normal flow — still no
