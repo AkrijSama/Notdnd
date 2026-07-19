@@ -59,7 +59,7 @@ function isPlayer(combatant) {
  * for narration/chips while the mechanic stays one of the ten. Idempotent-ish: a
  * re-applied status refreshes its duration rather than stacking a duplicate.
  */
-export function applyCombatStatus(combat, combatant, statusOrRider, { turns, worldName, run } = {}) {
+export function applyCombatStatus(combat, combatant, statusOrRider, { turns, worldName, run, absorb } = {}) {
   const statusId = ENGINE_STATUSES[statusOrRider] ? statusOrRider : statusForRider(statusOrRider);
   if (!statusId || !ENGINE_STATUSES[statusId]) return null;
   const meta = ENGINE_STATUSES[statusId];
@@ -77,11 +77,47 @@ export function applyCombatStatus(combat, combatant, statusOrRider, { turns, wor
   if (existing) {
     existing.turnsLeft = Math.max(existing.turnsLeft || 0, turnsLeft);
     existing.name = label;
+    if (statusId === "shield") existing.absorb = Math.max(existing.absorb || 0, Number.isFinite(absorb) ? absorb : 5);
     return existing;
   }
   const record = { id: statusId, engineStatus: statusId, name: label, kind: meta.kind, turnsLeft, worldName: worldName || null };
+  if (statusId === "shield") record.absorb = Number.isFinite(absorb) ? absorb : 5; // the damage pool it soaks
   combatant.conditions.push(record);
   return record;
+}
+
+// ── the five formerly-inert statuses, made real (A2.2, audit 5d548ac) ──────────
+// Behavioral flags the combat resolver consults (poison/regen/slow/haste/stun already
+// live via tickPct/queueOp). Small djb2 for the confuse coin-flip (seeded, testable).
+function hs(v) { let h = 0; const s = String(v == null ? "" : v); for (let i = 0; i < s.length; i += 1) h = (h * 31 + s.charCodeAt(i)) | 0; return Math.abs(h); }
+export function combatantHasStatus(combatant, id) {
+  return Array.isArray(combatant?.conditions) && combatant.conditions.some((c) => c.engineStatus === id);
+}
+/** BLIND — the blinded combatant attacks at disadvantage. */
+export function statusAttackDisadvantage(combatant) { return combatantHasStatus(combatant, "blind"); }
+/** SILENCE — skill/ability actions are locked (basic attacks still allowed). */
+export function statusSkillsLocked(combatant) { return combatantHasStatus(combatant, "silence"); }
+/** SLEEP — the combatant loses its turn; ANY damage wakes it (see wakeOnDamage). */
+export function statusAsleep(combatant) { return combatantHasStatus(combatant, "sleep"); }
+/** CONFUSE — a seeded 50% chance the action is misdirected (fizzles). */
+export function statusMisdirects(combatant, seed) {
+  return combatantHasStatus(combatant, "confuse") && (hs(seed) % 100) < 50;
+}
+/** Wake a sleeper the instant it takes damage. Returns true if it woke. */
+export function wakeOnDamage(combatant) {
+  if (!Array.isArray(combatant?.conditions)) return false;
+  const before = combatant.conditions.length;
+  combatant.conditions = combatant.conditions.filter((c) => c.engineStatus !== "sleep");
+  return combatant.conditions.length < before;
+}
+/** SHIELD — soak incoming damage from a pool; deplete + expire when spent. */
+export function absorbWithShield(combatant, amount) {
+  const cond = Array.isArray(combatant?.conditions) ? combatant.conditions.find((c) => c.engineStatus === "shield") : null;
+  if (!cond || !(cond.absorb > 0)) return { amount, absorbed: 0 };
+  const absorbed = Math.min(cond.absorb, amount);
+  cond.absorb -= absorbed;
+  if (cond.absorb <= 0) combatant.conditions = combatant.conditions.filter((c) => c !== cond);
+  return { amount: Math.max(0, amount - absorbed), absorbed };
 }
 
 /**

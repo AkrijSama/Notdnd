@@ -216,7 +216,9 @@ export function mintChaosling(baseAnimalId, threatTier, seed) {
     dexMod: base.dexMod,
     xp: base.xp + tier * 25,
     attacks: base.attacks,
-    intents: base.intents,
+    // A rolled active mind-skill (charm) becomes a usable combat intent; passives
+    // (vision-share, telepathy) are read elsewhere, no intent needed.
+    intents: skillIds.includes("charm-person") ? Object.freeze([...base.intents, CHARM_INTENT]) : base.intents,
     behaviors: Object.freeze({ ...base.behaviors, vicious: true }),
     loot: base.loot,
     carriedSkills,
@@ -293,7 +295,43 @@ export function resolveStatBlock(statBlockId) {
   if (typeof statBlockId !== "string" || !statBlockId.trim()) {
     return null;
   }
+  // ONE runtime overlay serves both CLI 2's creator-world people (worlds B1) and the
+  // A3.2 live chaosling spawn: minted-on-demand blocks are registered via
+  // registerStatBlock (above) so this — the sole resolution point — finds them.
   return REGISTRY[statBlockId] || RUNTIME_STAT_BLOCKS[statBlockId] || null;
+}
+
+// A chaosling's active mind skill (charm) is used as a combat intent; the pack/telegraph
+// skills (vision-share, telepathy) are passives read elsewhere.
+const CHARM_INTENT = Object.freeze({ intentId: "charm-person", kind: "skill", skillId: "charm-person", weight: 2, telegraph: "its gaze softens, reaching for your mind", hidden: false });
+
+function chaosSkillRow(skillId, seed) {
+  const skill = CHAOS_SKILLS[skillId];
+  if (!skill) return null;
+  return skill.family === "element"
+    ? Object.freeze({ skillId, name: skill.name, tier: skill.tier, mint: skill.mintTable[hashSeed(`${seed}|${skillId}`) % skill.mintTable.length] })
+    : Object.freeze({ skillId, name: skill.name, tier: skill.tier });
+}
+
+function withForcedSkill(block, skillId, seed) {
+  if (!CHAOS_SKILLS[skillId] || (block.carriedSkills || []).some((s) => s.skillId === skillId)) return block;
+  const carriedSkills = Object.freeze([...(block.carriedSkills || []), chaosSkillRow(skillId, seed)]);
+  const intents = skillId === "charm-person" ? Object.freeze([...block.intents, CHARM_INTENT]) : block.intents;
+  return Object.freeze({ ...block, carriedSkills, intents });
+}
+
+/**
+ * Mint a chaosling on demand and REGISTER it (into the shared runtime overlay) so combat
+ * can resolve it — the live-spawn wiring. Optionally force a specific chaos skill (the
+ * rapture-born Warm House chaosling carries a high-tier skill even below its roll) and/or
+ * a display name. Deterministic.
+ */
+export function spawnChaosling({ baseAnimalId, tier = 2, seed, forceSkill = null, name = null } = {}) {
+  let block = mintChaosling(baseAnimalId, tier, seed);
+  if (!block) return null;
+  if (forceSkill) block = withForcedSkill(block, forceSkill, seed);
+  if (name) block = Object.freeze({ ...block, name });
+  return registerStatBlock(block);
 }
 
 /**

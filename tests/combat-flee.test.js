@@ -9,7 +9,10 @@ import { isDying, isDead } from "../server/solo/death.js";
 
 const T = (n) => new Date(1730000000000 + n * 1000).toISOString();
 function fighter(now, { ac = 16, hp = 20 } = {}) {
-  const run = createDefaultSoloRun({ now });
+  // Fixed seed so the morale-flee roll (seeded on worldSeed/runId + combatId + turn) is
+  // DETERMINISTIC — otherwise a random runId makes "breaks within N turns" a coin flip.
+  const run = createDefaultSoloRun({ now, runId: "flee_fixed" });
+  run.worldSeed = "flee_fixed";
   run.player.abilities = { strength: 16, dexterity: 16, constitution: 14, intelligence: 10, wisdom: 12, charisma: 10 };
   run.player.proficiencyBonus = 2;
   run.player.character = { derivedStats: { armorClass: ac, initiative: 3, maxHp: hp, proficiencyBonus: 2 } };

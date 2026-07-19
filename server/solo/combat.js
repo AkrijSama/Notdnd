@@ -29,7 +29,10 @@ import { advanceCombatRounds } from "./worldClock.js";
 import {
   seedCombatantQueue, nextActor, commitTurn, buildForecast, ACTION_WEIGHT
 } from "./ctb.js";
-import { applyCombatStatus, tickStatusesOnTurnStart } from "./combatStatus.js";
+import {
+  applyCombatStatus, tickStatusesOnTurnStart,
+  statusAttackDisadvantage, statusSkillsLocked, statusAsleep, statusMisdirects, wakeOnDamage, absorbWithShield
+} from "./combatStatus.js";
 
 // Deterministic non-negative hash (same construction as momentum/quests) — the
 // seed for telegraph selection, so a run replays identically.
@@ -154,19 +157,23 @@ function makeCombatantId(npcId) {
 // Select ONE intent for an enemy this round — seeded-deterministic (hashSeed on
 // worldSeed|combatId|round|enemyId), weighted by the stat block. Telegraphed by
 // default: the returned telegraph is a committed fact the narrator speaks forward.
-function selectEnemyIntent(run, combat, combatant, round) {
+export function selectEnemyIntent(run, combat, combatant, round) {
   const block = resolveStatBlock(combatant.statBlockId);
   const intents = block?.intents || [];
   if (!intents.length) {
     return { intentId: "wait", kind: "defend", telegraph: "watches, waiting", hidden: false };
   }
   const chosen = pickTacticIntent(run, combat, combatant, block, intents, round);
+  // TELEPATHY (A3.4, intent-mask): a foe that speaks mind-to-mind hides its tell — the
+  // telegraph reads "???" until the player FOCUSes it (sets combatant.revealed).
+  const masked = enemyHasSkill(combatant, "telepathy") && !combatant.revealed;
   return {
     intentId: chosen.intentId,
     kind: chosen.kind,
     attackId: chosen.attackId || null,
-    telegraph: chosen.telegraph || "",
-    hidden: chosen.hidden === true
+    telegraph: masked ? "???" : (chosen.telegraph || ""),
+    hidden: chosen.hidden === true,
+    masked
   };
 }
 
@@ -463,6 +470,14 @@ function resolvePlayerTurn(run, combat, playerAction, actions, options) {
     actions.push({ actor: "player", kind: "hold_on", roll: null, damage: null, targetTransition: null });
     return;
   }
+  // PLAYER control statuses (A2.2): SLEEP loses the turn (damage wakes it); CONFUSE /
+  // charm may misdirect the action so it fizzles.
+  const pc = combat.combatants.player;
+  if (statusAsleep(pc)) { actions.push({ actor: "player", kind: "asleep", roll: null, damage: null, targetTransition: null }); return; }
+  if (statusMisdirects(pc, `${run.worldSeed || run.runId}|pconfuse|${combat.combatId}|${combat.turn}`)) {
+    actions.push({ actor: "player", kind: "confused", roll: null, damage: null, targetTransition: null });
+    return;
+  }
   if (route === "use_item") {
     const applied = applyHeldItem(run, playerAction.itemId);
     actions.push({ actor: "player", kind: "use_item", itemId: playerAction.itemId, healed: applied.healed, targetTransition: null });
@@ -546,8 +561,10 @@ function resolvePlayerAttack(run, combat, playerAction, actions, options) {
   const profile = playerAttackProfile(run);
   const advantage = Boolean(run.player.flags?.advantageNextAttack);
   if (run.player.flags) run.player.flags.advantageNextAttack = false;
-  const rolls = advantage ? [rollD20(options), rollD20(options)] : [rollD20(options)];
-  const d20 = advantage ? Math.max(...rolls) : rolls[0];
+  // BLIND (A2.2): a blinded player swings at disadvantage; nets against any advantage.
+  const net = (advantage ? 1 : 0) - (statusAttackDisadvantage(combat.combatants.player) ? 1 : 0);
+  const rolls = net !== 0 ? [rollD20(options), rollD20(options)] : [rollD20(options)];
+  const d20 = net > 0 ? Math.max(...rolls) : net < 0 ? Math.min(...rolls) : rolls[0];
   const crit = d20 === 20;
   const fumble = d20 === 1;
   const toHit = d20 + playerProficiency(run) + profile.mod;
@@ -558,7 +575,11 @@ function resolvePlayerAttack(run, combat, playerAction, actions, options) {
   let cost = null;
   if (band !== RESOLUTION_BANDS.FAILURE) {
     damage = rollWeaponDamage(profile, crit, options);
+    // SHIELD (A2.2): an enemy damage-absorb pool soaks the hit before HP drops.
+    const sh = absorbWithShield(enemy, damage);
+    damage = sh.amount;
     enemy.hp.current = Math.max(0, enemy.hp.current - damage);
+    if (damage > 0) wakeOnDamage(enemy); // SLEEP breaks on damage
     if (band === RESOLUTION_BANDS.SUCCESS_AT_COST) {
       // The drama band: a real cost commits alongside the hit — the enemy lands a
       // parting nip in the same exchange (Ch3 "Resource = your own vitality"),
@@ -648,9 +669,23 @@ function resolveEnemyTurn(run, combat, enemy, actions, options) {
   // a queue op. A fled creature COMMITS as fled: it stays ALIVE, leaves the fight, and
   // the world remembers (a thread-seed fact at close). Vicious things hold unless the
   // stat block also marks them injured (a wounded animal still bolts — the Grey).
+  applyPackVisionShare(combat); // VISION-SHARE (A3.4): pack sight-reveal + shared advantage/haste
   if (maybeEnemyFlee(run, combat, enemy, actions, options)) return;
+  // SLEEP — a sleeping combatant loses its turn (damage would already have woken it).
+  if (statusAsleep(enemy)) { actions.push({ actor: enemy.combatantId, kind: "sleep", roll: null, damage: null, targetTransition: null }); return; }
   const intent = combat.enemyIntents[enemy.combatantId] || selectEnemyIntent(run, combat, enemy, combat.turn);
   enemy.hasOpened = true; // the opener fires once; subsequent turns run the full policy
+  // CONFUSE — a confused combatant may misdirect its action (it fizzles this turn).
+  if (statusMisdirects(enemy, `${run.worldSeed || run.runId}|confuse|${combat.combatId}|${enemy.combatantId}|${combat.turn}`)) {
+    actions.push({ actor: enemy.combatantId, kind: "confused", intentId: intent.intentId, roll: null, damage: null, targetTransition: null });
+    return;
+  }
+  // SKILL intents (charm etc.) — the chaos-skill layer resolves them; SILENCE locks them.
+  if (intent.kind === "skill") {
+    if (statusSkillsLocked(enemy)) { actions.push({ actor: enemy.combatantId, kind: "silenced", intentId: intent.intentId, roll: null, damage: null, targetTransition: null }); return; }
+    resolveEnemySkill(run, combat, enemy, intent, actions, options);
+    return;
+  }
   if (intent.kind !== "attack") {
     // defend/other: mutate only combat state (no player damage).
     actions.push({ actor: enemy.combatantId, kind: intent.kind, intentId: intent.intentId, roll: null, damage: null, targetTransition: null });
@@ -659,7 +694,8 @@ function resolveEnemyTurn(run, combat, enemy, actions, options) {
   const block = resolveStatBlock(enemy.statBlockId);
   const atk = (block?.attacks || []).find((a) => a.attackId === intent.attackId) || block?.attacks?.[0];
   const defending = run.player.flags?.defendingUntilRound && combat.turn <= run.player.flags.defendingUntilRound;
-  const disadvantage = Boolean(defending) || Boolean(enemy.flags?.disadvantageNextTurn);
+  // BLIND — a blinded attacker swings at disadvantage (stacks with defend/disrupt).
+  const disadvantage = Boolean(defending) || Boolean(enemy.flags?.disadvantageNextTurn) || statusAttackDisadvantage(enemy);
   // Advantage from a player's failure band OR the chaos-pack aura (scaling-advantage
   // when multiple chaos-touched stand together — verdance bestiary).
   const advantage = Boolean(enemy.flags?.edgeNextTurn) || chaosPackAdvantage(combat, enemy);
@@ -681,16 +717,24 @@ function resolveEnemyTurn(run, combat, enemy, actions, options) {
     // to-hit disadvantage above). The tempo cost of guarding is the heavier action
     // weight (actionWeight("defend") = heavy) — damage reduction bought with tempo.
     if (defending) dmg = Math.max(1, Math.ceil(dmg * 0.5));
-    const rec = applyDamage(run, dmg, { crit, now: isoNow(options) });
-    damageRecord = { amount: rec.amount, type: atk.damageType || "physical" };
-    transition = rec.dead ? "dead" : rec.dying ? "dying" : rec.downed ? "downed" : "hurt";
-    // CHAOS RIDER (inverted-element): the attack carries the WRONG rider (the Grey's
-    // chaos_bite → "chill"), applied to the player on hit and compiled to one of the
-    // sealed ten (chill → Slow, which bends the player's CTB tempo). Suppressed if the
-    // blow drops the player (the fight is already over — the player-drop rule).
-    if (atk.rider && !rec.dead && !rec.dying) {
-      const applied = applyCombatStatus(combat, combat.combatants.player, atk.rider, { worldName: riderLabel(atk.rider), run });
-      if (applied) riderApplied = { rider: atk.rider, status: applied.engineStatus };
+    // SHIELD (A2.2): a damage-absorb pool on the player soaks the blow before it lands.
+    const shielded = absorbWithShield(combat.combatants.player, dmg);
+    dmg = shielded.amount;
+    if (dmg > 0) {
+      const rec = applyDamage(run, dmg, { crit, now: isoNow(options) });
+      wakeOnDamage(combat.combatants.player); // SLEEP breaks on any damage
+      damageRecord = { amount: rec.amount, type: atk.damageType || "physical", ...(shielded.absorbed ? { absorbed: shielded.absorbed } : {}) };
+      transition = rec.dead ? "dead" : rec.dying ? "dying" : rec.downed ? "downed" : "hurt";
+      // CHAOS RIDER (inverted-element): the attack carries the WRONG rider (the Grey's
+      // chaos_bite → "chill"), applied to the player on hit and compiled to one of the
+      // sealed ten (chill → Slow). Suppressed if the blow drops the player.
+      if (atk.rider && !rec.dead && !rec.dying) {
+        const applied = applyCombatStatus(combat, combat.combatants.player, atk.rider, { worldName: riderLabel(atk.rider), run });
+        if (applied) riderApplied = { rider: atk.rider, status: applied.engineStatus };
+      }
+    } else {
+      // Fully absorbed by the shield — a landed blow that did no damage.
+      damageRecord = { amount: 0, absorbed: shielded.absorbed, type: atk.damageType || "physical" };
     }
   }
   actions.push({
@@ -742,6 +786,45 @@ function chaosPackAdvantage(combat, enemy) {
   if (!hasAura) return false;
   const chaoslings = livingEnemies(combat).filter((c) => resolveStatBlock(c.statBlockId)?.kind === "chaosling");
   return chaoslings.length >= 2;
+}
+
+// ── HIGH-TIER CHAOS SKILLS (A3.4) ───────────────────────────────────────────────
+export function enemyHasSkill(combatant, skillId) {
+  const block = resolveStatBlock(combatant?.statBlockId);
+  return (block?.carriedSkills || []).some((s) => s.skillId === skillId);
+}
+function playerWisMod(run) { return Math.floor(((run.player?.abilities?.wisdom ?? 10) - 10) / 2); }
+
+// Active skill resolution. CHARM-PERSON is a contested read (enemy tier vs the player's
+// WIS): on the enemy's win the player is CHARMED → CONFUSE (their next action may
+// misdirect). Locked upstream by SILENCE; the read is counterable by the player's FOCUS.
+function resolveEnemySkill(run, combat, enemy, intent, actions, options) {
+  const skillId = intent.skillId;
+  if (skillId === "charm-person") {
+    const block = resolveStatBlock(enemy.statBlockId);
+    const total = rollD20(options) + (block?.tier || 2);
+    const dc = 10 + playerWisMod(run);
+    const success = total >= dc;
+    if (success) applyCombatStatus(combat, combat.combatants.player, "confuse", { worldName: "Charmed", run });
+    actions.push({ actor: enemy.combatantId, kind: "skill", intentId: intent.intentId, skillId, roll: { total, vs: "dc", dc, hit: success }, damage: null, targetTransition: null });
+    return;
+  }
+  actions.push({ actor: enemy.combatantId, kind: "skill", intentId: intent.intentId, skillId, roll: null, damage: null, targetTransition: null });
+}
+
+// VISION-SHARE (pack passive): a foe carrying it shares sight — hidden pack-mates are
+// REVEALED — and, when 2+ stand together, shares advantage + tempo (HASTE). This is
+// where the haste applier is wired. Idempotent per turn (haste re-applies only when off).
+export function applyPackVisionShare(combat) {
+  const enemies = livingEnemies(combat);
+  if (!enemies.some((e) => enemyHasSkill(e, "vision-share"))) return;
+  for (const e of enemies) {
+    e.revealed = true;
+    if (enemies.length > 1) {
+      e.flags = { ...(e.flags || {}), edgeNextTurn: true };
+      if (!e.ctb?.haste) applyCombatStatus(combat, e, "haste", { turns: 2 });
+    }
+  }
 }
 
 function riderLabel(rider) {
