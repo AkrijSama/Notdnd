@@ -1,0 +1,37 @@
+{
+  "_note": "DF (dark-fantasy) lane EXEMPLAR set. Prepared GPU-fenced (nothing was cooked). Cook AFTER the ComfyUI kitchen session to validate the tuned dark-fantasy checkpoint/LoRA/CFG. Two exemplars: a portrait 'style card' (the lane acid-test — faces are where a style breaks first, per the anime-lane finding) and a world-card cover. Idempotent by id; keeps:'cooked' auto-keeps whatever lands (flagged for review via scripts/art/review.mjs).",
+  "_usage": {
+    "dry_run_offline_no_gpu": "node scripts/art/cook-manifest.mjs scripts/art/manifests/df-exemplar.json --plan",
+    "cook_gpu_after_kitchen": "node scripts/art/cook-manifest.mjs scripts/art/manifests/df-exemplar.json"
+  },
+  "specs": [
+    {
+      "id": "exemplar_darkfantasy_portrait",
+      "style": "dark-fantasy",
+      "kind": "portrait",
+      "world": null,
+      "slotValues": {
+        "gender": "man",
+        "age": "adult",
+        "hair": "dark tangled shoulder-length hair",
+        "expression": "grim and weary",
+        "attire": "battered leather armor beneath a heavy hooded cloak"
+      },
+      "tags": ["exemplar"]
+    },
+    {
+      "id": "exemplar_darkfantasy_worldcard",
+      "style": "dark-fantasy",
+      "kind": "world-card",
+      "world": null,
+      "slotValues": {
+        "subject": "a lone timber-and-stone hold on a bluff above a mist-drowned pine valley",
+        "setting": "cold northern frontier",
+        "timeOfDay": "overcast bruised dusk",
+        "horizon": "a far ridge of black peaks under low storm light"
+      },
+      "tags": ["exemplar"]
+    }
+  ],
+  "keeps": "cooked"
+}
