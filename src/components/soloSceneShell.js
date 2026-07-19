@@ -2810,6 +2810,54 @@ export function renderSoloStageHud(scene = {}, state = {}) {
     </div>`;
 }
 
+// THE VN BATTLE SURFACE (D.4 item 8). During a fight, overlays the pinned stage: a
+// FORECAST RAIL of order chips (turn order, never ticks), enemy CARD(s) with the
+// telegraphed intent + a wound-band bar + status chips + the essence-sight read + the
+// enemy fullbody (empty-state silhouette while the art cooks — never blocks the turn).
+// The player side stays the existing top-left portrait dock (with its status chips).
+// Full-bleed + overlay idiom; empty when there is no live fight (no dead box).
+export function renderSoloBattleSurface(scene = {}) {
+  const combat = scene.combat;
+  if (!combat || combat.status !== "active") return "";
+  const forecast = Array.isArray(combat.forecast) ? combat.forecast : [];
+  const enemies = Array.isArray(combat.enemies) ? combat.enemies : [];
+
+  const rail = forecast.length
+    ? `<div class="solo-battle-forecast" role="list" aria-label="Turn order">
+        ${forecast.map((s, i) => `<span class="solo-battle-slot${i === 0 ? " is-next" : ""}${s.isPlayer ? " is-you" : ""}" role="listitem" title="${escapeHtml(s.displayName || (s.isPlayer ? "You" : "Enemy"))}">${escapeHtml(s.isPlayer ? "You" : (s.displayName || "?").split(/\s+/).slice(-1)[0])}</span>`).join('<span class="solo-battle-arrow" aria-hidden="true">›</span>')}
+      </div>`
+    : "";
+
+  const cards = enemies.map((e) => {
+    const band = e.hpBand || "steady";
+    const bandPct = band === "down" ? 0 : band === "bloodied" ? 33 : 100;
+    const intent = e.intent && e.intent.telegraph ? e.intent.telegraph : (e.intent && e.intent.hidden ? "coils, unreadable" : null);
+    const reads = Array.isArray(e.reads) ? e.reads : [];
+    const bodyUri = typeof e.bodyUri === "string" && e.bodyUri.trim() ? e.bodyUri.trim() : null;
+    const initial = String(e.name || "?").trim().slice(0, 1).toUpperCase() || "?";
+    const art = bodyUri
+      ? `<img class="solo-battle-enemy-img" data-portrait-key="${escapeHtml(bodyUri)}" src="${escapeHtml(bodyUri)}" alt="${escapeHtml(e.name || "Enemy")}" />`
+      : `<div class="solo-battle-enemy-pending" title="Reading its shape…"><span aria-hidden="true">${escapeHtml(initial)}</span></div>`;
+    return `
+      <div class="solo-battle-enemy-card" data-combatant-id="${escapeHtml(e.id || "")}">
+        <div class="solo-battle-enemy-art">${art}</div>
+        <div class="solo-battle-enemy-meta">
+          <div class="solo-battle-enemy-name" data-textfit>${escapeHtml(e.name || "Enemy")}</div>
+          <div class="solo-battle-hpband solo-battle-hpband--${band}" role="img" aria-label="${escapeHtml(band)}"><span style="width:${bandPct}%"></span></div>
+          ${intent ? `<div class="solo-battle-intent" title="${escapeHtml(intent)}">${escapeHtml(intent)}</div>` : ""}
+          ${reads.length ? `<div class="solo-battle-read">You read: ${escapeHtml(reads.join("; "))}</div>` : ""}
+          <div class="solo-battle-enemy-conds">${renderSoloConditionsHud({ conditions: Array.isArray(e.conditions) ? e.conditions : [] }, { compact: true })}</div>
+        </div>
+      </div>`;
+  }).join("");
+
+  return `
+    <div class="solo-battle" data-solo-battle>
+      ${rail}
+      <div class="solo-battle-enemies">${cards}</div>
+    </div>`;
+}
+
 // The MAP DRAWER — the full region/local map, opened from the HUD map widget.
 export function renderSoloMapDrawer(scene = {}, state = {}) {
   const mapOpen = Boolean(state.sceneMapOpen);
@@ -3260,6 +3308,7 @@ export function renderSoloSceneShell(state = {}) {
                   <!-- Floating HUD: portrait dock (top-left, in the frame), MAP
                        widget + TIME/WEATHER chip + Cast·Exits toggle (top-right). -->
                   <div data-solo-stage-hud-slot>${renderSoloStageHud(scene, state)}</div>
+                  <div data-solo-battle-slot>${renderSoloBattleSurface(scene)}</div>
                   <div data-solo-outcome>${renderSoloActionOutcome(state)}</div>
                   ${renderSoloDialogueOverlay(state)}
                 </div>
@@ -4066,6 +4115,12 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     const hudEl = typeof root.querySelector === "function" ? root.querySelector("[data-solo-stage-hud-slot]") : null;
     if (hudEl && "innerHTML" in hudEl) {
       hudEl.innerHTML = renderSoloStageHud(state.scene || {}, state);
+    }
+    // The VN battle surface repaints per turn (forecast/intent/HP-band/status shift
+    // every turn); handlers are delegated on the stable root, so innerHTML is safe.
+    const battleEl = typeof root.querySelector === "function" ? root.querySelector("[data-solo-battle-slot]") : null;
+    if (battleEl && "innerHTML" in battleEl) {
+      battleEl.innerHTML = renderSoloBattleSurface(state.scene || {});
     }
     const infoEl = typeof root.querySelector === "function" ? root.querySelector("[data-solo-scene-info-panel]") : null;
     if (infoEl && typeof infoEl === "object" && "outerHTML" in infoEl) {

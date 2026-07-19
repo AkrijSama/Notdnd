@@ -14,6 +14,7 @@ import {
   updatePlayerPortrait
 } from "../db/repository.js";
 import { NPC_EXPRESSIONS } from "./schema.js";
+import { resolveStatBlock } from "../campaign/bestiary.js";
 
 // GAP 2 (art-live-recipes): live-generated images join the curated library.
 // Default rating matches the batch cook's auto-keep (rating "keep" + an
@@ -304,6 +305,107 @@ const VN_BODY_DIMENSIONS = { width: 832, height: 1216 };
 function vnBodyArtDirection(tone) {
   const flavor = typeof tone === "string" && tone.trim() ? tone.trim() : "dark fantasy";
   return `full-body standing character, head to toe, plain dark background, visual novel sprite, ${flavor}, detailed face and clothing`;
+}
+
+// Corruption intensity scaled by threat tier (mirrors sceneDangerRegister's level→
+// phrase convention). Higher tier reads visibly more warped.
+function enemyCorruptionByTier(tier) {
+  const t = Math.max(1, Math.min(4, Number(tier) || 1));
+  if (t >= 4) return "catastrophically corrupted, reality bending around it, searing wrong-light aura";
+  if (t >= 3) return "deeply corrupted, chaos-warped flesh, glowing wrong-light veins";
+  if (t >= 2) return "corrupted, chaos-touched, subtly wrong proportions, a faint wrong-light haze";
+  return "lightly corrupted, an uncanny wrongness about it";
+}
+
+// Enemy fullbody prompt, minted DETERMINISTICALLY from a bestiary row: the base
+// animal + tier-scaled corruption markers + a rider cue from its carried inverted-
+// element skill (a bite that chills → frost-rimed). No LLM mints a creature; the row
+// is the only input, so the sprite is cache-keyable per stat block.
+export function buildEnemyBodyPrompt(statBlock, tone) {
+  if (!statBlock || typeof statBlock !== "object") return null;
+  const baseName = statBlock.baseAnimalId
+    ? String(statBlock.baseAnimalId).replace(/_/g, " ")
+    : String(statBlock.name || "creature").toLowerCase();
+  const riderCues = (Array.isArray(statBlock.carriedSkills) ? statBlock.carriedSkills : [])
+    .map((s) => {
+      const rider = s?.mint?.rider;
+      const el = s?.mint?.element;
+      if (rider === "chill" || rider === "chills" || rider === "frozen") return "frost riming its muzzle and fur, breath steaming cold";
+      if (el === "fire" || rider === "burns") return "embers guttering in its coat";
+      if (rider === "rots") return "patches of blackened, rotting flesh";
+      return null;
+    })
+    .filter(Boolean);
+  const slots = [
+    `a wild ${baseName}`,
+    statBlock.behaviors?.injured ? "wounded, favoring a ruined foreleg, limping" : null,
+    enemyCorruptionByTier(statBlock.tier),
+    ...riderCues,
+    vnBodyArtDirection(tone)
+  ].filter(Boolean);
+  return slots.join(", ");
+}
+
+/**
+ * Enemy fullbody job — the corrupted creature's battle sprite from its bestiary row.
+ * No face-ref (creatures have no committed bust). Generate-once/cache-forever;
+ * best-effort library intake; never blocks the turn (the battle surface shows the
+ * empty-state silhouette until this lands).
+ */
+export async function runEnemyBodyImageJob(job = {}) {
+  const runId = String(job.runId || "").trim();
+  const npcId = String(job.npcId || "").trim();
+  if (!runId || !npcId) {
+    return { ok: false, reason: "missing runId or npcId" };
+  }
+  const linked = ensureNpcImageAssets(runId, npcId, { style: job.style });
+  if (!linked || !linked.enemyBody) {
+    return { ok: false, reason: "run or npc not found" };
+  }
+  const run = getSoloRun(runId);
+  const existing = run?.imageAssets?.[linked.enemyBody] || null;
+  if (existing && existing.status === "generated" && typeof existing.uri === "string" && existing.uri) {
+    return { ok: true, enemyBody: { slot: "enemyBody", ok: true, uri: existing.uri, reused: true } };
+  }
+  const npc = run?.npcs?.[npcId] || null;
+  const statBlockId = npc?.statBlockId || npc?.flags?.statBlockId || null;
+  const block = resolveStatBlock(statBlockId);
+  const prompt = String(job.basePrompt || buildEnemyBodyPrompt(block, run?.world?.tone) || "").trim();
+  if (!prompt) {
+    return { ok: false, reason: "no stat block to mint from" };
+  }
+  const style = job.style ? String(job.style).trim() : "";
+  const enemyBody = await generateSlot({
+    runId,
+    npcId,
+    slot: "enemyBody",
+    assetId: linked.enemyBody,
+    prompt,
+    style,
+    kind: "fullbody",
+    ...VN_BODY_DIMENSIONS
+  });
+  if (enemyBody.ok && enemyBody.bytes) {
+    intakeToLibrary({
+      id: `live_${runId}_${npcId}_enemyBody`,
+      bytes: enemyBody.bytes,
+      kind: "fullbody",
+      run,
+      subjectId: npcId,
+      promptUsed: prompt,
+      workflow: enemyBody.workflow,
+      extraTags: ["pose:standing", "enemy", `statblock:${statBlockId || "?"}`]
+    });
+  }
+  return { ok: enemyBody.ok, enemyBody };
+}
+
+export function enqueueEnemyBodyImageJob(job = {}) {
+  if (!job || !job.runId || !job.npcId) {
+    return;
+  }
+  queue.push({ kind: "enemyBody", runId: job.runId, npcId: job.npcId, style: job.style, basePrompt: job.basePrompt });
+  Promise.resolve().then(drainQueue).catch((error) => logWorker("drain failed", error));
 }
 
 // ---------------------------------------------------------------------------
@@ -1208,6 +1310,9 @@ function dispatchJob(job) {
   }
   if (job && job.kind === "vnBody") {
     return runVnBodyImageJob(job);
+  }
+  if (job && job.kind === "enemyBody") {
+    return runEnemyBodyImageJob(job);
   }
   if (job && job.kind === "draft") {
     return runDraftPortraitJob(job);

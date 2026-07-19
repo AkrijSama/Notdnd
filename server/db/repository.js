@@ -1129,10 +1129,13 @@ export function ensureNpcImageAssets(runId, npcId, options = {}) {
   // variants. Created as a queued placeholder (cheap, no image bytes); generated
   // lazily by runVnBodyImageJob only when the NPC first enters VN mode.
   const vnBodyAssetId = ensureAsset(`img_${npcId}_vnBody`);
+  // Enemy fullbody slot — the corrupted creature's battle sprite, minted from its
+  // bestiary row (no face-ref bust). Generated lazily on combat entry, never blocks.
+  const enemyBodyAssetId = ensureAsset(`img_${npcId}_enemyBody`);
 
   bumpStateVersion();
   writeToDisk();
-  return { base: baseAssetId, variants, vnBody: vnBodyAssetId };
+  return { base: baseAssetId, variants, vnBody: vnBodyAssetId, enemyBody: enemyBodyAssetId };
 }
 
 /**

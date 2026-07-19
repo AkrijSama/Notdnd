@@ -1283,6 +1283,13 @@ function buildReputationSummary(run) {
 // D.4 — the live combat surface (or null). Emits the committed roster with enemy
 // wound-bands alongside true HP (the client may show numbers; the narrator speaks
 // bands). Player HP/AC are read from the player payload, never duplicated here.
+// The enemy fullbody sprite URI, if the (non-blocking) cook has landed — else null,
+// and the battle surface shows its empty-state silhouette.
+function resolveEnemyBodyUri(run, npcId) {
+  const asset = run?.imageAssets?.[`img_${npcId}_enemyBody`];
+  return asset && asset.status === "generated" && isString(asset.uri) ? asset.uri : null;
+}
+
 function buildCombatSummary(run) {
   const combat = run?.combat;
   if (!isPlainObject(combat)) return null;
@@ -1304,6 +1311,8 @@ function buildCombatSummary(run) {
       conditions: combatConditionsPayload(c),
       // sight-read chaos skills on the card (the bloodhound edge: "a bite that chills").
       reads: readStatBlockSkills(c.statBlockId),
+      // the enemy fullbody sprite once cooked (empty-state silhouette until then).
+      bodyUri: resolveEnemyBodyUri(run, c.npcId),
       intent: combat.enemyIntents?.[id] || null
     });
   }

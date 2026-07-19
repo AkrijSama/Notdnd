@@ -124,7 +124,7 @@ import { buildAttemptContext, buildAttemptProviderInput, classifyIntentAuthority
 import { interpretAttemptWithGm } from "./gm/attemptInterpreter.js";
 import { attributeSceneDialogue, resolveGmNarration } from "./solo/gmProvider.js";
 import { buildGmRuntimeStatus } from "./solo/gmSmoke.js";
-import { enqueueDraftPortrait, enqueueImageJob, enqueueLocationImageJob, enqueuePlayerImageJob, enqueueVnBodyImageJob, getDraftPortrait, imageWorkerStatus, locationCanonFragment, parseIdentityEdit, pronounsToGender, writeUploadedBasePortrait } from "./solo/imageWorker.js";
+import { enqueueDraftPortrait, enqueueImageJob, enqueueLocationImageJob, enqueuePlayerImageJob, enqueueVnBodyImageJob, enqueueEnemyBodyImageJob, getDraftPortrait, imageWorkerStatus, locationCanonFragment, parseIdentityEdit, pronounsToGender, writeUploadedBasePortrait } from "./solo/imageWorker.js";
 import { recordRequest, shouldLogRequest, lastAuthEvents } from "./logging/requestLog.js";
 import { enqueueIdentityJob, runIdentityJob, backfillNpcMannerisms, buildVoiceDirective } from "./solo/npcIdentity.js";
 import { buildDisagreementDirective, detectComplianceViolations } from "./gm/disagreementAudit.js";
@@ -2953,6 +2953,16 @@ async function handleApi(req, res) {
           ? scene.speakerId.split(":").slice(1).join(":")
           : scene.speakerId;
         enqueueVnBodyImageJob({ runId: run.runId, npcId: vnNpcId, style: engineStyleForRun(run) });
+      }
+      // Enemy fullbody cook: when a fight is live, mint each un-cooked enemy's battle
+      // sprite from its bestiary row (non-blocking; the battle surface shows the
+      // empty-state silhouette until it lands).
+      if (allowImages && scene.combat && scene.combat.status === "active") {
+        for (const e of Array.isArray(scene.combat.enemies) ? scene.combat.enemies : []) {
+          if (e && e.npcId && !e.bodyUri) {
+            enqueueEnemyBodyImageJob({ runId: run.runId, npcId: e.npcId, style: engineStyleForRun(run) });
+          }
+        }
       }
       // Surface tier + remaining image quota so the client can show a soft,
       // non-blocking upgrade prompt as a free user approaches their limit.

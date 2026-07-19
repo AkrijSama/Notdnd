@@ -99,17 +99,19 @@ test("runImageJob returns not-found for a missing npc and never throws", async (
   assert.match(result.reason, /not found/);
 });
 
-test("ensureNpcImageAssets is idempotent and creates base + 6 variants + vnBody", () => {
+test("ensureNpcImageAssets is idempotent and creates base + 6 variants + vnBody + enemyBody", () => {
   seedRunWithNpc("run_img_c");
   const first = ensureNpcImageAssets("run_img_c", "tavern_keeper", { style: "pixel" });
   assert.equal(first.base, "img_tavern_keeper_base");
   assert.equal(Object.keys(first.variants).length, NPC_EXPRESSIONS.length);
   // New full-body VN sprite slot, distinct from the bust + variants.
   assert.equal(first.vnBody, "img_tavern_keeper_vnBody");
+  // Enemy fullbody slot (combat sprite minted from a bestiary row).
+  assert.equal(first.enemyBody, "img_tavern_keeper_enemyBody");
 
   const afterFirst = getSoloRun("run_img_c");
-  // base + 6 expression variants + 1 vnBody.
-  assert.equal(Object.keys(afterFirst.imageAssets).length, NPC_EXPRESSIONS.length + 2);
+  // base + 6 expression variants + vnBody + enemyBody.
+  assert.equal(Object.keys(afterFirst.imageAssets).length, NPC_EXPRESSIONS.length + 3);
   assert.equal(afterFirst.imageAssets.img_tavern_keeper_base.status, "queued");
   assert.equal(afterFirst.imageAssets.img_tavern_keeper_base.promptSummary, "style:pixel");
   // vnBody starts as a queued placeholder (no image until lazily generated).
@@ -118,7 +120,7 @@ test("ensureNpcImageAssets is idempotent and creates base + 6 variants + vnBody"
 
   ensureNpcImageAssets("run_img_c", "tavern_keeper", { style: "pixel" });
   const afterSecond = getSoloRun("run_img_c");
-  assert.equal(Object.keys(afterSecond.imageAssets).length, NPC_EXPRESSIONS.length + 2);
+  assert.equal(Object.keys(afterSecond.imageAssets).length, NPC_EXPRESSIONS.length + 3);
 });
 
 test("runVnBodyImageJob generates the full-body sprite into a slot distinct from the bust", async () => {

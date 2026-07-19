@@ -2010,6 +2010,67 @@ button:disabled {
 .solo-game-shell:has(.solo-roll-history-layer.is-open) .solo-stage-hud {
   display: none;
 }
+
+/* ── VN BATTLE SURFACE (D.4 item 8) — overlays the pinned stage during a fight ── */
+.solo-battle {
+  position: absolute;
+  inset: 0;
+  z-index: 20; /* above the scene art, below the HUD row (30) and drawers (46) */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: none; /* the banner stays interactive; cards re-enable below */
+}
+.solo-battle > * { pointer-events: auto; }
+/* FORECAST RAIL — order chips, centered under the HUD row. Never shows ticks. */
+.solo-battle-forecast {
+  margin-top: 52px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 10px;
+  background: rgba(10, 10, 12, 0.82);
+  border: 1px solid var(--border, #202024);
+  border-radius: 999px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
+  max-width: 92vw;
+  overflow-x: auto;
+}
+.solo-battle-slot { font-size: 12px; color: var(--text-2, #b0b3bb); padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+.solo-battle-slot.is-next { background: var(--accent, #c9a15b); color: #0a0a0c; font-weight: 700; }
+.solo-battle-slot.is-you { color: var(--text, #e6e8ee); }
+.solo-battle-arrow { color: var(--text-muted, #7a7d86); font-size: 11px; }
+/* ENEMY CARDS — the corrupted thing(s) you face, wound bands + intent + read. */
+.solo-battle-enemies { margin-top: auto; margin-bottom: 12px; display: flex; gap: 16px; justify-content: center; align-items: flex-end; }
+.solo-battle-enemy-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  max-width: min(320px, 40vw);
+}
+.solo-battle-enemy-art { width: clamp(120px, 16vw, 200px); aspect-ratio: 3 / 4; }
+.solo-battle-enemy-img { width: 100%; height: 100%; object-fit: contain; object-position: bottom center; filter: drop-shadow(0 8px 22px rgba(0,0,0,0.6)); }
+.solo-battle-enemy-pending {
+  width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;
+  border-radius: 12px; background: rgba(10, 10, 12, 0.55); border: 1px dashed var(--border, #202024);
+  color: var(--text-muted, #7a7d86); font-size: 42px; font-weight: 700;
+}
+.solo-battle-enemy-meta { display: flex; flex-direction: column; align-items: center; gap: 5px; width: 100%; text-align: center; }
+.solo-battle-enemy-name { font-size: 15px; font-weight: 700; color: var(--text, #e6e8ee); text-shadow: 0 1px 3px rgba(0,0,0,0.8); }
+.solo-battle-hpband { width: 120px; height: 7px; border-radius: 999px; background: rgba(0,0,0,0.55); overflow: hidden; border: 1px solid rgba(255,255,255,0.18); }
+.solo-battle-hpband > span { display: block; height: 100%; border-radius: 999px; transition: width .3s; }
+.solo-battle-hpband--steady > span { background: #86b06a; }
+.solo-battle-hpband--bloodied > span { background: #d8a24a; }
+.solo-battle-hpband--down > span { background: #c86a6a; }
+.solo-battle-intent { font-size: 12px; font-style: italic; color: #f0d9a0; background: rgba(10,10,12,0.7); padding: 3px 9px; border-radius: 8px; max-width: 260px; }
+.solo-battle-read { font-size: 11px; color: #9ed6ff; }
+.solo-battle-enemy-conds { display: flex; justify-content: center; }
+@media (max-width: 720px) {
+  .solo-battle-enemies { gap: 8px; }
+  .solo-battle-forecast { margin-top: 46px; }
+}
+
 .solo-map-toggle,
 .solo-hud-map-open,
 .solo-hud-time,
