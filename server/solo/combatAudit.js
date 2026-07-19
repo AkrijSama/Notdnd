@@ -36,3 +36,25 @@ export function detectFabricatedCombatNumbers(narrationText, combatState) {
   }
   return hits;
 }
+
+// TEETH (A2, audit 5d548ac): don't just flag a fabricated number — STRIP it at the
+// trim layer so the leaked figure never reaches the player. Each raw HP/damage phrase
+// is replaced with wound-band language (the committed numbers are the only numbers).
+// Fires only in a live fight; a no-op otherwise. Returns { text, scrubbed:[phrases] }.
+const SCRUB_RULES = [
+  { re: /\b\d{1,4}\s*(?:hp|health|hit ?points?)\b/gi, to: "wounded" },
+  { re: /\b\d{1,4}\s+(?:points?\s+of\s+)?damage\b/gi, to: "a solid hit" },
+  { re: /\b(?:drops?|falls?|sinks?|reduced)\s+to\s+\d{1,4}\b/gi, to: "reels" },
+  { re: /\bdown\s+to\s+\d{1,4}\b/gi, to: "reeling" }
+];
+export function scrubFabricatedCombatNumbers(narrationText, combatState) {
+  const text = String(narrationText || "");
+  if (!text.trim() || !combatState || combatState.status !== "active") return { text, scrubbed: [] };
+  const scrubbed = [];
+  let out = text;
+  for (const { re, to } of SCRUB_RULES) {
+    out = out.replace(re, (m) => { scrubbed.push(m.trim()); return to; });
+  }
+  if (scrubbed.length) out = out.replace(/\s{2,}/g, " ").replace(/\s+([.,;:!?])/g, "$1").trim();
+  return { text: out, scrubbed };
+}

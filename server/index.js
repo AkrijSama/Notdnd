@@ -136,7 +136,7 @@ import { enqueueIdentityJob, runIdentityJob, backfillNpcMannerisms, buildVoiceDi
 import { buildDisagreementDirective, detectComplianceViolations } from "./gm/disagreementAudit.js";
 import { captureDeclaredGoal, honorGoalsOnAttempt, buildGoalsDirective, detectGoalIgnored } from "./solo/goals.js";
 import { detectStarterZoneLostMotif } from "./solo/starterZone.js";
-import { detectFabricatedCombatNumbers } from "./solo/combatAudit.js";
+import { detectFabricatedCombatNumbers, scrubFabricatedCombatNumbers } from "./solo/combatAudit.js";
 import { buildLayoutDirective, ensureLocationLayout } from "./solo/layout.js";
 import { enforceRomanceRegister, stripRomanceRegister, ROMANCE_CORRECTIVE_CLAUSE } from "./gm/romanceEnforcement.js";
 import { buildNpcIntroDirective, buildSoloScenePayload, collectNpcsWithPendingIntro } from "./solo/scene.js";
@@ -2411,14 +2411,18 @@ async function handleApi(req, res) {
             `starter-zone-lost VIOLATION @${responseRun.currentLocationId}: ${lostMotifs.map((m) => `"${m.phrase}"`).join(" | ")} user=${user?.id || "anon"}`
           );
         }
-        // COMBAT NARRATION AUDITOR (D.4): the combat directive says speak wounds in
-        // bands, never raw HP/damage numbers. A fabricated/leaked number inside a live
-        // fight is narrated-state drift — flag it. Log-only; the directive is the law.
-        const fabNumbers = detectFabricatedCombatNumbers(gmNarration, responseRun.combat);
-        if (fabNumbers.length > 0) {
+        // COMBAT NARRATION AUDITOR (D.4) — WITH TEETH (A2, audit 5d548ac): the combat
+        // directive says speak wounds in BANDS, never raw HP/damage numbers (the server
+        // owns the numbers). A fabricated/leaked number inside a live fight is narrated-
+        // state drift — so we STRIP it here at the trim layer (committed numbers are the
+        // only numbers), not merely log it. The scrub replaces each raw figure with
+        // wound-band language before anything downstream consumes the prose.
+        const fab = scrubFabricatedCombatNumbers(gmNarration, responseRun.combat);
+        if (fab.scrubbed.length > 0) {
+          gmNarration = fab.text;
           logTurnEvent(
             responseRun.runId,
-            `combat-number VIOLATION @${responseRun.combat?.combatId || "?"}: ${fabNumbers.map((f) => `[${f.kind}] "${f.phrase}"`).join(" | ")} user=${user?.id || "anon"}`
+            `combat-number SCRUBBED @${responseRun.combat?.combatId || "?"}: ${fab.scrubbed.map((p) => `"${p}"`).join(" | ")} user=${user?.id || "anon"}`
           );
         }
       }
