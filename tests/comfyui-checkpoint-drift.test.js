@@ -28,6 +28,21 @@ function checkpointOf(recipe) {
   return null;
 }
 
+// The sampler REGISTER (cfg/sampler/scheduler/steps) from a graph's KSampler node.
+// Like the checkpoint, this is owned by the validated export — the live path must
+// derive it from the file, never from a hardcoded default (defaultWorkflow /
+// STYLE_PRESETS). injectWorkflow only sets prompt/dims/seed/batch, so these must
+// pass through untouched.
+function samplerOf(recipe) {
+  for (const n of Object.values(recipe || {})) {
+    if (n && /KSampler/.test(n.class_type || "")) {
+      const i = n.inputs || {};
+      return { cfg: i.cfg, sampler: i.sampler_name, scheduler: i.scheduler, steps: i.steps };
+    }
+  }
+  return null;
+}
+
 // Every validated API export for an engine style: [{ kind, ckpt }].
 function validatedExports(engineStyle) {
   const canon = toCanonicalStyle(engineStyle);
@@ -42,7 +57,7 @@ function validatedExports(engineStyle) {
     try { recipe = loadRecipe(canon, kind); } catch { continue; }
     if (!isApiWorkflow(recipe)) continue;
     const ckpt = checkpointOf(recipe);
-    if (ckpt) out.push({ kind, ckpt });
+    if (ckpt) out.push({ kind, ckpt, sampler: samplerOf(recipe) });
   }
   return out;
 }
@@ -82,10 +97,16 @@ for (const style of ENGINE_STYLES) {
       );
 
       // (3) each per-kind validated live path serves that kind's export checkpoint
+      //     AND its sampler register (cfg/sampler/scheduler/steps). injectWorkflow
+      //     must not shadow the file — the export is the single source for BOTH.
       for (const e of exps) {
         const sel = resolveValidatedComfyWorkflow(style, e.kind, { positive: "human, rounded ears", negative: "", seed: 1 });
         assert.ok(sel, `validated ${style}/${e.kind} should resolve`);
         assert.equal(sel.checkpoint, e.ckpt, `validated ${style}/${e.kind} checkpoint drifted`);
+        assert.deepEqual(
+          samplerOf(sel.workflow), e.sampler,
+          `validated ${style}/${e.kind} sampler register (cfg/sampler/scheduler/steps) drifted from its export`
+        );
       }
     });
   });
@@ -96,4 +117,21 @@ test("anime is JANKU end-to-end (Chunk-6 switch honored; Illustrious retired)", 
     assert.equal(checkpointForStyle("anime"), "JANKUTrainedChenkinNoobai_v777.safetensors");
     assert.match(comfyuiWorkflowForStyle("anime", { prompt: "x" }).checkpoint, /JANKU/);
   });
+});
+
+// The owner's kitchen-validated JANKU register (2026-07-19): cfg 4.0 fixed the
+// portrait "style-card" register. It is LANE-WIDE — both portrait and scene derive
+// it from their validated exports (portrait-anime.json / scene-anime.json), never a
+// hardcoded default. If the scene lane ever falls back to the generic path again
+// (sampler "euler", cfg 7), the scene assertion here fails.
+test("anime register: portrait + scene carry the owner-validated cfg 4.0 / euler_ancestral", () => {
+  for (const kind of ["portrait", "scene"]) {
+    const sel = resolveValidatedComfyWorkflow("anime", kind, { positive: "human, rounded ears", negative: "x", seed: 1 });
+    assert.ok(sel, `anime/${kind} must resolve to a VALIDATED export (not the generic fallback)`);
+    const s = samplerOf(sel.workflow);
+    assert.equal(s.cfg, 4, `anime/${kind} cfg must be the validated 4.0`);
+    assert.equal(s.sampler, "euler_ancestral", `anime/${kind} sampler must be euler_ancestral`);
+    assert.equal(s.scheduler, "normal", `anime/${kind} scheduler must be normal`);
+    assert.equal(s.steps, 26, `anime/${kind} steps must be 26`);
+  }
 });

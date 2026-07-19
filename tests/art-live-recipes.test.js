@@ -20,14 +20,21 @@ test("kind-routing: realistic (+cinematic alias) has the full validated four-lan
   }
 });
 
-test("kind-routing: anime + dark-fantasy have a validated PORTRAIT; other kinds fall back", () => {
+test("kind-routing: anime has validated portrait+scene, dark-fantasy portrait only; other kinds fall back", () => {
   assert.equal(resolveLiveWorkflowFile("anime", "portrait"), "portrait-anime.json");
+  // The owner's cfg-4.0 register fix is LANE-WIDE: anime scene (and world-card,
+  // which shares the scene recipe) now resolve to a validated export, not the
+  // generic defaultWorkflow (sampler "euler", cfg 7).
+  assert.equal(resolveLiveWorkflowFile("anime", "scene"), "scene-anime.json");
+  assert.equal(resolveLiveWorkflowFile("anime", "world-card"), "scene-anime.json", "world-card shares the scene recipe");
   assert.equal(resolveLiveWorkflowFile("dark-fantasy", "portrait"), "portrait-darkfantasy.json");
   assert.equal(resolveLiveWorkflowFile("illustrated", "portrait"), "portrait-darkfantasy.json", "engine alias resolves");
-  for (const style of ["anime", "dark-fantasy"]) {
-    for (const kind of ["scene", "fullbody", "item"]) {
-      assert.equal(resolveLiveWorkflowFile(style, kind), null, `${style}/${kind} falls back to generic`);
-    }
+  // anime fullbody/item + every non-portrait dark-fantasy kind still fall back.
+  for (const kind of ["fullbody", "item"]) {
+    assert.equal(resolveLiveWorkflowFile("anime", kind), null, `anime/${kind} falls back to generic`);
+  }
+  for (const kind of ["scene", "fullbody", "item"]) {
+    assert.equal(resolveLiveWorkflowFile("dark-fantasy", kind), null, `dark-fantasy/${kind} falls back to generic`);
   }
 });
 
