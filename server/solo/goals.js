@@ -35,7 +35,7 @@ const STOPWORDS = new Set([
   "intend", "aim", "hope", "trying", "need", "would", "like", "goal", "make", "get",
   "them", "then", "here", "there", "out", "up", "down", "on", "in", "at", "so", "as"
 ]);
-function contentTokens(text) {
+export function contentTokens(text) {
   return String(text || "")
     .toLowerCase()
     .split(/[^a-z']+/)
@@ -140,31 +140,40 @@ export function goalMatchesIntent(goal, intent) {
 export function captureDeclaredGoal(run, intent, { nowMinutes = 0, turn = 0 } = {}) {
   const decl = detectGoalDeclaration(intent);
   if (!decl) return null;
+  return commitGoal(run, {
+    summary: decl.summary,
+    scale: decl.scale,
+    matchTokens: decl.matchTokens,
+    door: "declared",
+    provenance: `declared: "${String(intent).trim().slice(0, 120)}"`
+  }, { nowMinutes, turn });
+}
+
+// The shared record-builder for ALL THREE doors (declared / demonstrated / offered).
+// Guards duplicates + scale caps, then commits the goal. Returns the goal, or null if
+// declined. The two new doors (goalDoors.js) call this, so the record shape lives in
+// exactly one place.
+export function commitGoal(run, { summary, scale, matchTokens = [], door = "declared", provenance = "", stakes } = {}, { nowMinutes = 0, turn = 0 } = {}) {
+  if (typeof summary !== "string" || !summary.trim() || !GOAL_SCALES.includes(scale)) return null;
   if (!isPlainObject(run.goals)) run.goals = {};
-  // Duplicate guard: an active goal already covering this objective.
-  if (activeGoals(run).some((g) => goalMatchesIntent(g, decl.summary))) {
-    return null;
-  }
-  // Cap guard (Tasks uncapped): a capped scale silently declines capture at that
-  // scale (the pursuit still resolves as a normal attempt).
-  if (activeCountByScale(run, decl.scale) >= GOAL_CAPS[decl.scale]) {
-    return null;
-  }
+  if (activeGoals(run).some((g) => goalMatchesIntent(g, summary))) return null; // duplicate
+  if (activeCountByScale(run, scale) >= GOAL_CAPS[scale]) return null; // scale cap
   const id = goalId(run);
   const goal = {
     goalId: id,
-    summary: decl.summary,
-    scale: decl.scale,
+    summary: summary.trim(),
+    scale,
     state: "active",
-    door: "declared",
-    matchTokens: decl.matchTokens,
+    door,
+    matchTokens: Array.isArray(matchTokens) ? matchTokens : [],
     linkedObjectIds: [],
     stages: [],
     createdTurn: Number.isFinite(turn) ? turn : 0,
     createdAtMinutes: Number.isFinite(nowMinutes) ? nowMinutes : 0,
     achievedAtMinutes: null,
-    provenance: `declared: "${String(intent).trim().slice(0, 120)}"`,
-    flags: {}
+    provenance: String(provenance || ""),
+    flags: {},
+    ...(typeof stakes === "string" && stakes.trim() ? { stakes: stakes.trim() } : {})
   };
   run.goals[id] = goal;
   return goal;

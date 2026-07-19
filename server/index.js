@@ -135,6 +135,7 @@ import { recordRequest, shouldLogRequest, lastAuthEvents } from "./logging/reque
 import { enqueueIdentityJob, runIdentityJob, backfillNpcMannerisms, buildVoiceDirective } from "./solo/npcIdentity.js";
 import { buildDisagreementDirective, detectComplianceViolations } from "./gm/disagreementAudit.js";
 import { captureDeclaredGoal, honorGoalsOnAttempt, buildGoalsDirective, detectGoalIgnored } from "./solo/goals.js";
+import { registerGoalThread, detectDemonstratedGoal, armDemonstratedAsk, detectDemonstratedAnswer, captureDemonstratedGoal, clearDemonstratedPrompt, detectGoalAcceptIntent, captureOfferedGoal, buildDemonstratedAskDirective } from "./solo/goalDoors.js";
 import { detectStarterZoneLostMotif } from "./solo/starterZone.js";
 import { detectFabricatedCombatNumbers, scrubFabricatedCombatNumbers } from "./solo/combatAudit.js";
 import { buildLayoutDirective, ensureLocationLayout } from "./solo/layout.js";
@@ -1262,6 +1263,7 @@ async function narrateActionWithGm(run, resolved, user) {
   // redirect away), and committed achievements ride so the world references what
   // the player has built. Paired with the goal-ignored auditor below.
   message += buildGoalsDirective(run);
+  message += buildDemonstratedAskDirective(run);
   // MAP-LAYOUT LAW: the committed scene geometry rides every prompt — the
   // narrator describes the clearing where the clearing IS, and never invents
   // placement the map would contradict.
@@ -2287,9 +2289,25 @@ async function handleApi(req, res) {
         const goalIntent = resolved.attemptResult?.intent || resolved.action?.intent || "";
         const nowMinutes = resolved.run.world?.time?.minutes ?? 0;
         const turnNo = Array.isArray(resolved.run.timeline) ? resolved.run.timeline.length : 0;
-        // DECLARED door: intention-shaped speech commits a goal (guards: musing,
-        // questions, one-shot actions never capture — see goals.detectGoalDeclaration).
-        goalCapture = captureDeclaredGoal(resolved.run, goalIntent, { nowMinutes, turn: turnNo });
+        // THE THREE DOORS (B2). First answer any pending DEMONSTRATED ask, then the
+        // OFFERED accept, then DECLARED capture; each Project/Ambition REGISTERS a D.5
+        // thread source. Finally scan for a fresh demonstrated pattern to arm one ask.
+        const demoAnswer = detectDemonstratedAnswer(resolved.run, goalIntent);
+        if (demoAnswer === "confirm") {
+          goalCapture = captureDemonstratedGoal(resolved.run, { nowMinutes, turn: turnNo });
+        } else if (demoAnswer === "decline") {
+          clearDemonstratedPrompt(resolved.run);
+        }
+        if (!goalCapture) {
+          const offerAccept = detectGoalAcceptIntent(resolved.run, goalIntent);
+          if (offerAccept) goalCapture = captureOfferedGoal(resolved.run, offerAccept.npcId, { nowMinutes, turn: turnNo });
+        }
+        if (!goalCapture) {
+          // DECLARED door: intention-shaped speech commits a goal (guards: musing,
+          // questions, one-shot actions never capture — see goals.detectGoalDeclaration).
+          goalCapture = captureDeclaredGoal(resolved.run, goalIntent, { nowMinutes, turn: turnNo });
+          if (goalCapture) registerGoalThread(resolved.run, goalCapture, { nowMinutes });
+        }
         // Honor pipeline (Tasks): a goal-relevant build success writes the
         // goal-linked objectState + storm cover + achievement/XP.
         goalHonored = honorGoalsOnAttempt(resolved.run, {
@@ -2297,6 +2315,12 @@ async function handleApi(req, res) {
           attemptResult: resolved.attemptResult,
           nowMinutes
         });
+        // DEMONSTRATED door: a repeated pattern (3+ same-token actions) arms ONE
+        // diegetic ask (VOICE-flavored in Babel), surfaced on the next scene payload.
+        if (!goalCapture && !resolved.run.flags?.demonstratedGoalPrompt) {
+          const proposal = detectDemonstratedGoal(resolved.run);
+          if (proposal) armDemonstratedAsk(resolved.run, proposal);
+        }
       }
       const responseRun = resolved.run ? saveSoloRun(resolved.run) : run;
       if (goalCapture) {
