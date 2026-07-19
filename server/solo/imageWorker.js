@@ -33,9 +33,19 @@ function slugForTag(text) {
 
 // Land a live-generated image in the library (additive — the run still serves its
 // own asset at the run path). Best-effort: never throws, never blocks a turn.
-export function intakeToLibrary({ id, bytes, kind, run, subjectId = null, promptUsed = "", workflow = "", extraTags = [] }) {
+export function intakeToLibrary({ id, bytes, kind, run, subjectId = null, promptUsed = "", workflow = "", extraTags = [], provider = null }) {
   try {
     if (!bytes || !bytes.length || !id) {
+      return null;
+    }
+    // INTAKE GUARD (2026-07-19, biplane audit): the curated library is
+    // VALIDATED-RECIPE content only. A serve-attribution that isn't the validated
+    // ComfyUI path (a pollinations/cloudflare failover, or unknown) still serves
+    // the run IN-SESSION, but must NEVER be pooled — that is how the pollinations-
+    // era poison (and the auto-kept biplane) leaked into every run. Refuse it.
+    const prov = String(provider || "").toLowerCase();
+    if (prov && prov !== "comfyui") {
+      logWorker(`library intake REFUSED: serve-attribution "${provider}" is not the validated recipe (id=${id})`);
       return null;
     }
     const style = styleForRun(run, run?.world) || "";
@@ -1117,7 +1127,8 @@ export async function runLocationImageJob(job = {}) {
       run,
       subjectId: locationId,
       promptUsed: prompt,
-      workflow: result?.workflow || null
+      workflow: result?.workflow || null,
+      provider: result?.provider || null
     });
     return { ok: true, uri: finalUri };
   } catch (error) {
