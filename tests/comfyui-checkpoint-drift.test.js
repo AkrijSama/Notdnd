@@ -119,17 +119,18 @@ test("anime is JANKU end-to-end (Chunk-6 switch honored; Illustrious retired)", 
   });
 });
 
-// The owner's kitchen-validated JANKU register (2026-07-19): cfg 4.0 fixed the
-// portrait "style-card" register. It is LANE-WIDE — both portrait and scene derive
-// it from their validated exports (portrait-anime.json / scene-anime.json), never a
-// hardcoded default. If the scene lane ever falls back to the generic path again
-// (sampler "euler", cfg 7), the scene assertion here fails.
-test("anime register: portrait + scene carry the owner-validated cfg 4.0 / euler_ancestral", () => {
+// The owner's kitchen-validated JANKU register (2026-07-19, corrected): cfg 3.5 is
+// what his 4/4 acceptance batch (ComfyUI 00226-00229) actually ran at — the fix that
+// pulls the portrait "style-card" register clothed/human-eared/warm. It is LANE-WIDE:
+// both portrait and scene derive it from their validated exports (portrait-anime.json
+// / scene-anime.json), never a hardcoded default. If the scene lane ever falls back to
+// the generic path again (sampler "euler", cfg 7), the scene assertion here fails.
+test("anime register: portrait + scene carry the owner-validated cfg 3.5 / euler_ancestral", () => {
   for (const kind of ["portrait", "scene"]) {
     const sel = resolveValidatedComfyWorkflow("anime", kind, { positive: "human, rounded ears", negative: "x", seed: 1 });
     assert.ok(sel, `anime/${kind} must resolve to a VALIDATED export (not the generic fallback)`);
     const s = samplerOf(sel.workflow);
-    assert.equal(s.cfg, 4, `anime/${kind} cfg must be the validated 4.0`);
+    assert.equal(s.cfg, 3.5, `anime/${kind} cfg must be the validated 3.5`);
     assert.equal(s.sampler, "euler_ancestral", `anime/${kind} sampler must be euler_ancestral`);
     assert.equal(s.scheduler, "normal", `anime/${kind} scheduler must be normal`);
     assert.equal(s.steps, 26, `anime/${kind} steps must be 26`);
