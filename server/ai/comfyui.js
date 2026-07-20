@@ -358,6 +358,27 @@ export function humanSubjectMonsterNegativeFor(positive) {
 const PORTRAIT_STYLE_COLLAPSE_NEGATIVE =
   "western comic, comic book, comic book cover, pop art, (yellow background:1.2), (gold background:1.2), (orange background:1.1), bright flat color background, single-color flat field, floating head, disembodied bust, headshot cut-out, sticker art";
 
+// WARDROBE FLOOR (owner kitchen lesson 2026-07-20: positives beat negatives for
+// wardrobe). A "shirtless" NEGATIVE loses to JANKU's bare-chest default on a no-attire
+// prompt (the 3-proof shirtless-2/3), but a SPECIFIC worn garment in the POSITIVE holds.
+// So when a human character portrait carries NO committed wardrobe, the seal injects a
+// specific default garment; committed gear (armor/coat/robe/…) OVERRIDES and suppresses
+// the default. Replaces the weak generic "fully clothed" token.
+const DEFAULT_GARMENT = "wearing a plain dark shirt";
+const COMMITTED_WARDROBE_RE =
+  /\b(shirt|coat|jacket|vest|tunic|robe|cloak|dress|gown|armou?r|breastplate|cuirass|chainmail|plate|leather|uniform|clothes|clothing|attire|wearing|clad|garb|hood|hooded|scarf|shawl|blouse|doublet|surcoat|tabard|kimono|habit|cassock|apron|overcoat)\b/i;
+// The specific default garment for a human character portrait with no committed wardrobe,
+// or "" (scene/item subject, a committed non-human, or committed gear already present).
+// Human-gated by the SAME predicate as characterVocab (elfDefenseFor fires only for a
+// human/person subject), so a beast NPC never gets dressed.
+function wardrobeGarmentFor(positive) {
+  const p = String(positive || "");
+  if (!isCharacterSubject(p)) return "";
+  if (!elfDefenseFor(p)) return "";
+  if (COMMITTED_WARDROBE_RE.test(p)) return "";
+  return DEFAULT_GARMENT;
+}
+
 let _animeBlock = null;
 function animeBlock() {
   if (_animeBlock) return _animeBlock;
@@ -437,11 +458,15 @@ export function sealPortraitPrompt(styleKey, positive, presetNegative) {
   // sheet/age laws + the human-gated monster ban; a non-anime character portrait also
   // gets the style-collapse ban (the anime lane owns that in its negativeBase).
   const monsterBan = isChar ? humanSubjectMonsterNegativeFor(pos0) : "";
+  // WARDROBE FLOOR: a specific default garment when a human portrait has no committed
+  // wardrobe (positives beat negatives — see wardrobeGarmentFor). Lane-invariant.
+  const garment = wardrobeGarmentFor(pos0);
   if (styleKey !== "anime") {
     const charLaws = isChar
       ? joinCsv([PORTRAIT_NEGATIVE_LAW, AGE_NEGATIVE_LAW, PORTRAIT_STYLE_COLLAPSE_NEGATIVE])
       : "";
-    return { positive: pos0, negative: joinCsv([presetNegative, charLaws, monsterBan, elf, genderLock, sceneGuard]) };
+    const positiveOut = garment ? joinCsv([pos0, garment]) : pos0;
+    return { positive: positiveOut, negative: joinCsv([presetNegative, charLaws, monsterBan, elf, genderLock, sceneGuard]) };
   }
   const block = animeBlock();
   // Quality vocab LEADS (JANKU responds to it front-loaded), then the palette/light
@@ -467,9 +492,18 @@ export function sealPortraitPrompt(styleKey, positive, presetNegative) {
   // positives OFF real creatures — a wolf NPC keeps its ears.
   const isHuman = Boolean(elf);
   if (isHuman && block.characterVocab && !pos0.toLowerCase().includes("warm skin tone")) {
-    lead.push(block.characterVocab);
+    // Strip the generic "fully clothed" token — a SPECIFIC garment (below) holds far
+    // better against JANKU's bare-chest default (positives beat negatives for wardrobe).
+    const vocab = block.characterVocab
+      .replace(/,\s*fully clothed\b/i, "")
+      .replace(/\bfully clothed\b\s*,?\s*/i, "")
+      .trim();
+    if (vocab) lead.push(vocab);
   }
-  const positiveOut = lead.length ? joinCsv([...lead, pos0]) : pos0;
+  let positiveOut = lead.length ? joinCsv([...lead, pos0]) : pos0;
+  // WARDROBE FLOOR: append the specific default garment (empty when committed gear is
+  // present, so the committed wardrobe stands alone).
+  if (garment) positiveOut = joinCsv([positiveOut, garment]);
   const negativeOut = joinCsv([
     block.negativeBase,
     isChar ? PORTRAIT_NEGATIVE_LAW : "",

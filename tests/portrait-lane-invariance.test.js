@@ -179,6 +179,27 @@ test("REGRESSION GUARD: the anime Beckoned draft is isekai/cel anime-native — 
   assert.match(dfPrompt, /modern earth human|real-world|present-day/, "the DF lane keeps its realism framing (anime-only reframe)");
 });
 
+test("WARDROBE FLOOR: a human portrait with no committed gear gets a SPECIFIC default garment (positives beat negatives)", () => {
+  // Owner kitchen lesson (2026-07-20): a "shirtless" negative loses to JANKU's bare-chest
+  // default; a specific worn garment in the POSITIVE holds. The generic "fully clothed"
+  // token is replaced by the specific garment.
+  const human = "character portrait of a human man, (adult man:1.3), rounded human ears";
+  for (const style of ["anime", "illustrated", "cinematic"]) {
+    const { positive } = sealPortraitPrompt(style, human, "photo");
+    assert.match(positive, /wearing a plain dark shirt/i, `${style}: default garment missing`);
+    assert.doesNotMatch(positive, /fully clothed/i, `${style}: weak generic 'fully clothed' should be gone`);
+  }
+  // Committed gear OVERRIDES: no default garment injected, the committed wardrobe stands.
+  const clothed = "character portrait of a human man, (adult man:1.3), rounded human ears, wearing a leather coat";
+  const { positive: p2 } = sealPortraitPrompt("anime", clothed, "photo");
+  assert.doesNotMatch(p2, /wearing a plain dark shirt/i, "committed gear must suppress the default garment");
+  assert.match(p2, /leather coat/i, "committed wardrobe is preserved");
+  // Human-GATED: a non-human/beast subject is never dressed.
+  const beast = "eye-level shot, a lone wolf in a forest clearing";
+  const { positive: p3 } = sealPortraitPrompt("anime", beast, "photo");
+  assert.doesNotMatch(p3, /wearing a plain dark shirt/i, "a beast subject gets no garment");
+});
+
 test("cross-ROUTE: the freeform edit path is a SEALED regenerate by default (kontext parallel path is off)", async () => {
   // Without NOTDND_ALLOW_UNSEALED_EDIT, editImage never routes to the kontext provider;
   // it regenerates through generateImage → the ONE sealed comfyui portrait path. In mock
