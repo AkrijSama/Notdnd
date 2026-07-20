@@ -1430,6 +1430,11 @@ export function updateNpcIdentity(runId, npcId, identity = {}) {
   if (typeof identity.pronouns === "string" && identity.pronouns.trim() && !(typeof npc.pronouns === "string" && npc.pronouns.trim())) {
     npc.pronouns = identity.pronouns.trim();
   }
+  // Declared build (mint default: varied) — set only when not already committed,
+  // same authority rule as gender/pronouns.
+  if (typeof identity.bodyType === "string" && identity.bodyType.trim() && !(typeof npc.bodyType === "string" && npc.bodyType.trim())) {
+    npc.bodyType = identity.bodyType.trim();
+  }
   if (Number.isFinite(Number(identity.identitySeed))) {
     npc.identitySeed = Number(identity.identitySeed);
   }

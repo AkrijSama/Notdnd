@@ -111,6 +111,7 @@ export function buildCharacter(choices = {}, options = {}) {
   return {
     name: choices.name ? String(choices.name) : null,
     pronouns: choices.pronouns ? String(choices.pronouns) : null,
+    bodyType: choices.bodyType ? String(choices.bodyType) : null,
     race: raceData?.name || (choices.race ? String(choices.race) : null),
     class: classData?.name || (choices.characterClass ? String(choices.characterClass) : null),
     background: backgroundData?.name || (choices.background ? String(choices.background) : null),
@@ -152,6 +153,11 @@ export function toRunPlayer(character, basePlayer = {}) {
   player.gender = (typeof character?.gender === "string" && character.gender.trim())
     ? character.gender.trim()
     : deriveGenderFromPronouns(character?.pronouns);
+  // Declared build (identity-as-state): explicit choice wins; else keep whatever the
+  // base run carried (createDefaultSoloRun's Average default), no pronoun derivation.
+  player.bodyType = (typeof character?.bodyType === "string" && character.bodyType.trim())
+    ? character.bodyType.trim()
+    : (player.bodyType || null);
   player.level = character?.level || player.level || 1;
   // Milestone truth (Ch7 delta Phase 1): creation levels ARE milestones under
   // the identity mapping; clamp to the chassis cap (vault input max is 20).

@@ -608,6 +608,10 @@ export function validatePlayerState(player) {
   // without it. The SOLE committed source of the portrait gender token + the
   // pronoun audit's expected gender.
   validateOptionalString(player.gender, "gender", errors);
+  // DECLARED BUILD / BODY TYPE (identity-as-state) — optional/additive; legacy runs
+  // validate without it. The SOLE committed source of the build token across every
+  // player-render lane (portrait/refine/fullbody/tailor).
+  validateOptionalString(player.bodyType, "bodyType", errors);
   validateOptionalString(player.portraitUri, "portraitUri", errors);
   validateOptionalNumber(player.proficiencyBonus, "proficiencyBonus", errors);
   if (player.status !== undefined && player.status !== null) {
@@ -861,6 +865,8 @@ export function validateNpc(npc) {
   // (imageWorker.groundNpcPortrait reads these). Nullable — legacy NPCs stay valid.
   validateOptionalString(npc.gender, "gender", errors);
   validateOptionalString(npc.pronouns, "pronouns", errors);
+  // Committed build (mint default: varied) — nullable; legacy NPCs stay valid.
+  validateOptionalString(npc.bodyType, "bodyType", errors);
   validateOptionalString(npc.portraitPrompt, "portraitPrompt", errors);
   validateOptionalNumber(npc.identitySeed, "identitySeed", errors);
   // Committed mannerism + voice spec (vn-dialogue-hardening law 2). Both
@@ -1763,6 +1769,10 @@ export function createDefaultSoloRun(options = {}) {
       // explicitly (he→male, she→female, they→nonbinary). Committed truth for the
       // portrait gender token + pronoun audit (identity-as-state, 2026-07-18).
       gender: isString(options.gender) ? options.gender : deriveGenderFromPronouns(isString(options.pronouns) ? options.pronouns : "he/him"),
+      // Declared build / body type (identity-as-state): required-with-default Average
+      // for new characters (Average renders NEUTRAL — no build token). Legacy runs
+      // load from disk without the field → also neutral. Set from the Identity step.
+      bodyType: isString(options.bodyType) ? options.bodyType : "average",
       // Milestone track (Ch7 delta Phase 1): milestone is server truth; level
       // is its computed display mirror (identity mapping until a world book
       // supplies a real one — they coincide by construction).

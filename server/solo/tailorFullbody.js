@@ -27,6 +27,7 @@ import {
 import { addAsset, libraryRoot } from "../../scripts/art/library.mjs";
 import { getSoloRun } from "../db/repository.js";
 import { getEquippedItems } from "./equipment.js";
+import { bodyTypePhrase } from "./imageWorker.js";
 
 const COMFY = process.env.COMFY_URL || "http://127.0.0.1:8188";
 const WORKFLOW_FILE = "fullbody-realistic-tailor.json";
@@ -93,6 +94,10 @@ export function resolveIdentityFragments(run) {
   const player = isPlainObject(run?.player) ? run.player : {};
   const fragments = [];
   fragments.push(personWordFromPronouns(player.pronouns));
+  // Declared build rides the fullbody tailor (unweighted prose fragment) so the
+  // sheet honors the committed body type, not the checkpoint's default figure.
+  const build = bodyTypePhrase(player, { weighted: false });
+  if (build) fragments.push(build);
   if (isNonEmptyString(player.race)) fragments.push(player.race.toLowerCase());
   // Base clothing — remains when no armor/attire item is equipped (brief: empty
   // slots contribute nothing, base clothing words remain).

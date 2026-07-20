@@ -3398,8 +3398,8 @@ async function handleApi(req, res) {
       // FIELD change, not token soup — return the resolved identity so the client
       // COMMITS it onto the character (every later gen/redo then carries it).
       const parsedIdentity = parseIdentityEdit(instruction);
-      const identity = (parsedIdentity.pronouns || parsedIdentity.ageClass)
-        ? { pronouns: parsedIdentity.pronouns, gender: parsedIdentity.gender, ageClass: parsedIdentity.ageClass }
+      const identity = (parsedIdentity.pronouns || parsedIdentity.ageClass || parsedIdentity.bodyType)
+        ? { pronouns: parsedIdentity.pronouns, gender: parsedIdentity.gender, ageClass: parsedIdentity.ageClass, bodyType: parsedIdentity.bodyType }
         : null;
       writeJson(res, 200, {
         ok: true,

@@ -462,6 +462,9 @@ function normalizePortraitCharacter(character = {}) {
     pronouns: isStr(character.pronouns) ? character.pronouns.trim() : null,
     gender: isStr(character.gender) ? character.gender.trim() : null,
     ageClass: isStr(character.ageClass) ? character.ageClass.trim() : null,
+    // Declared build (identity-as-state) — carried through so the build token reaches
+    // the weighted player prompt alongside gender/age.
+    bodyType: isStr(character.bodyType) ? character.bodyType.trim() : null,
     origin: isStr(character.origin) ? character.origin.trim() : null
   };
 }
@@ -490,6 +493,49 @@ function adultGenderPhrase(c = {}) {
   return noun ? `(${ageWord} ${noun}:1.3), ${anchor}` : `(${ageWord}:1.3), ${anchor}`;
 }
 
+// ── DECLARED BUILD / BODY TYPE (identity-as-state, parallel to gender) ───────
+// The declared bodyType field is the SOLE source of the build token — every
+// player-render path derives it from the field, never from freehand prompt soup.
+// "average" and legacy-unset both render NEUTRAL (no token: average IS the model's
+// default human build). The other classes emit a short weighted build descriptor;
+// a custom free-text value passes through (sanitized, weighting punctuation stripped).
+// The weight (1.2) sits BELOW the gender anchor (1.3) so the build colors the figure
+// without fighting the gender/quality register (the owner's cfg-3.5 JANKU laws).
+const BUILD_VOCAB = {
+  slim: "slender slim build",
+  average: "",
+  athletic: "athletic toned build",
+  muscular: "muscular build, broad shoulders",
+  heavyset: "heavyset build, stocky and broad"
+};
+// The build token for a committed field value: a canonical class → its per-lane
+// vocab (EXACT match — the 5 declared classes); average/unset → "" (neutral); any
+// other value is a CUSTOM free-text entry, passed through verbatim (weighting
+// punctuation stripped, " build" appended when it reads as a bare adjective). Custom
+// text is NOT synonym-normalized here — the refine parser + NPC mint already map
+// synonyms to a class, so a value reaching this point is either canonical or the
+// player's own words, which must survive.
+function buildToken(bodyType) {
+  const s = String(bodyType || "").trim().toLowerCase();
+  if (!s || s === "average") return "";
+  if (s in BUILD_VOCAB) return BUILD_VOCAB[s];
+  const clean = s.replace(/[()[\]:<>{}|]/g, "").replace(/\s{2,}/g, " ").trim();
+  if (!clean) return "";
+  return /(build|frame|physique|figure|body|stature)/.test(clean) ? clean : `${clean} build`;
+}
+// The declared build as a prompt fragment. weighted → for the player lanes (the
+// weighted-token discipline); bare → NPC/tailor prose. "" when neutral.
+export function bodyTypePhrase(c = {}, { weighted = false } = {}) {
+  const tok = buildToken(c?.bodyType);
+  if (!tok) return "";
+  return weighted ? `(${tok}:1.2)` : tok;
+}
+// Join a build fragment onto a base with a comma when present (keeps builders tidy).
+function withBuild(base, c, opts) {
+  const b = bodyTypePhrase(c, opts);
+  return b ? `${base}, ${b}` : base;
+}
+
 // ── IDENTITY-AS-STATE (2026-07-18 refine-inverts-gender fix) ─────────────────
 // A "refine" edit like "Male character" must not fight unweighted tail token-soup
 // (the old editImage `${prompt}, ${tweak}` merge). It UPDATES the committed
@@ -502,8 +548,16 @@ const ID_FEMALE_RE = /\b(female|woman|women|girl|feminine|lady|gal|she\/her|she|
 const ID_NB_RE = /\b(non-?binary|enby|androgynous|they\/them|gender-?neutral)\b/i;
 const ID_OLD_RE = /\b(old|older|elderly|aged|senior)\b/i;
 const ID_YOUNG_RE = /\b(young|younger|youthful)\b/i;
+// DECLARED BUILD detectors (refine → bodyType field). Precise build words only —
+// no bare "heavy/broad/large/round" (they collide with coat/smile/eyes/face). Checked
+// most-specific-first (average-build last) in parseIdentityEdit.
+const ID_BUILD_SLIM_RE = /\b(slim(mer)?|slender|thin(ner)?|lean(er)?|skinny|petite|willowy|lanky|waifish)\b/i;
+const ID_BUILD_ATHLETIC_RE = /\b(athletic|fit|toned|sporty|lithe|trim(mer)?)\b/i;
+const ID_BUILD_MUSCULAR_RE = /\b(muscular|muscley|buff(er)?|brawny|jacked|ripped|burly|beefy|bulkier|hulking)\b/i;
+const ID_BUILD_HEAVY_RE = /\b(heavy-?set|stockier?|chubby|plump|portly|thickset|husky|overweight|fat(ter)?|heavier)\b/i;
+const ID_BUILD_AVG_RE = /\b(average|normal|medium|ordinary)\s+(build|body|frame|physique)\b/i;
 // Identity words stripped from the freeform remainder once absorbed into a field.
-const ID_STRIP_RE = /\b(male|female|man|men|woman|women|boy|girl|masculine|feminine|masc|femme|guy|dude|gentleman|lady|gal|non-?binary|enby|androgynous|gender-?neutral|he\/him|she\/her|they\/them|\bhe\b|\bhim\b|\bshe\b|\bher\b|\bhers\b|old|older|elderly|aged|senior|young|younger|youthful|character|gender|make(?:\s+(?:the\s+)?(?:character|them|him|her|it))?|turn\s+(?:the\s+)?(?:character|them|him|her|it)?\s*into|a|an|the|into)\b/gi;
+const ID_STRIP_RE = /\b(male|female|man|men|woman|women|boy|girl|masculine|feminine|masc|femme|guy|dude|gentleman|lady|gal|non-?binary|enby|androgynous|gender-?neutral|he\/him|she\/her|they\/them|\bhe\b|\bhim\b|\bshe\b|\bher\b|\bhers\b|old|older|elderly|aged|senior|young|younger|youthful|slim(mer)?|slender|thin(ner)?|lean(er)?|skinny|petite|willowy|lanky|waifish|athletic|fit|toned|sporty|lithe|trim(mer)?|muscular|muscley|buff(er)?|brawny|jacked|ripped|burly|beefy|bulkier|hulking|heavy-?set|stockier?|chubby|plump|portly|thickset|husky|overweight|fat(ter)?|heavier|build|physique|body\s*type|character|gender|make(?:\s+(?:the\s+)?(?:character|them|him|her|it))?|turn\s+(?:the\s+)?(?:character|them|him|her|it)?\s*into|a|an|the|into)\b/gi;
 
 export function pronounsToGender(pronouns) {
   const s = String(pronouns || "").toLowerCase();
@@ -524,18 +578,27 @@ export function parseIdentityEdit(instruction) {
   let ageClass = null;
   if (ID_OLD_RE.test(t)) ageClass = "elderly";
   else if (ID_YOUNG_RE.test(t)) ageClass = "young-adult";
+  // DECLARED BUILD — a build-class word in the edit UPDATES the bodyType field
+  // (identity-as-state), most-specific-first so "average build" doesn't shadow a
+  // real class. average-build maps to "average" (the neutral default field value).
+  let bodyType = null;
+  if (ID_BUILD_AVG_RE.test(t)) bodyType = "average";
+  else if (ID_BUILD_MUSCULAR_RE.test(t)) bodyType = "muscular";
+  else if (ID_BUILD_HEAVY_RE.test(t)) bodyType = "heavyset";
+  else if (ID_BUILD_ATHLETIC_RE.test(t)) bodyType = "athletic";
+  else if (ID_BUILD_SLIM_RE.test(t)) bodyType = "slim";
   let freeform = raw;
-  if (pronouns || ageClass) {
+  if (pronouns || ageClass || bodyType) {
     freeform = raw.replace(ID_STRIP_RE, " ").replace(/[\s,]{2,}/g, " ").replace(/^[\s,]+|[\s,]+$/g, "").trim();
   }
-  return { pronouns, gender: pronouns ? pronounsToGender(pronouns) : null, ageClass, freeform };
+  return { pronouns, gender: pronouns ? pronounsToGender(pronouns) : null, ageClass, bodyType, freeform };
 }
 
 // Apply the parsed identity to a character, returning the updated character (state),
 // the freeform remainder, and whether any identity field changed.
 export function applyIdentityEdit(character = {}, instruction = "") {
   const parsed = parseIdentityEdit(instruction);
-  const changed = Boolean(parsed.pronouns || parsed.ageClass);
+  const changed = Boolean(parsed.pronouns || parsed.ageClass || parsed.bodyType);
   const updated = { ...character };
   if (parsed.pronouns) {
     updated.pronouns = parsed.pronouns;
@@ -544,7 +607,10 @@ export function applyIdentityEdit(character = {}, instruction = "") {
   if (parsed.ageClass) {
     updated.ageClass = parsed.ageClass;
   }
-  return { character: updated, freeform: parsed.freeform, changed, identity: { pronouns: updated.pronouns || null, gender: updated.gender || null, ageClass: updated.ageClass || null } };
+  if (parsed.bodyType) {
+    updated.bodyType = parsed.bodyType;
+  }
+  return { character: updated, freeform: parsed.freeform, changed, identity: { pronouns: updated.pronouns || null, gender: updated.gender || null, ageClass: updated.ageClass || null, bodyType: updated.bodyType || null } };
 }
 
 // Canon player identity: the Babel authored origin "The Beckoned" is a modern-day
@@ -641,7 +707,7 @@ export function buildPlayerPortraitPrompt(character = {}, world = {}) {
         .filter(Boolean)
         .join(" ") || subjectPhrase;
     return (
-      `character portrait of ${beckonedSubject}, ${adultGenderPhrase(c)}, a modern-day person newly pulled into a ${tone} world, ` +
+      `character portrait of ${beckonedSubject}, ${withBuild(adultGenderPhrase(c), c, { weighted: true })}, a modern-day person newly pulled into a ${tone} world, ` +
       `${artStyleDirection(engineStyle, "player")}, ${emphasis}`
     );
   }
@@ -667,7 +733,7 @@ export function buildPlayerPortraitPrompt(character = {}, world = {}) {
   const earEmphasis = !POINTED_EAR_RACES.has(raceKey)
     ? ", with naturally rounded human ears and a natural human face"
     : "";
-  return `character portrait of ${subject}, ${adultGenderPhrase(c)}, ${tone}, ${artStyleDirection(engineStyle, "player")}${earEmphasis}`;
+  return `character portrait of ${subject}, ${withBuild(adultGenderPhrase(c), c, { weighted: true })}, ${tone}, ${artStyleDirection(engineStyle, "player")}${earEmphasis}`;
 }
 
 // Deterministic seed from name+race+class+artStyle so identical core choices
@@ -773,8 +839,11 @@ export function npcGroundingClause(npc) {
   } else if (/non-?binary|enby|androgynous|they/.test(gender) || /\b(they|them)\b/.test(pronouns)) {
     genderWord = "an androgynous person";
   }
+  // Declared build rides too (NPC bodyType, unweighted prose) so committed cast
+  // shape is honored — a "heavyset" reeve isn't re-rolled slim by the checkpoint prior.
+  const build = bodyTypePhrase(npc, { weighted: false });
   const description = String(npc.description || npc.appearance || "").trim();
-  return [genderWord, description].filter(Boolean).join(", ");
+  return [genderWord, build, description].filter(Boolean).join(", ");
 }
 
 export async function runImageJob(job = {}) {

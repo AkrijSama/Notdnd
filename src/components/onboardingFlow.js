@@ -401,6 +401,24 @@ function renderCharIdentity(c, portrait = {}) {
           ${isCustom ? `<input data-cw-input="pronouns" maxlength="30" placeholder="xe/xem" value="${esc(c.pronouns || "")}" />` : ""}
         </div>`;
         })()}
+        ${(() => {
+          // Declared BUILD / body type: a REQUIRED choice, defaults to Average
+          // (Average renders NEUTRAL — no build token). Committed on the character
+          // record; the SOLE source of the build token across every render lane,
+          // and settable later from the character tab (identity-as-state).
+          const presets = ["slim", "average", "athletic", "muscular", "heavyset"];
+          const bt = (c.bodyType || "average").toLowerCase();
+          const isCustom = c.bodyTypeMode === "custom" || (Boolean(c.bodyType) && !presets.includes(bt));
+          return `<div class="onb-field"><label>Build</label>
+          <div class="onb-chips">
+            ${[["slim", "Slim"], ["average", "Average"], ["athletic", "Athletic"], ["muscular", "Muscular"], ["heavyset", "Heavyset"]]
+              .map(([v, l]) => renderChip(l, !isCustom && bt === v, `data-cw-bodytype="${v}"`))
+              .join("")}
+            ${renderChip("Custom", isCustom, 'data-cw-bodytype="custom"')}
+          </div>
+          ${isCustom ? `<input data-cw-input="bodyType" maxlength="40" placeholder="e.g. lean and wiry" value="${esc(c.bodyType || "")}" />` : ""}
+        </div>`;
+        })()}
         <div class="onb-field"><label>Portrait</label>
           <div class="onb-chips">
             ${renderChip("Let the GM imagine them", mode === "generate", 'data-cw-portraitmode="generate"')}
@@ -969,6 +987,9 @@ export function bindOnboardingFlow(root, handlers = {}) {
   });
   root.querySelectorAll("[data-cw-pronouns]").forEach((button) => {
     button.addEventListener("click", () => handlers.onCharPronouns?.(button.getAttribute("data-cw-pronouns")));
+  });
+  root.querySelectorAll("[data-cw-bodytype]").forEach((button) => {
+    button.addEventListener("click", () => handlers.onCharBodyType?.(button.getAttribute("data-cw-bodytype")));
   });
   // Upload-my-own portrait: hand the chosen File to the app (validation +
   // upload live in main.js so errors surface in the preview state).

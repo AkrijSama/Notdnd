@@ -399,6 +399,9 @@ export async function createOnboardingCampaign(userId, characterInfo = {}) {
     // matches the written character (else the base model defaults male).
     if (typeof identity.gender === "string" && identity.gender.trim()) npc.gender = identity.gender.trim();
     if (typeof identity.pronouns === "string" && identity.pronouns.trim()) npc.pronouns = identity.pronouns.trim();
+    // Declared build (mint default: varied) so the starting cast carries mixed
+    // committed shapes instead of the checkpoint's uniform default figure.
+    if (typeof identity.bodyType === "string" && identity.bodyType.trim()) npc.bodyType = identity.bodyType.trim();
     // Bridge the NPC into the campaign memory graph (synchronous write).
     const docId = writeNpcMemoryDoc(campaignId, npc);
     if (docId) {
@@ -764,6 +767,7 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
     // matches the written character (else the base model defaults male).
     if (typeof identity.gender === "string" && identity.gender.trim()) npc.gender = identity.gender.trim();
     if (typeof identity.pronouns === "string" && identity.pronouns.trim()) npc.pronouns = identity.pronouns.trim();
+    if (typeof identity.bodyType === "string" && identity.bodyType.trim()) npc.bodyType = identity.bodyType.trim();
     const docId = writeNpcMemoryDoc(campaignId, npc);
     if (docId) {
       npc.memoryDocId = docId;

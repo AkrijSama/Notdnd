@@ -640,6 +640,10 @@ function defaultCharacterState() {
     pronouns: "he/him",
     gender: "male",
     pronounsMode: "preset",
+    // Declared build / body type (identity-as-state): a REQUIRED choice, defaults to
+    // Average (Average renders neutral — no build token). Independent of pronouns.
+    bodyType: "average",
+    bodyTypeMode: "preset",
     portraitMode: "generate",
     race: "",
     characterClass: "",
@@ -868,6 +872,16 @@ function setPronouns(value) {
   const pronouns = custom ? "" : String(value || "");
   const gender = /\b(she|her)\b/i.test(pronouns) ? "female" : /\b(they|them)\b/i.test(pronouns) ? "nonbinary" : /\b(he|him)\b/i.test(pronouns) ? "male" : null;
   uiState.onboarding.character = { ...(uiState.onboarding.character || defaultCharacterState()), pronouns, gender, pronounsMode: custom ? "custom" : "preset" };
+  scheduleDraftPortrait();
+  scheduleRender();
+}
+
+// Declared build / body type (identity-as-state): commits the chosen build class.
+// "custom" opens a free-text field. No gender derivation — build is independent.
+function setBodyType(value) {
+  const custom = value === "custom";
+  const bodyType = custom ? "" : String(value || "");
+  uiState.onboarding.character = { ...(uiState.onboarding.character || defaultCharacterState()), bodyType, bodyTypeMode: custom ? "custom" : "preset" };
   scheduleDraftPortrait();
   scheduleRender();
 }
@@ -1147,7 +1161,7 @@ async function submitPortraitEdit(rawInstruction) {
   scheduleRender();
   try {
     const res = await apiClient.editDraftPortrait({
-      character: { name: c.name, race: c.race, characterClass: c.characterClass, background: c.background, pronouns: c.pronouns, gender: c.gender, origin: c.origin },
+      character: { name: c.name, race: c.race, characterClass: c.characterClass, background: c.background, pronouns: c.pronouns, gender: c.gender, bodyType: c.bodyType, origin: c.origin },
       world: { tone: world.tone, artStyle: world.artStyle, name: world.name },
       instruction,
       sourceImageUrl: sourceUri,
@@ -1166,6 +1180,18 @@ async function submitPortraitEdit(rawInstruction) {
       return;
     }
     if (res?.draftId) {
+      // IDENTITY-AS-STATE: a refine that changed a declared field (pronouns/gender/
+      // build) comes back parsed in res.identity — persist it onto the committed
+      // character so the field, not an unweighted prompt tail, holds the change.
+      if (res.identity && typeof res.identity === "object") {
+        const patch = {};
+        if (res.identity.pronouns) patch.pronouns = res.identity.pronouns;
+        if (res.identity.gender) patch.gender = res.identity.gender;
+        if (res.identity.bodyType) patch.bodyType = res.identity.bodyType;
+        if (Object.keys(patch).length) {
+          uiState.onboarding.character = { ...(uiState.onboarding.character || defaultCharacterState()), ...patch };
+        }
+      }
       uiState.onboarding.portraitConsistentEdit = res.consistentEdit === true;
       uiState.onboarding.portraitEditDraft = "";
       uiState.onboarding.draftPortraitId = res.draftId;
@@ -1300,6 +1326,7 @@ async function enterWorld() {
         name: c.name,
         pronouns: c.pronouns,
         gender: c.gender,
+        bodyType: c.bodyType,
         race: c.race,
         characterClass: c.characterClass,
         background: c.background,
@@ -1940,6 +1967,7 @@ function renderApp() {
         onCharStep: charStep,
         onCharField: charField,
         onCharPronouns: setPronouns,
+        onCharBodyType: setBodyType,
         onCharInput: charInput,
         onPortraitRedo: redoDraftPortrait,
         onPortraitFile: handlePortraitFile,

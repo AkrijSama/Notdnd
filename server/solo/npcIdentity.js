@@ -25,6 +25,10 @@ const FALLBACK_NAMES = [
   "Renn", "Hale", "Sable", "Corwin", "Dru", "Esk", "Fenn", "Yarrow"
 ];
 const FALLBACK_BUILDS = ["lean", "broad-shouldered", "wiry", "stocky", "tall", "weathered"];
+// Declared BODY TYPE pool for minted cast (mint default: VARIED — picked by the
+// identitySeed so the roster isn't uniform checkpoint-prior soup). Canonical classes
+// only, so the field round-trips through the same build vocab the player uses.
+const FALLBACK_BODYTYPES = ["average", "athletic", "slim", "muscular", "heavyset", "average"];
 const FALLBACK_MARKS = [
   "a jagged scar across one brow", "tired, watchful eyes", "a close-cropped beard",
   "a shaved head and a faded tattoo", "greying hair tied back", "a missing earlobe"
@@ -73,12 +77,27 @@ function buildIdentityPrompt(role, identitySeed) {
     `Role: ${role}.`,
     `Variation key: ${identitySeed} (use it to vary the result; do not output it).`,
     `Return ONLY compact JSON with exactly these keys and no prose:`,
-    `{"generatedName": string, "gender": string, "appearance": string, "personality": string}`,
+    `{"generatedName": string, "gender": string, "bodyType": string, "appearance": string, "personality": string}`,
     `- generatedName: a single evocative first name, no title.`,
     `- gender: exactly one of "male", "female", or "non-binary".`,
-    `- appearance: one sentence of physical description suitable for a portrait, consistent with the gender.`,
+    `- bodyType: exactly one of "slim", "average", "athletic", "muscular", or "heavyset".`,
+    `- appearance: one sentence of physical description suitable for a portrait, consistent with the gender and bodyType.`,
     `- personality: one sentence of behavioral traits for the game master.`
   ].join("\n");
+}
+
+// Normalize a free-form body-type string to a canonical class, or "" when nothing
+// signals it (→ the deterministic varied fallback fills it). Mirrors the player-side
+// build classes so the minted field round-trips through the shared build vocab.
+function normalizeBodyType(value) {
+  const s = String(value || "").trim().toLowerCase();
+  if (!s) return "";
+  if (/\b(slim|slender|thin|lean|skinny|petite|willowy|lanky|wiry)\b/.test(s)) return "slim";
+  if (/\b(athletic|fit|toned|sporty|lithe|trim)\b/.test(s)) return "athletic";
+  if (/\b(muscular|buff|brawny|jacked|ripped|burly|beefy|hulking)\b/.test(s)) return "muscular";
+  if (/\b(heavy-?set|heavy|stocky|chubby|plump|portly|thickset|husky|broad-shouldered|broad)\b/.test(s)) return "heavyset";
+  if (/\b(average|normal|medium|ordinary|regular)\b/.test(s)) return "average";
+  return "";
 }
 
 // #50: normalize a free-form gender string, and infer gender from descriptive text
@@ -365,12 +384,15 @@ export function ensureUniqueFirstName(name, takenNames = [], identitySeed = 0) {
   return `${candidate} the Younger`;
 }
 
-function assemblePortraitPrompt(name, role, appearance, gender = "") {
+function assemblePortraitPrompt(name, role, appearance, gender = "", bodyType = "") {
   // #50: name the gender FIRST so the base model renders the right figure (the
   // Mara-rendered-male bug) instead of defaulting to a male portrait.
   const genderWord =
     gender === "female" ? "a woman, " : gender === "male" ? "a man, " : gender === "non-binary" ? "an androgynous person, " : "";
-  return `portrait of ${name}, ${genderWord}a ${String(role).toLowerCase()}, ${appearance}, dark fantasy, detailed`;
+  // Declared build rides after gender (unweighted prose) so the committed shape holds.
+  const cls = normalizeBodyType(bodyType);
+  const buildWord = (cls && cls !== "average") ? `${cls} build, ` : "";
+  return `portrait of ${name}, ${genderWord}${buildWord}a ${String(role).toLowerCase()}, ${appearance}, dark fantasy, detailed`;
 }
 
 // Builds a complete, non-null identity. User-provided fields (`existing`) are
@@ -406,11 +428,17 @@ function synthesizeIdentity(parsed, role, identitySeed, existing = {}, takenName
     // last resort: keep name and gender coherent (the he/him-Mara mint bug)
     genderHintFromName(generatedName);
   const pronouns = isString(existing.pronouns) ? existing.pronouns.trim() : pronounsForGender(gender);
+  // Declared BODY TYPE — user-set wins, then the model's, else a deterministic
+  // VARIED pick (so the roster carries mixed builds, not a uniform default). A
+  // canonical class the shared build vocab understands.
+  const bodyType = isString(existing.bodyType)
+    ? (normalizeBodyType(existing.bodyType) || existing.bodyType.trim())
+    : (normalizeBodyType(parsed?.bodyType) || pick(FALLBACK_BODYTYPES, identitySeed, 4));
   // A user-set portraitPrompt wins; otherwise (re)assemble from the final
-  // name + gender + appearance so the portrait matches the committed character.
+  // name + gender + build + appearance so the portrait matches the committed character.
   const portraitPrompt = isString(existing.portraitPrompt)
     ? existing.portraitPrompt.trim()
-    : assemblePortraitPrompt(generatedName, safeRole, appearance, gender);
+    : assemblePortraitPrompt(generatedName, safeRole, appearance, gender, bodyType);
   // Committed mannerism (spit-ban vacuum fill): a user-set value wins; otherwise
   // draw from the CURATED pool (never the model's free text, which is the source
   // of the stock "spits to the side"), unique across the run roster.
@@ -420,7 +448,7 @@ function synthesizeIdentity(parsed, role, identitySeed, existing = {}, takenName
   // Committed voice spec (vn-dialogue-hardening law 2): user-set wins; otherwise
   // deterministic from the identitySeed — same lifecycle as the mannerism.
   const voice = normalizeVoiceSpec(existing.voice) || pickVoiceSpec(identitySeed);
-  return { generatedName, gender, pronouns, appearance, personality, portraitPrompt, mannerism, voice };
+  return { generatedName, gender, pronouns, bodyType, appearance, personality, portraitPrompt, mannerism, voice };
 }
 
 /**
