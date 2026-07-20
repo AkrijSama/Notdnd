@@ -113,7 +113,16 @@ let processing = false;
 // ~90 min). Fix: a per-job TIMEOUT so a hang can't pin the drain, a WATCHDOG that
 // reclaims a wedged drain, and a loud health flag in /api/debug/status so a dead
 // worker can never again masquerade as a cache issue.
-const JOB_TIMEOUT_MS = 180_000; // a single image job may not exceed this
+// NOVRAM REALITY (2026-07-20): ComfyUI runs `--novram` on an 8GB card shared with the
+// display (and, in the owner's failing window, a running game) — the SDXL UNet is fully
+// offloaded to CPU RAM and streamed, so a single render is 84–153s and a COLD-LOAD first
+// render (fresh checkpoint from disk) plus model-load thrash can approach ~3min. The old
+// 180s ceiling was demonstrably too tight for a DF/nihilmania cold render and turned a
+// slow-but-succeeding job into a false timeout. Env-tunable; default raised with margin.
+const JOB_TIMEOUT_MS = Math.max(
+  60_000,
+  Number(process.env.INKBORNE_IMAGE_JOB_TIMEOUT_MS ?? process.env.NOTDND_IMAGE_JOB_TIMEOUT_MS) || 300_000
+);
 const WEDGE_MS = JOB_TIMEOUT_MS + 30_000; // draining longer ⇒ declared wedged
 let drainStartedAt = 0; // epoch ms the CURRENT job started (0 = idle)
 let lastJobAt = 0; // epoch ms the last job settled

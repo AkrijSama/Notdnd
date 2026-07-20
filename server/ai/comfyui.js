@@ -323,6 +323,41 @@ const PORTRAIT_NEGATIVE_LAW =
 // AGE LAW (negation half): keep the young default off adult subjects.
 const AGE_NEGATIVE_LAW = "child, kid, teenager, teen, young, youthful, baby face, chibi";
 
+// ── LANE-INVARIANT IDENTITY LAW (owner ruling 2026-07-20) ────────────────────
+// A declared HUMAN character must carry the same identity protection in EVERY style
+// lane, not only anime. The weighted identity block ((adult man:1.3), human, rounded
+// ears) already rides the POSITIVE from the ONE builder (buildPlayerPortraitPrompt);
+// these are the matching NEGATIVES, previously applied only on the anime lane, now
+// asserted lane-invariantly so nihilmania (illustrated/dark-fantasy) and Juggernaut
+// (cinematic/realistic) get them too.
+//
+// HUMAN-SUBJECT MONSTER BAN: a grimdark SDXL checkpoint (nihilmania / DF-family)
+// collapses a declared human into a skull/undead/demon prior — the owner's fresh run
+// rendered a red-eyed horned SKULL DEMON from a declared human adult male. Suppress it
+// in the negative. Human-GATED twice over: fires only for a human/person subject AND
+// never when the subject DECLARES a monstrous/demonic nature (tiefling, demon, undead,
+// dragonborn, horns, tail, beast) — a committed non-human keeps its nature.
+const HUMAN_SUBJECT_MONSTER_NEGATIVE =
+  "(skull:1.4), (skull face:1.4), skull head, fleshless face, (skeleton:1.3), undead, lich, zombie, ghoul, wraith, corpse, rotting flesh, exposed bone, (monster:1.2), (creature:1.2), demonic monster, (skull mask:1.3), skull helmet, full-face helmet, face-covering mask, empty eye sockets, hollow glowing eyes";
+export function humanSubjectMonsterNegativeFor(positive) {
+  const p = String(positive || "").toLowerCase();
+  // Only a human/person subject has a human face to protect (same gate as elfDefenseFor).
+  if (!/(human|person|rounded ears|rounded human)/.test(p)) return "";
+  // A subject that DECLARES a monstrous/demonic/nonhuman nature keeps it — never fight
+  // the committed identity (the demon-essence MC still renders human unless declared).
+  if (/\b(demon|demonic|tiefling|undead|skeleton|lich|dragonborn|orc|monstrous|horns?|tail|beast|creature|skull)\b/.test(p)) return "";
+  return HUMAN_SUBJECT_MONSTER_NEGATIVE;
+}
+
+// PORTRAIT STYLE-COLLAPSE BAN (the "mustard" signature): a character portrait must not
+// render as a western-comic bust floating on a flat bright-color field — the pre-kitchen
+// output the owner's redo produced (yellow monochrome, comic line art, disembodied bust).
+// The anime negativeBase already bans this class; assert it lane-invariantly for every
+// character portrait so a non-anime lane (which had NO negative against it) can't drift
+// there. NOT applied to the anime lane (it is legitimately cel/flat).
+const PORTRAIT_STYLE_COLLAPSE_NEGATIVE =
+  "western comic, comic book, comic book cover, pop art, (yellow background:1.2), (gold background:1.2), (orange background:1.1), bright flat color background, single-color flat field, floating head, disembodied bust, headshot cut-out, sticker art";
+
 let _animeBlock = null;
 function animeBlock() {
   if (_animeBlock) return _animeBlock;
@@ -397,8 +432,16 @@ export function sealPortraitPrompt(styleKey, positive, presetNegative) {
   // committed person renders while stray humans stay banned.
   const humanoidScene = !isChar && HUMANOID_SUBJECT_RE.test(pos0);
   const sceneGuard = isChar ? "" : joinCsv([SCENE_FRAMING_NEGATIVE, humanoidScene ? "" : SCENE_HUMAN_NEGATIVE]);
+  // LANE-INVARIANT character laws: the portrait/age/monster/style-collapse negatives
+  // that previously lived ONLY on the anime lane. A character in ANY lane now gets the
+  // sheet/age laws + the human-gated monster ban; a non-anime character portrait also
+  // gets the style-collapse ban (the anime lane owns that in its negativeBase).
+  const monsterBan = isChar ? humanSubjectMonsterNegativeFor(pos0) : "";
   if (styleKey !== "anime") {
-    return { positive: pos0, negative: joinCsv([presetNegative, elf, genderLock, sceneGuard]) };
+    const charLaws = isChar
+      ? joinCsv([PORTRAIT_NEGATIVE_LAW, AGE_NEGATIVE_LAW, PORTRAIT_STYLE_COLLAPSE_NEGATIVE])
+      : "";
+    return { positive: pos0, negative: joinCsv([presetNegative, charLaws, monsterBan, elf, genderLock, sceneGuard]) };
   }
   const block = animeBlock();
   // Quality vocab LEADS (JANKU responds to it front-loaded), then the palette/light
@@ -432,6 +475,7 @@ export function sealPortraitPrompt(styleKey, positive, presetNegative) {
     isChar ? PORTRAIT_NEGATIVE_LAW : "",
     isChar ? AGE_NEGATIVE_LAW : "",
     isHuman ? block.humanNegative : "",
+    monsterBan,
     elf,
     genderLock,
     sceneGuard
@@ -613,7 +657,10 @@ function sleep(ms) {
 export async function comfyuiImage({ prompt, style, kind, seed, width, height, referenceImageUrl = null, fetchImpl = fetch } = {}) {
   const base = comfyuiBaseUrl();
   const connectTimeoutMs = Math.max(500, Number(env("COMFYUI_CONNECT_TIMEOUT_MS", "5000")) || 5000);
-  const totalTimeoutMs = Math.max(5000, Number(env("COMFYUI_TIMEOUT_MS", "120000")) || 120000);
+  // NOVRAM cold-load renders reach ~153s (see imageWorker JOB_TIMEOUT_MS note); the old
+  // 120s HTTP deadline aborted a slow-but-succeeding DF/nihilmania render as a false
+  // timeout. Raised with margin (still well under the outer job watchdog). Env-tunable.
+  const totalTimeoutMs = Math.max(5000, Number(env("COMFYUI_TIMEOUT_MS", "240000")) || 240000);
 
   // GAP 1: prefer the validated per-lane recipe (or the face-ref tailor for a
   // fullbody with a committed portrait). Fall back to the generic style workflow

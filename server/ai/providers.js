@@ -599,9 +599,18 @@ export async function editImage({
 } = {}) {
   const key = pollinationsEditKey();
   const hasSource = typeof sourceImageUrl === "string" && sourceImageUrl.trim().length > 0;
-  // Mock mode never hits the network: it always uses the regenerate fallback so
-  // tests stay deterministic and offline.
-  if (key && hasSource && !mock) {
+  // LANE-INVARIANCE (owner ruling 2026-07-20): kontext image-to-image is a PARALLEL
+  // provider — it renders a DIFFERENT model from the source image and cannot carry the
+  // sealed builder + the validated per-lane recipe (checkpoint/negatives). It produced
+  // pre-kitchen output the validated recipe forbids (the "mustard" western-comic bust).
+  // It is now OFF unless explicitly opted in (NOTDND_ALLOW_UNSEALED_EDIT=true); the
+  // default edit path is a SEALED regenerate through the ONE portrait path
+  // (generateImage → comfyui recipe), which preserves identity via the rebuilt-from-
+  // state weighted prompt. Mock mode also never hits the network.
+  const allowUnsealedEdit =
+    String(process.env.INKBORNE_ALLOW_UNSEALED_EDIT ?? process.env.NOTDND_ALLOW_UNSEALED_EDIT ?? "")
+      .trim().toLowerCase() === "true";
+  if (allowUnsealedEdit && key && hasSource && !mock) {
     try {
       return await pollinationsEdit({ sourceImageUrl, instruction, seed, fetchImpl, width, height, key });
     } catch {

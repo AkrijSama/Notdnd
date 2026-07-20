@@ -12,7 +12,9 @@ const ENV_KEYS = [
   "INKBORNE_MOCK_IMAGE",
   "NOTDND_MOCK_IMAGE",
   "INKBORNE_IMAGE_PROVIDER",
-  "NOTDND_IMAGE_PROVIDER"
+  "NOTDND_IMAGE_PROVIDER",
+  "INKBORNE_ALLOW_UNSEALED_EDIT",
+  "NOTDND_ALLOW_UNSEALED_EDIT"
 ];
 function snapshotEnv() {
   const s = {};
@@ -108,11 +110,15 @@ test("editImage regenerate-fallback folds the tweak into the regenerated prompt"
   }
 });
 
-test("editImage uses the kontext edit endpoint when a key + source image are present (edited=true)", async () => {
+// LANE-INVARIANCE (2026-07-20): kontext is a PARALLEL provider that bypasses the sealed
+// builder + validated recipe (it produced the pre-kitchen "mustard" bust), so it is now
+// OFF unless NOTDND_ALLOW_UNSEALED_EDIT=true. Under the explicit opt-in it still works.
+test("editImage uses the kontext edit endpoint ONLY under the unsealed-edit opt-in (edited=true)", async () => {
   const snap = snapshotEnv();
   try {
     clearKey();
     process.env.NOTDND_POLLINATIONS_KEY = "pollen_test";
+    process.env.NOTDND_ALLOW_UNSEALED_EDIT = "true";
     const calls = [];
     const fetchImpl = async (url, opts) => {
       calls.push({ url: String(url), opts: opts || {} });
@@ -137,11 +143,42 @@ test("editImage uses the kontext edit endpoint when a key + source image are pre
   }
 });
 
+test("editImage does NOT use kontext when the opt-in is absent, even with a key + source (sealed regenerate)", async () => {
+  const snap = snapshotEnv();
+  try {
+    clearKey();
+    process.env.NOTDND_POLLINATIONS_KEY = "pollen_test";
+    process.env.NOTDND_IMAGE_PROVIDER = "pollinations";
+    delete process.env.NOTDND_ALLOW_UNSEALED_EDIT; // the default
+    delete process.env.NOTDND_MOCK_IMAGE;
+    delete process.env.INKBORNE_MOCK_IMAGE;
+    const calls = [];
+    const fetchImpl = async (url, opts) => {
+      calls.push({ url: String(url), opts: opts || {} });
+      return pngResponse();
+    };
+    const result = await editImage({
+      sourceImageUrl: "https://host/base.png",
+      instruction: "give a scar",
+      prompt: "human warrior portrait",
+      fetchImpl,
+      mock: false
+    });
+    // The parallel path is off: the sole call is the txt2img regenerate, never kontext.
+    assert.equal(result.edited, false, "default edit is a sealed regenerate, not kontext");
+    assert.equal(calls.length, 1, "one call: the regenerate provider (no kontext attempt)");
+    assert.doesNotMatch(calls[0].url, /model=kontext/, "kontext endpoint must not be reached by default");
+  } finally {
+    restoreEnv(snap);
+  }
+});
+
 test("editImage degrades to regenerate when the edit endpoint errors (e.g. 401)", async () => {
   const snap = snapshotEnv();
   try {
     clearKey();
     process.env.NOTDND_POLLINATIONS_KEY = "pollen_test";
+    process.env.NOTDND_ALLOW_UNSEALED_EDIT = "true";
     process.env.NOTDND_IMAGE_PROVIDER = "pollinations";
     delete process.env.NOTDND_MOCK_IMAGE;
     delete process.env.INKBORNE_MOCK_IMAGE;
