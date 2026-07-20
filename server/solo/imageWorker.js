@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { editImage, generateImage } from "../ai/providers.js";
-import { engineStyleForRun, styleForRun, hasCommittedArtStyle } from "./artStyle.js";
+import { engineStyleForRun, styleForRun, hasCommittedArtStyle, ART_RECIPE_VERSION } from "./artStyle.js";
 import { deriveWeather, deriveClock } from "./worldClock.js";
 import { detectImageExt } from "../api/http.js";
 import { addAsset, libraryRoot } from "../../scripts/art/library.mjs";
@@ -790,7 +790,12 @@ export function computeDraftPortraitId(character = {}, nonce = 0, world = {}, ed
   // image, so it joins the cache namespace — two different tweaks at the same
   // nonce must not collide on one draftId.
   const edit = String(editTag || "").trim().toLowerCase();
-  const base = `${c.name || ""}|${c.race || ""}|${c.characterClass || ""}|${c.background || ""}|${c.pronouns || ""}|${style}|${tone}${edit ? `|e:${edit}` : ""}`;
+  // RECIPE VERSION (cache hygiene, 2026-07-20): the sealed-prompt/blocks/export epoch is
+  // part of the produced image, so it MUST be part of the cache namespace. Without it, a
+  // new character whose base params hash to a PRE-SEAL id re-serves the stale cached file
+  // (the owner's Jul-18 "mustard bust" collision). Folding ART_RECIPE_VERSION in makes all
+  // pre-bump cache unreachable by construction — bump the version, never archaeology.
+  const base = `rv:${ART_RECIPE_VERSION}|${c.name || ""}|${c.race || ""}|${c.characterClass || ""}|${c.background || ""}|${c.pronouns || ""}|${style}|${tone}${edit ? `|e:${edit}` : ""}`;
   // A redo nonce (>0) yields a fresh namespace so the disk cache is bypassed and
   // a NEW image is generated. nonce 0 keeps a stable id for a given combo, so
   // first-generation and carry-forward behaviour are unchanged.
@@ -1220,6 +1225,13 @@ export async function runDraftPortraitJob(job = {}) {
     return { ok: true, uri };
   } catch (error) {
     const reason = classifyImageFailure(error);
+    // ASSET LIFECYCLE LAW (owner 2026-07-20): a failed job is GARBAGE — destroy any
+    // partial output on the spot (file + dir), never retain-with-a-flag. The in-memory
+    // status carries the classified reason for the card; the disk keeps nothing.
+    try {
+      const dir = path.join(assetsRoot(), String(draftId));
+      if (fs.existsSync(dir)) fs.rmSync(dir, { recursive: true, force: true });
+    } catch { /* best-effort cleanup — never mask the real failure */ }
     draftPortraits.set(draftId, { status: "failed", uri: null, reason });
     logWorker(`draft portrait failed for ${draftId}`, error);
     return { ok: false, reason };

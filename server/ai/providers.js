@@ -707,6 +707,11 @@ async function cloudflareImage({ prompt, seed, width, height, fetchImpl }) {
 // throws, the asset stays "failed", and the scene poll retries it later.
 const IMAGE_PROVIDER_PRIORITY = ["cloudflare"];
 
+// SEALED-OR-NOTHING kinds (owner law 2026-07-20): identity/scene surfaces whose prompt
+// is sealed in comfyui and cannot be reproduced by a fallback provider. generateImage
+// drops the failover chain for these — sealed provider only, else a classified failure.
+export const SEALED_ONLY_KINDS = new Set(["portrait", "fullbody", "scene"]);
+
 // Exported for the fallback-policy test: the AUTOMATIC failover order. Pollinations
 // must never appear here — it runs only as an explicit primary (opt-in).
 export function imageFailoverPriority() {
@@ -825,9 +830,18 @@ export async function generateImage({
     return mockResult;
   }
 
+  // SEALED-OR-NOTHING (owner law 2026-07-20): character/scene kinds carry the sealed
+  // identity/lane prompt (comfyui.sealPortraitPrompt) that the fallback providers
+  // (cloudflare/pollinations) CANNOT reproduce — a fallback would serve UNSEALED junk
+  // (the A6 gap). For these kinds the failover priority list is dropped: the chain is the
+  // sealed primary ONLY, and its failure surfaces as a classified error the caller shows
+  // the player — never an unsealed image. Non-identity surfaces (item/world-card/
+  // landscape) keep failover. Provider policy is now part of the seal.
+  const sealedOnly = SEALED_ONLY_KINDS.has(String(kind || "").trim().toLowerCase());
+  const failoverList = sealedOnly ? [] : (Array.isArray(providerPriority) ? providerPriority : []);
   // Build the failover chain: primary first, then the priority list, deduped.
   const chain = [];
-  for (const candidate of [primary, ...(Array.isArray(providerPriority) ? providerPriority : [])]) {
+  for (const candidate of [primary, ...failoverList]) {
     const key = String(candidate || "").trim().toLowerCase();
     if (key && !chain.includes(key)) {
       chain.push(key);

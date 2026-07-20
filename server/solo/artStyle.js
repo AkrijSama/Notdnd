@@ -36,6 +36,14 @@ export const ENGINE_STYLES = Object.freeze(["illustrated", "anime", "cinematic"]
 export const STYLES = Object.freeze(["anime", "dark-fantasy", "realistic"]);
 export const LIBRARY_STYLES = STYLES;
 
+// ART RECIPE VERSION — the cache-key epoch. BUMP this on ANY change to the sealed
+// prompt (comfyui.sealPortraitPrompt), the prompt blocks (scripts/art/prompts/blocks/*),
+// or the validated exports (scripts/art/workflows/*). It is folded into the draft cache
+// id (computeDraftPortraitId), so a bump makes EVERY pre-bump cached draft UNREACHABLE by
+// construction: a colliding deterministic id can never re-serve a pre-seal image again,
+// and no purge archaeology is ever needed. Date-stamped + suffixed for same-day bumps.
+export const ART_RECIPE_VERSION = "2026-07-20c";
+
 export const DEFAULT_ENGINE_STYLE = "illustrated";
 export const DEFAULT_LIBRARY_STYLE = "dark-fantasy";
 // House fallback for the butler (today's production-quality lane).

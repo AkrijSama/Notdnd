@@ -415,8 +415,12 @@ function genderLockNegative(positive) {
   const p = String(positive || "").toLowerCase();
   const hasMan = /\badult man\b/.test(p) || /\bmale\b/.test(p) || /\b1boy\b/.test(p);
   const hasWoman = /\badult woman\b/.test(p) || /\bfemale\b/.test(p) || /\b1girl\b/.test(p);
-  if (hasMan && !hasWoman) return "1girl, woman, female, feminine, girl";
-  if (hasWoman && !hasMan) return "1boy, man, male, masculine, boy";
+  // WEIGHTED (2026-07-20): an UNWEIGHTED gender lock lost to JANKU's strong female bias —
+  // a declared adult male rendered as a kemonomimi anime GIRL despite "1girl, woman,
+  // female" in the negative. Weight the opposite-gender purge (matching the animal-ear
+  // ban's 1.4) so the declared identity holds against the checkpoint prior.
+  if (hasMan && !hasWoman) return "(1girl:1.4), (woman:1.4), (female:1.4), (feminine:1.3), girl";
+  if (hasWoman && !hasMan) return "(1boy:1.4), (man:1.4), (male:1.4), (masculine:1.3), boy";
   return "";
 }
 
