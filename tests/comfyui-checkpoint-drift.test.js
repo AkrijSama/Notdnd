@@ -43,6 +43,19 @@ function samplerOf(recipe) {
   return null;
 }
 
+// The LoRA PARITY pin (name + model/clip strengths) from a graph's LoraLoader node.
+// Owned by the validated export like the checkpoint/sampler — a silent re-cook that
+// swaps the LoRA or nudges a strength must fail loudly here.
+function loraOf(recipe) {
+  for (const n of Object.values(recipe || {})) {
+    if (n && n.class_type === "LoraLoader") {
+      const i = n.inputs || {};
+      return { lora: i.lora_name, strengthModel: i.strength_model, strengthClip: i.strength_clip };
+    }
+  }
+  return null;
+}
+
 // Every validated API export for an engine style: [{ kind, ckpt }].
 function validatedExports(engineStyle) {
   const canon = toCanonicalStyle(engineStyle);
@@ -119,20 +132,32 @@ test("anime is JANKU end-to-end (Chunk-6 switch honored; Illustrious retired)", 
   });
 });
 
-// The owner's kitchen-validated JANKU register (2026-07-19, corrected): cfg 3.5 is
-// what his 4/4 acceptance batch (ComfyUI 00226-00229) actually ran at — the fix that
-// pulls the portrait "style-card" register clothed/human-eared/warm. It is LANE-WIDE:
-// both portrait and scene derive it from their validated exports (portrait-anime.json
-// / scene-anime.json), never a hardcoded default. If the scene lane ever falls back to
-// the generic path again (sampler "euler", cfg 7), the scene assertion here fails.
-test("anime register: portrait + scene carry the owner-validated cfg 3.5 / euler_ancestral", () => {
-  for (const kind of ["portrait", "scene"]) {
+// The owner's kitchen-validated JANKU register (2026-07-19). euler_ancestral / normal /
+// 26 steps is LANE-WIDE; cfg and the LoRA differ per lane because the owner validated
+// each export separately: portrait + fullbody at cfg 3.5, scene at cfg 3.4 (his scene
+// re-export). Each lane derives its register from its validated export (portrait-anime
+// / scene-anime / fullbody-anime.json), never a hardcoded default. If any lane ever
+// falls back to the generic path (sampler "euler", cfg 7), or a re-cook silently nudges
+// the register/LoRA, the matching assertion here fails.
+const ANIME_REGISTER = {
+  portrait: { cfg: 3.5, lora: "hkstyleV5.safetensors", strengthModel: 0.74, strengthClip: 0.74 },
+  scene: { cfg: 3.4, lora: "add-detail-xl.safetensors", strengthModel: 0.45, strengthClip: 0.45 },
+  fullbody: { cfg: 3.5, lora: "add-detail-xl.safetensors", strengthModel: 0.52, strengthClip: 0.55 }
+};
+test("anime register: portrait/scene/fullbody carry the owner-validated per-lane cfg + LoRA parity", () => {
+  for (const [kind, want] of Object.entries(ANIME_REGISTER)) {
     const sel = resolveValidatedComfyWorkflow("anime", kind, { positive: "human, rounded ears", negative: "x", seed: 1 });
     assert.ok(sel, `anime/${kind} must resolve to a VALIDATED export (not the generic fallback)`);
     const s = samplerOf(sel.workflow);
-    assert.equal(s.cfg, 3.5, `anime/${kind} cfg must be the validated 3.5`);
+    assert.equal(s.cfg, want.cfg, `anime/${kind} cfg must be the validated ${want.cfg}`);
     assert.equal(s.sampler, "euler_ancestral", `anime/${kind} sampler must be euler_ancestral`);
     assert.equal(s.scheduler, "normal", `anime/${kind} scheduler must be normal`);
     assert.equal(s.steps, 26, `anime/${kind} steps must be 26`);
+    // LoRA parity — name + both strengths pinned to the owner's export.
+    const l = loraOf(sel.workflow);
+    assert.ok(l, `anime/${kind} must carry its validated LoRA`);
+    assert.equal(l.lora, want.lora, `anime/${kind} LoRA must be ${want.lora}`);
+    assert.equal(l.strengthModel, want.strengthModel, `anime/${kind} LoRA model strength must be ${want.strengthModel}`);
+    assert.equal(l.strengthClip, want.strengthClip, `anime/${kind} LoRA clip strength must be ${want.strengthClip}`);
   }
 });

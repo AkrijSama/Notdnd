@@ -20,19 +20,20 @@ test("kind-routing: realistic (+cinematic alias) has the full validated four-lan
   }
 });
 
-test("kind-routing: anime has validated portrait+scene, dark-fantasy portrait only; other kinds fall back", () => {
+test("kind-routing: anime has validated portrait+scene+fullbody, dark-fantasy portrait only; other kinds fall back", () => {
   assert.equal(resolveLiveWorkflowFile("anime", "portrait"), "portrait-anime.json");
-  // The owner's cfg-4.0 register fix is LANE-WIDE: anime scene (and world-card,
-  // which shares the scene recipe) now resolve to a validated export, not the
-  // generic defaultWorkflow (sampler "euler", cfg 7).
+  // The owner's cfg-3.5 register is LANE-WIDE: anime scene (and world-card, which
+  // shares the scene recipe) resolve to a validated export, not the generic
+  // defaultWorkflow (sampler "euler", cfg 7).
   assert.equal(resolveLiveWorkflowFile("anime", "scene"), "scene-anime.json");
   assert.equal(resolveLiveWorkflowFile("anime", "world-card"), "scene-anime.json", "world-card shares the scene recipe");
+  // FULLBODY LANE SEALED (owner re-export, 832x1216 cfg 3.5): battle + VN fullbody
+  // resolve to the validated export — the generic fallback DIES for anime/fullbody.
+  assert.equal(resolveLiveWorkflowFile("anime", "fullbody"), "fullbody-anime.json");
   assert.equal(resolveLiveWorkflowFile("dark-fantasy", "portrait"), "portrait-darkfantasy.json");
   assert.equal(resolveLiveWorkflowFile("illustrated", "portrait"), "portrait-darkfantasy.json", "engine alias resolves");
-  // anime fullbody/item + every non-portrait dark-fantasy kind still fall back.
-  for (const kind of ["fullbody", "item"]) {
-    assert.equal(resolveLiveWorkflowFile("anime", kind), null, `anime/${kind} falls back to generic`);
-  }
+  // anime item still falls back; every non-portrait dark-fantasy kind still falls back.
+  assert.equal(resolveLiveWorkflowFile("anime", "item"), null, "anime/item falls back to generic");
   for (const kind of ["scene", "fullbody", "item"]) {
     assert.equal(resolveLiveWorkflowFile("dark-fantasy", kind), null, `dark-fantasy/${kind} falls back to generic`);
   }
