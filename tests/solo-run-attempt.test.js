@@ -394,11 +394,12 @@ test("attemptNeedsCheck classifies movement/observation as no-roll and contest a
   assert.equal(attemptNeedsCheck("do something strange"), true);
 });
 
-test("an explicit provider needsCheck overrides the heuristic", () => {
-  // Movement verb that the heuristic would skip, but the provider forces a check.
+test("provider needsCheck escalates a non-contested intent but cannot wave off a contested one", () => {
+  // Movement verb the heuristic would skip, but the provider ESCALATES to a check.
   assert.equal(attemptNeedsCheck("walk across the rotten bridge", { needsCheck: true }), true);
-  // Contested verb the heuristic would roll, but the provider waives it.
-  assert.equal(attemptNeedsCheck("search the open shelf", { needsCheck: false }), false);
+  // A contested verb can NEVER be waved off (entry-gate integrity): the deterministic
+  // layer outranks the provider, so "search" rolls even when the provider says false.
+  assert.equal(attemptNeedsCheck("search the open shelf", { needsCheck: false }), true);
 });
 
 test("a no-roll movement attempt resolves narratively without dice or HP cost", () => {

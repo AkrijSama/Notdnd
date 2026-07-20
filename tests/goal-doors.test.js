@@ -35,6 +35,52 @@ function pushFact(run, text) {
   });
 }
 
+// ── GOAL PAYLOADS v1 (product-thesis wiring) — structural mutations, not sentences ──
+// A player-authored ambition/project must reorganize the WORLD (a committed NPC, an
+// object-state, a faction shift), not merely emit a canonical sentence the GM narrates.
+
+test("goal payloads v1: declaring an ambition commits a RIVAL NPC (structural, not a sentence)", () => {
+  const run = run0();
+  run.threads = {}; // isolate the goal thread so beat selection is deterministic
+  const goal = commitGoal(run, { summary: "seize the coast road trade", scale: "ambition", matchTokens: ["coast", "trade"], door: "declared" }, { turn: 1 });
+  const threadId = registerGoalThread(run, goal, { nowMinutes: 100 });
+  assert.ok(threadId, "ambition registered a thread");
+
+  const npcsBefore = Object.keys(run.npcs || {}).length;
+  pushFact(run, "I press my claim on the coast trade routes."); // "coast"/"trade" ∈ b1 keywords
+  const res = advanceThreads(run, {});
+  assert.equal(res.fired, true, "the ambition's first beat fired");
+  // THE CONVICTION: a committed NON-FACT world change — the rival exists as a real NPC.
+  const rivalId = `${threadId}_rival`;
+  assert.ok(run.npcs?.[rivalId], "the rival committed as a real NPC, not just a narrated sentence");
+  assert.equal(run.npcs[rivalId].role, "rival");
+  assert.ok(Object.keys(run.npcs).length > npcsBefore, "the cast grew by a committed antagonist");
+});
+
+test("goal payloads v1: an ambition carries a REACHABLE deadline + a faction reputation effect", () => {
+  const run = run0();
+  run.factions = run.factions || {};
+  run.factions.faction_wardens = { factionId: "faction_wardens", name: "the Reach Wardens", disposition: "neutral", standing: 0, discovered: true, wants: "to hold the reach" };
+  const goal = commitGoal(run, { summary: "become warden of the reach", scale: "ambition", matchTokens: ["warden", "reach"], door: "declared" }, { turn: 1 });
+  const threadId = registerGoalThread(run, goal, { nowMinutes: 100 });
+  const thread = run.threads[threadId];
+  assert.ok(thread.clock.expiresAtMinutes > 100, "has a deadline");
+  assert.ok(thread.clock.expiresAtMinutes <= 100 + 20000, "the deadline is REACHABLE, not the old ~69-day never-fires value");
+  assert.ok(Array.isArray(thread.reputationEffects) && thread.reputationEffects.length >= 1, "carries a faction reputation effect");
+  assert.ok(run.factions?.[thread.reputationEffects[0].target], "the effect targets a real committed faction");
+});
+
+test("goal payloads v1: a project commits an interested NPC on its first beat", () => {
+  const run = run0();
+  run.threads = {};
+  const goal = commitGoal(run, { summary: "build a waystation on the ridge", scale: "project", matchTokens: ["waystation", "ridge"], door: "declared" }, { turn: 1 });
+  const threadId = registerGoalThread(run, goal);
+  pushFact(run, "I keep building the waystation stone by stone.");
+  const res = advanceThreads(run, {});
+  assert.equal(res.fired, true, "the project's first beat fired");
+  assert.ok(run.npcs?.[`${threadId}_ally`], "the interested party committed as a real NPC");
+});
+
 test("registerGoalThread: a Project registers an opportunity thread with beats, cross-linked", () => {
   const run = run0();
   const goal = commitGoal(run, { summary: "build a shelter on the ridge", scale: "project", matchTokens: ["shelter", "ridge"], door: "declared" }, { turn: 1 });

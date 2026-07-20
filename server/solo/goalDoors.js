@@ -12,6 +12,30 @@ import { commitGoal, contentTokens, goalMatchesIntent, inferGoalScale, activeGoa
 function isPlainObject(v) { return Boolean(v) && typeof v === "object" && !Array.isArray(v); }
 function isString(v) { return typeof v === "string" && v.trim().length > 0; }
 
+// Law-6 (owner-tunable): goal-thread deadlines in world-clock minutes. A Project's
+// cost lands within a few days; an Ambition's price is a longer but REACHABLE arc.
+// The old ambition deadline (+100000 ≈ 69 in-world days) never fired, so the price
+// never landed. The prescriptive minTurn gates drive the beats; the deadline is the
+// backstop that guarantees the arc resolves rather than dangling forever.
+const GOAL_DEADLINE_MINUTES = Object.freeze({ project: 4320, ambition: 10080 }); // 3 days / 7 days
+
+// The faction most RELEVANT to a goal (token overlap with name/wants), else a
+// discovered faction, else the first. Null when the run carries no factions — so a
+// factionless run simply skips the reputation effect rather than targeting nothing.
+function relevantFactionId(run, tokens) {
+  const factions = isPlainObject(run?.factions) ? Object.values(run.factions) : [];
+  if (!factions.length) return null;
+  const toks = (Array.isArray(tokens) ? tokens : []).map((t) => String(t).toLowerCase()).filter(Boolean);
+  let best = null; let bestScore = 0;
+  for (const f of factions) {
+    const hay = `${f.name || ""} ${f.wants || ""}`.toLowerCase();
+    const score = toks.reduce((s, t) => s + (hay.includes(t) ? 1 : 0), 0);
+    if (score > bestScore) { bestScore = score; best = f; }
+  }
+  const chosen = best || factions.find((f) => f.discovered) || factions[0];
+  return chosen?.factionId || null;
+}
+
 // ── THREAD-SOURCE REGISTRATION ─────────────────────────────────────────────────
 // Build a `player_goal` front for a Project/Ambition and load it through the validated
 // thread bridge (loadThreadsFromJson). Grounded in the run's current location so the
@@ -25,7 +49,7 @@ export function registerGoalThread(run, goal, { nowMinutes } = {}) {
   const summary = String(goal.summary || "your goal").slice(0, 100);
   const tokens = Array.isArray(goal.matchTokens) && goal.matchTokens.length ? goal.matchTokens.slice(0, 4) : contentTokens(summary).slice(0, 4);
   const front = goal.scale === "project"
-    ? projectFront(threadId, summary, tokens, loc)
+    ? projectFront(threadId, summary, tokens, loc, run, nowMinutes)
     : ambitionFront(threadId, summary, tokens, loc, run, nowMinutes);
   const res = loadThreadsFromJson(run, [front], {});
   if (res.loaded && res.loaded.length) {
@@ -36,8 +60,12 @@ export function registerGoalThread(run, goal, { nowMinutes } = {}) {
   return null;
 }
 
-// PROJECT → a beat-bearing opportunity: someone notices, then a cost arrives.
-function projectFront(threadId, summary, tokens, loc) {
+// PROJECT → a beat-bearing opportunity: someone notices (a committed NPC), then a
+// cost arrives (a committed object-state), and pursuing it shifts a faction's regard.
+// Structural mutations, not narrated sentences — the world actually reorganizes.
+function projectFront(threadId, summary, tokens, loc, run, nowMinutes) {
+  const now = Number.isFinite(nowMinutes) ? nowMinutes : (Number(run?.world?.time?.minutes) || 0);
+  const factionId = relevantFactionId(run, tokens);
   return {
     frontId: threadId,
     kind: "opportunity",
@@ -47,30 +75,42 @@ function projectFront(threadId, summary, tokens, loc) {
     agenda: `The world reacts to the player pursuing: ${summary}.`.slice(0, 200),
     revealState: "revealed", // the player set this goal — it is known
     groundedIn: { locationRefs: [loc] },
-    clock: { minTurnsBetweenBeats: 2 },
+    clock: { minTurnsBetweenBeats: 2, expiresAtMinutes: now + GOAL_DEADLINE_MINUTES.project },
+    ...(factionId ? { reputationEffects: [{ target: factionId, delta: 2, tags: ["player_goal", "project"] }] } : {}),
     beats: [
       {
         beatId: `${threadId}_b1`, label: "someone notices", telegraph: "Word of what you're building gets around.",
         brief: `Someone has noticed you are working toward ${summary} — and it interests them.`.slice(0, 280),
         decision: "Lean into the attention, or keep the work quiet.",
         trigger: { descriptive: { onCanon: { keywords: tokens.length ? tokens : ["work", "build", "pursue"] } } },
-        payload: { fact: { text: `Word spreads that you are pursuing ${summary}.`.slice(0, 280) } }
+        // STRUCTURAL: the interested party commits as a real NPC the player can meet.
+        payload: {
+          fact: { text: `Word spreads that you are pursuing ${summary}.`.slice(0, 280) },
+          npc: { npcId: `${threadId}_ally`, displayName: "an interested party", role: "interested" }
+        }
       },
       {
         beatId: `${threadId}_b2`, label: "a cost arrives", telegraph: "Ambition draws its price.",
         brief: `Pursuing ${summary} has drawn a real cost — a rival, a debt, or a demand.`.slice(0, 280),
         decision: "Pay the cost and press on, or trim your ambition.",
         trigger: { prescriptive: { requiresBeat: `${threadId}_b1`, minTurn: 6 } },
-        payload: { fact: { text: `The cost of pursuing ${summary} comes due.`.slice(0, 280) } }
+        // STRUCTURAL: the cost commits as a real object-state obstacle at the location.
+        payload: {
+          fact: { text: `The cost of pursuing ${summary} comes due.`.slice(0, 280) },
+          objectState: { key: `${threadId}_cost`, state: "demanded", reason: `A cost has come due for ${summary}.`.slice(0, 200) }
+        }
       }
     ],
     resolution: [{ kind: "beat_final" }]
   };
 }
 
-// AMBITION → arc pressure on a long clock: a rival stirs, then the price of scale.
+// AMBITION → arc pressure on a REACHABLE clock: a rival stirs (as a committed NPC —
+// not a sentence), then the price of scale (a committed object-state), and the whole
+// arc shifts the relevant faction against you on resolution.
 function ambitionFront(threadId, summary, tokens, loc, run, nowMinutes) {
   const now = Number.isFinite(nowMinutes) ? nowMinutes : (Number(run?.world?.time?.minutes) || 0);
+  const factionId = relevantFactionId(run, tokens);
   return {
     frontId: threadId,
     kind: "rival",
@@ -80,21 +120,31 @@ function ambitionFront(threadId, summary, tokens, loc, run, nowMinutes) {
     agenda: `A great ambition draws great pressure: ${summary}.`.slice(0, 200),
     revealState: "revealed",
     groundedIn: { locationRefs: [loc] },
-    clock: { minTurnsBetweenBeats: 4, expiresAtMinutes: now + 100000 },
+    // Law-6 REACHABLE deadline (was +100000 ≈ 69 days, which never fired).
+    clock: { minTurnsBetweenBeats: 4, expiresAtMinutes: now + GOAL_DEADLINE_MINUTES.ambition },
+    ...(factionId ? { reputationEffects: [{ target: factionId, delta: -3, tags: ["player_goal", "ambition"] }] } : {}),
     beats: [
       {
         beatId: `${threadId}_b1`, label: "a rival stirs", telegraph: "An ambition this large does not go unanswered.",
         brief: `Your ambition — ${summary} — has drawn a rival who wants the same thing, or wants you to fail.`.slice(0, 280),
         decision: "Move against the rival, or race them to it.",
         trigger: { descriptive: { onCanon: { keywords: tokens.length ? tokens : ["ambition", "claim", "rise"] } }, prescriptive: { minTurn: 5 } },
-        payload: { fact: { text: `A rival rises against your ambition to ${summary}.`.slice(0, 280) } }
+        // STRUCTURAL: the rival commits as a real NPC the player can actually confront.
+        payload: {
+          fact: { text: `A rival rises against your ambition to ${summary}.`.slice(0, 280) },
+          npc: { npcId: `${threadId}_rival`, displayName: "a rival", role: "rival" }
+        }
       },
       {
         beatId: `${threadId}_b2`, label: "the price of scale", telegraph: "The world tilts against those who reach too high.",
         brief: `Reaching for ${summary} costs more than you planned — the arc demands a sacrifice.`.slice(0, 280),
         decision: "Pay the price to keep the ambition alive, or let it shrink.",
         trigger: { prescriptive: { requiresBeat: `${threadId}_b1`, minTurn: 12 } },
-        payload: { fact: { text: `The ambition to ${summary} demands its price.`.slice(0, 280) } }
+        // STRUCTURAL: the price commits as a real object-state at the location.
+        payload: {
+          fact: { text: `The ambition to ${summary} demands its price.`.slice(0, 280) },
+          objectState: { key: `${threadId}_price`, state: "exacted", reason: `The price of ${summary} came due.`.slice(0, 200) }
+        }
       }
     ],
     resolution: [{ kind: "beat_final", outcome: "resolved" }]

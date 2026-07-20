@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { getVisibleEntities } from "./entities.js";
+import { rankFactsByImportance, importanceOf } from "./factSelection.js";
 import { getAvailableMoves } from "./movement.js";
 import { ABILITIES, SKILLS, SKILL_ABILITY, resolveAbilityCheck, outcomeLabelForBand } from "./rules.js";
 import { stripAiTells } from "../gm/voice.js";
@@ -74,6 +75,11 @@ export const OBJECT_RETRY_EFFECT_VALUES = [...OBJECT_RETRY_EFFECTS];
 // DC by this much (and rolls at disadvantage); a "blocked" object can't be
 // re-attempted via the same approach at all (auto-fail, no fresh consequence).
 const RETRY_DC_BUMP = 5;
+// Resolution-law DC floor (product-thesis wiring): the easiest band classifyIntentDc
+// can produce is EASY = 8. A provider-proposed DC below that is a cosmetic check (a
+// d20 clears DC 1 on any roll), the second entry-gate bluff surface. The effective DC
+// is floored here so a bluffed low DC can never make a contested attempt free.
+const RESOLUTION_DC_FLOOR = 8;
 
 // Minimal failure-cost mechanic (not full combat): a failed attempt costs the
 // player a small, fixed amount of HP. This is the LEGACY default applied ONLY
@@ -347,12 +353,20 @@ export function attemptNeedsCheck(intent, providerOutput = null) {
   if (isPlainQuestion(intent)) {
     return false;
   }
-  if (providerOutput && typeof providerOutput.needsCheck === "boolean") {
-    return providerOutput.needsCheck;
-  }
+  // ENTRY-GATE INTEGRITY (product-thesis wiring, 2026-07-20): the DETERMINISTIC
+  // contested/adversarial classification OUTRANKS the provider's needsCheck. The
+  // three overrides above already excluded genuinely stakes-free talk/observation/
+  // questions, so a contested verb here is a real, failable attempt. The LLM may
+  // still ESCALATE a non-contested intent to a roll (below), but it can NEVER wave
+  // off a roll the deterministic layer flagged — closing the entry-gate bluff where
+  // "I obviously, easily pick the lock, no stakes" bought a free auto-success via a
+  // socially-engineered needsCheck:false.
   const text = String(intent || "").toLowerCase();
   if (CONTESTED_INTENT_RE.test(text)) {
     return true;
+  }
+  if (providerOutput && typeof providerOutput.needsCheck === "boolean") {
+    return providerOutput.needsCheck;
   }
   if (NO_ROLL_INTENT_RE.test(text)) {
     return false;
@@ -663,7 +677,7 @@ export function buildAttemptContext(run, action, options = {}) {
   const targetEntity = isString(action.targetId)
     ? visibleEntities.find((entity) => entity.entityId === action.targetId || entity.rawEntityId === action.targetId) || null
     : null;
-  const facts = (run.memoryFacts || []).filter((fact) => policyAllows(fact, policyProfile)).slice(-10);
+  const facts = rankFactsByImportance((run.memoryFacts || []).filter((fact) => policyAllows(fact, policyProfile)), 10);
   const timeline = (run.timeline || []).filter((event) => policyAllows(event, policyProfile)).slice(-5);
 
   return {
@@ -1056,6 +1070,10 @@ export function createAttemptMemoryFact(run, action, attemptResult, effect, opti
     contentTags: [],
     canonical: true,
     confidence: 0.7,
+    // IMPORTANCE v1 (product-thesis wiring): stamp the drama score at commit so the
+    // fact selector can float a high-stakes attempt over recent low-stakes ones. v2
+    // LLM-poignancy overwrites this same slot.
+    importance: importanceOf({ type: "attempt_memory", tags: ["system", "attempt"], text: effect.text }),
     supersedesFactIds: [],
     payload: {
       intent: action.intent,
@@ -1993,9 +2011,12 @@ export function resolveAttemptAction(run, action, options = {}) {
       // provider response.
       const recommendation = abilityFromRecommendation(providerOutput.recommendedAbility)
         || { ability: abilityFromIntent(context.intent), skill: null };
-      const baseDc = (providerOutput.dc !== null && providerOutput.dc !== undefined)
-        ? providerOutput.dc
-        : classifyIntentDc(context.intent);
+      const baseDc = Math.max(
+        RESOLUTION_DC_FLOOR,
+        (providerOutput.dc !== null && providerOutput.dc !== undefined)
+          ? providerOutput.dc
+          : classifyIntentDc(context.intent)
+      );
       const harder = foreclosure.effect === "harder";
       const checkDc = harder ? baseDc + RETRY_DC_BUMP : baseDc;
       checkResult = resolveAbilityCheck(updatedRun, {

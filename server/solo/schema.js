@@ -962,6 +962,9 @@ export function validateMemoryFact(fact) {
   validateStringArray(fact.tags, "tags", errors);
   validateBoolean(fact.canonical, "canonical", errors);
   validateOptionalNumber(fact.confidence, "confidence", errors);
+  // importance [0,1] — the drama score used by factSelection v1 to float durable
+  // high-stakes facts over recent low-stakes ones (optional; derived when absent).
+  validateOptionalNumber(fact.importance, "importance", errors);
   if (fact.supersedesFactIds !== undefined) {
     validateStringArray(fact.supersedesFactIds, "supersedesFactIds", errors);
   }

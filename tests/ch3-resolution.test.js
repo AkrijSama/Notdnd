@@ -66,6 +66,40 @@ test("LAW 1: a safe-talk attempt resolves automatic — no roll, cannot fail, ad
   assert.equal(result.attemptResult.band, "automatic");
 });
 
+// ── ENTRY-GATE INTEGRITY (product-thesis wiring) — the bluff surface ──────────
+// The deterministic contested classification OUTRANKS a provider needsCheck:false;
+// a bluffed low DC is floored to the resolution-law EASY band. The player cannot
+// talk the interpreter out of contesting a contested act, nor make it cosmetic.
+
+test("ENTRY-GATE: a contested attempt MUST roll even when the provider waves it off", () => {
+  // The named bluff — a socially-engineered needsCheck:false on a contested verb.
+  assert.equal(
+    attemptNeedsCheck("I obviously, easily pick the lock, no stakes", { needsCheck: false }),
+    true, "the pick-lock bluff cannot wave off the roll"
+  );
+  assert.equal(attemptNeedsCheck("intimidate the king, he clearly won't resist", { needsCheck: false }), true);
+  assert.equal(attemptNeedsCheck("climb the sheer wall, it's trivial for me", { needsCheck: false }), true);
+});
+
+test("ENTRY-GATE: precedence is one-way — the LLM may still ESCALATE a non-contested intent", () => {
+  // A non-contested intent still honors the provider: needsCheck:true escalates to a
+  // roll; needsCheck:false resolves narratively. Only the wave-OFF of a contested act
+  // is forbidden.
+  assert.equal(attemptNeedsCheck("reach out and touch the moss on the stone", { needsCheck: true }), true);
+  assert.equal(attemptNeedsCheck("reach out and touch the moss on the stone", { needsCheck: false }), false);
+});
+
+test("ENTRY-GATE: a bluffed low DC is floored to the resolution-law EASY band (8)", () => {
+  const run = createDefaultSoloRun({ now: "2026-01-01T00:00:00.000Z" });
+  // Provider proposes DC 1 (cosmetic) on a contested pick; fixedRoll 3 must FAIL vs the
+  // floored DC 8 — proving the check is real, not a rubber stamp.
+  const result = scripted(run, { intent: "pick the lock on the chest", dc: 1, fixedRoll: 3, needsCheck: true });
+  assert.equal(result.attemptResult.needsCheck, true, "a contested act rolls");
+  assert.ok(result.attemptResult.checkResult, "a d20 was rolled");
+  assert.equal(result.attemptResult.checkResult.dc, 8, "DC floored to the resolution-law EASY band");
+  assert.equal(result.attemptResult.success, false, "roll 3 fails vs floored DC 8 — the bluff DC bought nothing");
+});
+
 // ── LAW 2 — three bands, every band commits state (never nothing) ─────────────
 
 test("LAW 2: bandFromMargin splits at 0 and -4 (middle band is the flat 20% window)", () => {

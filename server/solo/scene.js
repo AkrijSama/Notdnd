@@ -7,6 +7,7 @@ import { deriveClock, deriveWeather } from "./worldClock.js";
 import { conditionStatusPayload } from "./conditions.js";
 import { combatConditionsPayload } from "./combatStatus.js";
 import { getVisibleEntities, validateVisibleEntity } from "./entities.js";
+import { rankFactsByImportance } from "./factSelection.js";
 import { generatePlaceholderGmNarration, validateGmSceneOutput } from "./gm.js";
 import { getAvailableMoves } from "./movement.js";
 import { buildRegionMapPayload } from "./regionMap.js";
@@ -223,23 +224,19 @@ export function getRelevantMemoryFacts(run, options = {}) {
   const visibleFactIds = entityFactIds(visibleEntities);
   const visibleIds = entityRawIds(visibleEntities);
 
-  const relevant = run.memoryFacts.filter((fact) => {
-    if (!policyAllows(fact, policyProfile)) {
-      return false;
-    }
-    if (directFactIds.has(fact.factId) || visibleFactIds.has(fact.factId)) {
-      return true;
-    }
-    return (fact.entityIds || []).some((entityId) => visibleIds.has(entityId));
-  });
-
-  if (relevant.length > 0) {
-    return relevant.slice(-limit);
-  }
-
-  return run.memoryFacts
-    .filter((fact) => policyAllows(fact, policyProfile))
-    .slice(-limit);
+  const allowed = run.memoryFacts.filter((fact) => policyAllows(fact, policyProfile));
+  // RELEVANCE GATE (unchanged): a fact tied to the current location or a visible
+  // entity. When some are relevant, rank WITHIN them; otherwise fall back to the whole
+  // allowed set. Either way the pool is ranked by importance×recency (factSelection
+  // v1), never a bare slice(-limit) — so an old promise/death/betrayal floats over ten
+  // recent low-stakes facts instead of being silently evicted at session depth.
+  const relevant = allowed.filter((fact) =>
+    directFactIds.has(fact.factId) ||
+    visibleFactIds.has(fact.factId) ||
+    (fact.entityIds || []).some((entityId) => visibleIds.has(entityId))
+  );
+  const pool = relevant.length > 0 ? relevant : allowed;
+  return rankFactsByImportance(pool, limit);
 }
 
 export function validateSoloScenePayload(payload) {

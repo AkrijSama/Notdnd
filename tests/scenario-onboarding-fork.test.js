@@ -53,9 +53,14 @@ test("active manipulation/search stays a real, failable check", () => {
 });
 
 test("observation override does not disturb the provider path for non-observational intents", () => {
-  // A provider-supplied needsCheck still wins when it is not an observation query.
-  assert.equal(attemptNeedsCheck("bribe the guard", { needsCheck: false }), false);
+  // ENTRY-GATE INTEGRITY (2026-07-20): a contested verb OUTRANKS a provider wave-off —
+  // "bribe" always rolls, closing the needsCheck:false bluff.
+  assert.equal(attemptNeedsCheck("bribe the guard", { needsCheck: false }), true);
   assert.equal(attemptNeedsCheck("bribe the guard", { needsCheck: true }), true);
+  // A NON-contested, non-observation intent still honors the provider both ways — the
+  // provider path is intact for the intents the deterministic layer does not flag.
+  assert.equal(attemptNeedsCheck("nudge the loose pebble with my boot", { needsCheck: false }), false);
+  assert.equal(attemptNeedsCheck("nudge the loose pebble with my boot", { needsCheck: true }), true);
   assert.equal(isObservationQuery(""), false);
   assert.equal(isObservationQuery(null), false);
 });
