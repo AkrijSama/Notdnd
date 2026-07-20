@@ -1,6 +1,8 @@
 import { completeSoloRun, fetchSoloGmScene, fetchSoloScene, postSoloAction, redoLocationImage, saveLocationImage } from "./soloSceneApi.js";
 import textFit from "../vendor/textFit.js";
 import { renderConditionChip, renderConditionChipRow } from "./conditionChips.js";
+import { renderBrand } from "./brand.js";
+import { HOME_NAV_CONFIRM } from "./homeNav.js";
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -187,6 +189,7 @@ export function renderSceneHeader(scene = {}, state = {}) {
 
   return `
     <header class="solo-scene-header">
+      ${renderBrand()}
       <div class="solo-scene-title">
         <div class="small">Solo Run ${escapeHtml(scene.runId || state.runId || "Unknown")}</div>
         <h2>${escapeHtml(location.name || "Unknown Location")}</h2>
@@ -3419,6 +3422,9 @@ export function dispatchSoloClick(target, handlers = {}) {
   if ((el = closest("[data-solo-scene-info-close]"))) { handlers.onSceneInfoClose?.(); return true; }
   if ((el = closest("[data-solo-scene-info]"))) { handlers.onSceneInfo?.(); return true; }
   if ((el = closest("[data-solo-banner-dismiss]"))) { handlers.onDismissBanner?.(); return true; }
+  // T1: the header brand is a home link IN-RUN too — always confirm (an unsent turn
+  // must never be silently abandoned). Checked before other chrome.
+  if ((el = closest("[data-action='go-home']"))) { handlers.onGoHome?.(); return true; }
   if ((el = closest("[data-solo-home]"))) { handlers.onReturnHome?.(); return true; }
   if ((el = closest("[data-solo-exit]"))) { handlers.onExit?.(); return true; }
   if ((el = closest("[data-solo-guest-save]"))) { handlers.onGuestSave?.(); return true; }
@@ -4208,6 +4214,7 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       onReload: loadScene,
       onExit: handleExit,
       onReturnHome: handleReturnHome,
+      onGoHome: handleGoHome,
       onGuestSave: handleGuestSave,
       onDismissBanner: handleDismissBanner,
       onMapView: handleMapView,
@@ -4913,6 +4920,18 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
   // Returns home from the death screen (run already concluded as "died").
   function handleReturnHome() {
     returnHome();
+  }
+
+  // T1: the header brand → landing/home from inside a live run. ALWAYS confirm — an
+  // unsent turn or in-flight action must not be silently abandoned. Home = strip the
+  // ?soloRunId param (pathname only) and land on the world-select.
+  function handleGoHome() {
+    if (typeof window === "undefined") {
+      return;
+    }
+    if (window.confirm(HOME_NAV_CONFIRM)) {
+      window.location.href = window.location.pathname;
+    }
   }
 
   function handleGuestSave() {

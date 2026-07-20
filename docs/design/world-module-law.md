@@ -50,3 +50,26 @@ provenance rather than pretending to be portable.
   player-facing.
 - Guard: a test asserts the banned phrase is absent from player-facing surfaces
   (see `tests/world-module-taxonomy.test.js`).
+
+---
+
+## SANDBOX IS A MODULE WITHIN A WORLD (sealed ruling, 2026-07-20)
+
+A **sandbox is not a worldless mode** — it is a *module* on a world, exactly like an
+authored campaign is. There is no such thing as a worldless run:
+
+- **No worldless sandbox entry.** The landing offers world cards + a distinct
+  "+ Create a world" tile (the wizard mints a world). There is no card or button that
+  starts a run with no world. Creating a world is a create *affordance*, never a fake
+  world card.
+- **A named sandbox binds to that world's canon.** `resolveRequestedScenario` loads the
+  world for `mode:"sandbox"` when a world is named (`scenarioId`); a truly *worldless*
+  sandbox (no id) still falls to generic worldgen (legacy safety, not an entry we
+  advertise).
+- **Sandbox = the world minus the authored opening.** `loadScenarioIntoRun` loads the
+  world's locations, cast, factions, bestiary, and laws, but **skips the authored quests
+  and directed fronts/threads** (its `sandbox` gate). So the **Babel sandbox is Verdance
+  without the authored opening** — the same world and laws, opened as a pure sandbox.
+- **Code guard:** `tests/landing-taxonomy-genre.test.js` (no Custom World card; the
+  create tile routes to the wizard; a named sandbox binds to the world canon with no
+  authored quests/threads).

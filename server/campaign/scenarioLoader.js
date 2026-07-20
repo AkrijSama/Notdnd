@@ -47,8 +47,12 @@ export function loadScenarioFile(scenarioId) {
 // Source: an explicit per-run scenarioId, else the INKBORNE_SCENARIO env default
 // (the flag, default-on for the grade target).
 export function resolveRequestedScenario({ scenarioId, sandbox }) {
-  if (sandbox) return null;
-  const id = scenarioId || process.env.INKBORNE_SCENARIO;
+  // T6 (sealed ruling): a sandbox is a MODULE WITHIN A WORLD. When a world is named
+  // explicitly (scenarioId), a sandbox BINDS to that world's canon (loadScenarioIntoRun
+  // then loads the world minus the authored opening — see its `sandbox` gate). A truly
+  // WORLDLESS sandbox (no id) still falls to worldgen. The env fallback stays campaign-
+  // only — it must never auto-bind a sandbox to INKBORNE_SCENARIO.
+  const id = scenarioId || (sandbox ? null : process.env.INKBORNE_SCENARIO);
   if (!id) return null;
   return loadScenarioFile(id);
 }
@@ -477,9 +481,16 @@ export function loadScenarioIntoRun(run, scenario, options = {}) {
     if (isString(f.wants)) faction.flags.wants = f.wants;
   }
 
+  // WORLD-BOUND SANDBOX (T6, sealed ruling): a sandbox is a MODULE WITHIN A WORLD —
+  // it inherits the world's canon (locations, cast, factions, bestiary, laws, above)
+  // but NOT the authored opening. So the authored quests + directed fronts/threads are
+  // skipped in sandbox; the run opens as Verdance-without-the-authored-opening. The
+  // start LOCATION binding (section 4) is kept — the world still needs a place to begin.
+  const sandbox = options.sandbox === true;
+
   // 2. QUESTS — declared scenario quests become real active records (the objects
   // fronts ground in and triggers read). Kept thin; the quest engine tolerates it.
-  for (const [qid, q] of Object.entries(scenario.quests || {})) {
+  if (!sandbox) for (const [qid, q] of Object.entries(scenario.quests || {})) {
     if (run.quests[qid]) continue;
     // A3.2: carry authored STAGES + completion when present, so a scenario quest is a
     // real advanceable arc (reach_location / talk_beat), not just a static objective.
@@ -503,8 +514,9 @@ export function loadScenarioIntoRun(run, scenario, options = {}) {
     };
   }
 
-  // 3. THREADS — fronts → run.threads (refs resolved to real ids).
-  for (const front of scenario.fronts || []) {
+  // 3. THREADS — fronts → run.threads (refs resolved to real ids). Skipped in a
+  // world-bound sandbox: the directed fronts ARE the authored opening.
+  if (!sandbox) for (const front of scenario.fronts || []) {
     run.threads[front.frontId] = instantiateThread(front, run);
   }
 

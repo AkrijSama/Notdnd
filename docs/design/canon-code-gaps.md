@@ -28,3 +28,25 @@ docs/design/romance-legacy-law.md (R-laws, economy laws, narration law, ads law)
 | Em-dash auditor + universal enforcement | Narration law (em-dash ban, ratified 2026-07-16) | e98b392: detector (`gm/voice.js`) + chokepoint substitution (`gm/prompting.js`) + 54-fix UI-copy sweep |
 | R10 block-and-regenerate on the live turn path | Law R10 (SFW enforcement) | VERIFIED LIVE 2026-07-17 on local 8b (zero cloud): blocked→regen-clean path AND blocked→retry-violated→template path both fired; probe also found + fixed the fallback-template intent-echo hole (`stripRomanceRegister`) |
 | Weather in the time-of-day icon | Owner checklist item 1 (ruled cheap by tonight's grading) | a20ca37: persistent `world.weather` + sky-hazard overlay (`deriveWeather`) + phase-adjacent weather glyph |
+
+---
+
+## LEDGER NOTES (2026-07-20, tasklist batch)
+
+- **Batch cook (System B) stays separate — by ruling.** The batch/offline card cook and
+  the live runtime image path are DELIBERATELY separate systems. Their only shared
+  contract is the **validated per-lane exports** (`scripts/art/workflows/<lane>-<slug>.json`
+  + the prompt blocks). Do not merge them; keep the exports as the single source both read.
+- **Provider-agnostic seal is moot while fallbacks are gated.** The sealed-prompt +
+  validated-recipe path is the only live image path today; the pollinations/kontext and
+  cloud fallbacks are gated OFF (`NOTDND_ALLOW_UNSEALED_EDIT` unset; provider=comfyui).
+  So a "provider-agnostic seal" is not needed *now*. **If any fallback is ever re-enabled,
+  the seal MUST move with it** (the seal cannot stay comfyui-only) — cross-ref CLI 1's
+  "sealed-or-nothing" law in flight. Track this as a hard precondition on re-enabling a
+  fallback, not a today-gap.
+- **LAN bind + NODE_ENV=production for any non-localhost exposure.** The dev build binds
+  loopback only and refuses to boot test-hooks-enabled on a public bind (server/index.js
+  boot guard). For ANY future non-localhost exposure: set `NODE_ENV=production` (drops the
+  test hooks) AND bind a real host (`NOTDND_HOST=<lan-ip>`), never `INKBORNE_PUBLIC=true`
+  on an unsafe build. There is no override flag — exposing hooks publicly requires a
+  visible code edit, on purpose.

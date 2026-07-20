@@ -7,7 +7,9 @@ test("CARD-LED landing: the world step is world cards only — no inline form, n
   assert.match(html, /Choose Your World/);
   assert.match(html, /onb-world-cards/, "the cards are the landing");
   assert.match(html, /data-world-scenario="babel"/, "the Babel card");
-  assert.match(html, /data-world-scenario=""/, "the Custom World card");
+  // T6: the fake "Custom World" world-card is GONE — creating a world is a distinct tile.
+  assert.doesNotMatch(html, /data-world-scenario=""/, "no empty-scenario Custom World card");
+  assert.match(html, /data-world-create="1"/, "a distinct create-world tile instead");
   // the legacy inline worldgen form + its start button are GONE (the card is the entry)
   assert.doesNotMatch(html, /data-action="generate-world"/, "no Generate/Continue start button");
   assert.doesNotMatch(html, /data-world-field="name"/, "no inline world-name input");

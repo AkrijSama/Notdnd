@@ -5,7 +5,7 @@ import { createApiClient } from "./api/client.js";
 // their render/bind dispatchers (renderActiveTab + the activeTab bind switch) were
 // never reached. Only homebrewManager survives — it IS used on the live solo path.
 import { renderHomebrewManager, bindHomebrewManager, homebrewDraftToItem, itemToDraft } from "./components/homebrewManager.js";
-import { renderOnboardingFlow, bindOnboardingFlow, validatePortraitUpload } from "./components/onboardingFlow.js";
+import { renderOnboardingFlow, bindOnboardingFlow, validatePortraitUpload, stepRequirements } from "./components/onboardingFlow.js";
 import {
   defaultWorldCreatorState, creatorStartInterview, creatorAnswer, creatorSkip, creatorJustBuild,
   creatorCreateReview, creatorKeep, creatorKill, creatorReplace
@@ -13,6 +13,7 @@ import {
 import { renderGuestAuthPanel, resolveAuthAction } from "./components/authPanel.js";
 import { renderModulesZone, renderRoadmapZone } from "./components/homeZones.js";
 import { renderBrand } from "./components/brand.js";
+import { shouldConfirmHomeNav, HOME_NAV_CONFIRM } from "./components/homeNav.js";
 import { soloRunActionLabel } from "./state/runLabels.js";
 import { ABILITIES, pointBuyCost, rollAbilityScores } from "../server/solo/dndData.js";
 import {
@@ -553,12 +554,19 @@ function hbEdit(id) {
 // World-definition field handlers: chip selections re-render (to show the
 // active state); free-text input does not (preserve caret), mirroring the
 // character form's onFieldChange.
+// T6: creating a world is a DISTINCT tile ("+ Create a world"), not a fake world card.
+// The tile calls this straight through to the wizard (no empty-scenarioId overload).
+function onCreateWorld() {
+  enterWorldCreator();
+}
+
 function onWorldFieldSelect(field, value) {
-  // CARD-LED LANDING: the "Custom World" card (empty scenarioId) opens the multi-step
-  // world creator; a ready-made world card goes STRAIGHT to character creation (no
-  // intermediate button — the card is the entry).
+  // CARD-LED LANDING: a ready-made world card goes STRAIGHT to character creation (the
+  // card is the entry). The old empty-scenarioId "Custom World" overload is GONE (T6) —
+  // world creation is now onCreateWorld via the create tile. A defensive empty guard
+  // remains so a stray empty selection never advances into a worldless run.
   if (field === "scenarioId" && (value === "" || value == null)) {
-    enterWorldCreator();
+    onCreateWorld();
     return;
   }
   uiState.onboarding.worldDef = { ...(uiState.onboarding.worldDef || {}), [field]: value };
@@ -841,6 +849,13 @@ function charStep(delta) {
   // Authored worlds run a trimmed wizard — Identity(1) → Origin(2) → Review(6) —
   // skipping the generic 5e Race-picker/Class/Background/Abilities steps (3-5).
   const authored = Boolean(uiState.onboarding.worldDef?.scenarioId);
+  // T9 defense-in-depth: never ADVANCE past a step whose required fields are unmet
+  // (the Next button is already disabled, but a stray call must not skip the gate).
+  // Going BACK (delta < 0) is always allowed.
+  if (delta > 0 && stepRequirements(c.step || 1, c, uiState.onboarding.worldDef, authored).length > 0) {
+    scheduleRender();
+    return;
+  }
   let step;
   if (authored) {
     const seq = [1, 2, 6];
@@ -1047,6 +1062,10 @@ async function maybeRequestDraftPortrait() {
         origin: c.origin
       },
       world: { tone: world.tone, artStyle: world.artStyle, name: world.name },
+      // T8: player-preference slots (additive; the sealed builder applies them so identity
+      // + safety always win — see server/solo/portraitPreferences.js). Empty = baseline.
+      appearance: c.appearancePref || "",
+      avoid: c.avoidPref || "",
       nonce
     });
     if (uiState.onboarding.draftPortraitKey !== key) {
@@ -1542,7 +1561,39 @@ async function handleAuthSubmit(form) {
   }
 }
 
+// T1: navigate the header brand back to the landing/home. Confirms first when the
+// player has in-progress work (an open run's unsent turn, or a half-built character)
+// so drafts/turns are never silently abandoned. Home = strip the ?soloRunId param and
+// land on the world-select. Shared by the home header and the in-run scene header.
+function goHome() {
+  const inRun = Boolean(soloRunIdFromUrl);
+  if (shouldConfirmHomeNav({ inRun, onboardingStep: uiState.onboarding?.step })) {
+    if (!window.confirm(HOME_NAV_CONFIRM)) {
+      return;
+    }
+  }
+  // pathname only → drops ?soloRunId (leaves any run) and returns to the landing.
+  window.location.href = window.location.pathname;
+}
+
+function bindGoHome(root = appRoot) {
+  if (!root) return;
+  root.querySelectorAll("[data-action='go-home']").forEach((el) => {
+    if (el.dataset.goHomeBound === "1") return;
+    el.dataset.goHomeBound = "1";
+    el.addEventListener("click", goHome);
+    // role="link" + tabindex means keyboard users activate with Enter/Space.
+    el.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " " || event.key === "Spacebar") {
+        event.preventDefault();
+        goHome();
+      }
+    });
+  });
+}
+
 function bindAppEvents() {
+  bindGoHome();
   const toggleAuth = appRoot.querySelector("[data-action='toggle-auth']");
   if (toggleAuth) {
     toggleAuth.addEventListener("click", () => {
@@ -1974,6 +2025,7 @@ function renderApp() {
         onSendMessage: sendOnboardingMessage,
         onWorldField: onWorldFieldSelect,
         onWorldFieldInput,
+        onCreateWorld,
         onGenerateWorld: generateWorld,
         onRegenerateWorld: regenerateWorld,
         onRegenerateField: regenerateWorldField,

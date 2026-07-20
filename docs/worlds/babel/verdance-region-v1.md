@@ -273,3 +273,23 @@ crosses the wire; it links only to the current node). If the owner prefers a
 strict maps-only fog, drop the silhouette + edge glow from `buildRegionMapPayload`
 (the STATUS WINDOW sight chips + Follow-the-trail affordance stand independent of
 the map surface).
+
+---
+
+## THE PALETTE AXIS: CHAOS IS VIOLET (sealed, 2026-07-20)
+
+Verdance (and Babel world-wide) runs on a **two-color mirror-war axis** the player
+learns to read on sight:
+
+- **Violet = CHAOS.** The corruption signature everywhere. Chaosling markers scale by
+  tier (eyes -> markings -> glow -> aura). Essence-sight traces (demon-essence is chaos)
+  and the STATUS WINDOW accent are violet. The rapture / Tower register is violet.
+- **Green / gold = the GODDESS.** The counter-register (the Green Static's living green,
+  the Goddess's gold). The war between them is the palette axis: violet corruption
+  creeping into green-gold order.
+
+**Creatures only.** Violet corruption markers are minted onto chaoslings (and other
+corrupted creatures) — never onto a human. This is the inverse gate to the human-only
+species negatives: by construction the violet vocabulary is produced only by the
+chaosling mint (`bestiary.corruptionMarkers`), so it can never leak onto a human
+portrait. See `docs/design/chaos-is-purple.md` for the code contract.

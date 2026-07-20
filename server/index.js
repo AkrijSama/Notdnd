@@ -3368,6 +3368,10 @@ async function handleApi(req, res) {
       const draftId = enqueueDraftPortrait({
         character: payload?.character || {},
         world: payload?.world || {},
+        // T8: player-preference slots forwarded to the job. The sealed builder applies
+        // them via portraitPreferences.applyPreferenceSlots (additive; identity+safety win).
+        appearance: typeof payload?.appearance === "string" ? payload.appearance : "",
+        avoid: typeof payload?.avoid === "string" ? payload.avoid : "",
         nonce: payload?.nonce
       });
       writeJson(res, 200, { ok: true, draftId, status: "generating", entitlement: entitlementSummary(user, { byok }) });

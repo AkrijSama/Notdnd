@@ -37,18 +37,20 @@ const TONE_CHIPS = ["dark fantasy", "high fantasy", "grimdark", "sword and sorce
 // doesn't grade the game on an untuned lane. "polished" = owner-validated (kitchen
 // sealed): anime + cinematic(realistic). "early" = pending kitchen: illustrated(DF).
 // This mirrors artStyle.LANE_MATURITY (canonical-keyed); a drift test pins agreement.
+// Blurbs are owner-approved final copy (T7, owner-veto pass). No em-dashes (honesty-
+// string net) — colons carry the "headline: detail" cadence.
 export const ART_STYLE_OPTIONS = [
-  { id: "illustrated", label: "Illustrated Dark Fantasy", blurb: "Painterly, dramatic, card-art", sample: "/public/assets/art-illustrated.jpg", tier: "early" },
-  { id: "anime", label: "Anime VN", blurb: "Clean line art, expressive faces", sample: "/public/assets/art-anime.jpg", tier: "polished" },
-  { id: "cinematic", label: "Dark Cinematic", blurb: "Moody, filmic key art", sample: "/public/assets/art-cinematic.jpg", tier: "polished" }
+  { id: "illustrated", label: "Illustrated Dark Fantasy", blurb: "Oil-dark painterly portraits: grim, textured, dramatic light", sample: "/public/assets/art-illustrated.jpg", tier: "early" },
+  { id: "anime", label: "Anime VN", blurb: "Flat cel color, clean line art: crisp faces, vivid grounds", sample: "/public/assets/art-anime.jpg", tier: "polished" },
+  { id: "cinematic", label: "Dark Cinematic", blurb: "Photoreal, moody, filmic: like a prestige-TV key frame", sample: "/public/assets/art-cinematic.jpg", tier: "polished" }
 ];
 
 // Small honesty badge for a style card. "Polished" = a lane we've tuned and stand
 // behind; "Early" = still in the kitchen, so we warn rather than let a rough render
-// set the first impression.
+// set the first impression. Copy is em-dash-free (honesty-string net, T7).
 const ART_TIER_TAG = {
-  polished: { label: "Polished", title: "Owner-validated lane — tuned and ready." },
-  early: { label: "Early", title: "Still tuning this lane — art may be rough." }
+  polished: { label: "Polished", title: "Owner-validated lane: tuned and ready." },
+  early: { label: "Early", title: "Still tuning this lane: art may be rough." }
 };
 function renderArtTierTag(tier) {
   const t = ART_TIER_TAG[tier] || ART_TIER_TAG.early;
@@ -71,11 +73,11 @@ function renderArtStylePicker(def = {}, { required = false } = {}) {
         <div class="onb-art-prev onb-art-${option.id}">${option.sample ? `<img class="onb-art-sample" src="${esc(option.sample)}" alt="${esc(option.label)} sample" loading="lazy" />` : ""}${renderArtTierTag(option.tier)}</div>
         <div class="onb-art-label">${esc(option.label)}</div>
         <div class="onb-art-blurb">${esc(option.blurb)}</div>
-        ${option.tier === "early" ? `<div class="onb-art-early-note">Still tuning this lane — art may be rough.</div>` : ""}
+        ${option.tier === "early" ? `<div class="onb-art-early-note">Still tuning this lane: art may be rough.</div>` : ""}
       </button>`
   ).join("");
   const hint = required && !def.artStyle
-    ? `<small class="onb-hint onb-art-required">Pick a visual register — your portrait renders in it, and it's locked for the campaign.</small>`
+    ? `<small class="onb-hint onb-art-required">Pick a visual register: your portrait renders in it, and it's locked for the campaign.</small>`
     : "";
   return `
     <div class="onb-field onb-art-field">
@@ -102,20 +104,27 @@ function renderStartModePicker(def = {}) {
 // system jargon on this screen. The card component is the investment; per-world
 // art + copy are DATA (swap art/hook per world here, not in code). Art is
 // PLACEHOLDER key art from the committed static assets — nothing is generated.
+// T6: the "Custom World" fake card is GONE — creating a world is a distinct tile
+// (renderCreateWorldTile), not a world card. T5: worlds carry 1-2 genre tags.
 export const WORLD_SELECT_CARDS = [
   {
     scenarioId: "babel",
-    title: "Babel",
+    title: "The Tower of Babel",
     hook: "Wake in a strange land. Answer the call. Climb.",
-    art: "/public/assets/art-illustrated.jpg"
-  },
-  {
-    scenarioId: "",
-    title: "Custom World",
-    hook: "A world imagined for you.",
-    art: "/public/assets/art-cinematic.jpg"
+    art: "/public/assets/art-illustrated.jpg",
+    genreTags: ["isekai"]
   }
 ];
+
+// Genre tag chips on a world card (T5). Small, player-facing register labels; the
+// world-book carries them as data (worlds get 1-2). Capped at 2 on the card.
+function renderGenreTags(tags) {
+  const list = Array.isArray(tags) ? tags.filter((t) => typeof t === "string" && t.trim()).slice(0, 2) : [];
+  if (!list.length) return "";
+  return `<span class="onb-world-card-genres">${list
+    .map((t) => `<span class="onb-genre-tag">${esc(t)}</span>`)
+    .join("")}</span>`;
+}
 
 function renderWorldCard(card, active) {
   return `
@@ -124,6 +133,20 @@ function renderWorldCard(card, active) {
       <span class="onb-world-card-body">
         <span class="onb-world-card-title">${esc(card.title)}</span>
         <span class="onb-world-card-hook">${esc(card.hook)}</span>
+        ${renderGenreTags(card.genreTags)}
+      </span>
+    </button>`;
+}
+
+// T6: the "+ Create a world" tile — a DISTINCT create affordance, not a fake world
+// card. Routes to the creation wizard (data-world-create, not data-world-scenario).
+function renderCreateWorldTile() {
+  return `
+    <button type="button" class="onb-world-card onb-world-card-create" data-world-create="1" aria-label="Create a world">
+      <span class="onb-world-card-create-mark" aria-hidden="true">+</span>
+      <span class="onb-world-card-body">
+        <span class="onb-world-card-title">Create a world</span>
+        <span class="onb-world-card-hook">Imagine your own setting and step into it.</span>
       </span>
     </button>`;
 }
@@ -173,6 +196,7 @@ function renderWorldStep(state) {
         <div class="onb-world-cards">
           ${WORLD_SELECT_CARDS.map((card) => renderWorldCard(card, (def.scenarioId || "") === card.scenarioId)).join("")}
           ${(Array.isArray(state.userWorlds) ? state.userWorlds : []).map((w) => renderUserWorldCard(w, def.userWorldId === w.userWorldId)).join("")}
+          ${renderCreateWorldTile()}
         </div>
       </div>
       ${state.error ? `<div class="onboarding-error">${esc(state.error)}</div>` : ""}
@@ -476,7 +500,27 @@ function renderCharIdentity(c, portrait = {}, worldDef = {}) {
         ${readyMade && !styleChosen && mode !== "upload"
           ? `<div class="onb-portrait onb-portrait-needs-style"><p class="onb-hint">Choose an art style to generate your portrait.</p></div>`
           : renderPortraitPreview(portrait, { charName: c.name, variant: "identity", portraitMode: mode })}
+        ${mode !== "upload" ? renderPreferenceSlots(c) : ""}
       </div>
+    </div>`;
+}
+
+// T8: PLAYER-PREFERENCE SLOTS co-located with the preview. Appearance = positive prefs,
+// Avoid = negative prefs. These feed the sealed builder ADDITIVELY (never overriding
+// identity/safety — see server/solo/portraitPreferences.js). Empty = current behavior.
+// Redo re-cooks with the current boxes; the Review refine box remains the edit affordance.
+function renderPreferenceSlots(c = {}) {
+  return `
+    <div class="onb-pref-slots">
+      <div class="onb-field onb-pref-field">
+        <label>Appearance <span class="onb-pref-hint">(optional details to include)</span></label>
+        <textarea data-cw-input="appearancePref" maxlength="200" rows="2" placeholder="e.g. long silver hair, a weathered scar, green cloak">${esc(c.appearancePref || "")}</textarea>
+      </div>
+      <div class="onb-field onb-pref-field">
+        <label>Avoid <span class="onb-pref-hint">(things to keep out)</span></label>
+        <textarea data-cw-input="avoidPref" maxlength="200" rows="2" placeholder="e.g. glasses, hat, heavy armor">${esc(c.avoidPref || "")}</textarea>
+      </div>
+      <small class="onb-hint">Preferences are additive: your character's identity and the world's look always win.</small>
     </div>`;
 }
 
@@ -682,29 +726,19 @@ function renderCharacterWizard(state) {
     body += renderStartModePicker(state.worldDef);
   }
 
-  // Gate "Enter the World" on the three required character fields. Recomputed
-  // every render, so the button re-enables live as the player fills fields in
-  // (e.g. steps back to pick a race, returns to review). Back/nav are never
-  // blocked — only the final submit.
-  const missingRequirements = isLast
-    ? [
-        { ok: typeof c.name === "string" && c.name.trim().length > 0, label: "Enter a character name" },
-        { ok: typeof c.pronouns === "string" && c.pronouns.trim().length > 0, label: "Choose pronouns" },
-        { ok: Boolean(c.race), label: "Choose a race" },
-        { ok: Boolean(c.characterClass), label: "Choose a class" },
-        // Style-lock law: a committed art style is required before entering. Ready-made
-        // worlds pick it in the Identity step; custom worlds carry one (default + review
-        // picker). Either way worldDef.artStyle must be set — no default-guessed entry.
-        { ok: Boolean(state.worldDef?.artStyle), label: "Choose an art style" }
-      ].filter((req) => !req.ok).map((req) => req.label)
-    : [];
-  const canEnter = missingRequirements.length === 0;
+  // T9: VALIDATION COHERENCE — required fields gate THEIR OWN step's Continue (disabled +
+  // inline cue), not only the Review backstop. So a player can never REACH Review
+  // incomplete: name/pronouns/style at Identity, race at Race, class at Class. Review
+  // (step 6) keeps the FULL gate as a backstop. Recomputed every render so buttons
+  // re-enable live as fields fill in. Back is never blocked.
+  const missingRequirements = stepRequirements(step, c, state.worldDef, authored);
+  const stepComplete = missingRequirements.length === 0;
 
   const nav = `<div class="cw-nav">
     ${step > 1 ? `<button class="ghost" data-cw-back ${state.loading ? "disabled" : ""}>Back</button>` : "<span></span>"}
     ${isLast
-      ? `<button class="onb-primary" data-cw-enter ${state.loading || !canEnter ? "disabled" : ""}>${state.loading ? "Entering…" : "Enter the World"}</button>`
-      : `<button class="onb-primary" data-cw-next>Next</button>`}
+      ? `<button class="onb-primary" data-cw-enter ${state.loading || !stepComplete ? "disabled" : ""}>${state.loading ? "Entering…" : "Enter the World"}</button>`
+      : `<button class="onb-primary" data-cw-next ${stepComplete ? "" : "disabled"}>Next</button>`}
   </div>`;
   return `
     <section class="onboarding-shell onb-world cw">
@@ -713,12 +747,41 @@ function renderCharacterWizard(state) {
       <div class="cw-body">${body}</div>
       ${state.error ? `<div class="onboarding-error">${esc(state.error)}</div>` : ""}
       ${
-        isLast && !canEnter
+        !stepComplete
           ? `<div class="cw-validation" role="status">To continue: ${missingRequirements.map(esc).join(" · ")}.</div>`
           : ""
       }
       ${nav}
     </section>`;
+}
+
+// T9: the required fields for a given wizard step. Each step gates its own Continue on
+// exactly the fields introduced there; Review (step 6) repeats the FULL set as a backstop
+// so a resumed/edited draft can never enter incomplete. Authored (ready-made) worlds pick
+// the art style at Identity (choice before pixels); custom worlds pick it at Review, and
+// their race/class come from the 5e steps.
+export function stepRequirements(step, c = {}, worldDef = {}, authored = false) {
+  const has = (v) => (typeof v === "string" ? v.trim().length > 0 : Boolean(v));
+  const need = [];
+  if (step === 1) {
+    if (!has(c.name)) need.push("Enter a character name");
+    if (!has(c.pronouns)) need.push("Choose pronouns");
+    // ready-made (authored) worlds commit the art style here — no pixels before the choice.
+    if (authored && !has(worldDef?.artStyle)) need.push("Choose an art style");
+  } else if (step === 2 && !authored) {
+    if (!has(c.race)) need.push("Choose a race");
+  } else if (step === 3 && !authored) {
+    if (!has(c.characterClass)) need.push("Choose a class");
+  } else if (step === 6) {
+    // Review backstop — the full set required to enter. (Authored worlds pre-fill
+    // race/class with the origin; custom worlds pick the art style on this step.)
+    if (!has(c.name)) need.push("Enter a character name");
+    if (!has(c.pronouns)) need.push("Choose pronouns");
+    if (!has(c.race)) need.push("Choose a race");
+    if (!has(c.characterClass)) need.push("Choose a class");
+    if (!has(worldDef?.artStyle)) need.push("Choose an art style");
+  }
+  return need;
 }
 
 function renderWorldPreviewStep(state) {
@@ -964,6 +1027,11 @@ export function bindOnboardingFlow(root, handlers = {}) {
   // A user's own world card → straight into character creation for that world.
   root.querySelectorAll("[data-world-userworld]").forEach((button) => {
     button.addEventListener("click", () => handlers.onSelectUserWorld?.(button.getAttribute("data-world-userworld")));
+  });
+  // T6: the distinct "+ Create a world" tile opens the creation wizard (NOT a world
+  // card — no scenarioId is set; onCreateWorld routes straight to the creator).
+  root.querySelectorAll("[data-world-create]").forEach((button) => {
+    button.addEventListener("click", () => handlers.onCreateWorld?.());
   });
   // Library-first world-card art (art-plumbing item 3): consult the curated
   // library for a rated "keep" for this world and swap the static placeholder in

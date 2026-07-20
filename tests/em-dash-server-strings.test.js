@@ -13,6 +13,7 @@ import { sightPhrase, SIGHT_PHRASES as SERVER_SIGHT_PHRASES } from "../server/so
 import { createDefaultSoloRun } from "../server/solo/schema.js";
 import { loadScenarioIntoRun, loadScenarioFile } from "../server/campaign/scenarioLoader.js";
 import { renderSoloTraceChips, SIGHT_PHRASES as CLIENT_SIGHT_PHRASES } from "../src/components/soloSceneShell.js";
+import { renderOnboardingFlow } from "../src/components/onboardingFlow.js";
 
 const EM = "—"; // —
 
@@ -37,6 +38,10 @@ test("driven builder OUTPUT corpus carries no em-dash (fixtures are dash-free)",
   for (const k of ["trail", "mark", "residue"]) for (const b of ["bright", "clear", "faint", "cold"]) parts.push(sightPhrase(k, b));
   // Client trace chip render.
   parts.push(renderSoloTraceChips({ sight: { traces: [{ id: "t", kind: "trail", band: "bright", followable: true, direction: "north" }] } }));
+  // Honesty-tag string family (T7): the style picker on a ready-made Identity step
+  // renders the tier pills ("Polished"/"Early"), their titles, the early-lane warning,
+  // the required hint, AND the style-card blurbs — these SLIPPED the ban (2026-07-20).
+  parts.push(renderOnboardingFlow({ step: "character", worldDef: { scenarioId: "babel" }, character: { step: 1 } }));
 
   const corpus = parts.join("\n");
   const idx = corpus.indexOf(EM);

@@ -1005,7 +1005,9 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
   // from the validated scenario into the (post-worldgen) run, in place of the
   // hand-wired campaign block skipped above. Fail-loud on a dangling ref.
   if (scenarioActive) {
-    loadScenarioIntoRun(run, scenario, { worldSeed });
+    // T6: a world-bound sandbox loads the world's canon but not the authored opening
+    // (loadScenarioIntoRun gates quests + fronts on the sandbox flag).
+    loadScenarioIntoRun(run, scenario, { worldSeed, sandbox });
     // WORLD ISOLATION (the Worlds law): stamp a user world's id onto the run so the
     // character is bound to exactly this world for its whole existence — characters
     // never cross worlds. Authored runs already carry the scenarioId; user runs carry

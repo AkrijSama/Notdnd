@@ -375,6 +375,19 @@ export function validateScenario(scenario) {
   if (!isString(scenario.scenarioId)) push(errors, "scenarioId", "scenario requires a scenarioId");
   if (!isString(scenario.title)) push(errors, "title", "scenario requires a title");
   if (!isString(scenario.genre)) push(errors, "genre", "scenario requires genre metadata");
+  // T5: optional genre TAGS — small player-facing register labels a world carries (1-2:
+  // isekai, cyberpunk, cosmic-horror, ...). Distinct from the single `genre` string; a
+  // world may declare none. When present it must be an array of 1-2 non-empty strings.
+  if (scenario.genreTags !== undefined) {
+    if (
+      !Array.isArray(scenario.genreTags) ||
+      scenario.genreTags.length < 1 ||
+      scenario.genreTags.length > 2 ||
+      !scenario.genreTags.every((t) => isString(t) && t.trim())
+    ) {
+      push(errors, "genreTags", "genreTags must be an array of 1-2 non-empty strings when present");
+    }
+  }
   if (!Array.isArray(scenario.tones) || !scenario.tones.length) push(errors, "tones", "scenario requires a non-empty tones array");
   if (!isString(scenario.stakes)) push(errors, "stakes", "scenario requires a one-line stakes string");
   if (!isPlainObject(scenario.opening)) push(errors, "opening", "scenario requires an opening object");

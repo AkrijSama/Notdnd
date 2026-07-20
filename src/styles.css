@@ -309,6 +309,21 @@ button.alt:hover {
   align-items: center;
   gap: 10px;
 }
+/* T1: the brand lockup is a home LINK. cursor + a subtle hover/focus affordance in
+   both header states; reset the div-as-link so it reads as chrome, not a form control. */
+.brand--home {
+  cursor: pointer;
+  background: none;
+  border: 0;
+  border-radius: 8px;
+  padding: 2px 4px;
+  margin: -2px -4px;
+  text-align: left;
+  transition: opacity 0.12s ease, transform 0.12s ease;
+}
+.brand--home:hover { opacity: 0.82; }
+.brand--home:active { transform: translateY(1px); }
+.brand--home:focus-visible { outline: 2px solid var(--accent-bright, #e7e9ee); outline-offset: 2px; }
 .brand-text {
   display: flex;
   flex-direction: column;
@@ -4294,6 +4309,33 @@ button:disabled {
   margin-bottom: 4px;
 }
 .onb-world-card-hook { display: block; font-size: 13px; color: var(--text-2, #b0b3bb); }
+/* T8: player-preference slots co-located under the portrait preview. */
+.onb-pref-slots { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+.onb-pref-field textarea {
+  width: 100%; box-sizing: border-box; resize: vertical; min-height: 40px;
+  font: inherit; font-size: 13px; padding: 7px 9px; border-radius: 8px;
+  background: var(--inset, #14100b); color: var(--text, #d9dbe0);
+  border: 1px solid var(--line, #3d2f22);
+}
+.onb-pref-hint { font-weight: 400; font-size: 11px; color: var(--text-muted, #8b8e96); }
+/* T5: genre tag chips on a world card. */
+.onb-world-card-genres { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.onb-genre-tag {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+  padding: 2px 8px; border-radius: 999px;
+  background: var(--surface-2, #24242b); color: var(--text-2, #b0b3bb);
+  border: 1px solid var(--line, #3d2f22);
+}
+/* T6: the "+ Create a world" tile reads as a create affordance, not a world card
+   (dashed frame, centered mark, no cover image). */
+.onb-world-card-create {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 6px; min-height: 150px; border-style: dashed;
+  color: var(--text-2, #b0b3bb);
+}
+.onb-world-card-create:hover { color: var(--accent-bright, #e7e9ee); }
+.onb-world-card-create-mark { font-size: 34px; font-weight: 300; line-height: 1; opacity: 0.85; }
+.onb-world-card-create .onb-world-card-body { text-align: center; padding-top: 0; }
 .onb-world-card.active::after {
   content: "✓";
   position: absolute;
@@ -5591,6 +5633,11 @@ textarea.hb-input { min-height: 76px; resize: vertical; }
 .solo-sight-block { border-top: 1px dashed var(--border, #202024); }
 .solo-traces { display: flex; flex-wrap: wrap; gap: 5px; }
 .solo-trace-empty { color: var(--text-muted, #8b8e96); font-size: 12px; font-style: italic; }
+/* CHAOS-IS-PURPLE (sealed law): violet is the world-wide chaos/essence signature.
+   Essence-sight traces (demon-essence = chaos) + the STATUS WINDOW carry a violet
+   accent. The per-band freshness colors (bright/clear/faint/cold) still overlay on
+   top; this is the sight surface's identity tint. */
+:root { --sight-accent: #8b5cf6; }
 .solo-trace-chip {
   position: relative;
   display: inline-flex;
@@ -5598,13 +5645,14 @@ textarea.hb-input { min-height: 76px; resize: vertical; }
   gap: 5px;
   padding: 3px 9px;
   border-radius: 999px;
-  border: 1px solid var(--border-strong, #34343b);
+  border: 1px solid var(--sight-accent, #8b5cf6);
+  box-shadow: 0 0 0 1px rgba(139, 92, 246, 0.12) inset;
   background: var(--inset, #070708);
   font-size: 12px;
   color: var(--text-2, #b0b3bb);
   cursor: default;
 }
-.solo-trace-chip:focus { outline: 1px solid var(--accent, #c2c6cf); outline-offset: 1px; }
+.solo-trace-chip:focus { outline: 1px solid var(--sight-accent, #8b5cf6); outline-offset: 1px; }
 .solo-trace-glyph { font-size: 11px; line-height: 1; flex: none; }
 .solo-trace-name { font-weight: 600; color: var(--text, #d9dbe0); }
 .solo-trace-band { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }

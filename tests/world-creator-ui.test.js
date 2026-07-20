@@ -73,9 +73,11 @@ test("no banned 'template' taxonomy anywhere in the creator (Worlds law)", () =>
 
 // ── world-select integration ─────────────────────────────────────────────────
 
-test("world-select renders the Custom World card AND the user's own worlds", () => {
+test("world-select renders the CREATE tile (T6) AND the user's own worlds", () => {
   const html = renderOnboardingFlow({ step: "world", worldDef: {}, userWorlds: [{ userWorldId: "uw_x", title: "Neon Reach", hook: "rain", art: null }] });
-  assert.match(html, /data-world-scenario=""/, "the Custom World entry card");
+  // T6: the fake "Custom World" card is GONE — a distinct "+ Create a world" tile stands in
+  assert.doesNotMatch(html, /data-world-scenario=""/, "no empty-scenario Custom World card");
+  assert.match(html, /data-world-create="1"/, "the distinct create-world tile");
   assert.match(html, /data-world-userworld="uw_x"/, "the user's saved world card");
   assert.match(html, /Neon Reach/);
   assert.match(html, /Yours/, "user worlds are badged Yours");

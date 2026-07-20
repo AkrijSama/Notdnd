@@ -163,6 +163,30 @@ export const TIER_BUDGET = Object.freeze({
   4: Object.freeze({ hpBoost: 22, acBoost: 4, skillsMin: 3, skillsMax: 4, highTier: true })
 });
 function clampTier(t) { const n = Math.trunc(Number(t) || 1); return Math.min(4, Math.max(1, n)); }
+
+// CHAOS-IS-PURPLE (sealed law, docs/design/chaos-is-purple.md + the Verdance region
+// book). Violet is the world-wide corruption signature; a chaosling's markers SCALE by
+// tier (eyes -> markings -> glow -> aura). These are ART-PROMPT FRAGMENTS carried on the
+// mint's `corruption.artFragment`, so the creature's scene/enemy render shows its
+// corruption. CREATURES ONLY: this is produced solely by the chaosling mint (a human
+// character never passes through it), the inverse gate to the human-only species
+// negatives — violet can never leak onto a human portrait by construction.
+export const CHAOS_VIOLET_MARKERS = Object.freeze({
+  1: "faint violet corruption in the eyes",
+  2: "violet-glowing eyes, thin violet corruption markings",
+  3: "glowing violet eyes, creeping violet corruption veins and markings, a faint violet glow",
+  4: "burning violet eyes, violet corruption markings across the body, a roiling violet corruption aura"
+});
+
+/**
+ * The per-tier violet corruption-marker art fragment for a chaosling (creatures only).
+ * Deterministic, pure. Tier clamps to 1..4; scales eyes -> markings -> glow -> aura.
+ * @param {number} tier
+ * @returns {string}
+ */
+export function corruptionMarkers(tier) {
+  return CHAOS_VIOLET_MARKERS[clampTier(tier)];
+}
 // Deterministic djb2 hash (matches the seed util used across the solo engine).
 function hashSeed(value) { let h = 0; const s = String(value == null ? "" : value); for (let i = 0; i < s.length; i += 1) { h = (h * 31 + s.charCodeAt(i)) | 0; } return Math.abs(h); }
 
@@ -223,6 +247,8 @@ export function mintChaosling(baseAnimalId, threatTier, seed) {
     loot: base.loot,
     carriedSkills,
     sightReadable: true, // essence-sight integration point (see doc §sight-ledger)
+    // CHAOS-IS-PURPLE: per-tier violet corruption-marker art fragment (creatures only).
+    corruption: Object.freeze({ palette: "violet", tier, artFragment: corruptionMarkers(tier) }),
     tags: Object.freeze([...base.tags, "chaosling", "corrupted"])
   });
 }
@@ -255,6 +281,8 @@ const LIMPING_GREY = Object.freeze({
     sightReadable: true,
     behaviors: Object.freeze({ vicious: true, cowardly: false, injured: true }),
     loot: Object.freeze([]),
+    // CHAOS-IS-PURPLE: tier-2 violet markers (creatures only).
+    corruption: Object.freeze({ palette: "violet", tier: 2, artFragment: corruptionMarkers(2) }),
     tags: Object.freeze(["wildlife", "wolf", "chaosling", "corrupted"])
   })
 });
