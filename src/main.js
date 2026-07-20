@@ -566,6 +566,12 @@ function onWorldFieldSelect(field, value) {
     confirmWorld(); // pre-fills the authored origin + advances to the character wizard
     return;
   }
+  // CHOICE-BEFORE-PIXELS (style-lock law): committing an art style is what unblocks the
+  // draft portrait for a ready-made world (the Identity-step picker). Kick the draft on
+  // the pick so the preview fills in immediately once a style exists.
+  if (field === "artStyle") {
+    scheduleDraftPortrait();
+  }
   scheduleRender();
 }
 function onWorldFieldInput(field, value) {
@@ -995,10 +1001,22 @@ async function maybeRequestDraftPortrait() {
   if (!c.race || !c.characterClass) {
     return; // need both race + class before a meaningful portrait
   }
-  // Key on the visual-driving fields plus the redo nonce, so a Redo (which bumps
-  // the nonce) re-fires this for the same race/class instead of being skipped.
+  // CHOICE-BEFORE-PIXELS (style-lock law): never request a portrait before a style is
+  // committed on the world context. A ready-made world carries none until the player
+  // picks one in the Identity step; requesting anyway would render on a guessed default
+  // lane (the bug). The server enforces this too (hard guard) — this is the UI half.
+  const world = uiState.onboarding.worldPreview || uiState.onboarding.worldDef || {};
+  if (!world.artStyle) {
+    // Surface a clear "pick a style" state instead of a stuck spinner, and leave the
+    // key unset so the pick (which schedules a draft) fires the real request.
+    uiState.onboarding.draftPortraitStatus = "needs-style";
+    scheduleRender();
+    return;
+  }
+  // Key on the visual-driving fields + the art style + the redo nonce, so a Redo (which
+  // bumps the nonce) OR a style change re-fires this instead of being skipped.
   const nonce = uiState.onboarding.draftPortraitNonce || 0;
-  const key = `${c.race}|${c.characterClass}|${c.background || ""}|${nonce}`;
+  const key = `${c.race}|${c.characterClass}|${c.background || ""}|${world.artStyle}|${nonce}`;
   if (key === uiState.onboarding.draftPortraitKey) {
     return; // already requested for this exact combo
   }
@@ -1015,7 +1033,6 @@ async function maybeRequestDraftPortrait() {
   stopDraftPortraitPoll();
   scheduleRender();
 
-  const world = uiState.onboarding.worldPreview || uiState.onboarding.worldDef || {};
   try {
     const res = await apiClient.requestDraftPortrait({
       character: {

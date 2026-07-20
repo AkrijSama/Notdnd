@@ -40,21 +40,31 @@ const ART_STYLE_OPTIONS = [
 ];
 
 // The art-style picker (style-lock law: offered at CREATION for every world, authored
-// or custom). It moved off the world landing (now card-led) into the character wizard's
-// review step, so the player still chooses a visual register before entering.
-function renderArtStylePicker(def = {}) {
+// or custom). Ready-made worlds pick it in the Identity step (choice BEFORE pixels —
+// the draft portrait cannot render until a style is committed); custom worlds keep it
+// on the review step. `required` mode (ready-made) makes it a REQUIRED choice with NO
+// default-guess: no card is pre-active until the player picks, mirroring the pronoun
+// field. Style-lock commits on selection.
+function renderArtStylePicker(def = {}, { required = false } = {}) {
+  // required = no default-guess: only highlight a card once the player has committed a
+  // style. Non-required (custom review) keeps the historical illustrated-default active.
+  const current = required ? (def.artStyle || "") : (def.artStyle || "illustrated");
   const artCards = ART_STYLE_OPTIONS.map(
     (option) => `
-      <button type="button" class="onb-art-card ${(def.artStyle || "illustrated") === option.id ? "active" : ""}" data-world-artstyle="${option.id}">
+      <button type="button" class="onb-art-card ${current === option.id ? "active" : ""}" data-world-artstyle="${option.id}">
         <div class="onb-art-prev onb-art-${option.id}">${option.sample ? `<img class="onb-art-sample" src="${esc(option.sample)}" alt="${esc(option.label)} sample" loading="lazy" />` : ""}</div>
         <div class="onb-art-label">${esc(option.label)}</div>
         <div class="onb-art-blurb">${esc(option.blurb)}</div>
       </button>`
   ).join("");
+  const hint = required && !def.artStyle
+    ? `<small class="onb-hint onb-art-required">Pick a visual register — your portrait renders in it, and it's locked for the campaign.</small>`
+    : "";
   return `
     <div class="onb-field onb-art-field">
-      <label>Art style</label>
+      <label>Art style${required ? ' <span class="onb-req" aria-hidden="true">*</span>' : ""}</label>
       <div class="onb-art-grid" data-onb-art-picker>${artCards}</div>
+      ${hint}
     </div>`;
 }
 
@@ -376,14 +386,22 @@ export function validatePortraitUpload(file) {
   return { ok: true };
 }
 
-function renderCharIdentity(c, portrait = {}) {
+function renderCharIdentity(c, portrait = {}, worldDef = {}) {
   const mode = c.portraitMode || "generate";
   const uploadError = typeof portrait.uploadError === "string" ? portrait.uploadError : "";
+  // CHOICE-BEFORE-PIXELS (style-lock law): a READY-MADE world (authored scenarioId)
+  // routes straight here with no art-style step, so the picker rides the Identity step
+  // — REQUIRED, no default — and the portrait cannot render until a style is committed.
+  // Custom worlds carry a style already and pick it on review, so this is authored-only.
+  const readyMade = Boolean(worldDef?.scenarioId);
+  const styleChosen = Boolean(worldDef?.artStyle);
+  const stylePicker = readyMade ? renderArtStylePicker(worldDef, { required: true }) : "";
   return `
     <div class="onb-identity">
       <div class="onb-identity-fields">
         <div class="onb-field"><label>Character name</label>
           <input data-cw-input="name" maxlength="60" placeholder="Ser Rowan Vale" value="${esc(c.name || "")}" /></div>
+        ${stylePicker}
         ${(() => {
           // Declared pronouns: a REQUIRED He/She/They/Custom choice; defaults to
           // the owner default (he/him) so it is always committed. Gender derives
@@ -438,7 +456,9 @@ function renderCharIdentity(c, portrait = {}) {
       </div>
       <div class="onb-identity-portrait">
         <div class="onb-kicker">Portrait preview</div>
-        ${renderPortraitPreview(portrait, { charName: c.name, variant: "identity", portraitMode: mode })}
+        ${readyMade && !styleChosen && mode !== "upload"
+          ? `<div class="onb-portrait onb-portrait-needs-style"><p class="onb-hint">Choose an art style to generate your portrait.</p></div>`
+          : renderPortraitPreview(portrait, { charName: c.name, variant: "identity", portraitMode: mode })}
       </div>
     </div>`;
 }
@@ -620,7 +640,7 @@ function renderCharacterWizard(state) {
     } else if (step === 6) {
       body = renderAuthoredReview(c, portrait, scenarioId);
     } else {
-      body = renderCharIdentity(c, portrait);
+      body = renderCharIdentity(c, portrait, state.worldDef);
     }
   } else if (step === 2) {
     body = renderCharRace(c, custom.races);
@@ -633,15 +653,16 @@ function renderCharacterWizard(state) {
   } else if (step === 6) {
     body = renderCharReview(c, portrait, custom);
   } else {
-    body = renderCharIdentity(c, portrait);
+    body = renderCharIdentity(c, portrait, state.worldDef);
   }
   const isLast = step === 6;
-  // Style-lock law: the art-style picker rides the Review step (the last choice before
-  // entering) for EVERY world — the card-led landing no longer carries it. A custom
-  // world also picks its play mode (sandbox vs guided) here; authored worlds are set.
-  if (isLast) {
+  // Style-lock law: a CUSTOM world picks its art style + play mode on the review step
+  // (the last choice before entering). A READY-MADE world (authored) picks its style up
+  // front in the Identity step (choice before pixels — see renderCharIdentity), so the
+  // review-step picker is custom-only to avoid a redundant second picker.
+  if (isLast && !authored) {
     body += renderArtStylePicker(state.worldDef);
-    if (!authored) body += renderStartModePicker(state.worldDef);
+    body += renderStartModePicker(state.worldDef);
   }
 
   // Gate "Enter the World" on the three required character fields. Recomputed
@@ -653,7 +674,11 @@ function renderCharacterWizard(state) {
         { ok: typeof c.name === "string" && c.name.trim().length > 0, label: "Enter a character name" },
         { ok: typeof c.pronouns === "string" && c.pronouns.trim().length > 0, label: "Choose pronouns" },
         { ok: Boolean(c.race), label: "Choose a race" },
-        { ok: Boolean(c.characterClass), label: "Choose a class" }
+        { ok: Boolean(c.characterClass), label: "Choose a class" },
+        // Style-lock law: a committed art style is required before entering. Ready-made
+        // worlds pick it in the Identity step; custom worlds carry one (default + review
+        // picker). Either way worldDef.artStyle must be set — no default-guessed entry.
+        { ok: Boolean(state.worldDef?.artStyle), label: "Choose an art style" }
       ].filter((req) => !req.ok).map((req) => req.label)
     : [];
   const canEnter = missingRequirements.length === 0;

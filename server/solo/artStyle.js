@@ -217,6 +217,28 @@ export function lockRunArtStyle(run, style, { grant = false } = {}) {
   return canonical;
 }
 
+/**
+ * CHOICE-BEFORE-PIXELS guard (style-lock law). Does this world CONTEXT carry a
+ * COMMITTED, valid art style? True iff `artStyleOptions.default` or the legacy
+ * `artStyle` string resolves to a real style in either vocab. A ready-made world
+ * card routed straight to character creation carries NEITHER until the player
+ * picks one in the Identity step — so this returns false, and the draft-portrait
+ * enqueue guard rejects the job. No pixels ever render on a guessed default lane
+ * before the player has chosen. (worldHasStyle below is engine-only and permissive;
+ * this is the stricter validity check the guard needs — either vocab, must parse.)
+ * @param {object} world
+ * @returns {boolean}
+ */
+export function hasCommittedArtStyle(world) {
+  if (!world || typeof world !== "object") {
+    return false;
+  }
+  const opt = world.artStyleOptions && typeof world.artStyleOptions === "object"
+    ? world.artStyleOptions.default
+    : null;
+  return Boolean(toCanonicalStyle(opt) || toCanonicalStyle(world.artStyle));
+}
+
 // Whether a world object carries any usable engine style (new field or legacy).
 function worldHasStyle(world) {
   if (!world || typeof world !== "object") {

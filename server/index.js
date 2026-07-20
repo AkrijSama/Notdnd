@@ -46,7 +46,7 @@ import { tokenFromRequest } from "./auth/httpAuth.js";
 import { createOnboardingCampaign, createWorldOnboardingRun } from "./campaign/onboarding.js";
 import { serviceDraft, serviceTwist, serviceSaveWorld, listWorldsForSelect, serviceDeleteWorld } from "./campaign/worldCreationService.js";
 import { generateWorld, regenerateWorldField } from "./solo/worldGen.js";
-import { engineStyleForRun } from "./solo/artStyle.js";
+import { engineStyleForRun, hasCommittedArtStyle } from "./solo/artStyle.js";
 import { resolveLibraryArt } from "./solo/artLibrary.js";
 import { sanitizePlayerText } from "./solo/safety.js";
 import {
@@ -130,7 +130,7 @@ import { buildAttemptContext, buildAttemptProviderInput, classifyIntentAuthority
 import { interpretAttemptWithGm } from "./gm/attemptInterpreter.js";
 import { attributeSceneDialogue, resolveGmNarration } from "./solo/gmProvider.js";
 import { buildGmRuntimeStatus } from "./solo/gmSmoke.js";
-import { enqueueDraftPortrait, enqueueImageJob, enqueueLocationImageJob, enqueuePlayerImageJob, enqueueVnBodyImageJob, enqueueEnemyBodyImageJob, getDraftPortrait, imageWorkerStatus, locationCanonFragment, parseIdentityEdit, pronounsToGender, writeUploadedBasePortrait } from "./solo/imageWorker.js";
+import { classifyImageFailure, enqueueDraftPortrait, enqueueImageJob, enqueueLocationImageJob, enqueuePlayerImageJob, enqueueVnBodyImageJob, enqueueEnemyBodyImageJob, getDraftPortrait, imageWorkerStatus, locationCanonFragment, parseIdentityEdit, pronounsToGender, writeUploadedBasePortrait } from "./solo/imageWorker.js";
 import { recordRequest, shouldLogRequest, lastAuthEvents } from "./logging/requestLog.js";
 import { enqueueIdentityJob, runIdentityJob, backfillNpcMannerisms, buildVoiceDirective } from "./solo/npcIdentity.js";
 import { buildDisagreementDirective, detectComplianceViolations } from "./gm/disagreementAudit.js";
@@ -3356,6 +3356,15 @@ async function handleApi(req, res) {
         writeJson(res, 200, { ok: true, draftId: null, status: "quota_reached", entitlement: entitlementSummary(user, { byok }) });
         return true;
       }
+      // CHOICE-BEFORE-PIXELS (style-lock law): no draft portrait may render before a
+      // style is committed on the world context. Soft-fail with a loud, actionable
+      // reason (same failReason surface the client already shows) rather than a hard
+      // error — the remedy is a player choice in the Identity step. enqueueDraftPortrait
+      // also throws STYLE_NOT_LOCKED as a hard backstop for any other caller.
+      if (!hasCommittedArtStyle(payload?.world || {})) {
+        writeJson(res, 200, { ok: true, draftId: null, status: "failed", reason: classifyImageFailure(new Error("art style is not locked")), entitlement: entitlementSummary(user, { byok }) });
+        return true;
+      }
       const draftId = enqueueDraftPortrait({
         character: payload?.character || {},
         world: payload?.world || {},
@@ -3385,6 +3394,12 @@ async function handleApi(req, res) {
       const instruction = typeof payload?.instruction === "string" ? payload.instruction.trim() : "";
       if (!instruction) {
         writeJson(res, 400, { ok: false, error: "An edit instruction is required." });
+        return true;
+      }
+      // CHOICE-BEFORE-PIXELS (style-lock law): an edit re-renders a portrait, so it
+      // is subject to the same guard — no committed style, no pixels.
+      if (!hasCommittedArtStyle(payload?.world || {})) {
+        writeJson(res, 200, { ok: true, draftId: null, status: "failed", reason: classifyImageFailure(new Error("art style is not locked")), entitlement: entitlementSummary(user, { byok }) });
         return true;
       }
       const draftId = enqueueDraftPortrait({

@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { editImage, generateImage } from "../ai/providers.js";
-import { engineStyleForRun, styleForRun } from "./artStyle.js";
+import { engineStyleForRun, styleForRun, hasCommittedArtStyle } from "./artStyle.js";
 import { deriveWeather, deriveClock } from "./worldClock.js";
 import { detectImageExt } from "../api/http.js";
 import { addAsset, libraryRoot } from "../../scripts/art/library.mjs";
@@ -274,6 +274,12 @@ function logWorker(message, error) {
 // a silent retry. The raw error still goes to the worker log (logWorker) for the owner.
 export function classifyImageFailure(error) {
   const m = String(error?.message || error || "").toLowerCase();
+  // CHOICE-BEFORE-PIXELS (style-lock law): the draft guard rejects a portrait job
+  // whose world context carries no committed style. Surface it as a clear, actionable
+  // reason — not a scary "art server" failure — since the remedy is a player choice.
+  if (/style is not locked|style_not_locked|art style is not|no art style|style not chosen/.test(m)) {
+    return "Choose an art style before your portrait can render — the style is locked for the whole campaign.";
+  }
   if (/did not complete within|timed out|timeout|deadline/.test(m)) {
     return "The art server took too long (it may be busy or the GPU is loaded). Try again in a moment.";
   }
@@ -1579,6 +1585,19 @@ export function enqueuePlayerImageJob(job = {}) {
 export function enqueueDraftPortrait(job = {}) {
   const character = job.character || {};
   const world = job.world || {};
+  // CHOICE-BEFORE-PIXELS (style-lock law) — HARD SERVER GUARD, not just UI ordering.
+  // A draft portrait may NOT be generated before a style is committed on the world
+  // context. A ready-made world card routed straight to character creation carries
+  // no style until the player picks one in the Identity step; reject here so no
+  // pixels ever render on a guessed default lane. The route surfaces this via the
+  // classifyImageFailure reason ("Choose an art style …"); direct callers get a
+  // typed STYLE_NOT_LOCKED throw.
+  if (!hasCommittedArtStyle(world)) {
+    throw Object.assign(
+      new Error("art style is not locked — choose a style before the portrait can render"),
+      { code: "STYLE_NOT_LOCKED", statusCode: 400 }
+    );
+  }
   // Redo nonce: bypasses the cache (new id) and varies the seed (new image).
   const nonce = Math.trunc(Number(job.nonce) || 0);
   // Conversational portrait editor: a tweak ("longer hair", "add a scar") applied
