@@ -33,11 +33,27 @@ const TONE_CHIPS = ["dark fantasy", "high fantasy", "grimdark", "sword and sorce
 // sandbox defaults to forest-ruins (engine-side); modules/campaigns carry their
 // own start. (Leaving startingLocationType blank lets generateWorld apply the
 // default.) Module authoring lives in campaignForge.js and is unaffected.
-const ART_STYLE_OPTIONS = [
-  { id: "illustrated", label: "Illustrated Dark Fantasy", blurb: "Painterly, dramatic, card-art", sample: "/public/assets/art-illustrated.jpg" },
-  { id: "anime", label: "Anime VN", blurb: "Clean line art, expressive faces", sample: "/public/assets/art-anime.jpg" },
-  { id: "cinematic", label: "Dark Cinematic", blurb: "Moody, filmic key art", sample: "/public/assets/art-cinematic.jpg" }
+// HONESTY TAGS (owner ruling 2026-07-20): each lane carries a `tier` so a first-timer
+// doesn't grade the game on an untuned lane. "polished" = owner-validated (kitchen
+// sealed): anime + cinematic(realistic). "early" = pending kitchen: illustrated(DF).
+// This mirrors artStyle.LANE_MATURITY (canonical-keyed); a drift test pins agreement.
+export const ART_STYLE_OPTIONS = [
+  { id: "illustrated", label: "Illustrated Dark Fantasy", blurb: "Painterly, dramatic, card-art", sample: "/public/assets/art-illustrated.jpg", tier: "early" },
+  { id: "anime", label: "Anime VN", blurb: "Clean line art, expressive faces", sample: "/public/assets/art-anime.jpg", tier: "polished" },
+  { id: "cinematic", label: "Dark Cinematic", blurb: "Moody, filmic key art", sample: "/public/assets/art-cinematic.jpg", tier: "polished" }
 ];
+
+// Small honesty badge for a style card. "Polished" = a lane we've tuned and stand
+// behind; "Early" = still in the kitchen, so we warn rather than let a rough render
+// set the first impression.
+const ART_TIER_TAG = {
+  polished: { label: "Polished", title: "Owner-validated lane — tuned and ready." },
+  early: { label: "Early", title: "Still tuning this lane — art may be rough." }
+};
+function renderArtTierTag(tier) {
+  const t = ART_TIER_TAG[tier] || ART_TIER_TAG.early;
+  return `<span class="onb-art-tag onb-art-tag-${tier === "polished" ? "polished" : "early"}" title="${esc(t.title)}">${esc(t.label)}</span>`;
+}
 
 // The art-style picker (style-lock law: offered at CREATION for every world, authored
 // or custom). Ready-made worlds pick it in the Identity step (choice BEFORE pixels —
@@ -52,9 +68,10 @@ function renderArtStylePicker(def = {}, { required = false } = {}) {
   const artCards = ART_STYLE_OPTIONS.map(
     (option) => `
       <button type="button" class="onb-art-card ${current === option.id ? "active" : ""}" data-world-artstyle="${option.id}">
-        <div class="onb-art-prev onb-art-${option.id}">${option.sample ? `<img class="onb-art-sample" src="${esc(option.sample)}" alt="${esc(option.label)} sample" loading="lazy" />` : ""}</div>
+        <div class="onb-art-prev onb-art-${option.id}">${option.sample ? `<img class="onb-art-sample" src="${esc(option.sample)}" alt="${esc(option.label)} sample" loading="lazy" />` : ""}${renderArtTierTag(option.tier)}</div>
         <div class="onb-art-label">${esc(option.label)}</div>
         <div class="onb-art-blurb">${esc(option.blurb)}</div>
+        ${option.tier === "early" ? `<div class="onb-art-early-note">Still tuning this lane — art may be rough.</div>` : ""}
       </button>`
   ).join("");
   const hint = required && !def.artStyle

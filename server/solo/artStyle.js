@@ -41,6 +41,27 @@ export const DEFAULT_LIBRARY_STYLE = "dark-fantasy";
 // House fallback for the butler (today's production-quality lane).
 export const DEFAULT_STYLE = "dark-fantasy";
 
+// LANE MATURITY (owner honesty ruling 2026-07-20). Each art lane carries an honest
+// "validated" flag so a first-timer doesn't grade the game on an untuned lane:
+//   "polished" — owner-validated lane (kitchen sealed): anime (JANKU) + realistic
+//                (Juggernaut).
+//   "early"    — lane pending kitchen work: dark-fantasy (DF/sketch — scene export
+//                still absent, routes the generic nihilmania path).
+// Keyed by CANONICAL style; the client style cards mirror it (engine-keyed) with a
+// drift test pinning agreement. This is the single source of a lane's maturity.
+export const LANE_MATURITY = Object.freeze({
+  anime: "polished",
+  realistic: "polished",
+  "dark-fantasy": "early"
+});
+
+// A lane's honesty tier ("polished" | "early"), accepting EITHER vocab. Defaults to
+// "early" for an unknown style (never over-promise a lane we can't vouch for).
+export function laneMaturity(style) {
+  const canonical = toCanonicalStyle(style);
+  return (canonical && LANE_MATURITY[canonical]) || "early";
+}
+
 // Canonical style -> checkpoint COOKBOOK — a human-readable REPORT table only.
 // NOT the live selection path: the live checkpoint is derived from the validated
 // exports via comfyui.checkpointForStyle (single source of truth). Keep these short
