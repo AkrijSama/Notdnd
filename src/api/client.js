@@ -365,13 +365,13 @@ export function createApiClient(baseUrl = "") {
     },
     // Mid-creation portrait: request generation (server returns a draftId) and
     // poll it. No run exists yet.
-    async requestDraftPortrait({ character, world, nonce }) {
+    async requestDraftPortrait({ character, world, nonce, supersedes }) {
       // nonce MUST be forwarded: the server derives the draft cache id + seed from
       // it, so a Redo (which bumps the nonce) needs it to bypass the cache and
       // produce a genuinely new image. Dropping it made Redo return the same image.
       return request("/api/onboarding/portrait", {
         method: "POST",
-        body: JSON.stringify({ character, world, nonce })
+        body: JSON.stringify({ character, world, nonce, supersedes })
       });
     },
     async getDraftPortrait(draftId) {
@@ -381,10 +381,10 @@ export function createApiClient(baseUrl = "") {
     // (sourceImageUrl). nonce bumps per edit so each version gets a fresh draftId.
     // Returns { draftId, status, consistentEdit, entitlement } — same poll as a
     // generation. status "quota_reached" when the daily image quota is spent.
-    async editDraftPortrait({ character, world, instruction, sourceImageUrl, nonce }) {
+    async editDraftPortrait({ character, world, instruction, sourceImageUrl, nonce, supersedes }) {
       return request("/api/onboarding/portrait/edit", {
         method: "POST",
-        body: JSON.stringify({ character, world, instruction, sourceImageUrl, nonce })
+        body: JSON.stringify({ character, world, instruction, sourceImageUrl, nonce, supersedes })
       });
     },
     async getGmMemory(campaignId) {

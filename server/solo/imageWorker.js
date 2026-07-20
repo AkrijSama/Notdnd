@@ -233,6 +233,22 @@ function assetsRoot() {
     : path.resolve(process.cwd(), "data/assets");
 }
 
+// ASSET LIFECYCLE LAW (owner 2026-07-20): destroy a draft's on-disk namespace (file +
+// dir) — the DESTROY half of "library-kept or destroyed, no third state". Best-effort;
+// never throws (cleanup must not break a turn).
+function destroyDraftAssets(draftId) {
+  const id = String(draftId || "").trim();
+  if (!id) return false;
+  try {
+    const dir = path.join(assetsRoot(), id);
+    if (fs.existsSync(dir)) fs.rmSync(dir, { recursive: true, force: true });
+    draftPortraits.delete(id);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function diskPathFor(runId, npcId, slot, ext = "png") {
   return path.join(assetsRoot(), String(runId), String(npcId), `${slot}.${ext}`);
 }
@@ -1222,6 +1238,10 @@ export async function runDraftPortraitJob(job = {}) {
     fs.writeFileSync(target, bytes);
     const uri = servedUriFor(draftId, "player", "base", ext);
     draftPortraits.set(draftId, { status: "generated", uri });
+    // REDO-DESTROYS-PREDECESSOR: the replacement has landed — destroy the superseded
+    // draft now (file + record). Exactly the live one survives.
+    const supersedes = typeof job.supersedes === "string" ? job.supersedes.trim() : "";
+    if (supersedes && supersedes !== draftId) destroyDraftAssets(supersedes);
     return { ok: true, uri };
   } catch (error) {
     const reason = classifyImageFailure(error);
@@ -1250,7 +1270,14 @@ export function getDraftPortrait(draftId) {
   }
   const mem = draftPortraits.get(id);
   if (mem) {
-    return { status: mem.status, uri: mem.uri || null, reason: mem.reason || null };
+    // SERVE-ONLY-LIVE (asset lifecycle law): a "generated" entry whose file was DESTROYED
+    // (superseded by a redo, or swept) is no longer a live asset — never serve its dead
+    // uri. Drop the stale entry and report not-found so the caller regenerates cleanly.
+    if (mem.status === "generated" && !findDraftPortraitOnDisk(id)) {
+      draftPortraits.delete(id);
+    } else {
+      return { status: mem.status, uri: mem.uri || null, reason: mem.reason || null };
+    }
   }
   const onDisk = findDraftPortraitOnDisk(id);
   if (onDisk) {
@@ -1629,17 +1656,22 @@ export function enqueueDraftPortrait(job = {}) {
   // with a regenerate fallback) using sourceImageUrl as the base.
   const editInstruction = typeof job.editInstruction === "string" ? job.editInstruction.trim() : "";
   const sourceImageUrl = typeof job.sourceImageUrl === "string" ? job.sourceImageUrl.trim() : "";
+  // REDO-DESTROYS-PREDECESSOR (asset lifecycle law): the draft this replaces. Its assets
+  // are destroyed once THIS replacement lands (generated) — keep exactly the live one.
+  const supersedes = typeof job.supersedes === "string" ? job.supersedes.trim() : "";
   const draftId = computeDraftPortraitId(character, nonce, world, editInstruction);
 
-  // Idempotent: if already generated on disk, mark generated and skip the queue.
+  // Idempotent: if already generated on disk, mark generated and skip the queue. The
+  // replacement has "landed" instantly, so the predecessor is destroyed now.
   const existing = findDraftPortraitOnDisk(draftId);
   if (existing) {
     draftPortraits.set(draftId, { status: "generated", uri: existing.uri });
+    if (supersedes && supersedes !== draftId) destroyDraftAssets(supersedes);
     return draftId;
   }
 
   draftPortraits.set(draftId, { status: "generating", uri: null });
-  queue.push({ kind: "draft", draftId, character, world, nonce, editInstruction, sourceImageUrl });
+  queue.push({ kind: "draft", draftId, character, world, nonce, editInstruction, sourceImageUrl, supersedes });
   Promise.resolve().then(drainQueue).catch((error) => logWorker("drain failed", error));
   return draftId;
 }

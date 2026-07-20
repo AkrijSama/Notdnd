@@ -307,7 +307,7 @@ function renderPortraitPreview(portrait = {}, options = {}) {
     // image; we're not generating one).
     const generatingCaption = options.portraitMode === "upload"
       ? "Uploading your portrait…"
-      : "Crafting your portrait… (~20s)";
+      : "Crafting your portrait…";
     return `<div class="onb-portrait-preview${variant} onb-portrait-loading">
         <span class="onb-portrait-spinner" aria-hidden="true"></span>
         <small>${generatingCaption}</small>

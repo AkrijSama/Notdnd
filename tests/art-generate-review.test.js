@@ -137,11 +137,16 @@ test("the review server records a keep/toss rating into the sidecar", async () =
     });
     assert.equal(res.status, 200);
     assert.equal(getAsset("reviewme").rating, "keep", "keep written to the sidecar");
-    // toss then clear
+    // TOSS = DESTROY (asset lifecycle law 2026-07-20): the rating is NOT retained —
+    // the record + file are deleted on the spot (no "tossed-but-kept" third state).
     await fetch(`http://127.0.0.1:${port}/rate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: "reviewme", rating: "toss" }) });
-    assert.equal(getAsset("reviewme").rating, "toss");
-    await fetch(`http://127.0.0.1:${port}/rate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: "reviewme", rating: "" }) });
-    assert.equal(getAsset("reviewme").rating, null, "empty clears the rating");
+    assert.equal(getAsset("reviewme"), null, "toss destroys the sidecar record");
+    assert.equal(fs.existsSync(path.join(TMP, "reviewme.png")), false, "toss destroys the image file");
+    // The neutral clear (rating "") is a flag-write, tested on a fresh asset.
+    addAsset({ id: "reviewme2", kind: "scene", world: "babel", style: "anime" });
+    await fetch(`http://127.0.0.1:${port}/rate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: "reviewme2", rating: "keep" }) });
+    await fetch(`http://127.0.0.1:${port}/rate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: "reviewme2", rating: "" }) });
+    assert.equal(getAsset("reviewme2").rating, null, "empty clears the rating");
     // the index page renders and serves the image
     const idx = await fetch(`http://127.0.0.1:${port}/`);
     assert.match(await idx.text(), /Inkborne art review/);

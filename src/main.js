@@ -959,6 +959,12 @@ function stopDraftPortraitPoll() {
   }
 }
 
+// Poll cadence + budget. The budget must OUTLAST the server job fuse (JOB_TIMEOUT_MS,
+// 300s) so a slow render resolves on the server side (generated OR classified-failed) and
+// the poll reflects it — 110 × 3s = 330s. Never a 60s false-fail, never an eternal spinner.
+const DRAFT_POLL_INTERVAL_MS = 3000;
+const MAX_DRAFT_POLL_ATTEMPTS = 110;
+
 function startDraftPortraitPoll(draftId, key) {
   stopDraftPortraitPoll();
   let attempts = 0;
@@ -994,16 +1000,23 @@ function startDraftPortraitPoll(draftId, key) {
     } catch {
       // transient — keep polling within the attempt budget
     }
-    if (attempts < 20) {
-      uiState.onboarding.draftPortraitPollTimer = setTimeout(tick, 3000);
+    // CARD HONESTY (2026-07-20): the poll MUST outlast the server job fuse (300s) so a
+    // slow-but-succeeding novram cold-load render (84–153s) completes instead of the card
+    // false-failing at 60s — AND it MUST terminate: the old 20-attempt (60s) budget could
+    // leave the "Regenerating…" overlay stuck for minutes when a render ran long or the
+    // poll was superseded. At the deadline the card flips to a classified failure with a
+    // Retry, never an eternal spinner.
+    if (attempts < MAX_DRAFT_POLL_ATTEMPTS) {
+      uiState.onboarding.draftPortraitPollTimer = setTimeout(tick, DRAFT_POLL_INTERVAL_MS);
     } else {
       uiState.onboarding.draftPortraitStatus = "failed";
+      uiState.onboarding.portraitFailReason = "The art server took too long. Try again in a moment.";
       uiState.onboarding.portraitEditPending = false;
       uiState.onboarding.draftPortraitKey = null; // allow a retry after a timeout
       scheduleRender();
     }
   };
-  uiState.onboarding.draftPortraitPollTimer = setTimeout(tick, 3000);
+  uiState.onboarding.draftPortraitPollTimer = setTimeout(tick, DRAFT_POLL_INTERVAL_MS);
 }
 
 async function maybeRequestDraftPortrait() {
@@ -1044,6 +1057,9 @@ async function maybeRequestDraftPortrait() {
   // preview shows the CURRENT image under a pulsing "Regenerating…" overlay
   // (status "generating" + a uri present), so the box is never blank. The new
   // image replaces it when the poll reports "generated".
+  // REDO-DESTROYS-PREDECESSOR: the draft this request replaces (destroyed server-side once
+  // the replacement lands) — captured BEFORE we clear the id.
+  const supersedes = uiState.onboarding.draftPortraitId || "";
   uiState.onboarding.draftPortraitId = null;
   stopDraftPortraitPoll();
   scheduleRender();
@@ -1066,7 +1082,8 @@ async function maybeRequestDraftPortrait() {
       // + safety always win — see server/solo/portraitPreferences.js). Empty = baseline.
       appearance: c.appearancePref || "",
       avoid: c.avoidPref || "",
-      nonce
+      nonce,
+      supersedes
     });
     if (uiState.onboarding.draftPortraitKey !== key) {
       return; // combo changed while awaiting — drop this response
@@ -1190,6 +1207,8 @@ async function submitPortraitEdit(rawInstruction) {
   uiState.onboarding.draftPortraitKey = key;
   uiState.onboarding.draftPortraitStatus = "generating"; // current image stays under the overlay
   uiState.onboarding.draftPortraitAccepted = false; // an edit un-accepts (must re-accept)
+  // REDO-DESTROYS-PREDECESSOR: the base this edit replaces (destroyed once the edit lands).
+  const supersedes = uiState.onboarding.draftPortraitId || "";
   uiState.onboarding.draftPortraitId = null;
   uiState.onboarding.portraitEditPending = true;
   uiState.onboarding.portraitEditError = "";
@@ -1201,7 +1220,8 @@ async function submitPortraitEdit(rawInstruction) {
       world: { tone: world.tone, artStyle: world.artStyle, name: world.name },
       instruction,
       sourceImageUrl: sourceUri,
-      nonce
+      nonce,
+      supersedes
     });
     if (uiState.onboarding.draftPortraitKey !== key) {
       return; // superseded by a newer action

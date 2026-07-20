@@ -190,6 +190,17 @@ export function releaseFace(id) {
 }
 
 // Owner curation: keep | toss | null.
+// ASSET LIFECYCLE LAW (owner 2026-07-20): two fates only — library-KEPT or DESTROYED.
+// Rating an asset "toss" is a DESTROY, not a retained flag: the image (png) + its sidecar
+// record are deleted on the spot. There is no third "tossed-but-kept" state on disk.
+export function destroyAsset(id) {
+  const png = path.join(libraryRoot(), `${String(id)}.png`);
+  let removed = false;
+  try { if (fs.existsSync(png)) { fs.rmSync(png, { force: true }); removed = true; } } catch { /* best-effort */ }
+  try { if (fs.existsSync(sidecarPath(id))) { fs.rmSync(sidecarPath(id), { force: true }); removed = true; } } catch { /* best-effort */ }
+  return removed;
+}
+
 export function rateAsset(id, rating) {
   if (!ASSET_RATINGS.includes(rating)) {
     throw new Error(`library: rating must be one of ${ASSET_RATINGS.map(String).join(", ")}`);
@@ -197,6 +208,11 @@ export function rateAsset(id, rating) {
   const sidecar = getAsset(id);
   if (!sidecar) {
     throw new Error(`library: no asset ${id}`);
+  }
+  // TOSS = DESTROY: the file + record are deleted, never retained with a flag.
+  if (rating === "toss") {
+    destroyAsset(id);
+    return { id, destroyed: true };
   }
   sidecar.rating = rating;
   return writeAsset(sidecar);

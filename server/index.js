@@ -3372,7 +3372,9 @@ async function handleApi(req, res) {
         // them via portraitPreferences.applyPreferenceSlots (additive; identity+safety win).
         appearance: typeof payload?.appearance === "string" ? payload.appearance : "",
         avoid: typeof payload?.avoid === "string" ? payload.avoid : "",
-        nonce: payload?.nonce
+        nonce: payload?.nonce,
+        // REDO-DESTROYS-PREDECESSOR: the prior draft to destroy once this one lands.
+        supersedes: typeof payload?.supersedes === "string" ? payload.supersedes : ""
       });
       writeJson(res, 200, { ok: true, draftId, status: "generating", entitlement: entitlementSummary(user, { byok }) });
     } catch (error) {
@@ -3411,7 +3413,9 @@ async function handleApi(req, res) {
         world: payload?.world || {},
         nonce: payload?.nonce,
         editInstruction: instruction,
-        sourceImageUrl: typeof payload?.sourceImageUrl === "string" ? payload.sourceImageUrl : ""
+        sourceImageUrl: typeof payload?.sourceImageUrl === "string" ? payload.sourceImageUrl : "",
+        // REDO-DESTROYS-PREDECESSOR: the prior draft to destroy once this edit lands.
+        supersedes: typeof payload?.supersedes === "string" ? payload.supersedes : ""
       });
       // IDENTITY-AS-STATE: an identity-class edit ("male", "she", "older") is a
       // FIELD change, not token soup — return the resolved identity so the client

@@ -126,3 +126,24 @@ test("WALL: the choke-point modules exist at their guarded paths", () => {
     assert.ok(fs.existsSync(path.join(repoRoot, f)), `choke-point module missing: ${f}`);
   }
 });
+
+// ── RULE 5 (topology): SEALED-OR-NOTHING. The provider fan-out for character/scene kinds
+// must have exactly ONE live branch — the failover chain is DROPPED for sealed kinds. This
+// catches a future RE-WIRING at the source level (behavior is also covered by
+// sealed-or-nothing.test.js, but a topology guard fails the suite the moment the gate is
+// deleted, before any behavioral path is even exercised). Asserts the gate is present in
+// the failover-chain construction: sealed kinds → empty failover list.
+test("WALL: the sealed-or-nothing gate exists in the provider fan-out (no fallback branch for sealed kinds)", () => {
+  const providers = fs.readFileSync(path.join(repoRoot, "server/ai/providers.js"), "utf8");
+  // The chain must be built from a failover list that is EMPTY when the kind is sealed.
+  assert.match(providers, /SEALED_ONLY_KINDS/, "SEALED_ONLY_KINDS must gate the fan-out");
+  assert.match(
+    providers,
+    /sealedOnly\s*\?\s*\[\s*\]/,
+    "the failover list must be dropped (empty) for sealed kinds — deleting this gate re-opens the A6 fallback door"
+  );
+  // And the sealed set must actually name the identity/scene kinds.
+  for (const k of ["portrait", "fullbody", "scene"]) {
+    assert.match(providers, new RegExp(`["']${k}["']`), `SEALED_ONLY_KINDS must include ${k}`);
+  }
+});
