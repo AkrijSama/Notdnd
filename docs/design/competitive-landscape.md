@@ -64,3 +64,25 @@ product is that nobody needs to touch the prompt.
 - **RoleForge-class:** shallow.
 - **Inkborne's moat vs all:** server-owned truth + mechanics integrity; behind
   all on distribution/payment/content volume.
+
+## THE FUN CEILING (derived estimates, 2026-07-20)
+
+*Folded from the product-thesis adversarial review. These are **derived/estimated**
+fun scores — not measured; no competitor is instrumented, and per
+[[validation-baseline]] agent autoplay can't grade fun. They calibrate the "~6.5–7
+ceiling" claim and where each rival breaks. The point is not the exact number; it is
+that every incumbent's ceiling is set by a **structural** failure Inkborne's engine is
+built to not have.*
+
+| Product | Fun (est.) | Trajectory | The structural ceiling |
+|---|---|---|---|
+| SillyTavern + a strong model | **bimodal 8 / 3** | flat | Peaks high with a tuned card + power user; collapses to ~3 on memory decay / no stakes / no game underneath. No floor — the median session is nowhere near the peak. |
+| AI companions (Character.AI-class) | **~7.5** | flat/soft | Emotional continuity is real, but there is no game and no consequence — a companion, not a campaign. Ceiling is affective, not ludic. |
+| Token-RPGs / structured-RP apps | **~7** | rising slowly | Have *some* mechanics, but memory is a chat window and stakes are soft; depth thins as the session grows. |
+| Friends & Fables | **~6.5** | fragile | Shipped 5e game, paying users — but user-reported memory leaks (NPCs forget relationships, quest context lost, scene resets) and a resented credit economy cap it. Durability is the exact failure. |
+| AI Dungeon | **~6** | falling | Massive base, but decorative mechanics and drift-at-depth; the canonical "no game underneath / bully-able stakes" product. |
+
+**Read:** nobody's ceiling is set by *prose* — every ceiling is set by **durability,
+stakes, or the missing game.** That is the thesis in one table: beauty is not the
+contested axis; the commit/consequence spine is. See
+[[product-thesis]] for the moat framing and the payload gaps.
