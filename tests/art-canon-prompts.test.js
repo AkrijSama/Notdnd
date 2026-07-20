@@ -32,7 +32,13 @@ test("player portrait (Babel Beckoned MC): frames a modern human, no 'elf' token
     { race: "The Beckoned", origin: "The Beckoned", class: "The Beckoned", pronouns: "he/him" },
     { name: "Babel", tone: "modern arcane", artStyleOptions: { default: "anime" } }
   );
-  assert.match(prompt, /modern Earth human/i, "canon HUMAN reaches the prompt");
+  // The human + modern-era canon must reach the prompt — but on the ANIME lane it rides
+  // the weighted adult-male token, human ears, and the isekai/modern-anime framing, NOT
+  // the photographic "modern Earth human / present-day / real-world" anchors (those
+  // drifted JANKU to a 2.5D/3D render — the required-picker regression 2026-07-20; see
+  // portrait-lane-invariance's anime regression guard).
+  assert.match(prompt, /\(adult man:1\.3\)/, "canon HUMAN adult-male identity reaches the prompt");
+  assert.match(prompt, /modern anime character|contemporary|present-day outfit|isekai/i, "modern-era framing reaches the prompt (anime-native, not photographic)");
   assert.match(prompt, /rounded (human )?ears/i, "human ears asserted POSITIVELY");
   assert.doesNotMatch(prompt, /elf/i, "no 'elf' token — pollinations is positive-prompt-only and would render it");
 });

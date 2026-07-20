@@ -58,7 +58,7 @@ export const LANE_MATURITY = Object.freeze({
 // A lane's honesty tier ("polished" | "early"), accepting EITHER vocab. Defaults to
 // "early" for an unknown style (never over-promise a lane we can't vouch for).
 export function laneMaturity(style) {
-  const canonical = toCanonicalStyle(style);
+  const canonical = canonicalizeStyle(style);
   return (canonical && LANE_MATURITY[canonical]) || "early";
 }
 
@@ -129,11 +129,19 @@ export function normalizeStyle(style) {
   return STYLES.includes(key) ? key : DEFAULT_STYLE;
 }
 
-// Accept EITHER vocabulary and return the CANONICAL style, or null if the value
-// is not a recognized style in either vocab. A locked run.flags.artStyle may hold
-// legacy engine vocab (illustrated/anime/cinematic) OR canonical vocab
-// (anime/dark-fantasy/realistic); this normalizes both.
-export function toCanonicalStyle(style) {
+/**
+ * THE SINGLE CANONICALIZER (owner ruling 2026-07-20). Every style string entering
+ * the system — picker cards, world defaults, legacy runs, custom wizard, EITHER vocab
+ * — normalizes through here. Accepts engine vocab (illustrated/anime/cinematic) OR
+ * canonical vocab (anime/dark-fantasy/realistic) and returns the CANONICAL style, or
+ * null if the value is unrecognized in both vocabs (the caller decides: reject at a
+ * guarded commit, or fall to a house default). The run stores ONLY canonical; recipe
+ * resolution, blocks selection, LANE_MATURITY, and library style-gating all read
+ * canonical through this one function. No site should hand-map style vocab.
+ * @param {string} style
+ * @returns {"anime"|"dark-fantasy"|"realistic"|null}
+ */
+export function canonicalizeStyle(style) {
   const key = lc(style);
   if (!key) {
     return null;
@@ -146,6 +154,10 @@ export function toCanonicalStyle(style) {
   }
   return null;
 }
+
+// Back-compat alias — canonicalizeStyle is THE name; toCanonicalStyle is retained so
+// existing importers (comfyui, artLibrary, drift tests) keep working. Same function.
+export const toCanonicalStyle = canonicalizeStyle;
 
 // canonical style -> engine style (for the live generation path: artStyleDirection
 // + comfyui STYLE_PRESETS still speak engine vocab).
@@ -222,13 +234,15 @@ export function lockRunArtStyle(run, style, { grant = false } = {}) {
   if (!run || typeof run !== "object") {
     throw new Error("artStyle: lockRunArtStyle requires a run object");
   }
-  const canonical = toCanonicalStyle(style);
+  // THE canonicalizer at commit: the run stores ONLY canonical, never a raw picker/
+  // world vocab string (so recipe resolution + blocks + LANE_MATURITY read one vocab).
+  const canonical = canonicalizeStyle(style);
   const allowed = allowedStylesFor(run.world);
   if (!canonical || !allowed.includes(canonical)) {
     throw new Error(`artStyle: "${style}" is not an allowed style for this world (allowed: ${allowed.join(", ")})`);
   }
   run.flags = run.flags || {};
-  const current = toCanonicalStyle(run.flags.artStyle);
+  const current = canonicalizeStyle(run.flags.artStyle);
   if (current && current !== canonical && !grant) {
     throw new Error(
       "artStyle: art style is LOCKED for this run — mid-campaign style switching is a premium (Ink-priced) service; pass an explicit styleSwitch grant to override"

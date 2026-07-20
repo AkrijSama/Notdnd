@@ -643,8 +643,14 @@ const MODERN_EARTH_SUBJECT =
 // ANIME variant (append: the Beckoned MUST render as CEL-SHADED ANIME, not western
 // semi-realism). Keep the modern-dress CANON, drop the "real-world / ordinary /
 // realistic person" tokens that pull JANKU toward a naturalistic western-comic face.
+// The Beckoned IS an isekai protagonist (a modern person pulled into another world) —
+// the single most anime-native framing for JANKU. Anchoring on "isekai protagonist,
+// modern anime character" (NOT "modern Earth human / present-day person / real-world",
+// which read photographic and, at the low validated cfg 3.5, drift JANKU to a 2.5D/3D
+// render — the required-picker regression 2026-07-20) keeps the modern-dress CANON
+// while making the cel register win. Weighted so it dominates the realism pull.
 const MODERN_EARTH_SUBJECT_ANIME =
-  "a modern Earth human, present-day person, contemporary modern clothing";
+  "(isekai protagonist:1.2), modern anime character in contemporary casual clothing, present-day outfit";
 // POSITIVE identity emphasis (NOT a negation). The live image path serves through
 // pollinations/flux, which is POSITIVE-PROMPT-ONLY — it has no negative-prompt
 // field, so a "NOT pointed elf ears" clause fed here renders the literal words
@@ -657,7 +663,7 @@ const MODERN_EARTH_EMPHASIS =
 // "natural human face / plain real-world appearance" realism pulls (the elf defense
 // negative still suppresses elf ears). Lets the anime dialect win the render.
 const MODERN_EARTH_EMPHASIS_ANIME =
-  "rounded human ears, modern-day contemporary look";
+  "(anime style:1.3), (cel shaded:1.2), flat anime coloring, clean bold lineart, rounded human ears, modern anime character design";
 
 // Shared prompt for the player + draft full-body character-sheet portrait.
 // Visual descriptors for the 10 creator races. Naming a race alone (e.g.
@@ -721,8 +727,13 @@ export function buildPlayerPortraitPrompt(character = {}, world = {}) {
       ]
         .filter(Boolean)
         .join(" ") || subjectPhrase;
+    // The "newcomer" clause is lane-aware: the anime lane frames the arrival as isekai
+    // (anime-native) rather than "a modern-day person" (a photographic realism pull).
+    const newcomerClause = isAnime
+      ? `an isekai protagonist newly arrived in a ${tone} world`
+      : `a modern-day person newly pulled into a ${tone} world`;
     return (
-      `character portrait of ${beckonedSubject}, ${withBuild(adultGenderPhrase(c), c, { weighted: true })}, a modern-day person newly pulled into a ${tone} world, ` +
+      `character portrait of ${beckonedSubject}, ${withBuild(adultGenderPhrase(c), c, { weighted: true })}, ${newcomerClause}, ` +
       `${artStyleDirection(engineStyle, "player")}, ${emphasis}`
     );
   }
