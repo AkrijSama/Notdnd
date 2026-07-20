@@ -138,6 +138,32 @@ test("resolveSceneArtForRun: a loc-tagged keep serves ONLY its own location", ()
   assert.equal(resolveSceneArtForRun(run), null, "no location given -> loc-tagged keeps stay out of the generic rung");
 });
 
+test("resolveSceneArtForRun: STYLE-LOCK — a DF run never serves an anime-only location keep (the live regression)", () => {
+  // The owner's live case: a Babel run + the anime green-static-fringe scene keep. The
+  // style-lock law extends to the SERVE path — a keep serves a run ONLY when its style
+  // matches the run's locked lane. No cross-style serving, ever.
+  addAsset({ id: "xstyle_scene_anime", world: "w_xstyle", kind: "scene", style: "anime", tags: ["loc:the-green-static-fringe"] });
+  rateAsset("xstyle_scene_anime", "keep");
+  const location = { name: "The Green Static — Fringe" };
+
+  // A DARK-FANTASY-locked run: the anime keep is off-lane -> null. The caller then
+  // renders a clean empty state + generates in the DF lane; no anime image ever reaches
+  // a DF run.
+  const dfRun = { world: { variant: "w_xstyle", artStyleOptions: { default: "dark-fantasy" } } };
+  assert.equal(resolveSceneArtForRun(dfRun, location), null, "DF run never inherits an anime keep");
+  assert.equal(
+    resolveLocationImageUri(dfRun, { locationId: "start_location", name: location.name }),
+    null,
+    "no style-matched keep + no generated asset -> null (empty state, background generation fires in the DF lane)"
+  );
+
+  // Belt + suspenders: an ANIME-locked run in the same world+location DOES get the keep
+  // (the filter is a style MATCH, not a blanket block — this is why the owner's actual
+  // anime-locked run correctly saw the anime scene).
+  const animeRun = { world: { variant: "w_xstyle", artStyleOptions: { default: "anime" } } };
+  assert.equal(resolveSceneArtForRun(animeRun, location), libraryAssetUri("xstyle_scene_anime"));
+});
+
 test("resolveSceneArtForRun: untagged (generic) keeps still serve any location of the world", () => {
   addAsset({ id: "generic_scene", world: "w_geo2", kind: "scene", style: "anime" });
   rateAsset("generic_scene", "keep");
