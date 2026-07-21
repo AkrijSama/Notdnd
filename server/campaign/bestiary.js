@@ -540,7 +540,7 @@ export function resolveOrMintCreatureBlock(run, npc) {
   }
   const kindStr = String(npc?.kind || npc?.nature?.kind || "").toLowerCase();
   const looksCreature = /beast|wildlife|creature|animal|monster|chaosling|demon/.test(kindStr) || Boolean(npc?.species);
-  if (!looksCreature) return null; // a person without a block is not a beast — civilian default
+  if (!looksCreature) return null; // a person without a block is not a beast: civilian default
   const block = mintCreatureOnDemand({
     species: npc?.species || npc?.displayName || npc?.appearance || "creature",
     tier: Number(npc?.tier) || 1,
