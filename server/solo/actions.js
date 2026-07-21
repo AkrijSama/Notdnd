@@ -45,6 +45,7 @@ import {
 import { advanceQuests, capturePlayerObjective } from "./quests.js";
 import { advanceMomentum } from "./momentum.js";
 import { combatActive, detectAttackIntent, enterCombatFromAttackIntent, resolveCombatInput, getCombatActionMenu } from "./combat.js";
+import { resolveEnemyAggression, tickAggressionClocks } from "./tactics.js";
 import { advanceThreads, fireDueThreadBeatOnClock, resolveThreadLifecycle, enforceThreadDeadlines } from "./threads.js";
 import { createDefaultVnState, validateSoloRun } from "./schema.js";
 import {
@@ -603,6 +604,24 @@ function finalizeQuestProgress(originalRun, result, options = {}) {
       result.narrativeDriver = momentum.threadBeat.driver;
     } else if (momentum?.fired) {
       result.momentumEvent = momentum.fired;
+    }
+  }
+
+  // C1 — ENEMY-INITIATED COMBAT. After the turn settles (and only outside a fight, and
+  // only when the player didn't just attack), a committed PRESENT hostile may START a
+  // fight per its tactics. "watching" is the default — aggression fires ONLY on committed
+  // conditions (explicit hunter, a provoke flag, or a stalker closing). The lunge is
+  // COMBAT ENTRY (the CTB engine, telegraphed from turn one), NEVER narration.
+  if (actionProducedRun && result.run && !combatActive(result.run) && !result.action?.enteredCombatViaIntent) {
+    tickAggressionClocks(result.run);
+    const aggressor = resolveEnemyAggression(result.run);
+    if (aggressor) {
+      const entered = enterCombatFromAttackIntent(result.run, { targetNpcId: aggressor.npcId, intent: "" }, { ...options, enemyInitiated: true });
+      if (entered.ok) {
+        result.run = entered.run;
+        result.combatRound = entered.combatRound;
+        result.enemyInitiatedCombat = { npcId: aggressor.npcId, reason: aggressor.reason };
+      }
     }
   }
 
