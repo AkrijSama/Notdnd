@@ -17,26 +17,26 @@
 | `poiTable` | Points of interest | **filled** | 23 authored | locations map → map layout, travel, scene art |
 | `startArea` | Start area | _engine default_ | keptGroundStart() | opening.startLocationRef; starter-zone auditor (server/solo/starterZone.js) via the poi:start-area tag |
 | `factions` | Factions | **filled** | 4 authored | reputation engine (server/solo/reputation.js); cast factionId |
-| `threatLadder` | Threat ladder | **filled** | 4 authored | NONE — carried into scenario.bestiary.threatLadder and never read; encounter/spawn selection never consults it (DEAD SLOT, verified 2026-07-21) |
+| `threatLadder` | Threat ladder | **filled** | 4 authored | NONE: carried into scenario.bestiary.threatLadder and never read; encounter/spawn selection never consults it (DEAD SLOT, verified 2026-07-21) |
 | `bestiary` | Bestiary | **filled** | 5 authored | combat stat blocks + placements (scenarioLoader.placeBestiaryEncounters) |
 | `nameBanks` | Name banks | **filled** | 3 authored | cast mint, POI mint, creature epithets |
-| `orientationMix` | Orientation mix | _engine default_ | default table (3 keys) | NONE — written to world.orientationMix; the romance path in reputation.js never consults it (DEAD SLOT, verified 2026-07-21) |
-| `deathLaw` | Death law | _engine default_ | default table (3 keys) | NONE — the death epilogue is a hardcoded client table (soloSceneShell.js DEATH_LAW_EPILOGUE) keyed on scenarioId/variant, not this slot (DEAD SLOT, verified 2026-07-21) |
-| `services` | Services | _engine default_ | empty list | POI service affordances (per-POI `services` overrides this world floor) |
-| `fronts` | Fronts | **filled** | 3 authored | threads engine — scenarioLoader.js:527 lowers fronts → run.threads (cap 3) |
-| `secrets` | Secrets | **filled** | 3 authored | NONE — validated by scenarioSchema.js:409-413 then discarded; scenarioLoader never reads it (DEAD SLOT, ledgered) |
+| `orientationMix` | Orientation mix | _engine default_ | default table (3 keys) | NONE: written to world.orientationMix; the romance path in reputation.js never consults it (DEAD SLOT, verified 2026-07-21) |
+| `deathLaw` | Death law | _engine default_ | default table (3 keys) | NONE: the death epilogue is a hardcoded client table (soloSceneShell.js DEATH_LAW_EPILOGUE) keyed on scenarioId/variant, not this slot (DEAD SLOT, verified 2026-07-21) |
+| `services` | Services | _engine default_ | empty list | NONE at world level: normalizeWorldBook emits it but compileWorldBook never lowers it; only PER-POI `locations[].services[]` reaches affordances.js (DEAD SLOT, verified 2026-07-21) |
+| `fronts` | Fronts | **filled** | 3 authored | threads engine: scenarioLoader.js:527 lowers fronts → run.threads (cap 3) |
+| `secrets` | Secrets | **filled** | 3 authored | NONE: validated by scenarioSchema.js:409-413 then discarded; scenarioLoader never reads it (DEAD SLOT, ledgered) |
 | `cast` | Cast | **filled** | 6 authored | NPC roster, dialogue, romance, portraits |
 | `questOffers` | Quest offers | **filled** | 1 authored | quest engine; opening.questObjectiveFrom |
 | `quests` | Authored quests | **filled** | 2 authored | quest engine (authored arcs) |
 | `opening.situation` | Opening situation | **filled** | 1 authored | first narrated beat |
 | `world.artStyle` | Art style | **filled** | 1 authored | art pipeline lane selection (server/solo/artStyle.js) |
-| `figures` | Key figures | _planned_ | — (not built) | NOT BUILT — hand-set major NPCs (romance-legacy-law.md: 'authored key figures have hand-set' attributes); today they are ordinary `cast` rows |
-| `artifacts` | Artifacts | _planned_ | — (not built) | NOT BUILT — notable items/relics (ROADMAP-CANON 'Law of Creating Worlds') |
-| `powerSystems` | Power systems | _planned_ | — (not built) | NOT BUILT — magic/tech systems; per-world book, not the chassis manual |
-| `background` | Background / history | _planned_ | — (not built) | NOT BUILT — deep history; `cosmology` currently absorbs the one-paragraph version |
-| `handbook` | Handbook chapters | _planned_ | — (not built) | NOT BUILT — per-world races/classes/bestiary/lore chapters (main manual = world-agnostic chassis only) |
+| `figures` | Key figures | _planned_ | — (not built) | NOT BUILT: hand-set major NPCs (romance-legacy-law.md: 'authored key figures have hand-set' attributes); today they are ordinary `cast` rows |
+| `artifacts` | Artifacts | _planned_ | — (not built) | NOT BUILT: notable items/relics (ROADMAP-CANON 'Law of Creating Worlds') |
+| `powerSystems` | Power systems | _planned_ | — (not built) | NOT BUILT: magic/tech systems; per-world book, not the chassis manual |
+| `background` | Background / history | _planned_ | — (not built) | NOT BUILT: deep history; `cosmology` currently absorbs the one-paragraph version |
+| `handbook` | Handbook chapters | _planned_ | — (not built) | NOT BUILT: per-world races/classes/bestiary/lore chapters (main manual = world-agnostic chassis only) |
 
-> **Dead slots** — authored + validated, consumed by nothing. Filling these changes nothing until a consumer ships: `threatLadder`, `orientationMix`, `deathLaw`, `secrets`
+> **Dead slots** — authored + validated, consumed by nothing. Filling these changes nothing until a consumer ships: `threatLadder`, `orientationMix`, `deathLaw`, `services`, `secrets`
 
 > **Planned slots** — declared by `docs/ROADMAP-CANON.md` ("Law of Creating Worlds") but engine-unbuilt. This is the real world-#2 gap: `figures`, `artifacts`, `powerSystems`, `background`, `handbook`
 

@@ -1510,8 +1510,13 @@ export function buildScenePrompt(run, location = {}, locationId = "") {
     sceneTimeFragment(run),
     sceneDangerRegister(location?.state?.dangerLevel),
     sceneEraFragment(world.era),
-    // TONE LAW: the Verdance is beautiful AND wrong — a generic postcard is a FAIL.
-    "beautiful yet subtly wrong, uneasy stillness, faint shimmer in the air, over-still water, off light",
+    // SCENE REGISTER (furniture, migrated 2026-07-21). This slot used to be a hardcoded
+    // Verdance clause ("beautiful yet subtly wrong, uneasy stillness, faint shimmer…")
+    // appended to EVERY scene prompt of EVERY world — a cyberpunk alley came out with
+    // over-still water. The register is a per-world authored line (babel.json
+    // world.sceneRegister carries the Verdance original); the engine default is EMPTY,
+    // so a world that declares nothing simply gets no register clause.
+    isStr(world.sceneRegister) ? world.sceneRegister.trim() : "",
     tone
   ];
   return slots.filter(Boolean).join(", ");

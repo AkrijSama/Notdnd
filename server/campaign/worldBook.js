@@ -624,21 +624,21 @@ export const WORLD_BOOK_SLOTS = Object.freeze([
   { path: "factions", label: "Factions", defaultKind: "empty", default: [],
     consumer: "reputation engine (server/solo/reputation.js); cast factionId" },
   { path: "threatLadder", label: "Threat ladder", defaultKind: "table", default: DEFAULT_THREAT_LADDER,
-    consumer: "NONE — carried into scenario.bestiary.threatLadder and never read; encounter/spawn selection never consults it (DEAD SLOT, verified 2026-07-21)" },
+    consumer: "NONE: carried into scenario.bestiary.threatLadder and never read; encounter/spawn selection never consults it (DEAD SLOT, verified 2026-07-21)" },
   { path: "bestiary", label: "Bestiary", defaultKind: "mint", mintedBy: "compileBestiary() + mintStarterEncounter()",
     consumer: "combat stat blocks + placements (scenarioLoader.placeBestiaryEncounters)" },
   { path: "nameBanks", label: "Name banks", defaultKind: "table", default: DEFAULT_NAME_BANKS,
     consumer: "cast mint, POI mint, creature epithets" },
   { path: "orientationMix", label: "Orientation mix", defaultKind: "table", default: DEFAULT_ORIENTATION_MIX,
-    consumer: "NONE — written to world.orientationMix; the romance path in reputation.js never consults it (DEAD SLOT, verified 2026-07-21)" },
+    consumer: "NONE: written to world.orientationMix; the romance path in reputation.js never consults it (DEAD SLOT, verified 2026-07-21)" },
   { path: "deathLaw", label: "Death law", defaultKind: "table", default: DEFAULT_DEATH_LAW,
-    consumer: "NONE — the death epilogue is a hardcoded client table (soloSceneShell.js DEATH_LAW_EPILOGUE) keyed on scenarioId/variant, not this slot (DEAD SLOT, verified 2026-07-21)" },
+    consumer: "NONE: the death epilogue is a hardcoded client table (soloSceneShell.js DEATH_LAW_EPILOGUE) keyed on scenarioId/variant, not this slot (DEAD SLOT, verified 2026-07-21)" },
   { path: "services", label: "Services", defaultKind: "empty", default: DEFAULT_SERVICES,
-    consumer: "POI service affordances (per-POI `services` overrides this world floor)" },
+    consumer: "NONE at world level: normalizeWorldBook emits it but compileWorldBook never lowers it; only PER-POI `locations[].services[]` reaches affordances.js (DEAD SLOT, verified 2026-07-21)" },
   { path: "fronts", label: "Fronts", defaultKind: "mint", mintedBy: "mintDefaultFront()",
-    consumer: "threads engine — scenarioLoader.js:527 lowers fronts → run.threads (cap 3)" },
+    consumer: "threads engine: scenarioLoader.js:527 lowers fronts → run.threads (cap 3)" },
   { path: "secrets", label: "Secrets", defaultKind: "mint", mintedBy: "mintDefaultSecret()",
-    consumer: "NONE — validated by scenarioSchema.js:409-413 then discarded; scenarioLoader never reads it (DEAD SLOT, ledgered)" },
+    consumer: "NONE: validated by scenarioSchema.js:409-413 then discarded; scenarioLoader never reads it (DEAD SLOT, ledgered)" },
   { path: "cast", label: "Cast", defaultKind: "mint", mintedBy: "mintStarterCast()",
     consumer: "NPC roster, dialogue, romance, portraits" },
   { path: "questOffers", label: "Quest offers", defaultKind: "mint", mintedBy: "mintQuestSpine()",
@@ -659,15 +659,15 @@ export const WORLD_BOOK_SLOTS = Object.freeze([
   // sees the real shape of the form (and so Babel's manifest reports its true gaps)
   // rather than discovering them by archaeology. Filling them is inert until built.
   { path: "figures", label: "Key figures", defaultKind: "planned",
-    consumer: "NOT BUILT — hand-set major NPCs (romance-legacy-law.md: 'authored key figures have hand-set' attributes); today they are ordinary `cast` rows" },
+    consumer: "NOT BUILT: hand-set major NPCs (romance-legacy-law.md: 'authored key figures have hand-set' attributes); today they are ordinary `cast` rows" },
   { path: "artifacts", label: "Artifacts", defaultKind: "planned",
-    consumer: "NOT BUILT — notable items/relics (ROADMAP-CANON 'Law of Creating Worlds')" },
+    consumer: "NOT BUILT: notable items/relics (ROADMAP-CANON 'Law of Creating Worlds')" },
   { path: "powerSystems", label: "Power systems", defaultKind: "planned",
-    consumer: "NOT BUILT — magic/tech systems; per-world book, not the chassis manual" },
+    consumer: "NOT BUILT: magic/tech systems; per-world book, not the chassis manual" },
   { path: "background", label: "Background / history", defaultKind: "planned",
-    consumer: "NOT BUILT — deep history; `cosmology` currently absorbs the one-paragraph version" },
+    consumer: "NOT BUILT: deep history; `cosmology` currently absorbs the one-paragraph version" },
   { path: "handbook", label: "Handbook chapters", defaultKind: "planned",
-    consumer: "NOT BUILT — per-world races/classes/bestiary/lore chapters (main manual = world-agnostic chassis only)" }
+    consumer: "NOT BUILT: per-world races/classes/bestiary/lore chapters (main manual = world-agnostic chassis only)" }
 ]);
 
 // Every slot must be defaultable — the {name,vibe}-plays law in executable form.

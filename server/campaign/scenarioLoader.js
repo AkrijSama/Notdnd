@@ -225,7 +225,11 @@ export function loadScenarioIntoRun(run, scenario, options = {}) {
     // eraDescriptor reads world.era): with it set, minted attire carries the
     // world's era instead of defaulting to modern dress. Additive; worlds without
     // it ride bare exactly as before.
-    for (const k of ["name", "tone", "flavor", "artStyle", "variant", "era"]) {
+    // `sceneRegister` is the per-world scene-art tone clause (steel/furniture split
+    // 2026-07-21). It used to be a hardcoded Verdance line appended to EVERY world's
+    // scene prompt — a cyberpunk alley rendered with "over-still water". Babel now
+    // carries its own register as data; a world that declares none gets no clause.
+    for (const k of ["name", "tone", "flavor", "artStyle", "variant", "era", "sceneRegister"]) {
       if (isString(scenario.world[k])) run.world[k] = scenario.world[k];
     }
     // Carry the scenario's engine art style into BOTH the new primary

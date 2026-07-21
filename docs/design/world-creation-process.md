@@ -6,6 +6,64 @@ It documents what already ships in code; every section names the module that own
 
 ---
 
+## AUTHORING A WORLD = FILLING THIS FORM
+
+**Owner law: world #2 must be form-filling, not archaeology.** You do not need to read the
+engine to author a world. You need to fill slots. Everything you can fill is declared in ONE
+place — `WORLD_BOOK_SLOTS` (`server/campaign/worldBook.js`) — and you can print the status of
+any world's form at any time:
+
+```
+node scripts/world-manifest.mjs babel          # the bill of materials
+node scripts/world-manifest.mjs --all --md     # every world, markdown
+```
+
+`[x]` you filled it · `[~]` the engine's default covers it · `[…]` planned, not built yet.
+
+### The two halves
+
+| | **STEEL** (engine) | **FURNITURE** (you) |
+|---|---|---|
+| What | The mechanics every world stands on — CTB queue, the three-band resolver, the sealed ten statuses, reputation tiers, the ≤3-front cap, "the model describes, never adjudicates" | The world-book slots the engine consumes |
+| Can you change it? | **No.** You may tune declared parameters (Law-6) and you may **rename** freely — a world calls it a "chill", the engine compiles it to `slow` | **Yes — this is your whole job** |
+| Where | `docs/design/steel-vs-furniture.md` §1 | §2, and `WORLD_BOOK_SLOTS` |
+
+**The one hard requirement is a name.** `{name, vibe}` compiles to a complete, playable
+world — every other slot has a mint-default, enforced by `tests/world-book-slots.test.js`.
+A thin world is *thin, never broken*.
+
+### Authoring cyberpunk = filling THIS form
+
+| Slot | Cyberpunk example |
+|---|---|
+| `name` · `vibe` | "Kowloon Extended" · "everyone is leased, including you" |
+| `identity.era` · `.tone` · `.genre` | "2091" · "neon-noir" · "cyberpunk" |
+| `cosmology` | what the Net is, who owns the arcologies |
+| `poiTable[]` | the Stack, Level 3 Market, the Cold Vault… (name + description + `connections`) |
+| `factions[]` | Zhu-Ling Medical, the Unlicensed, Precinct 12 |
+| `cast[]` | 4–6 people: keeper / trader / quest-giver / wanderer / elder |
+| `fronts[]` (≤3) | the pressures, 2–4 grounded beats each |
+| `nameBanks` | **fill this** — it names your cast, your POIs, and your creatures. Leave it blank and your cyberpunk world is populated by Mara and Corin of Wayrest |
+| `bestiary.statBlocks` / `.placements` | your drones and dogs, on a base-animal chassis |
+| `world.artStyle` · `.sceneRegister` | "cinematic" · "rain-slick neon, wet concrete, sodium haze" |
+| `deathLaw` · `orientationMix` · `threatLadder` | fillable — but **currently inert**, see below |
+
+### Read this before you spend effort
+
+Some slots are **validated but consumed by nothing**. Filling them changes no behavior
+until a consumer ships. As of 2026-07-21: `secrets`, `orientationMix`, `deathLaw`,
+`threatLadder`, world-level `services`, and `locations[].notices[]`. The manifest prints
+these under **DEAD SLOTS** so you never discover it the hard way.
+
+And five slots the roadmap declares but the engine does not yet consume — `figures`,
+`artifacts`, `powerSystems`, `background`, `handbook` — print as **PLANNED**. Babel's own
+gaps are exactly these (key figures, handbook chapters).
+
+Full detail, including the Law-6 parameter surface for every subsystem:
+**[`steel-vs-furniture.md`](./steel-vs-furniture.md)**.
+
+---
+
 ## 0. Why this exists
 
 Building Babel taught the pipeline; building Verdance proved it generalizes; the World

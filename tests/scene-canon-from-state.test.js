@@ -7,8 +7,14 @@ import assert from "node:assert/strict";
 import { buildScenePrompt, artStyleDirection } from "../server/solo/imageWorker.js";
 import { sealPortraitPrompt } from "../server/ai/comfyui.js";
 
+// STEEL/FURNITURE (2026-07-21): the "beautiful AND wrong" tone clause is no longer
+// hardcoded in the engine — it is Babel's authored `world.sceneRegister` (babel.json).
+// This synthetic run mirrors a really-loaded babel run, register included, so the TONE
+// LAW assertion below still tests Babel's behaviour rather than engine steel.
+const VERDANCE_SCENE_REGISTER =
+  "beautiful yet subtly wrong, uneasy stillness, faint shimmer in the air, over-still water, off light";
 const verdanceRun = (overrides = {}) => ({
-  world: { tone: "modern arcane", era: "Modern parallel Earth, Pacific Northwest", variant: "babel", time: { minutes: 18 * 60, phase: "dusk" }, weather: "fog", ...overrides.world },
+  world: { tone: "modern arcane", era: "Modern parallel Earth, Pacific Northwest", variant: "babel", sceneRegister: VERDANCE_SCENE_REGISTER, time: { minutes: 18 * 60, phase: "dusk" }, weather: "fog", ...overrides.world },
   locations: {},
   ...overrides
 });
