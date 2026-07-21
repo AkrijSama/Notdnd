@@ -68,6 +68,18 @@ export const DEFAULT_NAME_BANKS = Object.freeze({
   people: ["Mara", "Corin", "Odile", "Bram", "Ines", "Tobias", "Wren", "Cael"]
 });
 
+// SCALAR DEFAULTS (steel/furniture split, owner 2026-07-21). These were inline literals
+// scattered through compileWorldBook — a world author could not discover them, and the
+// creator flow could drift from the compiler. They are now declared HERE, once, and the
+// compiler reads them, so WORLD_BOOK_SLOTS below can state every slot's default truthfully.
+export const DEFAULT_ART_STYLE = "illustrated";
+export const DEFAULT_TONE = "grounded";
+export const DEFAULT_GENRE = "adventure";
+// `services` is declared vocabulary but had NO default anywhere (a default-less slot —
+// the {name,vibe}-plays law's one hole). A world with no service economy is valid: the
+// floor is "no services offered", stated explicitly rather than left undefined.
+export const DEFAULT_SERVICES = Object.freeze([]);
+
 // The canonical world-book concept fields, for docs + iteration. (Not enforced as a
 // closed set — extra fields pass through; this is the vocabulary, not a whitelist.)
 export const WORLD_BOOK_FIELDS = Object.freeze([
@@ -215,7 +227,11 @@ export function normalizeWorldBook(wb = {}) {
     pois: normalizePois(wb),
     factions: Array.isArray(wb.factions) ? wb.factions : [],
     fronts: Array.isArray(wb.fronts) ? wb.fronts : [],
-    secrets: Array.isArray(wb.secrets) ? wb.secrets : []
+    secrets: Array.isArray(wb.secrets) ? wb.secrets : [],
+    // `services` was declared vocabulary with no default anywhere — the one hole in the
+    // {name,vibe}-plays law. A world with no service economy is valid; the floor is an
+    // explicit empty list, never `undefined`. Per-POI services still override locally.
+    services: Array.isArray(wb.services) ? wb.services : [...DEFAULT_SERVICES]
   };
 }
 
@@ -442,10 +458,10 @@ export function compileWorldBook(wb = {}, opts = {}) {
   // 4. World block.
   const world = {
     name: book.name,
-    tone: book.identity.tone || "grounded",
+    tone: book.identity.tone || DEFAULT_TONE,
     variant: "user",
     flavor: book.cosmology || book.vibe || `The world of ${book.name}.`,
-    artStyle: isNonEmptyString(wb.world?.artStyle) ? wb.world.artStyle : (isNonEmptyString(wb.artStyle) ? wb.artStyle : "illustrated"),
+    artStyle: isNonEmptyString(wb.world?.artStyle) ? wb.world.artStyle : (isNonEmptyString(wb.artStyle) ? wb.artStyle : DEFAULT_ART_STYLE),
     era: book.identity.era || "",
     startingLocationName: start.name,
     startingLocationType: "",
@@ -463,7 +479,7 @@ export function compileWorldBook(wb = {}, opts = {}) {
     substrate: SCENARIO_SUBSTRATE_VERSION,
     scenarioId,
     title: book.identity.name,
-    genre: book.identity.genre || book.identity.tone || "adventure",
+    genre: book.identity.genre || book.identity.tone || DEFAULT_GENRE,
     tones: normalizeTones(wb, book),
     stakes: book.identity.tagline || book.vibe || `Find your feet in ${book.name}.`,
     world,
@@ -495,7 +511,7 @@ export function compileWorldBook(wb = {}, opts = {}) {
 function normalizeTones(wb, book) {
   if (Array.isArray(wb.tones) && wb.tones.length) return wb.tones.filter(isNonEmptyString);
   const t = book.identity.tone;
-  return isNonEmptyString(t) ? [t] : ["grounded"];
+  return isNonEmptyString(t) ? [t] : [DEFAULT_TONE];
 }
 
 function mergeStart(startNode, poi) {
@@ -569,6 +585,102 @@ export function mintDefaultSecret(secretId, frontRef, book, startId) {
     frontRef,
     reveal: { onLocation: startId || "start_location" }
   };
+}
+
+// ── THE SLOT REGISTRY (steel/furniture split, owner 2026-07-21) ──────────────
+//
+// ONE place that declares every FURNITURE slot: what it is, whether the author must
+// supply it, HOW its default is produced, and WHICH engine system consumes it. This is
+// the single source the creator flow, compileWorldBook, the bill-of-materials manifest
+// (worldBookManifest.js), the schema test, and docs/design/steel-vs-furniture.md all read.
+//
+// THE LAW IT ENFORCES: no slot may be default-less. `{name, vibe}` must always compile to
+// a playable world, so every slot below carries either a literal `default` or a `mint`
+// strategy. `name` is the sole exception — it is the one required identity fact.
+//
+// `defaultKind`:
+//   "required" — the author must supply it (name only)
+//   "table"    — a frozen DEFAULT_* table above
+//   "literal"  — a scalar constant above
+//   "mint"     — synthesised at compile from the book (see `mintedBy`)
+//   "empty"    — an explicit empty collection is the valid floor
+export const WORLD_BOOK_SLOTS = Object.freeze([
+  { path: "name", label: "World name", defaultKind: "required", default: null,
+    consumer: "everything (scenario.title, world.name)", note: "the ONE hard requirement" },
+  { path: "vibe", label: "Spark / tagline", defaultKind: "literal", default: "",
+    consumer: "opening.situation, stakes, front/secret mint copy" },
+  { path: "identity.era", label: "Era", defaultKind: "literal", default: "",
+    consumer: "art pipeline wardrobe/era injection (server/ai/promptAssembly)" },
+  { path: "identity.tone", label: "Tone", defaultKind: "literal", default: DEFAULT_TONE,
+    consumer: "world.tone → narrator register; scenario.tones" },
+  { path: "identity.genre", label: "Genre", defaultKind: "literal", default: DEFAULT_GENRE,
+    consumer: "scenario.genre" },
+  { path: "cosmology", label: "Cosmology / flavor", defaultKind: "mint", mintedBy: "normalizeWorldBook (falls back to vibe)",
+    consumer: "world.flavor → narrator world brief" },
+  { path: "poiTable", label: "Points of interest", defaultKind: "mint", mintedBy: "compileWorldBook §1.4 (mints one 'beyond' POI from nameBanks.wilds)",
+    consumer: "locations map → map layout, travel, scene art" },
+  { path: "startArea", label: "Start area", defaultKind: "mint", mintedBy: "keptGroundStart()",
+    consumer: "opening.startLocationRef; starter-zone auditor (server/solo/starterZone.js) via the poi:start-area tag" },
+  { path: "factions", label: "Factions", defaultKind: "empty", default: [],
+    consumer: "reputation engine (server/solo/reputation.js); cast factionId" },
+  { path: "threatLadder", label: "Threat ladder", defaultKind: "table", default: DEFAULT_THREAT_LADDER,
+    consumer: "NONE — carried into scenario.bestiary.threatLadder and never read; encounter/spawn selection never consults it (DEAD SLOT, verified 2026-07-21)" },
+  { path: "bestiary", label: "Bestiary", defaultKind: "mint", mintedBy: "compileBestiary() + mintStarterEncounter()",
+    consumer: "combat stat blocks + placements (scenarioLoader.placeBestiaryEncounters)" },
+  { path: "nameBanks", label: "Name banks", defaultKind: "table", default: DEFAULT_NAME_BANKS,
+    consumer: "cast mint, POI mint, creature epithets" },
+  { path: "orientationMix", label: "Orientation mix", defaultKind: "table", default: DEFAULT_ORIENTATION_MIX,
+    consumer: "NONE — written to world.orientationMix; the romance path in reputation.js never consults it (DEAD SLOT, verified 2026-07-21)" },
+  { path: "deathLaw", label: "Death law", defaultKind: "table", default: DEFAULT_DEATH_LAW,
+    consumer: "NONE — the death epilogue is a hardcoded client table (soloSceneShell.js DEATH_LAW_EPILOGUE) keyed on scenarioId/variant, not this slot (DEAD SLOT, verified 2026-07-21)" },
+  { path: "services", label: "Services", defaultKind: "empty", default: DEFAULT_SERVICES,
+    consumer: "POI service affordances (per-POI `services` overrides this world floor)" },
+  { path: "fronts", label: "Fronts", defaultKind: "mint", mintedBy: "mintDefaultFront()",
+    consumer: "threads engine — scenarioLoader.js:527 lowers fronts → run.threads (cap 3)" },
+  { path: "secrets", label: "Secrets", defaultKind: "mint", mintedBy: "mintDefaultSecret()",
+    consumer: "NONE — validated by scenarioSchema.js:409-413 then discarded; scenarioLoader never reads it (DEAD SLOT, ledgered)" },
+  { path: "cast", label: "Cast", defaultKind: "mint", mintedBy: "mintStarterCast()",
+    consumer: "NPC roster, dialogue, romance, portraits" },
+  { path: "questOffers", label: "Quest offers", defaultKind: "mint", mintedBy: "mintQuestSpine()",
+    consumer: "quest engine; opening.questObjectiveFrom" },
+  { path: "quests", label: "Authored quests", defaultKind: "empty", default: {},
+    consumer: "quest engine (authored arcs)" },
+  { path: "opening.situation", label: "Opening situation", defaultKind: "mint", mintedBy: "compileWorldBook §5 (threshold template)",
+    consumer: "first narrated beat" },
+  { path: "world.artStyle", label: "Art style", defaultKind: "literal", default: DEFAULT_ART_STYLE,
+    consumer: "art pipeline lane selection (server/solo/artStyle.js)" },
+
+  // ── PLANNED FURNITURE (declared by law, engine-unbuilt) ────────────────────
+  // docs/ROADMAP-CANON.md §"Build sequence" LOCKS the "Law of Creating Worlds"
+  // valid-world schema as: factions, figures, artifacts, power-systems, background —
+  // plus per-world handbook chapters (races/classes/power-systems/bestiary/lore live in
+  // the per-world book, the main manual being world-agnostic chassis only).
+  // The engine consumes NONE of these yet. They are declared here so a world author
+  // sees the real shape of the form (and so Babel's manifest reports its true gaps)
+  // rather than discovering them by archaeology. Filling them is inert until built.
+  { path: "figures", label: "Key figures", defaultKind: "planned",
+    consumer: "NOT BUILT — hand-set major NPCs (romance-legacy-law.md: 'authored key figures have hand-set' attributes); today they are ordinary `cast` rows" },
+  { path: "artifacts", label: "Artifacts", defaultKind: "planned",
+    consumer: "NOT BUILT — notable items/relics (ROADMAP-CANON 'Law of Creating Worlds')" },
+  { path: "powerSystems", label: "Power systems", defaultKind: "planned",
+    consumer: "NOT BUILT — magic/tech systems; per-world book, not the chassis manual" },
+  { path: "background", label: "Background / history", defaultKind: "planned",
+    consumer: "NOT BUILT — deep history; `cosmology` currently absorbs the one-paragraph version" },
+  { path: "handbook", label: "Handbook chapters", defaultKind: "planned",
+    consumer: "NOT BUILT — per-world races/classes/bestiary/lore chapters (main manual = world-agnostic chassis only)" }
+]);
+
+// Every slot must be defaultable — the {name,vibe}-plays law in executable form.
+// Returns the offending slots (empty array = law holds). The schema test asserts this.
+export function defaultlessSlots() {
+  return WORLD_BOOK_SLOTS.filter((s) => {
+    if (s.defaultKind === "required") return false; // `name` is the declared exception
+    // "planned" slots are declared-by-law but engine-unbuilt: nothing consumes them, so a
+    // default would be theatre. They are exempt until their consumer ships.
+    if (s.defaultKind === "planned") return false;
+    if (s.defaultKind === "mint") return !isNonEmptyString(s.mintedBy);
+    return s.default === undefined || s.default === null;
+  });
 }
 
 // v1 bestiary: carry the threat ladder + engine ref; reuse the base-animal + chaos-tree
