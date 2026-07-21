@@ -237,8 +237,25 @@ function resolveDialogueTurn(run, normalized, speakerId, speech, options) {
   if (result.ok && result.run) {
     markSpokenTo(result.run, speakerId);
     result.spokenLine = { speakerId, text: speech.spokenText };
+    return result;
   }
-  return result;
+  // U3 — TYPED INPUT IS FIRST-CLASS. A conversation aimed at an absent/invalid target
+  // (e.g. "talk to the wolf" — a beast that can't answer, or someone who has left) must
+  // NEVER hard-reject the turn with a "not processed" banner. Degrade gracefully: open
+  // the VN with the player's words UNANSWERED (mirrors the mixed-path speaker-gone case),
+  // so the turn commits and the world can reply through the GM rather than refusing input.
+  const softRun = run;
+  markSpokenTo(softRun, speakerId);
+  softRun.vn = { active: true, speakerId };
+  return {
+    ok: true,
+    run: softRun,
+    action: { ...normalized, mode: "speech", unanswered: true },
+    spokenLine: { speakerId, text: speech.spokenText },
+    availableMoves: getAvailableMoves(softRun),
+    availableActions: getAvailableSoloActions(softRun),
+    errors: []
+  };
 }
 
 function notImplemented(actionType) {
