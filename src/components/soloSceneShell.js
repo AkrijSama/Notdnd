@@ -1281,7 +1281,8 @@ export function normalizeTextSpeed(value) {
 
 // #48: narration text-size multiplier, clamped to a sane readable band and
 // quantized to 0.1 steps. Non-numeric / out-of-range falls back to 1.0.
-export const SOLO_LOG_SCALE_MIN = 0.8;
+// U5 (walk-2): floor extended 2 steps smaller (0.8 -> 0.6) for denser readers.
+export const SOLO_LOG_SCALE_MIN = 0.6;
 export const SOLO_LOG_SCALE_MAX = 1.6;
 export const SOLO_LOG_SCALE_STEP = 0.1;
 export function normalizeLogScale(scale) {
