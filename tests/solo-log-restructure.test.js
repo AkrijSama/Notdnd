@@ -38,7 +38,8 @@ test("every action turn gets a header — a no-roll action still shows its ancho
 // #48 — narration font-size control.
 
 test("normalizeLogScale clamps to the readable band and quantizes to 0.1", () => {
-  assert.equal(normalizeLogScale(0.5), 0.8);
+  assert.equal(normalizeLogScale(0.5), 0.6, "U5: floor extended 2 steps to 0.6");
+  assert.equal(normalizeLogScale(0.6), 0.6, "0.6 is the new floor");
   assert.equal(normalizeLogScale(2), 1.6);
   assert.equal(normalizeLogScale(1.15), 1.2);
   assert.equal(normalizeLogScale("1.3"), 1.3);
