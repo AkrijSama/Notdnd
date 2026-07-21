@@ -587,9 +587,15 @@ function finalizeQuestProgress(originalRun, result, options = {}) {
     // The momentum clock always TICKS; it only FIRES when no driver already did.
     // When it fires, its slot is offered first to a due PRESCRIPTIVE thread beat
     // (threadFireFn), then to the legacy one-off pool.
+    //
+    // C3 — DYING DOMINATES (walk-2 #16): at 0 HP the simulation belongs to the dying
+    // player. Casual momentum (weather beats, ambient one-offs) SUSPENDS — the death
+    // loop (dying-turn saves, below) is the only clock that advances. Forensics proof:
+    // run_bbcb7b08 fired "The weather turns" at 0/9 HP. suppressFire kills the casual
+    // fire; the dying loop still progresses toward save/death (never a deadlock).
     const momentum = advanceMomentum(result.run, result, {
       ...options,
-      suppressFire: driverFired,
+      suppressFire: driverFired || isDying(result.run),
       threadFireFn: fireDueThreadBeatOnClock
     });
     if (momentum?.threadBeat) {
