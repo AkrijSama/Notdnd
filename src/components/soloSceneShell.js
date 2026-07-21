@@ -2836,6 +2836,23 @@ export function renderSoloRightRail(state = {}) {
 // weather glyph from the committed weather law), and a slim Cast · Exits toggle
 // that opens the info drawer. Empty-state law: a chip with nothing to show hides
 // (the clock is absent on a legacy payload; the info toggle always has exits).
+// U6 — PERSISTENT MINI-MAP WIDGET. Always on the scene (LOCAL by default), toggled
+// local/regional IN PLACE via the same data-solo-map-view control the HUD carries; the
+// full-view drawer stays. Docked bottom-left, clear of the top-left portrait dock, the
+// top-right HUD row, and the bottom input bar (pairwise-overlap net, pre-mortem c). Honest
+// to known-map state — the map renderers fog unknown nodes. No map data → nothing docked
+// (empty-state law). Hides when any drawer opens (mirrors the HUD row) so it never overlaps.
+export function renderSoloMiniMap(scene = {}, state = {}) {
+  const region = state.mapView === "region";
+  const body = region ? renderSoloRegionMap(scene) : renderSoloPresenceMap(scene);
+  if (!body || !String(body).trim()) return "";
+  return `
+    <aside class="solo-minimap" data-solo-minimap aria-label="${region ? "Region" : "Local"} map (mini)">
+      <div class="solo-minimap-body">${body}</div>
+    </aside>
+  `;
+}
+
 export function renderSoloStageHud(scene = {}, state = {}) {
   const clock = renderSoloClock(scene);
   const present = Array.isArray(scene.cast) ? scene.cast.filter((c) => c && c.present !== false).length : 0;
@@ -3383,6 +3400,7 @@ export function renderSoloSceneShell(state = {}) {
                   <!-- Floating HUD: portrait dock (top-left, in the frame), MAP
                        widget + TIME/WEATHER chip + Cast·Exits toggle (top-right). -->
                   <div data-solo-stage-hud-slot>${renderSoloStageHud(scene, state)}</div>
+                  <div data-solo-minimap-slot>${renderSoloMiniMap(scene, state)}</div>
                   <div data-solo-battle-slot>${renderSoloBattleSurface(scene)}</div>
                   <div data-solo-outcome>${renderSoloActionOutcome(state)}</div>
                   ${renderSoloDialogueOverlay(state)}
@@ -4193,6 +4211,13 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     const hudEl = typeof root.querySelector === "function" ? root.querySelector("[data-solo-stage-hud-slot]") : null;
     if (hudEl && "innerHTML" in hudEl) {
       hudEl.innerHTML = renderSoloStageHud(state.scene || {}, state);
+    }
+    // U6 — repaint the persistent mini-map in place (known nodes/present-location shift
+    // every move; the local/region toggle also re-enters here). Delegated taps on the
+    // stable root, so an innerHTML patch never orphans a handler.
+    const miniMapEl = typeof root.querySelector === "function" ? root.querySelector("[data-solo-minimap-slot]") : null;
+    if (miniMapEl && "innerHTML" in miniMapEl) {
+      miniMapEl.innerHTML = renderSoloMiniMap(state.scene || {}, state);
     }
     // The VN battle surface repaints per turn (forecast/intent/HP-band/status shift
     // every turn); handlers are delegated on the stable root, so innerHTML is safe.
