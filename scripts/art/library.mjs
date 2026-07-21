@@ -80,7 +80,13 @@ export function buildSidecar(input = {}) {
     // the slot values this image was assembled from, so a bad image points at a
     // specific slot/template, not an opaque freehand sentence. null for assets
     // predating the contract (or added without an assembly meta).
-    meta: input.meta && typeof input.meta === "object" ? input.meta : null
+    meta: input.meta && typeof input.meta === "object" ? input.meta : null,
+    // FRIDGE TASTER quarantine marker (server/solo/fridgeTaster.js). A NON-null
+    // object = this asset is in the HOLDING PEN: it failed the pre-keep taste check
+    // and is served to NOTHING (queryAssets drops it) until owner review resolves it
+    // to the fridge (keep) or the trash (destroy). Orthogonal to `rating` — a
+    // quarantined asset also carries rating != "keep". null = not quarantined.
+    quarantine: input.quarantine && typeof input.quarantine === "object" ? input.quarantine : null
   };
 }
 
@@ -136,6 +142,10 @@ export function allAssets() {
 export function queryAssets(filter = {}) {
   return allAssets().filter((a) => {
     if (a.rating === "toss") return false; // tossed images never surface
+    // QUARANTINE (fridge taster): a suspect asset in the holding pen is served to
+    // NOTHING — dropped from every engine query regardless of rating, so it can
+    // never leak onto a serve path while it awaits owner review.
+    if (a.quarantine && typeof a.quarantine === "object") return false;
     if (isString(filter.kind) && a.kind !== filter.kind) return false;
     if (isString(filter.world) && a.world !== filter.world) return false;
     if (isString(filter.style) && a.style !== filter.style) return false;
