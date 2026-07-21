@@ -46,6 +46,7 @@ import { advanceQuests, capturePlayerObjective } from "./quests.js";
 import { advanceMomentum } from "./momentum.js";
 import { combatActive, detectAttackIntent, enterCombatFromAttackIntent, resolveCombatInput, getCombatActionMenu } from "./combat.js";
 import { resolveEnemyAggression, tickAggressionClocks } from "./tactics.js";
+import { pruneRuntimeStatBlocks } from "../campaign/bestiary.js";
 import { advanceThreads, fireDueThreadBeatOnClock, resolveThreadLifecycle, enforceThreadDeadlines } from "./threads.js";
 import { createDefaultVnState, validateSoloRun } from "./schema.js";
 import {
@@ -882,6 +883,13 @@ export function resolveSoloAction(run, action, options = {}) {
           availableActions: getAvailableSoloActions(run),
           errors: []
         };
+      }
+      // INSP-07: when the fight has CLOSED (closeCombat cleared run.combat, after it
+      // consumed the block for xp/loot), prune the minted runtime blocks this run no
+      // longer references — a dead foe's on-demand/chaosling block dies with its encounter
+      // (lifecycle law), and can't be resurrected by a restart's reregister.
+      if (combatOutcome.run && !combatOutcome.run.combat) {
+        pruneRuntimeStatBlocks(combatOutcome.run);
       }
       return finalizeQuestProgress(run, {
         ok: true,

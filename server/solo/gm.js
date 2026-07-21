@@ -4,6 +4,7 @@ import {
   validateEntityAgainstPolicy
 } from "./schema.js";
 import { isStarterZoneLocation } from "./starterZone.js";
+import { displayLocationName } from "./locationNaming.js";
 
 const GM_TONES = new Set(["neutral", "tense", "mysterious", "warm", "dangerous", "comic", "dramatic"]);
 
@@ -56,10 +57,15 @@ function sanitizeStringArray(value) {
     .filter(Boolean);
 }
 
-function compactLocation(location = {}) {
+function compactLocation(location = {}, run = null) {
   return {
     locationId: location.locationId,
-    name: location.name,
+    // NAME HONESTY (knowledge-honesty law): never hand the model a proper name the
+    // run has not earned. When a run is in scope, gate the name through
+    // displayLocationName (proper only once told — entering / sign / NPC / VOICE /
+    // map; else the descriptor). With no run, keep the name the payload already
+    // resolved (buildSoloScenePayload.locationPayload made it honest) — no regression.
+    name: run ? displayLocationName(run, location) : location.name,
     description: location.description || "",
     state: location.state || {},
     contentTags: location.contentTags || [],
@@ -229,7 +235,7 @@ export function buildGmSceneInput(scenePayload, options = {}) {
     runId: scenePayload.runId,
     edition,
     policyProfileId: scenePayload.policyProfileId || policyProfile.policyProfileId,
-    location: compactLocation(scenePayload.location || {}),
+    location: compactLocation(scenePayload.location || {}, options.run || scenePayload.run || null),
     worldTime,
     combat: compactCombat(scenePayload.combat),
     visibleEntities,

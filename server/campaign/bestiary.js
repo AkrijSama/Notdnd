@@ -376,6 +376,92 @@ export function registerStatBlock(block) {
   return id;
 }
 
+// ── INSP-07: MINTED-BLOCK PRUNING (lifecycle law) ────────────────────────────
+// A minted block registered into the process-global RUNTIME_STAT_BLOCKS overlay
+// (spawnChaosling / resolveOrMintCreatureBlock / scenarioLoader) is never dropped
+// on its own — it accumulates for the process lifetime. A killed/removed encounter's
+// block is dead weight. This prunes it. SCOPED TO THE RUN: only ids this run OWNS
+// (stamped on run.npcs, held in run.mintedStatBlocks, or in run.combat) are eligible,
+// so another run's block — never referenced here — is never touched. A frozen
+// REGISTRY block is NEVER pruned (authored/base content is permanent).
+
+function collectStatBlockIds(target) {
+  const out = [];
+  const sb = target?.statBlockId;
+  if (typeof sb === "string" && sb.trim()) out.push(sb.trim());
+  const fsb = target?.flags?.statBlockId;
+  if (typeof fsb === "string" && fsb.trim()) out.push(fsb.trim());
+  return out;
+}
+
+// A roster NPC is LIVE (still referencing its block) unless it has left the field —
+// killed (status "dead" / flags.defeated) or removed. A FLED enemy is kept alive by
+// closeCombat (status "active", flags.fled) so its block SURVIVES (a re-encounter seed).
+function npcIsLive(npc) {
+  if (!npc || typeof npc !== "object") return false;
+  const status = String(npc.status || "").toLowerCase();
+  if (status === "dead" || status === "removed" || status === "gone" || status === "despawned") return false;
+  const flags = npc.flags && typeof npc.flags === "object" ? npc.flags : {};
+  if (flags.defeated === true || flags.removed === true || flags.despawned === true) return false;
+  return true;
+}
+
+/**
+ * Prune this run's minted RUNTIME overlay blocks that no live combatant/NPC still
+ * references. Also drops the dead id from run.mintedStatBlocks so a restart's
+ * reregisterMintedBlocks cannot resurrect it. Call where a run/encounter CLOSES
+ * (after closeCombat has consumed the block for xp/loot). Pure w.r.t. other runs.
+ * @param {object} run
+ * @returns {{ pruned: string[], keptLive: string[] }}
+ */
+export function pruneRuntimeStatBlocks(run) {
+  const pruned = [];
+  const keptLive = [];
+  if (!run || typeof run !== "object") return { pruned, keptLive };
+
+  const owned = new Set(); // every block id this run has stamped/minted (dead or alive)
+  const live = new Set(); // ids still referenced by a live NPC / active combatant
+
+  // run.npcs — a stamped block is OWNED; a live NPC's block is LIVE.
+  const npcs = run.npcs && typeof run.npcs === "object" ? Object.values(run.npcs) : [];
+  for (const npc of npcs) {
+    const ids = collectStatBlockIds(npc);
+    const isLive = npcIsLive(npc);
+    for (const id of ids) { owned.add(id); if (isLive) live.add(id); }
+  }
+
+  // Active combat — combatants/enemies still on the field are OWNED and LIVE.
+  const combat = run.combat && typeof run.combat === "object" && run.combat.status === "active" ? run.combat : null;
+  if (combat) {
+    const combatants = combat.combatants && typeof combat.combatants === "object" ? Object.values(combat.combatants) : [];
+    const enemies = Array.isArray(combat.enemies) ? combat.enemies : [];
+    for (const c of [...combatants, ...enemies]) {
+      const alive = (c?.hp?.current ?? 1) > 0 && c?.fled !== true;
+      for (const id of collectStatBlockIds(c)) { owned.add(id); if (alive) live.add(id); }
+    }
+  }
+
+  // run.mintedStatBlocks — this run's persisted mints (restart-safety map) are OWNED.
+  const minted = run.mintedStatBlocks && typeof run.mintedStatBlocks === "object" ? run.mintedStatBlocks : null;
+  if (minted) for (const id of Object.keys(minted)) owned.add(id);
+
+  for (const id of owned) {
+    if (live.has(id)) { keptLive.push(id); continue; }
+    if (REGISTRY[id]) continue; // authored/base content is NEVER pruned
+    let dropped = false;
+    if (Object.prototype.hasOwnProperty.call(RUNTIME_STAT_BLOCKS, id)) {
+      delete RUNTIME_STAT_BLOCKS[id];
+      dropped = true;
+    }
+    if (minted && Object.prototype.hasOwnProperty.call(minted, id)) {
+      delete minted[id]; // don't let a restart re-register a dead foe
+      dropped = true;
+    }
+    if (dropped) pruned.push(id);
+  }
+  return { pruned, keptLive };
+}
+
 // The default statBlockId for an attack on a present NPC that carries no explicit
 // hostile stat block (D.4 §2.2(1)).
 export const DEFAULT_STAT_BLOCK_ID = "civilian";
