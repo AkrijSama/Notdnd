@@ -3209,6 +3209,20 @@ export function formatRunDuration(ms) {
   return `${s}s`;
 }
 
+// C4 — PER-WORLD DEATH LAW epilogue. The game-over screen closes with the world's own
+// death-law (Babel: the soul-law, v1-thin — the coma an ocean away is not death). Keyed on
+// the run's scenario; a generic close for a worldgen/custom run. Death is TERMINAL (the
+// run is already marked unresumable server-side — this is the epilogue, not the gate).
+export const DEATH_LAW_EPILOGUE = Object.freeze({
+  babel: "The Green Static releases its hold. An ocean away, a coma that was never death stirs, and the Tower keeps its hundred floors. It will call another."
+});
+export function deathEpilogue(state = {}, summary = {}) {
+  const world = String(
+    summary.scenarioId || state.scene?.world?.variant || state.scene?.scenarioId || state.worldDef?.scenarioId || ""
+  ).toLowerCase();
+  return DEATH_LAW_EPILOGUE[world] || "The world closes over the place where you fell, and goes on without you.";
+}
+
 export function renderSoloSceneShell(state = {}) {
   if (state.loading) {
     return `
@@ -3285,6 +3299,7 @@ export function renderSoloSceneShell(state = {}) {
           <div class="solo-death-kicker">You Died</div>
           <h2 class="solo-death-title">${escapeHtml(name)} has fallen.</h2>
           <p class="solo-death-sub">Cut down in ${escapeHtml(where)}. This story ends here.</p>
+          <p class="solo-death-epilogue">${escapeHtml(deathEpilogue(state, summary))}</p>
           <dl class="solo-death-summary">
             <div><dt>Adventurer</dt><dd>${escapeHtml(name)}</dd></div>
             <div><dt>Last seen</dt><dd>${escapeHtml(where)}</dd></div>
