@@ -12,6 +12,7 @@ import {
 } from "./components/worldCreator.js";
 import { renderGuestAuthPanel, resolveAuthAction } from "./components/authPanel.js";
 import { renderModulesZone, renderRoadmapZone } from "./components/homeZones.js";
+import { renderRoadmapPage } from "./components/roadmapPage.js";
 import { renderBrand } from "./components/brand.js";
 import { shouldConfirmHomeNav, HOME_NAV_CONFIRM } from "./components/homeNav.js";
 import { soloRunActionLabel } from "./state/runLabels.js";
@@ -53,6 +54,14 @@ const uiState = {
   // Public roadmap rows (docs/roadmap-public.json via /api/roadmap). Empty until
   // loaded / when the data file is absent → the home roadmap zone hides cleanly.
   roadmap: [],
+  // Full public ROADMAP PAGE (data/roadmap-public.json, served static). showRoadmap
+  // toggles the dedicated in-app view (mirrors showHomebrew); roadmapFull holds the
+  // loaded data (null until fetched); roadmapExpanded maps section id -> open so
+  // every row expands its detail blurb on click.
+  showRoadmap: false,
+  roadmapFull: null,
+  roadmapLoaded: false,
+  roadmapExpanded: {},
   // Manual custom homebrew content (user-authored). customContentItems = the raw
   // stored items (for the manager); customContent = the SRD-shaped catalogs the
   // character creator + build consume. showHomebrew toggles the manager view.
@@ -491,6 +500,43 @@ function openHomebrew() {
 }
 function closeHomebrew() {
   uiState.showHomebrew = false;
+  scheduleRender();
+}
+
+// ---- Public roadmap page ----
+// The full roadmap is DATA-DRIVEN: it renders from data/roadmap-public.json, which
+// the server hands out as a static file. Loaded lazily on first open (best-effort;
+// a failed/absent fetch leaves roadmapFull null → the page shows an honest empty
+// state instead of breaking). No auth, no API-client change needed.
+async function loadRoadmapFull() {
+  if (uiState.roadmapLoaded) {
+    return;
+  }
+  uiState.roadmapLoaded = true;
+  try {
+    const res = await fetch("/data/roadmap-public.json", { headers: { Accept: "application/json" } });
+    uiState.roadmapFull = res.ok ? await res.json() : null;
+  } catch {
+    uiState.roadmapFull = null;
+  }
+  scheduleRender();
+}
+function openRoadmap() {
+  uiState.showRoadmap = true;
+  uiState.showAccountMenu = false;
+  loadRoadmapFull();
+  scheduleRender();
+}
+function closeRoadmap() {
+  uiState.showRoadmap = false;
+  scheduleRender();
+}
+function toggleRoadmapRow(id) {
+  if (!id) {
+    return;
+  }
+  const current = uiState.roadmapExpanded || {};
+  uiState.roadmapExpanded = { ...current, [id]: !current[id] };
   scheduleRender();
 }
 function hbType(type) {
@@ -1836,6 +1882,18 @@ function bindAppEvents() {
     openHomebrewBtn.addEventListener("click", () => openHomebrew());
   }
 
+  // Public roadmap: teaser -> full page, page -> back, and per-row expand. The row
+  // toggles are delegated over every rendered [data-action='toggle-roadmap-row'].
+  appRoot.querySelectorAll("[data-action='open-roadmap']").forEach((btn) => {
+    btn.addEventListener("click", () => openRoadmap());
+  });
+  appRoot.querySelectorAll("[data-action='close-roadmap']").forEach((btn) => {
+    btn.addEventListener("click", () => closeRoadmap());
+  });
+  appRoot.querySelectorAll("[data-action='toggle-roadmap-row']").forEach((btn) => {
+    btn.addEventListener("click", () => toggleRoadmapRow(btn.dataset.roadmapId));
+  });
+
   // querySelectorAll: the auth-mode toggles now appear in more than one place
   // (the standalone auth card AND inside the guest panel / its warning link).
   appRoot.querySelectorAll("[data-action='auth-mode-login']").forEach((btn) => {
@@ -1962,7 +2020,15 @@ function renderApp() {
   // Make the user's custom homebrew available to the character creator render.
   uiState.onboarding.customContent = uiState.customContent;
 
-  const html = (user && uiState.showHomebrew)
+  const html = uiState.showRoadmap
+    ? `
+      <div class="app-shell" data-app-themed style="${soloThemeVarString(uiState.skin, uiState.fontSet)}">
+        ${renderSoloHeader(user, uiState.showAccountMenu, uiState.skin, uiState.fontSet)}
+        ${authMessageHtml}
+        ${renderRoadmapPage(uiState.roadmapFull, uiState.roadmapExpanded)}
+      </div>
+    `
+    : (user && uiState.showHomebrew)
     ? `
       <div class="app-shell" data-app-themed style="${soloThemeVarString(uiState.skin, uiState.fontSet)}">
         ${renderSoloHeader(user, uiState.showAccountMenu, uiState.skin, uiState.fontSet)}

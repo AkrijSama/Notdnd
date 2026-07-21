@@ -1,0 +1,76 @@
+{
+  "_law": "PUBLIC full roadmap, served static at /data/roadmap-public.json and rendered by src/components/roadmapPage.js. Owner-editable. STANDING LAW, owner-safe only: no calendar references, no proportion figures, no internal codenames. status is exactly one of building, next, planned, long-term. Player-facing strings carry no long dash. Edit freely; the page renders from this file, never from hardcoded copy. Keys beginning with an underscore are private notes and never shown.",
+  "title": "The Road Ahead",
+  "intro": "Where the story goes next. Every line here is honest about where it stands, and not one of them carries a date, because a promise with a date is a promise you can break. Tap any row to read more.",
+  "milestones": [
+    { "label": "Creatures roaming the wilds", "value": "10 and growing" },
+    { "label": "Places to find in the first region", "value": "20" },
+    { "label": "Battle conditions a foe can inflict", "value": "10" },
+    { "label": "Worlds you can build and share", "value": "no limit" }
+  ],
+  "sections": [
+    {
+      "id": "combat-depth",
+      "title": "Combat with real depth",
+      "status": "building",
+      "summary": "Turn-based battles with a queue you can read and outsmart.",
+      "detail": "Fights run on a readable turn order, so you always know who acts next and can set up your move before it lands. Conditions stack and play off one another, morale can break a foe before its health does, and what you did in the story carries into the fight. We are deepening the tactics: positioning, reactions, and skills that reward reading the battle instead of trading blows."
+    },
+    {
+      "id": "bestiary-breadth",
+      "title": "A bestiary that gets teeth",
+      "status": "next",
+      "summary": "More creatures, stranger creatures, and the logic that spawns them.",
+      "detail": "The wilds open with a core set of beasts and grow outward: rarer creatures, tougher variants, and chaos-touched oddities minted to fit the threat you have earned. Each one carries its own behavior and its own place in the world, so an encounter reads as part of the story and not a random health bar."
+    },
+    {
+      "id": "romance-arcs",
+      "title": "Romance that remembers",
+      "status": "building",
+      "summary": "Relationships that grow, gate, and hold on to what happened between you.",
+      "detail": "Bonds move on two tracks: friendship that always follows how you treat someone, and romance that has to be earned and can be refused. Characters remember your history together, and the story honors it. Consent and boundaries are built in, not bolted on."
+    },
+    {
+      "id": "creator-worlds",
+      "title": "Build your own world",
+      "status": "next",
+      "summary": "Author a universe with its own places, factions, and truths.",
+      "detail": "The world creator lets you describe a setting in your own words and turns it into a playable universe with locations, factions, an era, and the rules that hold it together. Your characters live inside that world and never leak into another. Share what you build, or keep it to yourself."
+    },
+    {
+      "id": "community-modules",
+      "title": "Community worlds and modules",
+      "status": "planned",
+      "summary": "Play what other people build, and let them play yours.",
+      "detail": "A shared shelf of player-made worlds and the authored adventures set inside them. Browse, play, and rate what the community creates, with the same care for safety and coherence that the built-in worlds get. Creators keep credit for everything they make."
+    },
+    {
+      "id": "premium-narration",
+      "title": "A premium narration lane",
+      "status": "planned",
+      "summary": "An optional richer voice for the game master, for those who want it.",
+      "detail": "The core game master stays free and fully capable. For players who want more, an optional lane runs a richer narrator with longer memory and more texture in its prose. It is a choice you can make, never a wall standing in front of the story you already have."
+    },
+    {
+      "id": "multiplayer",
+      "title": "Play together",
+      "status": "long-term",
+      "summary": "Share one world and one table with other people.",
+      "detail": "The long horizon: a shared table where several players move through one living world under one game master. This is a large build, and we will take the time to get it right, because a shared story that forgets you is worse than no shared story at all."
+    },
+    {
+      "id": "rulebook-ingestion",
+      "title": "Bring your own rulebook",
+      "status": "long-term",
+      "summary": "Feed in a ruleset and have the game run by it.",
+      "detail": "A far-horizon goal: hand the game a rulebook and let it learn the system well enough to run it, so a favorite tabletop ruleset can drive the same living world. Ambitious, and worth the wait."
+    },
+    {
+      "id": "ads-promise",
+      "title": "Ads stay off until 20,000 players",
+      "status": "planned",
+      "summary": "A public promise, written down here so you can hold us to it.",
+      "detail": "We will not put advertising into the game until at least 20,000 players are here, and even then it stays out of the story itself. This is a promise made in the open, on the roadmap, so it is easy to check and hard to quietly walk back."
+    }
+  ]
+}

@@ -51,10 +51,14 @@ export function renderRoadmapZone(items) {
       `;
     })
     .join("");
+  // TEASER: the right-rail zone shows a short cut of the roadmap and links out to
+  // the full data-driven page (renderRoadmapPage). The link opens the in-app view
+  // via uiState.showRoadmap (data-action="open-roadmap", wired in main.js).
   return `
     <aside class="solo-home-zone solo-home-zone-rail solo-home-zone-right solo-roadmap" aria-label="Roadmap">
       <span class="solo-home-zone-kicker">Roadmap</span>
       <ul class="solo-roadmap-list">${list}</ul>
+      <button type="button" class="solo-roadmap-more" data-action="open-roadmap">See the full roadmap</button>
     </aside>
   `;
 }

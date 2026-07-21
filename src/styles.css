@@ -5752,3 +5752,222 @@ textarea.hb-input { min-height: 76px; resize: vertical; }
    missing/placeholder/invalid, so a keyless server never silently degrades unseen. */
 #inkborne-gmkey-banner:empty { display: none; }
 .gmkey-banner { position: fixed; top: 0; left: 0; right: 0; z-index: 10000; background: #7a1f1f; color: #fff; padding: 0.6rem 1rem; text-align: center; font-size: 0.9rem; line-height: 1.45; box-shadow: 0 2px 10px rgba(0,0,0,0.45); }
+
+/* ===========================================================================
+   PUBLIC ROADMAP PAGE (src/components/roadmapPage.js). APPEND-ONLY block — does
+   not touch the right-rail teaser rules (.solo-roadmap-*) above. Leather-tome
+   look via :root tokens only (var(--...)), matching the rest of the app. Every
+   .roadmap-row is a full-width clickable button that expands its detail blurb.
+   =========================================================================== */
+.roadmap-page {
+  display: block;
+  width: 100%;
+}
+.roadmap-page-inner {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 8px 4px 64px;
+}
+.roadmap-page-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.roadmap-back {
+  flex: none;
+}
+.roadmap-kicker {
+  font-family: var(--font-display, 'Cinzel', Georgia, serif);
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--text-muted, #8b8e96);
+}
+.roadmap-title {
+  margin: 0 0 10px;
+  font-family: var(--font-display, 'Cinzel', Georgia, serif);
+  font-size: clamp(28px, 5vw, 40px);
+  line-height: 1.1;
+  color: var(--text-bright, #f1f2f5);
+  background: var(--gold-foil);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.roadmap-intro {
+  margin: 0 0 22px;
+  max-width: 60ch;
+  font-family: var(--font-body, 'Spectral', Georgia, serif);
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--text-2, #b0b3bb);
+}
+
+/* Milestone counters — small stat cards. No dates/percentages: honest counts. */
+.roadmap-milestones {
+  list-style: none;
+  margin: 0 0 28px;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+}
+.roadmap-milestone {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 16px;
+  border-radius: var(--radius-md, 12px);
+  border: 1px solid var(--border, #202024);
+  background:
+    var(--leather-grain),
+    linear-gradient(180deg, var(--card, #101013), var(--inset, #070708));
+  box-shadow: var(--deboss);
+}
+.roadmap-milestone-value {
+  font-family: var(--font-display, 'Cinzel', Georgia, serif);
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--accent-bright, #e7e9ee);
+}
+.roadmap-milestone-label {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-muted, #8b8e96);
+}
+
+/* Section rows — each a clickable disclosure. */
+.roadmap-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  counter-reset: roadmap;
+}
+.roadmap-row {
+  border-radius: var(--radius-md, 12px);
+  border: 1px solid var(--border, #202024);
+  background: linear-gradient(180deg, var(--card, #101013), var(--surface, #0a0a0d));
+  box-shadow: var(--elev-1);
+  overflow: hidden;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.roadmap-row.is-open {
+  border-color: var(--border-strong, #34343b);
+  box-shadow: var(--elev-2);
+}
+.roadmap-row-head {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas:
+    "heading chevron"
+    "summary chevron";
+  gap: 4px 14px;
+  align-items: center;
+  width: 100%;
+  padding: 16px 18px;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+.roadmap-row-head:hover .roadmap-row-title {
+  color: var(--accent-bright, #e7e9ee);
+}
+.roadmap-row-head:focus-visible {
+  outline: 2px solid var(--accent-bright, #e7e9ee);
+  outline-offset: -2px;
+}
+.roadmap-row-heading {
+  grid-area: heading;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.roadmap-row-title {
+  font-family: var(--font-display, 'Cinzel', Georgia, serif);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-1, var(--text, #d9dbe0));
+  transition: color 0.15s ease;
+}
+.roadmap-row-summary {
+  grid-area: summary;
+  font-family: var(--font-body, 'Spectral', Georgia, serif);
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-muted, #8b8e96);
+}
+.roadmap-row-chevron {
+  grid-area: chevron;
+  align-self: center;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--accent, #c2c6cf);
+  opacity: 0.85;
+}
+.roadmap-row-status {
+  align-self: center;
+  font-size: 10px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  padding: 2px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--line, rgba(214, 217, 224, 0.16));
+  color: var(--text-2, #b0b3bb);
+  white-space: nowrap;
+}
+.roadmap-row-status--building { color: #8fce9b; border-color: rgba(143, 206, 155, 0.4); }
+.roadmap-row-status--next { color: #d7b56b; border-color: rgba(215, 181, 107, 0.4); }
+.roadmap-row-status--planned { color: #9aa7c0; border-color: rgba(154, 167, 192, 0.35); }
+.roadmap-row-status--long-term { color: #b39ac0; border-color: rgba(179, 154, 192, 0.35); }
+.roadmap-row-detail {
+  padding: 0 18px 18px;
+  border-top: 1px solid var(--line, rgba(214, 217, 224, 0.12));
+  margin-top: 0;
+}
+.roadmap-row-detail p {
+  margin: 14px 0 0;
+  max-width: 62ch;
+  font-family: var(--font-body, 'Spectral', Georgia, serif);
+  font-size: 14px;
+  line-height: 1.62;
+  color: var(--text-2, #b0b3bb);
+}
+.roadmap-empty {
+  padding: 28px 4px;
+  font-family: var(--font-body, 'Spectral', Georgia, serif);
+  font-size: 15px;
+  color: var(--text-muted, #8b8e96);
+}
+
+/* Teaser "See the full roadmap" link in the right-rail zone. */
+.solo-roadmap-more {
+  align-self: flex-start;
+  margin-top: 12px;
+  padding: 5px 12px;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  background: transparent;
+  border: 1px solid var(--border, #202024);
+  border-radius: 999px;
+  color: var(--accent, #c2c6cf);
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+.solo-roadmap-more:hover {
+  border-color: var(--accent, #c2c6cf);
+  color: var(--accent-bright, #e7e9ee);
+}
+.solo-roadmap-more:focus-visible {
+  outline: 2px solid var(--accent-bright, #e7e9ee);
+  outline-offset: 2px;
+}
