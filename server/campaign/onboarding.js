@@ -1144,6 +1144,13 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
   // generated / single-string openings (the client then shows the full narration).
   if (authoredBeats && authoredBeats.length) {
     run.openingBeats = authoredBeats;
+    // W1: the opening set-piece is a COMMITTED speaker's VN surface (the VOICE), not
+    // anonymous narration — carry her cast id so the scene payload can attach her
+    // identity + portrait. Absent → the client falls back to the generic kicker.
+    const speakerId = isStr(scenario?.opening?.beatsSpeaker) ? scenario.opening.beatsSpeaker.trim() : "";
+    if (speakerId && run.npcs && run.npcs[speakerId]) {
+      run.openingSpeakerId = speakerId;
+    }
   }
 
   markStage("openingGm");

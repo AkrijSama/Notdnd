@@ -5,6 +5,7 @@ import { engineStyleForRun, styleForRun, hasCommittedArtStyle, ART_RECIPE_VERSIO
 import { deriveWeather, deriveClock } from "./worldClock.js";
 import { detectImageExt } from "../api/http.js";
 import { addAsset, libraryRoot } from "../../scripts/art/library.mjs";
+import { taste } from "./fridgeTaster.js";
 import {
   ensureLocationImageAsset,
   ensureNpcImageAssets,
@@ -65,6 +66,12 @@ export function intakeToLibrary({ id, bytes, kind, run, subjectId = null, prompt
       ...extraTags
     ].filter(Boolean);
     const isFace = kind === "portrait" || kind === "fullbody";
+    // FRIDGE TASTER (intake decision): a cheap taste check gates auto-keep before it
+    // lands. pass -> fridge (library keep, rating LIVE_INTAKE_RATING); suspect ->
+    // QUARANTINE (a holding pen served to nothing, resolved by the owner in
+    // scripts/art/review.mjs). Default assessor is a zero-cost deterministic mock —
+    // see server/solo/fridgeTaster.js + docs/design/fridge-taster.md (config seat).
+    const verdict = taste({ id, bytes, kind, run, subjectId, promptUsed, defaultRating: LIVE_INTAKE_RATING });
     return addAsset({
       id,
       origin: "generated",
@@ -72,10 +79,12 @@ export function intakeToLibrary({ id, bytes, kind, run, subjectId = null, prompt
       world: worldSlug,
       style,
       kind,
-      tags,
-      rating: LIVE_INTAKE_RATING,
-      // Face-kinds are owned by their run (not pooled) until reviewed.
-      checkout: isFace && run?.runId ? { runId: run.runId, npcId: subjectId || null } : null,
+      tags: [...tags, ...verdict.tags],
+      rating: verdict.rating,
+      quarantine: verdict.quarantine,
+      // Face-kinds are owned by their run (not pooled) until reviewed — but a
+      // QUARANTINED face is served to nothing, so it never checks out.
+      checkout: !verdict.quarantine && isFace && run?.runId ? { runId: run.runId, npcId: subjectId || null } : null,
       workflow: workflow || "",
       promptUsed: promptUsed || ""
     });
@@ -713,6 +722,13 @@ const RACE_VISUAL_DESCRIPTORS = {
 // trailing "NOT pointed elf ears" emphasis in the player prompt (see below).
 const POINTED_EAR_RACES = new Set(["elf", "half-elf"]);
 
+// W6: THE human-ear assertion — the SINGLE canonical clause every human-kind origin
+// (Beckoned/isekai included) routes through, so the elf-defense negative always fires
+// (comfyui.elfDefenseFor keys on "rounded human"). Positive assertion, never a "NOT elf"
+// negation (the pollinations positive-only lesson). One string → one test can prove
+// every origin carries it.
+const HUMAN_EAR_CLAUSE = "with naturally rounded human ears and a natural human face";
+
 function raceVisualDescriptor(race) {
   return RACE_VISUAL_DESCRIPTORS[String(race || "").trim().toLowerCase()] || "";
 }
@@ -753,9 +769,12 @@ export function buildPlayerPortraitPrompt(character = {}, world = {}) {
     const newcomerClause = isAnime
       ? `an isekai protagonist newly arrived in a ${tone} world`
       : `a modern-day person newly pulled into a ${tone} world`;
+    // W6: the Beckoned is ALWAYS a modern-Earth HUMAN — route it through the same
+    // canonical human-ear assertion as every other human origin, so the elf defense
+    // fires (it was a residual-elf-ears 1/3 on the isekai/anime lane otherwise).
     return (
       `character portrait of ${beckonedSubject}, ${withBuild(adultGenderPhrase(c), c, { weighted: true })}, ${newcomerClause}, ` +
-      `${artStyleDirection(engineStyle, "player")}, ${emphasis}`
+      `${artStyleDirection(engineStyle, "player")}, ${emphasis}, ${HUMAN_EAR_CLAUSE}`
     );
   }
   // Express the race's visual identity, not just its name, so uncommon races
@@ -778,7 +797,7 @@ export function buildPlayerPortraitPrompt(character = {}, world = {}) {
   // (Positive, not a "NOT elf" negation: the live pollinations path is positive-
   // prompt-only and would otherwise render the negated "elf" token literally.)
   const earEmphasis = !POINTED_EAR_RACES.has(raceKey)
-    ? ", with naturally rounded human ears and a natural human face"
+    ? `, ${HUMAN_EAR_CLAUSE}`
     : "";
   return `character portrait of ${subject}, ${withBuild(adultGenderPhrase(c), c, { weighted: true })}, ${tone}, ${artStyleDirection(engineStyle, "player")}${earEmphasis}`;
 }

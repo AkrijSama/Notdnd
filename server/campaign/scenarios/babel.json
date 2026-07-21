@@ -3,7 +3,9 @@
   "scenarioId": "babel",
   "title": "Babel, The Wrong Woods",
   "genre": "modern arcane",
-  "genreTags": ["isekai"],
+  "genreTags": [
+    "isekai"
+  ],
   "tones": [
     "modern arcane",
     "dark fantasy"
@@ -34,9 +36,33 @@
       ]
     },
     "nameBanks": {
-      "settlements": ["Elkwater Crossing", "Hollow Pine", "Cedar Slough", "Static Ridge", "Mill Bend", "Ranger's Rest"],
-      "wilds": ["The Green Static", "The Bonelight", "The Choir Cave", "Drowned Highway", "The Waking Mile", "Rot Hollow", "The Unclaimed"],
-      "people": ["Odile", "Ruth", "Emory", "Priya", "Tobias", "Saw", "Cal", "Wren"]
+      "settlements": [
+        "Elkwater Crossing",
+        "Hollow Pine",
+        "Cedar Slough",
+        "Static Ridge",
+        "Mill Bend",
+        "Ranger's Rest"
+      ],
+      "wilds": [
+        "The Green Static",
+        "The Bonelight",
+        "The Choir Cave",
+        "Drowned Highway",
+        "The Waking Mile",
+        "Rot Hollow",
+        "The Unclaimed"
+      ],
+      "people": [
+        "Odile",
+        "Ruth",
+        "Emory",
+        "Priya",
+        "Tobias",
+        "Saw",
+        "Cal",
+        "Wren"
+      ]
     }
   },
   "locations": {
@@ -71,67 +97,160 @@
     "loc_waking_mile": {
       "name": "The Waking Mile",
       "description": "The clearest ground in the Verdance, deliberately kept calm by HER. Soft light, honest paths, the corruption pushed politely back. The shimmer at its edge is a boundary marker, and the first step past it is a threshold you feel in your teeth as the STATUS window flickers. Older flattened bedding-spots in the grass show where other champions woke before you.",
-      "tags": ["poi:start-area", "poi:story", "modern arcane", "calm"],
+      "tags": [
+        "poi:start-area",
+        "poi:story",
+        "modern arcane",
+        "calm"
+      ],
       "layoutTemplate": "clearing",
       "dangerLevel": 1,
-      "connectedLocationIds": ["start_location", "loc_elkwater_crossing"]
+      "connectedLocationIds": [
+        "start_location",
+        "loc_elkwater_crossing"
+      ]
     },
     "loc_elkwater_crossing": {
       "name": "Elkwater Crossing",
       "description": "A refugee and trader camp at a river ford, the region's living hub. Watch rotations stand day and night, and funeral flags for the vanished snap over the tents in the wind off the water. Tarps, a plank market, a bunkhouse, and a board thick with notices. The one place in the Verdance where strangers are fed before they are questioned.",
-      "tags": ["poi:settlement", "modern arcane", "refuge", "hub"],
+      "tags": [
+        "poi:settlement",
+        "modern arcane",
+        "refuge",
+        "hub"
+      ],
       "layoutTemplate": "town-approach",
       "dangerLevel": 0,
-      "connectedLocationIds": ["loc_waking_mile", "second_location", "loc_root_shrine", "loc_st_brigids", "loc_warm_house", "loc_tithing_mill", "loc_drowned_highway", "loc_ranger_station_9", "loc_poachers_yard"],
+      "connectedLocationIds": [
+        "loc_waking_mile",
+        "second_location",
+        "loc_root_shrine",
+        "loc_st_brigids",
+        "loc_warm_house",
+        "loc_tithing_mill",
+        "loc_drowned_highway",
+        "loc_ranger_station_9",
+        "loc_poachers_yard"
+      ],
       "services": [
-        { "kind": "market", "label": "Trade at the ford market" },
-        { "kind": "inn", "label": "Take a bunk at the crossing" },
-        { "kind": "quest-board", "label": "Read the notice board" }
+        {
+          "kind": "market",
+          "label": "Trade at the ford market"
+        },
+        {
+          "kind": "inn",
+          "label": "Take a bunk at the crossing"
+        },
+        {
+          "kind": "quest-board",
+          "label": "Read the notice board"
+        }
       ],
       "notices": [
-        { "noticeId": "notice_medicine", "questId": "quest_medicine_run", "register": "desperate", "text": "MEDICINE, the Aldous children are burning up with the ford-fever and we have nothing left. Anyone brave enough to run to St. Brigid's and back gets everything we can spare. Please., Merrin" },
-        { "noticeId": "notice_warmhouse", "questId": "quest_warm_house", "register": "desperate", "text": "IT TOOK THE HALE HOUSE WHOLE. Plates still set, and something walked OUT. The trail's fresh from the Waking Mile and my sight says it's close. Coin and a bunk for whoever ends it before it circles back." },
-        { "noticeId": "notice_surveyor", "register": "rumor", "text": "LOST, a surveyor's kit on the Drowned Highway, brass and glass, worth a season's papers. Bring it to the ford, no questions asked." },
-        { "noticeId": "notice_tithing", "register": "warning", "text": "IF YOU'VE BEEN TO THE TITHING MILL and came back wrong, or came back with more than you carried in, speak to Ruth. Quietly. She's keeping count." },
-        { "noticeId": "notice_charter", "register": "warning", "text": "CHARTER ASSESSORS at the ford by week's end. Salvage papers in order or the zone's work goes to the licensed. You have been told." }
+        {
+          "noticeId": "notice_medicine",
+          "questId": "quest_medicine_run",
+          "register": "desperate",
+          "text": "MEDICINE, the Aldous children are burning up with the ford-fever and we have nothing left. Anyone brave enough to run to St. Brigid's and back gets everything we can spare. Please., Merrin"
+        },
+        {
+          "noticeId": "notice_warmhouse",
+          "questId": "quest_warm_house",
+          "register": "desperate",
+          "text": "IT TOOK THE HALE HOUSE WHOLE. Plates still set, and something walked OUT. The trail's fresh from the Waking Mile and my sight says it's close. Coin and a bunk for whoever ends it before it circles back."
+        },
+        {
+          "noticeId": "notice_surveyor",
+          "register": "rumor",
+          "text": "LOST, a surveyor's kit on the Drowned Highway, brass and glass, worth a season's papers. Bring it to the ford, no questions asked."
+        },
+        {
+          "noticeId": "notice_tithing",
+          "register": "warning",
+          "text": "IF YOU'VE BEEN TO THE TITHING MILL and came back wrong, or came back with more than you carried in, speak to Ruth. Quietly. She's keeping count."
+        },
+        {
+          "noticeId": "notice_charter",
+          "register": "warning",
+          "text": "CHARTER ASSESSORS at the ford by week's end. Salvage papers in order or the zone's work goes to the licensed. You have been told."
+        }
       ]
     },
     "loc_root_shrine": {
       "name": "The Root Shrine",
       "description": "A keeper-camp at the base of the World-Tree, where monks and wardens read the omens in bark and bloom and quietly enforce the one law that keeps the region alive: take gently. Rope-and-cedar shelters, a fire that is never let out, and elders who will trade lore and rumor for the courtesy of listening. A place to rest without being asked why you came.",
-      "tags": ["poi:shrine", "poi:settlement", "modern arcane", "sacred", "safe"],
+      "tags": [
+        "poi:shrine",
+        "poi:settlement",
+        "modern arcane",
+        "sacred",
+        "safe"
+      ],
       "layoutTemplate": "clearing",
       "dangerLevel": 1,
-      "connectedLocationIds": ["loc_penitents_row", "loc_world_tree"],
+      "connectedLocationIds": [
+        "loc_penitents_row",
+        "loc_world_tree"
+      ],
       "services": [
-        { "kind": "lore", "label": "Ask the elders about the region" }
+        {
+          "kind": "lore",
+          "label": "Ask the elders about the region"
+        }
       ]
     },
     "loc_penitents_row": {
       "name": "The Penitents' Row",
       "description": "The path of ruined poacher camps that climbs toward the Tree, each wreck a lesson in the Ledger: a still crushed under a healthy fallen oak, a trapline swallowed by a season of spiders, a truck that rolled for no reason on flat ground. Nothing here was killed by a demon. Everything here was taken too greedily, too close to Her, and paid for it. The keepers leave it exactly as it lies.",
-      "tags": ["poi:ledger-site", "modern arcane", "warning"],
+      "tags": [
+        "poi:ledger-site",
+        "modern arcane",
+        "warning"
+      ],
       "layoutTemplate": "road",
       "dangerLevel": 1,
-      "connectedLocationIds": ["loc_world_tree"]
+      "connectedLocationIds": [
+        "loc_world_tree"
+      ]
     },
     "loc_world_tree": {
       "name": "The World-Tree",
       "description": "Her anchor, and the region's living health-bar. It rises past where the canopy has any business ending, and its condition, bloom, rot, the slow green glow along the deepest bark, is the land's corruption read as omen, not number, cryptic even to the keepers who spend their lives beneath it. Approach humbly and it is the safest ground in the Verdance. Raise a hand against it and there is not a hero alive who would like your odds.",
-      "tags": ["poi:anchor", "poi:landmark", "modern arcane", "sacred"],
+      "tags": [
+        "poi:anchor",
+        "poi:landmark",
+        "modern arcane",
+        "sacred"
+      ],
       "layoutTemplate": "clearing",
       "dangerLevel": 1,
-      "connectedLocationIds": ["loc_her_clearing"]
+      "connectedLocationIds": [
+        "loc_her_clearing"
+      ]
     },
     "loc_st_brigids": {
       "name": "St. Brigid's Regional Medical",
       "description": "A rapture-site gone old and quiet: pristine wards, IVs still dripping into empty beds, charts mid-sentence. The demon that emptied it is long gone, its essence trails lead OUT the ambulance doors, the region's first clean track to follow. But the region's only real stock of medicine is still on these shelves, and the looters' cairns stacked at the entrance say plenty of people weighed the risk and went in anyway.",
-      "tags": ["poi:rapture-old", "poi:supply-cache", "modern arcane", "clinic"],
+      "tags": [
+        "poi:rapture-old",
+        "poi:supply-cache",
+        "modern arcane",
+        "clinic"
+      ],
       "layoutTemplate": "interior",
       "dangerLevel": 2,
-      "connectedLocationIds": ["loc_old_rapture"],
+      "connectedLocationIds": [
+        "loc_old_rapture"
+      ],
       "traceSeeds": [
-        { "kind": "trail", "source": "st_brigids_rapture", "ageMinutes": 15840, "path": ["loc_old_rapture"] }
+        {
+          "kind": "trail",
+          "source": "st_brigids_rapture",
+          "ageMinutes": 15840,
+          "path": [
+            "loc_old_rapture"
+          ]
+        }
       ],
       "searchDetails": [
         {
@@ -140,8 +259,22 @@
           "description": "Behind a toppled crash-cart, a locked cabinet the looters missed, antibiotics, fever-reducers, clean saline. Enough to save a family.",
           "revealed": false,
           "takeable": true,
-          "takeKeywords": ["medicine", "supplies", "cabinet", "antibiotics", "drugs"],
-          "grantItem": { "itemId": "item_medicine_cache", "name": "case of medicine", "description": "St. Brigid's committed medical stock, enough for the fever at Elkwater.", "tags": ["medicine", "quest"] }
+          "takeKeywords": [
+            "medicine",
+            "supplies",
+            "cabinet",
+            "antibiotics",
+            "drugs"
+          ],
+          "grantItem": {
+            "itemId": "item_medicine_cache",
+            "name": "case of medicine",
+            "description": "St. Brigid's committed medical stock, enough for the fever at Elkwater.",
+            "tags": [
+              "medicine",
+              "quest"
+            ]
+          }
         },
         {
           "detailId": "st_brigids_outbound_trail",
@@ -155,12 +288,25 @@
     "loc_warm_house": {
       "name": "The Warm House",
       "description": "A family home taken mid-dinner, plates still set, chairs pushed back, a kettle boiled dry on a dead stove. No struggle, no blood; the scene is eerily whole. The trail out is the brightest and freshest your sight has found, still warm to look at. The neighbors down at Elkwater have one question and they will not stop asking it: which way did it go?",
-      "tags": ["poi:rapture-fresh", "modern arcane", "haunted"],
+      "tags": [
+        "poi:rapture-fresh",
+        "modern arcane",
+        "haunted"
+      ],
       "layoutTemplate": "interior",
       "dangerLevel": 2,
-      "connectedLocationIds": ["loc_tithing_mill"],
+      "connectedLocationIds": [
+        "loc_tithing_mill"
+      ],
       "traceSeeds": [
-        { "kind": "trail", "source": "warm_house_rapture", "ageMinutes": 90, "path": ["loc_tithing_mill"] }
+        {
+          "kind": "trail",
+          "source": "warm_house_rapture",
+          "ageMinutes": 90,
+          "path": [
+            "loc_tithing_mill"
+          ]
+        }
       ],
       "spawnOnEnter": {
         "npcId": "npc_warmhouse_born",
@@ -174,29 +320,57 @@
     "loc_tithing_mill": {
       "name": "The Tithing Mill",
       "description": "A moss-eaten timber mill that still runs, after a fashion, and a front. The mill-folk are the Hollow Congregation, and their tithe to the Lord below is betrayal: they guide neighbors onto 'safe' routes past the chaos, and chalk small marks on the doorposts of houses that, a week later, stand empty and pristine. The vanishings cluster too neatly along their recommended roads. There is no proof yet. But your sight reads a handler-scent on the chalk, and it matches the trails out of the taken homes.",
-      "tags": ["poi:faction-site", "poi:congregation", "modern arcane", "sinister"],
+      "tags": [
+        "poi:faction-site",
+        "poi:congregation",
+        "modern arcane",
+        "sinister"
+      ],
       "layoutTemplate": "interior",
       "dangerLevel": 2,
-      "connectedLocationIds": ["loc_cold_door"],
+      "connectedLocationIds": [
+        "loc_cold_door"
+      ],
       "traceSeeds": [
-        { "kind": "mark", "source": "congregation_chalk", "standing": true, "meta": { "handlerScent": "a cold oil-and-ash hand, the same that marked the doorposts of the taken houses" } }
+        {
+          "kind": "mark",
+          "source": "congregation_chalk",
+          "standing": true,
+          "meta": {
+            "handlerScent": "a cold oil-and-ash hand, the same that marked the doorposts of the taken houses"
+          }
+        }
       ]
     },
     "loc_drowned_highway": {
       "name": "The Drowned Highway",
       "description": "An interstate slumped whole into a flooded valley, the roadbed gone under dark water and the roofs of drowned cars left as stepping stones across it. Something corrupted nests in the underpasses where the current pools. It is the fast way across the region and the stupid way to die, a shortcut you take when the long safe road costs more than you have.",
-      "tags": ["poi:infrastructure", "poi:route", "modern arcane", "flooded"],
+      "tags": [
+        "poi:infrastructure",
+        "poi:route",
+        "modern arcane",
+        "flooded"
+      ],
       "layoutTemplate": "road",
       "dangerLevel": 2,
-      "connectedLocationIds": ["loc_reservoir"]
+      "connectedLocationIds": [
+        "loc_reservoir"
+      ]
     },
     "loc_ranger_station_9": {
       "name": "Ranger Station 9",
       "description": "A fire-watch tower on a bald ridge, its walls still pinned with the intact regional maps the rangers kept, trailheads, drainages, the whole spread of the Verdance drawn by hands that knew it. A find worth the climb. But something roosts on the observation deck now, and it does not like the stairs used.",
-      "tags": ["poi:infrastructure", "poi:lore", "poi:map-knowledge", "modern arcane"],
+      "tags": [
+        "poi:infrastructure",
+        "poi:lore",
+        "poi:map-knowledge",
+        "modern arcane"
+      ],
       "layoutTemplate": "interior",
       "dangerLevel": 2,
-      "connectedLocationIds": ["loc_bonelight_grove"],
+      "connectedLocationIds": [
+        "loc_bonelight_grove"
+      ],
       "searchDetails": [
         {
           "detailId": "rs9_pinned_maps",
@@ -204,35 +378,77 @@
           "description": "Intact fire-watch maps pinned wall to wall, trailheads, drainages, the whole Verdance charted by hands that knew it.",
           "revealed": false,
           "takeable": true,
-          "takeKeywords": ["map", "maps", "pinned maps", "regional maps", "charts"],
-          "grantItem": { "itemId": "item_ranger_maps", "name": "Ranger Station Maps", "description": "The intact regional maps from Ranger Station 9, the Verdance charted node by node.", "tags": ["map", "map-knowledge"] },
-          "grantKnowledge": ["map:babel"]
+          "takeKeywords": [
+            "map",
+            "maps",
+            "pinned maps",
+            "regional maps",
+            "charts"
+          ],
+          "grantItem": {
+            "itemId": "item_ranger_maps",
+            "name": "Ranger Station Maps",
+            "description": "The intact regional maps from Ranger Station 9, the Verdance charted node by node.",
+            "tags": [
+              "map",
+              "map-knowledge"
+            ]
+          },
+          "grantKnowledge": [
+            "map:babel"
+          ]
+        },
+        {
+          "detailId": "rs9_drifter_rumor",
+          "label": "a ranger's pinned report",
+          "description": "A field report pinned above the cot, hand underlined twice: something WALKS the Stillborn Field now. Not a chaosling. It wore a licensed ranger's face for a mile before the face came off. Rapture-born. Do not go alone. Do not go at all.",
+          "revealState": "hidden"
         }
       ]
     },
     "loc_reservoir": {
       "name": "The Reservoir of the Unclaimed",
       "description": "Raptures consume energy but not memory, and the residue, everything the demons could not use, settles like silt, and water gathers it. The dam's glass-still reservoir is generations full of it. It remembers faces: at dusk the lost mouth their final moments across the flat black water. The keepers call the contents the Unclaimed. To your sight it is the region's only archive of what the vanished saw last, and grieving families will pay for a reading, though the Ledger frowns on selling the dead.",
-      "tags": ["poi:mystery-site", "poi:archive", "modern arcane", "haunted"],
+      "tags": [
+        "poi:mystery-site",
+        "poi:archive",
+        "modern arcane",
+        "haunted"
+      ],
       "layoutTemplate": "ruin",
       "dangerLevel": 3,
-      "connectedLocationIds": ["loc_choir_cave"]
+      "connectedLocationIds": [
+        "loc_choir_cave"
+      ]
     },
     "loc_champions_cairn": {
       "name": "A Champion's Cairn",
       "description": "A burned ring in the moss, a rusted Legendary driven hilt-deep into the stone at its center, and bones buried beneath it, respectfully, by someone who came after. Whoever they were, She called them too, and it did not go well. Read the place and its vision plays like a prequel warning: a hero's last hour, offered to you as a lesson you would rather not need.",
-      "tags": ["poi:predecessor-site", "modern arcane", "grave"],
+      "tags": [
+        "poi:predecessor-site",
+        "modern arcane",
+        "grave"
+      ],
       "layoutTemplate": "clearing",
       "dangerLevel": 2,
-      "connectedLocationIds": ["loc_bonelight_grove", "loc_unfinished_map"]
+      "connectedLocationIds": [
+        "loc_bonelight_grove",
+        "loc_unfinished_map"
+      ]
     },
     "loc_unfinished_map": {
       "name": "The Unfinished Map",
       "description": "A collapsed hide-camp, and in its ruin a hand-drawn map of the region, good work, real trails, real names, with margin notes that get shorter and stranger toward the end, about things 'she didn't warn me about.' The map is a gift. The notes are the beginning of a question you were not supposed to ask this early.",
-      "tags": ["poi:predecessor-site", "poi:map-knowledge", "modern arcane"],
+      "tags": [
+        "poi:predecessor-site",
+        "poi:map-knowledge",
+        "modern arcane"
+      ],
       "layoutTemplate": "forest",
       "dangerLevel": 1,
-      "connectedLocationIds": ["loc_stillborn_field"],
+      "connectedLocationIds": [
+        "loc_stillborn_field"
+      ],
       "searchDetails": [
         {
           "detailId": "unfinished_map",
@@ -240,16 +456,35 @@
           "description": "A hand-drawn regional map, good work, real trails, real names, its charted heart of the Verdance exact even where the margin notes trail into dread.",
           "revealed": false,
           "takeable": true,
-          "takeKeywords": ["map", "hand-drawn map", "unfinished map", "chart"],
-          "grantItem": { "itemId": "item_unfinished_map", "name": "The Unfinished Map", "description": "A hand-drawn chart of the Verdance, real trails, real names, honest as far as it goes.", "tags": ["map", "map-knowledge"] },
-          "grantKnowledge": ["map:babel"]
+          "takeKeywords": [
+            "map",
+            "hand-drawn map",
+            "unfinished map",
+            "chart"
+          ],
+          "grantItem": {
+            "itemId": "item_unfinished_map",
+            "name": "The Unfinished Map",
+            "description": "A hand-drawn chart of the Verdance, real trails, real names, honest as far as it goes.",
+            "tags": [
+              "map",
+              "map-knowledge"
+            ]
+          },
+          "grantKnowledge": [
+            "map:babel"
+          ]
         }
       ]
     },
     "loc_old_rapture": {
       "name": "The Old Rapture",
       "description": "A hamlet swallowed generations ago and gone all the way back to forest: doorframes grown into standing trees, a teacup cradled in a knot of roots, a chimney holding up a canopy. Nature has reclaimed the whole scene until it is almost beautiful. It is proof, if you needed it, that this war is ancient, and that the Verdance has done this grieving many times before.",
-      "tags": ["poi:rapture-ancient", "modern arcane", "overgrown"],
+      "tags": [
+        "poi:rapture-ancient",
+        "modern arcane",
+        "overgrown"
+      ],
       "layoutTemplate": "forest",
       "dangerLevel": 1,
       "connectedLocationIds": []
@@ -257,7 +492,11 @@
     "loc_poachers_yard": {
       "name": "The Poacher's Yard",
       "description": "An organized crew stripping the forest on an industrial schedule, flatbeds, chain hoists, a yard stacked with more than any honest need, and somehow dodging the Ledger, so far. The locals hate them and cannot touch them. But the light comes a half-beat wrong over the yard now, and the keepers say Her patience with a debt this large is visibly ending. A moral fork with a clock on it.",
-      "tags": ["poi:faction-site", "modern arcane", "greed"],
+      "tags": [
+        "poi:faction-site",
+        "modern arcane",
+        "greed"
+      ],
       "layoutTemplate": "clearing",
       "dangerLevel": 2,
       "connectedLocationIds": []
@@ -265,15 +504,26 @@
     "loc_bonelight_grove": {
       "name": "The Bonelight Grove",
       "description": "A luminous, chaos-touched stand where the trees glow the soft white of old bone and rare materials bloom in the understory, alchemy and craft reagents worth a fortune to anyone who can carry them out. So do the things that eat gatherers. The grove gives generously and collects without mercy.",
-      "tags": ["poi:flora", "poi:materials", "modern arcane", "luminous"],
+      "tags": [
+        "poi:flora",
+        "poi:materials",
+        "modern arcane",
+        "luminous"
+      ],
       "layoutTemplate": "forest",
       "dangerLevel": 3,
-      "connectedLocationIds": ["loc_choir_cave"]
+      "connectedLocationIds": [
+        "loc_choir_cave"
+      ]
     },
     "loc_stillborn_field": {
       "name": "The Stillborn Field",
       "description": "A failed rapture, the vanishing started and stopped halfway. Half-consumed echoes flicker at dusk, neither gone nor whole, caught mid-taking. The keepers forbid entry and cannot say why it happened; nobody understands it. Your sight, though, might read what stopped here, and that answer may matter more than anyone in the Verdance yet knows.",
-      "tags": ["poi:mystery-site", "modern arcane", "forbidden"],
+      "tags": [
+        "poi:mystery-site",
+        "modern arcane",
+        "forbidden"
+      ],
       "layoutTemplate": "clearing",
       "dangerLevel": 3,
       "connectedLocationIds": []
@@ -281,26 +531,47 @@
     "loc_choir_cave": {
       "name": "The Choir Cave",
       "description": "Karst galleries where chaos-saturated air, drawn through the stone throats of the cave, sings with stolen voices, playback of the consumed. A dead woman's verse. A counting-song in children's voices from the Old Rapture. Deeper still, the cave sings voices no one living has heard yet: it receives before the region loses. An early-warning oracle, or the cruelest lure ever set, the vanished singing your name from the dark. The richest essence outside the Cold Door, and the depth disorients everyone who reaches for it.",
-      "tags": ["poi:cave", "poi:xp-vein", "modern arcane", "haunted"],
+      "tags": [
+        "poi:cave",
+        "poi:xp-vein",
+        "modern arcane",
+        "haunted"
+      ],
       "layoutTemplate": "cave",
       "dangerLevel": 3,
-      "connectedLocationIds": ["loc_cold_door"]
+      "connectedLocationIds": [
+        "loc_cold_door"
+      ]
     },
     "loc_cold_door": {
       "name": "The Cold Door",
       "description": "A rapture that never cooled: a municipal cistern where the vanishing does not stop, it continues, slowly, still. Multiple strong guardian demons stand at it and never leave, exactly as the law of portals says they must. It is the region's known 'don't,' its single richest vein, and the place the Hollow Congregation delivers to. Everyone who matters agrees on one thing about the Cold Door: not yet.",
-      "tags": ["poi:portal", "poi:endgame", "modern arcane", "deadly"],
+      "tags": [
+        "poi:portal",
+        "poi:endgame",
+        "modern arcane",
+        "deadly"
+      ],
       "layoutTemplate": "interior",
       "dangerLevel": 4,
       "connectedLocationIds": [],
       "traceSeeds": [
-        { "kind": "residue", "source": "cold_door_portal", "standing": true }
+        {
+          "kind": "residue",
+          "source": "cold_door_portal",
+          "standing": true
+        }
       ]
     },
     "loc_her_clearing": {
       "name": "Her Clearing",
       "description": "An unmarked meadow where the goddess manifests, the Elk's ground. You do not find it. It finds you, when She decides it should, and the finding is safe and terrifying in the same breath. Soft grass, level light, and the certainty, standing in it, that you are being read down to the seams.",
-      "tags": ["poi:story-gated", "modern arcane", "sacred", "numinous"],
+      "tags": [
+        "poi:story-gated",
+        "modern arcane",
+        "sacred",
+        "numinous"
+      ],
       "layoutTemplate": "clearing",
       "dangerLevel": 0,
       "connectedLocationIds": []
@@ -323,7 +594,9 @@
       "[ CLIMB. RECLAIM WHAT WAS LEFT OPEN. I WILL NOT SPEAK OFTEN, SO I GIVE YOU A WINDOW, THAT YOU NEED NOT TAKE MY WORD FOR ANYTHING. LOOK AT IT NOW. ]",
       "[ THE WINDOW IS THE ONE THING I GIVE YOU TWICE. LEARN IT. IT HOLDS SIX MEASURES OF WHAT YOU ARE, STRENGTH, DEXTERITY, VITALITY, SPIRIT, INTELLECT, AND LUCK, AND BELOW THEM, YOUR SKILLS: THE THINGS YOU CAN DO. YOU HOLD NO SKILLS YET. THAT IS NOT A LACK. IT IS THE FIRST BLANK PAGE. ]\n\n[ WHEN YOU DO NOT KNOW WHAT YOU ARE, OR WHERE YOU STAND, OR WHAT YOU HAVE BECOME, OPEN THE WINDOW AND READ. IT DOES NOT FLATTER. IT DOES NOT LIE. I WILL SPEAK RARELY. THE WINDOW IS ALWAYS OPEN, AND IT IS ENOUGH. ]",
       "[ NORTH OF YOU: A TOWN OF THE LICENSED, WHERE THE PEOPLE WHO FENCE THE CHAOS KEEP THEIR PAPERS AND THEIR PRICES. AROUND YOU: THE WRONG WOODS, WHERE THE CHAOS IS NOT YET MANAGED. THE TOWN TEACHES WHAT THE LICENSED KNOW. THE WOODS TEACH WHAT YOU ARE. BOTH TEACH. CHOOSE. ]\n\nThe voice does not speak again. In the corner of your vision the STATUS window settles and holds, six measures, no skills yet, a rank the world has not read. North lies the road to Hollow Pine and its licensed doors. Around you lies the Static, un-fenced and waiting. Which way you go is the first thing you decide here, and the window will remember it."
-    ]
+    ],
+    "beatsSpeaker": "npc_voice",
+    "beatsSpeakerFrom": 1
   },
   "cast": [
     {
@@ -390,6 +663,23 @@
           "text": "\"Nine years I've lived out here, and the Static's the best neighbor I've had, it only takes what you bring it. You came in deep for someone with no license and no scars. That window behind your eyes, I've seen exactly one other, and it wasn't on a person. Sit down. I'll teach you what the edge won't.\""
         }
       ]
+    },
+    {
+      "npcId": "npc_voice",
+      "displayName": "The VOICE",
+      "role": "voice",
+      "ageClass": "adult",
+      "romanceable": false,
+      "appearance": "a hovering orb of warm green and gold light, a luminous ball of living radiance, soft golden-green glow, gentle rays, ethereal, no face, no body",
+      "portraitPrompt": "a single hovering ball of warm green and gold light, luminous glowing orb, soft radiant halo, ethereal, dark background, no face, no figure, no person",
+      "revealForm": "voice_revealed",
+      "revealEvent": "voice_manifest",
+      "dialogueBeats": [
+        {
+          "label": "Rarely",
+          "text": "[ I SAID I WOULD NOT SPEAK OFTEN. HEAR ME WHILE I DO. ]"
+        }
+      ]
     }
   ],
   "questOffers": {
@@ -404,16 +694,40 @@
       "title": "The Warm House Hunt",
       "summary": "Something was born in the emptied Hale house and walked out. Follow the fresh trail before it circles back.",
       "stages": [
-        { "objective": "Follow the fresh trail from the Waking Mile to the Warm House.", "completion": { "kind": "reach_location", "targetId": "loc_warm_house" } },
-        { "objective": "The thing fled toward the Tithing Mill, corner what was born here, then follow where it leads.", "completion": { "kind": "reach_location", "targetId": "loc_tithing_mill" } }
+        {
+          "objective": "Follow the fresh trail from the Waking Mile to the Warm House.",
+          "completion": {
+            "kind": "reach_location",
+            "targetId": "loc_warm_house"
+          }
+        },
+        {
+          "objective": "The thing fled toward the Tithing Mill, corner what was born here, then follow where it leads.",
+          "completion": {
+            "kind": "reach_location",
+            "targetId": "loc_tithing_mill"
+          }
+        }
       ]
     },
     "quest_medicine_run": {
       "title": "Elkwater's Notice, The Medicine Run",
       "summary": "The Aldous children are dying of the ford-fever. St. Brigid's still has medicine on its shelves, if you'll risk the old rapture-site to bring it back.",
       "stages": [
-        { "objective": "Reach St. Brigid's Regional Medical and recover the committed medical stock.", "completion": { "kind": "reach_location", "targetId": "loc_st_brigids" } },
-        { "objective": "Carry the medicine back to Elkwater Crossing before the fever takes the children.", "completion": { "kind": "reach_location", "targetId": "loc_elkwater_crossing" } }
+        {
+          "objective": "Reach St. Brigid's Regional Medical and recover the committed medical stock.",
+          "completion": {
+            "kind": "reach_location",
+            "targetId": "loc_st_brigids"
+          }
+        },
+        {
+          "objective": "Carry the medicine back to Elkwater Crossing before the fever takes the children.",
+          "completion": {
+            "kind": "reach_location",
+            "targetId": "loc_elkwater_crossing"
+          }
+        }
       ]
     }
   },
@@ -716,6 +1030,32 @@
           "towardRef": "loc_waking_mile",
           "band": "fresh",
           "source": "limping_grey"
+        }
+      },
+      {
+        "statBlockId": "bandit_enforcer",
+        "locationRef": "loc_drowned_highway",
+        "reachableFrom": "loc_drowned_highway",
+        "note": "Bandit ambush: enforcers hold a dry span of the Drowned Highway underpass, running a toll. Human threats, no essence trail."
+      },
+      {
+        "statBlockId": "bandit_knife",
+        "locationRef": "loc_drowned_highway",
+        "reachableFrom": "loc_drowned_highway",
+        "note": "The Knife leads the Drowned Highway toll-crew; a parley window opens at their morale break."
+      },
+      {
+        "statBlockId": "rapture_drifter",
+        "locationRef": "loc_stillborn_field",
+        "reachableFrom": "loc_stillborn_field",
+        "note": "VERY RARE. A drifted rapture-born walks the Stillborn Field fringe. Discoverable via rumor; never forced.",
+        "essenceTrail": {
+          "kind": "trail",
+          "fromRef": "loc_stillborn_field",
+          "towardRef": "loc_stillborn_field",
+          "band": "fresh",
+          "source": "rapture_drifter",
+          "palette": "violet"
         }
       }
     ]

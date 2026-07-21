@@ -1429,6 +1429,19 @@ export function buildSoloScenePayload(run, options = {}) {
     openingBeats: isOpeningMoment(run) && Array.isArray(run.openingBeats) && run.openingBeats.length
       ? run.openingBeats.filter((b) => isString(b))
       : null,
+    // W1: the opening set-piece's committed speaker (the VOICE). Her cast identity +
+    // portrait so the client renders her VN speaker surface, not anonymous narration.
+    openingSpeaker: (() => {
+      const sid = isOpeningMoment(run) && isString(run.openingSpeakerId) ? run.openingSpeakerId : "";
+      const npc = sid && run.npcs ? run.npcs[sid] : null;
+      if (!npc) return null;
+      const asset = run.imageAssets && run.imageAssets[`img_${sid}`];
+      return {
+        npcId: sid,
+        displayName: isString(npc.displayName) ? npc.displayName : "The VOICE",
+        portraitUri: asset && isString(asset.uri) ? asset.uri : null
+      };
+    })(),
     rest: restPayload(currentLocation, policyProfile),
     player: buildPlayerPayload(run),
     visibleEntities,

@@ -1402,6 +1402,8 @@ export function validateSoloRun(run) {
   validateOptionalString(run.title, "title", errors);
   validateOptionalString(run.narration, "narration", errors);
   validateOptionalString(run.openingNarration, "openingNarration", errors);
+  // W1: the committed opening speaker (the VOICE) — an npc id, optional (resume-safe).
+  validateOptionalString(run.openingSpeakerId, "openingSpeakerId", errors);
   // Optional VN (visual-novel) scene state. Older runs predate it and stay
   // valid (undefined); when present it must be an ambient↔direct signal object.
   if (run.vn !== undefined && run.vn !== null) {

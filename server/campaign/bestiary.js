@@ -66,6 +66,73 @@ const STAT_BLOCKS = Object.freeze({
     behaviors: Object.freeze({ vicious: false, cowardly: true }),
     loot: Object.freeze([]),
     tags: Object.freeze(["human", "civilian"])
+  }),
+
+  // W3 — BANDITS (threat-ladder rung 2, the SOCIAL-CAPABLE tier). Regular human
+  // threats: they fight with the full engine AND can be talked to (parley at morale
+  // thresholds — see solo/parley.js). kind:"bandit", human, adult, socialCapable.
+  // Law-6 budgets (tier 1-2, human-scale). Humans carry NO chaos essence trail.
+  bandit_scavenger: Object.freeze({
+    statBlockId: "bandit_scavenger", name: "Scavenger", kind: "bandit", tier: 1, maxHp: 9, ac: 11, dexMod: 2, xp: 45,
+    ageClass: "adult", socialCapable: true,
+    attacks: Object.freeze([{ attackId: "shiv", toHit: 3, damage: "1d4+1", damageType: "piercing" }]),
+    intents: Object.freeze([
+      { intentId: "jab", kind: "attack", attackId: "shiv", weight: 2, telegraph: "darts in low, testing your reach", hidden: false },
+      { intentId: "eye_exit", kind: "defend", weight: 3, telegraph: "glances at the open span, weighing a run", hidden: false }
+    ]),
+    behaviors: Object.freeze({ vicious: false, cowardly: true, breaksEarly: true }),
+    loot: Object.freeze([{ itemId: "toll_scrip", name: "Sector Toll-Scrip", chance: 0.4 }]),
+    tags: Object.freeze(["human", "bandit", "scavenger"])
+  }),
+  bandit_enforcer: Object.freeze({
+    statBlockId: "bandit_enforcer", name: "Enforcer", kind: "bandit", tier: 2, maxHp: 18, ac: 13, dexMod: 1, xp: 90,
+    ageClass: "adult", socialCapable: true,
+    attacks: Object.freeze([{ attackId: "cudgel", toHit: 4, damage: "1d8+2", damageType: "bludgeoning" }]),
+    intents: Object.freeze([
+      { intentId: "swing", kind: "attack", attackId: "cudgel", weight: 3, telegraph: "hefts a length of rebar, rolling his shoulders", hidden: false },
+      { intentId: "demand", kind: "defend", weight: 2, telegraph: "plants himself across the dry span: 'toll, or turn back'", hidden: false }
+    ]),
+    behaviors: Object.freeze({ vicious: false, cowardly: false }),
+    loot: Object.freeze([{ itemId: "toll_scrip", name: "Sector Toll-Scrip", chance: 0.6 }]),
+    tags: Object.freeze(["human", "bandit", "enforcer"])
+  }),
+  bandit_knife: Object.freeze({
+    statBlockId: "bandit_knife", name: "The Knife", kind: "bandit", tier: 2, maxHp: 14, ac: 14, dexMod: 3, xp: 110,
+    ageClass: "adult", socialCapable: true,
+    attacks: Object.freeze([{ attackId: "long_knife", toHit: 5, damage: "1d6+3", damageType: "piercing" }]),
+    intents: Object.freeze([
+      { intentId: "slash", kind: "attack", attackId: "long_knife", weight: 3, telegraph: "turns the blade so the light runs down it", hidden: false },
+      { intentId: "parley_open", kind: "defend", weight: 1, telegraph: "lifts an open hand: 'we can both walk away from this'", hidden: false }
+    ]),
+    behaviors: Object.freeze({ vicious: true, cowardly: false, leader: true }),
+    loot: Object.freeze([{ itemId: "toll_scrip", name: "Sector Toll-Scrip", chance: 0.8 }]),
+    tags: Object.freeze(["human", "bandit", "leader"])
+  }),
+
+  // W3 — DEMON (threat-ladder rung 4, VERY RARE). A drifted RAPTURE-BORN — the Warm
+  // House chaosling's nastier cousin class. Tier 4 budget, TWO high-tier chaos skills
+  // (telepathy intent-mask + charm), heavy VIOLET corruption (the purple law). Placed
+  // in far-POI territory, discoverable via rumor — never a starter-road spawn.
+  rapture_drifter: Object.freeze({
+    statBlockId: "rapture_drifter", name: "The Rapture-Drifter", kind: "demon", tier: 4, maxHp: 68, ac: 17, dexMod: 4, xp: 900,
+    ageClass: "adult",
+    attacks: Object.freeze([{ attackId: "rending_claw", toHit: 8, damage: "2d8+4", damageType: "slashing", rider: "chill" }]),
+    intents: Object.freeze([
+      { intentId: "rend", kind: "attack", attackId: "rending_claw", weight: 3, telegraph: "unfolds too many limbs, violet light bleeding from the seams", hidden: false },
+      { intentId: "mask", kind: "skill", skillId: "telepathy", weight: 2, telegraph: "its shape smears; you are no longer sure where it stands", hidden: true },
+      { intentId: "beckon", kind: "skill", skillId: "charm-person", weight: 2, telegraph: "a warmth that is not yours pools behind your eyes", hidden: false }
+    ]),
+    carriedSkills: Object.freeze([
+      Object.freeze({ skillId: "telepathy", name: "Telepathy", tier: "high" }),
+      Object.freeze({ skillId: "charm-person", name: "Charm Person", tier: "high" })
+    ]),
+    sightReadable: true,
+    behaviors: Object.freeze({ vicious: true, cowardly: false }),
+    loot: Object.freeze([{ itemId: "rapture_core", name: "Rapture Core", chance: 1 }]),
+    // CHAOS-IS-PURPLE: a demon is heavily corrupted — tier-4 violet markers (inlined;
+    // corruptionMarkers is defined below STAT_BLOCKS, so it can't be called at eval time).
+    corruption: Object.freeze({ palette: "violet", tier: 4, artFragment: "burning violet eyes, violet corruption markings across the body, a roiling violet corruption aura" }),
+    tags: Object.freeze(["demon", "rapture-born", "chaosling", "corrupted"])
   })
 });
 

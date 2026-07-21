@@ -406,6 +406,14 @@ export function loadScenarioIntoRun(run, scenario, options = {}) {
       // compiled/authored cast NPC read as un-romanceable. (romanceable is stamped
       // just below by the A3.1 reachability line; here we carry the compiled faction.)
       ...(isString(c.factionId) ? { factionId: c.factionId } : {}),
+      // W1: an authored cast member may COMMIT its appearance/portrait (overriding the
+      // mint) — e.g. the VOICE is a ball of warm green-gold light. Carry the committed
+      // fields + the reveal mapping (base form now, a revealed form when a committed
+      // event fires — see solo/npcReveal.js).
+      ...(isString(c.appearance) ? { appearance: c.appearance } : {}),
+      ...(isString(c.portraitPrompt) ? { portraitPrompt: c.portraitPrompt } : {}),
+      ...(isString(c.revealForm) ? { revealForm: c.revealForm } : {}),
+      ...(isString(c.revealEvent) ? { revealEvent: c.revealEvent } : {}),
       edition: "mainline",
       policyProfileId: "mainline_default",
       contentTags: [],

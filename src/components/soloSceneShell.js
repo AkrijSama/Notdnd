@@ -389,12 +389,16 @@ function beatToParas(beat) {
   return (paras.length ? paras : [stripDashes(beat)]).map((part) => `<p>${paragraphInnerHtml(part)}</p>`).join("");
 }
 
-export function renderSoloSceneOpening(openingNarration = "", openingBeats = null) {
+export function renderSoloSceneOpening(openingNarration = "", openingBeats = null, speaker = null) {
   // PACED set-piece: when the opening is an authored BEAT SEQUENCE (openingBeats),
   // reveal the beats one at a time in a staggered cascade instead of dumping the
   // whole VOICE monologue as one scroll-wall — so it lands. Each beat is its own
   // framed block, fading in after the previous; reduced-motion users get them all
   // at once (no animation). Falls back to the single-string rendering otherwise.
+  //
+  // W1: the VOICE is a COMMITTED cast member — when the opening carries her speaker
+  // (npcId + name + portraitUri), the set-piece renders as HER VN SPEAKER SURFACE (a
+  // named avatar frame with her ball-of-light portrait), not anonymous narration.
   const beats = Array.isArray(openingBeats)
     ? openingBeats.map((b) => String(b || "").trim()).filter(Boolean)
     : null;
@@ -402,15 +406,20 @@ export function renderSoloSceneOpening(openingNarration = "", openingBeats = nul
     const blocks = beats
       .map((beat, i) => `<div class="solo-opening-beat" style="animation-delay:${(i * 1.1).toFixed(2)}s">${beatToParas(beat)}</div>`)
       .join("");
+    const speakerName = speaker && typeof speaker.displayName === "string" ? speaker.displayName : "The VOICE";
+    const speakerNpcId = speaker && typeof speaker.npcId === "string" ? speaker.npcId : "";
+    const avatar = speaker && typeof speaker.portraitUri === "string" && speaker.portraitUri
+      ? `<img class="solo-opening-speaker-avatar" src="${escapeHtml(speaker.portraitUri)}" alt="${escapeHtml(speakerName)}" />`
+      : "";
     return `
-      <section class="solo-scene-opening solo-opening-paced solo-measure" role="note" aria-label="Opening narration">
+      <section class="solo-scene-opening solo-opening-paced solo-measure solo-opening-vn" role="note" aria-label="${escapeHtml(speakerName)} speaks"${speakerNpcId ? ` data-solo-speaker="${escapeHtml(speakerNpcId)}"` : ""}>
         <style>
           .solo-opening-paced .solo-opening-beat { opacity: 0; animation: soloBeatIn 0.9s ease forwards; }
           .solo-opening-paced .solo-opening-beat + .solo-opening-beat { margin-top: 0.9rem; padding-top: 0.9rem; border-top: 1px solid rgba(255,255,255,0.08); }
           @keyframes soloBeatIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
           @media (prefers-reduced-motion: reduce) { .solo-opening-paced .solo-opening-beat { opacity: 1; animation: none; } }
         </style>
-        <span class="solo-scene-opening-kicker">The VOICE speaks</span>
+        <div class="solo-opening-speaker">${avatar}<span class="solo-scene-opening-kicker">${escapeHtml(speakerName)} speaks</span></div>
         ${blocks}
       </section>
     `;
@@ -3333,7 +3342,7 @@ export function renderSoloSceneShell(state = {}) {
                 <div class="solo-narration-log" data-solo-log>
                   ${
                     (typeof scene.openingNarration === "string" && scene.openingNarration.trim()) || (Array.isArray(scene.openingBeats) && scene.openingBeats.length)
-                      ? renderSoloSceneOpening(scene.openingNarration, scene.openingBeats)
+                      ? renderSoloSceneOpening(scene.openingNarration, scene.openingBeats, scene.openingSpeaker)
                       : Array.isArray(state.narrationLog) && state.narrationLog.length
                         ? renderNarrationLog(state.narrationLog)
                         : renderLocationPanel(location, scene.gmNarration, scene.gmStatus, selectedGmMode, debug, {})
