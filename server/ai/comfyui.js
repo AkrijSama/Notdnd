@@ -39,6 +39,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { resolveRecipeFile, loadRecipe, injectWorkflow, isApiWorkflow, dimsFor } from "../../scripts/art/generate.mjs";
 import { toCanonicalStyle } from "../solo/artStyle.js";
+import { applyPreferenceSlots } from "../solo/portraitPreferences.js";
 
 // GAP 1 (art-live-recipes): the live image path routes each (style, kind) through
 // the SAME validated per-lane workflow exports the batch cook uses. When a
@@ -303,7 +304,7 @@ export function withElfDefense(positive, negative) {
 const ANIME_BLOCK_FALLBACK = Object.freeze({
   quality: "masterpiece, best quality, newest, very aesthetic, absurdres, highres",
   styleVocab: "anime coloring, cel shading, flat color, clean line art, crisp lineart, vibrant color palette, sharp focus, 2d",
-  portraitBackground: "simple background, soft gradient background",
+  portraitBackground: "simple background, soft gradient background with subtle depth",
   // HUMAN-only (owner acceptance batch 00226-00229): color anti-washout + wardrobe floor.
   characterVocab: "rich color, warm skin tone, healthy complexion, fully clothed",
   // HUMAN-only: the widened kemonomimi/animal-ear suppression + no-shirtless. NOT in
@@ -692,7 +693,7 @@ function sleep(ms) {
  * so generateImage's failover chain can move on to pollinations/cloudflare.
  * @param {{ prompt?: string, style?: string, seed?: number|null, width?: number|null, height?: number|null, fetchImpl?: typeof fetch }} args
  */
-export async function comfyuiImage({ prompt, style, kind, seed, width, height, referenceImageUrl = null, fetchImpl = fetch } = {}) {
+export async function comfyuiImage({ prompt, style, kind, seed, width, height, referenceImageUrl = null, appearance = "", avoid = "", fetchImpl = fetch } = {}) {
   const base = comfyuiBaseUrl();
   const connectTimeoutMs = Math.max(500, Number(env("COMFYUI_CONNECT_TIMEOUT_MS", "5000")) || 5000);
   // NOVRAM cold-load renders reach ~153s (see imageWorker JOB_TIMEOUT_MS note); the old
@@ -710,7 +711,18 @@ export async function comfyuiImage({ prompt, style, kind, seed, width, height, r
   // graph this path can build — face-ref tailor, validated per-lane recipe, and the
   // generic fallback (comfyuiWorkflowForStyle seals again from raw, idempotently) —
   // so the laws can never be routed around by graph injection.
-  const { positive, negative } = sealPortraitPrompt(styleKeyGeneric, rawPositive, preset.negative);
+  const sealed = sealPortraitPrompt(styleKeyGeneric, rawPositive, preset.negative);
+  // T8 PLAYER-PREFERENCE SLOTS (orphaned handoff wired 2026-07-20): appearance → positive,
+  // avoid → negative, ADDITIVELY and AFTER the seal, so identity + the safety floor always
+  // win (a slot can never override the sealed identity/monster/gender laws, and the
+  // safety-deny filter strips breaching avoid terms). Empty slots are a no-op.
+  const { positive, negative } = applyPreferenceSlots({
+    positive: sealed.positive,
+    negative: sealed.negative,
+    appearance,
+    avoid,
+    provider: "comfyui"
+  });
   const resolvedSeed = comfyuiSeed(prompt, seed);
   let workflow;
   let styleKey = styleKeyGeneric;

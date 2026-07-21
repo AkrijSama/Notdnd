@@ -35,10 +35,19 @@ test("NORMAL COOK (generated): the card shows the image, no spinner", () => {
   assert.doesNotMatch(html, /Crafting your portrait/, "a generated card shows no crafting spinner");
 });
 
-test("IN-FLIGHT (generating, first cook): the card shows the crafting spinner", () => {
+test("TRUTHFUL COOK TIME: a live elapsed counter + honest range, never a fixed promise", () => {
+  const started = Date.now() - 47000; // 47s into the cook
+  const html = card({ draftPortraitStatus: "generating", draftPortraitStartedAt: started });
+  assert.match(html, /Cooking your portrait — \d+s…/, "a live elapsed counter renders (same idiom as the turn lifecycle)");
+  assert.match(html, /4[5-9]s/, "the counter reflects the real elapsed time (~47s), i.e. it ticks");
+  assert.match(html, /usually 1–3 minutes/, "an honest MEASURED range, not a fixed promise");
+  assert.doesNotMatch(html, /\(~20s\)|within 30 seconds/, "no surface states a fixed expected time");
+});
+
+test("cook counter with no startedAt shows the verb but NO invented number", () => {
   const html = card({ draftPortraitStatus: "generating" });
-  assert.match(html, /Crafting your portrait/, "first cook shows a spinner");
-  assert.doesNotMatch(html, /\(~20s\)/, "no misleading fixed-time estimate (novram renders vary 40–150s)");
+  assert.match(html, /Cooking your portrait…/, "verb without a guessed number");
+  assert.doesNotMatch(html, /Cooking your portrait — \d/, "no fabricated elapsed when start is unknown");
 });
 
 test("IN-FLIGHT (regenerating, prior image held): the overlay is shown OVER the old image", () => {

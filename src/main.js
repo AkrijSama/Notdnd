@@ -1007,6 +1007,9 @@ function startDraftPortraitPoll(draftId, key) {
     // poll was superseded. At the deadline the card flips to a classified failure with a
     // Retry, never an eternal spinner.
     if (attempts < MAX_DRAFT_POLL_ATTEMPTS) {
+      // TRUTHFUL COOK TIME: re-render each interval so the live elapsed counter ticks
+      // ("Cooking your portrait — 47s…") while the render is still in flight.
+      scheduleRender();
       uiState.onboarding.draftPortraitPollTimer = setTimeout(tick, DRAFT_POLL_INTERVAL_MS);
     } else {
       uiState.onboarding.draftPortraitStatus = "failed";
@@ -1050,6 +1053,7 @@ async function maybeRequestDraftPortrait() {
   }
   uiState.onboarding.draftPortraitKey = key;
   uiState.onboarding.draftPortraitStatus = "generating";
+  uiState.onboarding.draftPortraitStartedAt = Date.now(); // TRUTHFUL COOK TIME: elapsed counter origin
   // A freshly-generating portrait is not yet accepted: the player must explicitly
   // lock it (FIX G), and any race/class/redo change un-accepts the prior one.
   uiState.onboarding.draftPortraitAccepted = false;
@@ -1206,6 +1210,7 @@ async function submitPortraitEdit(rawInstruction) {
   const key = `${c.race}|${c.characterClass}|${c.background || ""}|edit:${nonce}`;
   uiState.onboarding.draftPortraitKey = key;
   uiState.onboarding.draftPortraitStatus = "generating"; // current image stays under the overlay
+  uiState.onboarding.draftPortraitStartedAt = Date.now(); // TRUTHFUL COOK TIME: elapsed counter origin
   uiState.onboarding.draftPortraitAccepted = false; // an edit un-accepts (must re-accept)
   // REDO-DESTROYS-PREDECESSOR: the base this edit replaces (destroyed once the edit lands).
   const supersedes = uiState.onboarding.draftPortraitId || "";

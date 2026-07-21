@@ -594,6 +594,8 @@ export async function editImage({
   seed = null,
   width = null,
   height = null,
+  appearance = "",
+  avoid = "",
   fetchImpl = fetch,
   mock = isMockImageProvider(resolveImageProvider())
 } = {}) {
@@ -623,7 +625,7 @@ export async function editImage({
   // the regenerate fallback shares the ONE portrait path (not the generic graph).
   const tweak = String(instruction || "").trim();
   const editedPrompt = tweak ? `${prompt}, ${tweak}` : prompt;
-  const result = await generateImage({ prompt: editedPrompt, style, kind, seed, width, height, fetchImpl });
+  const result = await generateImage({ prompt: editedPrompt, style, kind, seed, width, height, appearance, avoid, fetchImpl });
   return { ...result, edited: false };
 }
 
@@ -771,6 +773,8 @@ async function dispatchImageProvider(provider, args) {
       seed: args.seed,
       width: args.width,
       height: args.height,
+      appearance: args.appearance,
+      avoid: args.avoid,
       fetchImpl: args.fetchImpl
     });
   }
@@ -810,6 +814,8 @@ export async function generateImage({
   seed = null,
   width = null,
   height = null,
+  appearance = "",
+  avoid = "",
   fetchImpl = fetch,
   retryDelayMs = 1000,
   providerPriority = IMAGE_PROVIDER_PRIORITY
@@ -818,7 +824,7 @@ export async function generateImage({
   // The raw style key + the library KIND ride along for providers that select a
   // validated per-lane workflow by (style, kind) — comfyui; prompt-only providers
   // ignore both.
-  const args = { prompt: styledPrompt, style, kind, referenceImageUrl, seed, width, height, fetchImpl };
+  const args = { prompt: styledPrompt, style, kind, referenceImageUrl, seed, width, height, appearance, avoid, fetchImpl };
 
   const primary = String(provider || resolveImageProvider() || "mock").trim().toLowerCase();
 

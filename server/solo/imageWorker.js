@@ -171,7 +171,7 @@ const PORTRAIT_ART_DIRECTION =
 // model sheet (2026-07-18 relapse). The sheet is now suppressed in the NEGATIVE
 // field on the ComfyUI lane (PORTRAIT_NEGATIVE_LAW); the positive only ASSERTS solo.
 const PLAYER_SINGLE_SUBJECT =
-  "single character portrait, one figure, centered, three-quarter view, single subject, head and upper body";
+  "single character portrait, one figure, centered, three-quarter view, single subject, upper body portrait, chest-up, shoulders and upper torso fully in frame, natural framing";
 const PLAYER_NO_SHEET =
   "solo, one person only, a single portrait of one head, one continuous image";
 const PLAYER_PORTRAIT_ART_DIRECTION =
@@ -204,9 +204,9 @@ const ART_STYLE_DIRECTION = {
     location: `painterly fantasy illustration, detailed environment, dramatic lighting, ${LOCATION_COMPOSITION}`
   },
   anime: {
-    npc: "anime portrait, clean line art, cel shaded, anime style, expressive face, upper body, simple background, soft gradient background",
+    npc: "anime portrait, clean line art, cel shaded, anime style, expressive face, upper body, simple background, soft gradient background with subtle depth",
     player:
-      `${PLAYER_SINGLE_SUBJECT}, clean line art, cel shaded, anime style, expressive face, simple background, soft gradient background, ${PLAYER_NO_SHEET}`,
+      `${PLAYER_SINGLE_SUBJECT}, clean line art, cel shaded, anime style, expressive face, simple background, soft gradient background with subtle depth, ${PLAYER_NO_SHEET}`,
     location: `anime background art, clean line art, cel shaded scenery, anime style, vibrant, ${LOCATION_COMPOSITION}`
   },
   cinematic: {
@@ -514,13 +514,18 @@ function adultGenderPhrase(c = {}) {
   let noun = null;
   if (/\b(man|male|boy|masc)/.test(g) || /\b(he|him|his)\b/.test(p)) noun = "man";
   else if (/\b(woman|female|girl|femme)/.test(g) || /\b(she|her|hers)\b/.test(p)) noun = "woman";
-  // Age word: adult by default; elderly/young modifiers per the identity edit. The
-  // "mature adult" anchor stays for adult/young (the anti-minor guard); elderly
-  // swaps to aged language.
+  // AGE REGISTER (owner tuning 2026-07-20): "mature adult" landed the anime lane ~50s.
+  // The declared intent for a default adult is a 30s register — a clear adult (anti-minor
+  // guard holds via AGE_NEGATIVE_LAW) who is NOT middle-aged. Pronoun-aware, stated
+  // positively. ageClass is ALREADY declared state (young|adult|elderly); a finer numeric
+  // age field is ledgered as the next identity-as-state slot (parallel to gender/build).
+  const poss = noun === "man" ? "his" : noun === "woman" ? "her" : "their";
   let ageWord = "adult";
-  let anchor = "mature adult";
-  if (/eld|old|senior|aged/.test(age)) { ageWord = "elderly"; anchor = "older adult, aged features"; }
-  else if (/young/.test(age)) { ageWord = "young adult"; anchor = "mature adult"; }
+  let anchor = noun
+    ? `a ${noun} in ${poss} 30s, youthful adult, smooth unlined skin`
+    : "in their 30s, youthful adult, smooth unlined skin";
+  if (/eld|old|senior|aged/.test(age)) { ageWord = "elderly"; anchor = "older adult, aged features, weathered"; }
+  else if (/young/.test(age)) { ageWord = "young adult"; anchor = noun ? `a ${noun} in ${poss} early 20s, youthful` : "in early 20s, youthful"; }
   return noun ? `(${ageWord} ${noun}:1.3), ${anchor}` : `(${ageWord}:1.3), ${anchor}`;
 }
 
@@ -816,7 +821,29 @@ export function computeDraftPortraitId(character = {}, nonce = 0, world = {}, ed
   // a NEW image is generated. nonce 0 keeps a stable id for a given combo, so
   // first-generation and carry-forward behaviour are unchanged.
   const n = Math.trunc(Number(nonce) || 0);
-  return `draft_${hashOf(n > 0 ? `${base}|n${n}` : base)}`;
+  // STALE-BY-LAW (owner clause 2026-07-20): the recipe epoch rides the id as a PLAIN,
+  // checkable prefix — `draft_<rvSlug>_<hash>` — so the serve path can tell a
+  // pre-current-recipe draft from a current one WITHOUT re-hashing. A live draft whose
+  // epoch != current is destroyed and re-cooked on next view (see getDraftPortrait).
+  return `draft_${recipeVersionSlug()}_${hashOf(n > 0 ? `${base}|n${n}` : base)}`;
+}
+
+// The current recipe epoch as a filesystem/id-safe slug (e.g. "2026-07-20c" -> "20260720c").
+function recipeVersionSlug() {
+  return String(ART_RECIPE_VERSION).replace(/[^a-z0-9]/gi, "").toLowerCase();
+}
+
+// A draft id carries its recipe epoch as `draft_<rvSlug>_<hash>`. STALE-BY-LAW: a draft
+// whose epoch != current — OR the old prefix-less `draft_<hash>` format (pre-clause) — is
+// pre-current-recipe art and must never survive on an active surface. True only for a
+// current-epoch id.
+export function draftIsCurrentRecipe(draftId) {
+  const id = String(draftId || "");
+  // UPLOADED portraits (draft_upload_*) are the player's OWN file, not recipe-cooked —
+  // the recipe epoch does not apply, so they are never stale-by-recipe.
+  if (/^draft_upload_/.test(id)) return true;
+  const m = /^draft_([a-z0-9]+)_[0-9a-z]+$/i.exec(id);
+  return Boolean(m) && m[1] === recipeVersionSlug();
 }
 
 // In-process status for draft portraits being generated (poll source of truth;
@@ -1225,9 +1252,11 @@ export async function runDraftPortraitJob(job = {}) {
     // rebuilt base — now with kind:"portrait" so it uses the SAME validated recipe.
     // An identity-only edit OR a plain generation/redo generates cleanly from state
     // (kind:"portrait" → portrait-<style>.json + sealPortraitPrompt).
+    const appearance = typeof job.appearance === "string" ? job.appearance : "";
+    const avoid = typeof job.avoid === "string" ? job.avoid : "";
     const result = freeform
-      ? await editImage({ sourceImageUrl, instruction: freeform, prompt, style, kind: "portrait", seed, ...PLAYER_PORTRAIT_DIMENSIONS })
-      : await generateImage({ prompt, style, kind: "portrait", seed, ...PLAYER_PORTRAIT_DIMENSIONS });
+      ? await editImage({ sourceImageUrl, instruction: freeform, prompt, style, kind: "portrait", seed, appearance, avoid, ...PLAYER_PORTRAIT_DIMENSIONS })
+      : await generateImage({ prompt, style, kind: "portrait", seed, appearance, avoid, ...PLAYER_PORTRAIT_DIMENSIONS });
     const bytes = result?.bytes;
     if (!bytes || !bytes.length) {
       throw new Error("image provider returned no bytes");
@@ -1267,6 +1296,14 @@ export function getDraftPortrait(draftId) {
   const id = String(draftId || "").trim();
   if (!id) {
     return { status: "failed", uri: null };
+  }
+  // STALE-BY-LAW (owner clause 2026-07-20): a live draft older than the current recipe
+  // epoch must NOT survive on an active surface — the lifecycle "live plate" exemption
+  // does not cover pre-current-recipe art. Destroy it and report a classified refresh so
+  // the client re-cooks fresh on next view (a new request mints a current-epoch id).
+  if (!draftIsCurrentRecipe(id)) {
+    destroyDraftAssets(id);
+    return { status: "failed", uri: null, reason: "That portrait was from an older art recipe — cooking a fresh one." };
   }
   const mem = draftPortraits.get(id);
   if (mem) {
@@ -1670,8 +1707,11 @@ export function enqueueDraftPortrait(job = {}) {
     return draftId;
   }
 
+  // T8 preference slots ride the job to the sealed builder (additive; identity + safety win).
+  const appearance = typeof job.appearance === "string" ? job.appearance : "";
+  const avoid = typeof job.avoid === "string" ? job.avoid : "";
   draftPortraits.set(draftId, { status: "generating", uri: null });
-  queue.push({ kind: "draft", draftId, character, world, nonce, editInstruction, sourceImageUrl, supersedes });
+  queue.push({ kind: "draft", draftId, character, world, nonce, editInstruction, sourceImageUrl, supersedes, appearance, avoid });
   Promise.resolve().then(drainQueue).catch((error) => logWorker("drain failed", error));
   return draftId;
 }

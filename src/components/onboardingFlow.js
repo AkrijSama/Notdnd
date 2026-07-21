@@ -41,7 +41,7 @@ const TONE_CHIPS = ["dark fantasy", "high fantasy", "grimdark", "sword and sorce
 // string net) — colons carry the "headline: detail" cadence.
 export const ART_STYLE_OPTIONS = [
   { id: "illustrated", label: "Illustrated Dark Fantasy", blurb: "Oil-dark painterly portraits: grim, textured, dramatic light", sample: "/public/assets/art-illustrated.jpg", tier: "early" },
-  { id: "anime", label: "Anime VN", blurb: "Flat cel color, clean line art: crisp faces, vivid grounds", sample: "/public/assets/art-anime.jpg", tier: "polished" },
+  { id: "anime", label: "Anime VN", blurb: "Flat cel color, clean line art: crisp faces, vivid grounds", sample: "/public/assets/art-anime.png", tier: "polished" },
   { id: "cinematic", label: "Dark Cinematic", blurb: "Photoreal, moody, filmic: like a prestige-TV key frame", sample: "/public/assets/art-cinematic.jpg", tier: "polished" }
 ];
 
@@ -163,6 +163,18 @@ function renderChip(label, active, attr) {
   return `<button type="button" class="onb-chip ${active ? "active" : ""}" ${attr}>${esc(label)}</button>`;
 }
 
+// TRUTHFUL COOK TIME (owner 2026-07-20): a live elapsed counter ("<verb> — 47s…"), the
+// same idiom as the turn lifecycle's "Still working — 18s". NEVER a fixed promise.
+// startedAt is epoch ms stamped when the cook began; absent → the verb with no number
+// (a guess is worse than silence). Ticks because the poll re-renders each interval.
+function cookLabel(verb, startedAt) {
+  const s = Number(startedAt);
+  if (Number.isFinite(s) && s > 0 && typeof Date !== "undefined") {
+    return `${esc(verb)} — ${Math.max(0, Math.floor((Date.now() - s) / 1000))}s…`;
+  }
+  return `${esc(verb)}…`;
+}
+
 // A user-created world card (the Worlds law: "Yours"). Selecting it carries a
 // userWorldId (not a scenarioId) into character creation.
 function renderUserWorldCard(card, active) {
@@ -257,6 +269,7 @@ function renderAuthoredReview(c, portrait = {}, scenarioId = "") {
         ${renderPortraitPreview(portrait, { charName: c.name, variant: "review" })}
         <div class="cw-review-name">${esc(c.name || "Unnamed")}</div>
         <div class="cw-review-sub">${esc(o.name || c.origin || "Origin")}${o.feat ? ` · ${esc(o.feat)}` : ""}</div>
+        ${c.portraitMode !== "upload" ? renderPreferenceSlots(c) : ""}
         ${renderPortraitEditor(portrait)}
       </div>
       <div class="cw-review-block">
@@ -296,7 +309,7 @@ function renderPortraitPreview(portrait = {}, options = {}) {
       : `<button type="button" class="onb-portrait-accept" data-cw-portrait-accept ${regenerating ? "disabled" : ""} style="${acceptCorner}">Use this portrait</button>`;
     return `<div class="onb-portrait-preview${variant}${regenerating ? " onb-portrait-regenerating" : ""}${accepted ? " onb-portrait-locked" : ""}">
         <img class="onb-portrait-img" src="${esc(uri)}" alt="${alt}" />
-        ${regenerating ? `<div class="onb-portrait-overlay"><span class="onb-portrait-spinner" aria-hidden="true"></span>Regenerating…</div>` : ""}
+        ${regenerating ? `<div class="onb-portrait-overlay"><span class="onb-portrait-spinner" aria-hidden="true"></span>${cookLabel("Regenerating", portrait.startedAt)}</div>` : ""}
         ${acceptControl}
         ${redoBtn}
       </div>`;
@@ -307,10 +320,14 @@ function renderPortraitPreview(portrait = {}, options = {}) {
     // image; we're not generating one).
     const generatingCaption = options.portraitMode === "upload"
       ? "Uploading your portrait…"
-      : "Crafting your portrait…";
+      : cookLabel("Cooking your portrait", portrait.startedAt);
+    // TRUTHFUL COOK TIME (owner 2026-07-20): a live elapsed counter (not a fixed promise),
+    // plus an honest measured range. No surface states a fixed expected time.
+    const range = options.portraitMode === "upload" ? "" : `<small class="onb-portrait-range">usually 1–3 minutes</small>`;
     return `<div class="onb-portrait-preview${variant} onb-portrait-loading">
         <span class="onb-portrait-spinner" aria-hidden="true"></span>
         <small>${generatingCaption}</small>
+        ${range}
       </div>`;
   }
   if (status === "quota") {
@@ -651,6 +668,7 @@ function renderCharReview(c, portrait = {}, customContent = {}) {
         ${renderPortraitPreview(portrait, { charName: c.name, variant: "review" })}
         <div class="cw-review-name">${esc(sheet.name || "Unnamed")}</div>
         <div class="cw-review-sub">${esc([sheet.race, sheet.class, sheet.background].filter(Boolean).join(" · ") || "·")} · Level ${sheet.level}</div>
+        ${c.portraitMode !== "upload" ? renderPreferenceSlots(c) : ""}
         ${renderPortraitEditor(portrait)}
       </div>
       <div class="cw-ability-grid">${abilityCells}</div>
@@ -674,6 +692,7 @@ function renderCharacterWizard(state) {
   const portrait = {
     portraitUri: state.draftPortraitUri,
     portraitStatus: state.draftPortraitStatus,
+    startedAt: state.draftPortraitStartedAt, // TRUTHFUL COOK TIME: live elapsed counter source
     accepted: state.draftPortraitAccepted === true,
     // Conversational editor: version history + the entitlement-gated edit count.
     versions: Array.isArray(state.portraitVersions) ? state.portraitVersions : [],

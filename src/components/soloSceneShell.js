@@ -1887,7 +1887,7 @@ export function renderSoloConditionsHud(scene = {}, { compact = false } = {}) {
 function portraitDockHtml(character = {}, scene = {}) {
   const img = character.portraitUri
     ? `<img class="solo-portrait-img" src="${escapeHtml(character.portraitUri)}" alt="${escapeHtml(character.name || "Character")} portrait" />`
-    : `<div class="solo-portrait-pending"><span class="solo-portrait-spinner" aria-hidden="true"></span><small>Crafting your portrait… (~20s)</small></div>`;
+    : `<div class="solo-portrait-pending"><span class="solo-portrait-spinner" aria-hidden="true"></span><small>Cooking your portrait…</small></div>`;
   return `
     <div class="solo-portrait" data-portrait-for="player" data-portrait-img-class="solo-portrait-img">
       ${img}
@@ -2065,7 +2065,7 @@ export function renderSoloSceneArt(locationImageUri = null, { locked = false } =
       <div class="solo-scene-art-window"></div>
       <div class="solo-scene-art-hearth"></div>
       <div class="solo-scene-art-floor"></div>
-      <div class="solo-scene-art-pending">Painting the scene… (~20s)</div>
+      <div class="solo-scene-art-pending">Painting the scene…</div>
     </div>
   `;
 }
@@ -2731,7 +2731,7 @@ export function renderSoloRightRail(state = {}) {
           const present = member.present !== false;
           const thumb = portraitUri
             ? `<img src="${escapeHtml(portraitUri)}" alt="${escapeHtml(name)}" />`
-            : `<span class="solo-cast-thumb-pending" title="Crafting your portrait… (~20s)">${escapeHtml(initial)}</span>`;
+            : `<span class="solo-cast-thumb-pending" title="Cooking your portrait…">${escapeHtml(initial)}</span>`;
           const away = member.present === false ? ` <span class="solo-cast-away">away</span>` : "";
           // Present NPCs carry Talk/Inspect — the affordances the now-removed
           // "Visible Entities" panel held, so entities live in ONE place. Reuses
@@ -4711,7 +4711,7 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       return;
     }
     state.banner =
-      "Your world is being illustrated. Portraits and scenes appear as they're ready, usually within 30 seconds.";
+      "Your world is being illustrated. Portraits and scenes appear as they're ready, usually within a minute or two.";
     state.bannerKind = "info";
     try {
       ss.setItem(IMAGE_WAIT_BANNER_KEY, "true");

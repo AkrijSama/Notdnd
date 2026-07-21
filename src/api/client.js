@@ -365,13 +365,14 @@ export function createApiClient(baseUrl = "") {
     },
     // Mid-creation portrait: request generation (server returns a draftId) and
     // poll it. No run exists yet.
-    async requestDraftPortrait({ character, world, nonce, supersedes }) {
+    async requestDraftPortrait({ character, world, nonce, supersedes, appearance, avoid }) {
       // nonce MUST be forwarded: the server derives the draft cache id + seed from
       // it, so a Redo (which bumps the nonce) needs it to bypass the cache and
       // produce a genuinely new image. Dropping it made Redo return the same image.
+      // T8: appearance/avoid preference slots ride to the sealed builder (additive).
       return request("/api/onboarding/portrait", {
         method: "POST",
-        body: JSON.stringify({ character, world, nonce, supersedes })
+        body: JSON.stringify({ character, world, nonce, supersedes, appearance, avoid })
       });
     },
     async getDraftPortrait(draftId) {
