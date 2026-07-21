@@ -1450,32 +1450,72 @@ export function buildScenePrompt(run, location = {}, locationId = "") {
   return slots.filter(Boolean).join(", ");
 }
 
-// The species-true midground subject from a committed present entity (a beast appears
-// AS its species, never a human). Returns "" when the location is empty of entities —
-// then sceneCanonSubject carries the midground (a canon feature). Never invents people.
-function sceneEntitySubject(run, locationId) {
-  const here = locationId || run?.currentLocationId;
-  const present = Object.values(run?.npcs || {}).filter(
-    (n) => n && n.currentLocationId === here && n.status !== "gone" && n.status !== "dead"
-  );
-  if (!present.length) return "";
-  const npc = present[0];
+// INSP-09 CONSUMER (the open seam, now consumed): the committed VIOLET per-tier
+// corruption art fragment for a present hostile — resolved from its stat block (authored
+// rows like the Limping Grey), the run's persisted minted block (a rolled chaosling not
+// yet re-registered after a restart), or the NPC's own committed corruption. "" when the
+// creature is not corrupted. This is what makes a CORRUPTED wolf render VIOLET-marked in
+// the scene, not a plain grey wolf (the empty-path fix's other half).
+function corruptionArtFragment(run, npc, nat) {
+  const fromBlock = nat?.block?.corruption?.artFragment;
+  const statBlockId = nat?.statBlockId || npc?.statBlockId || npc?.flags?.statBlockId || null;
+  const minted = statBlockId ? run?.mintedStatBlocks?.[statBlockId] : null;
+  const fromMinted = minted?.corruption?.artFragment;
+  const fromNpc = npc?.corruption?.artFragment || npc?.flags?.corruption?.artFragment;
+  return String(fromBlock || fromMinted || fromNpc || "").trim();
+}
+
+// The species-true midground subject PHRASE for a committed present entity, carrying its
+// violet corruption markers (INSP-09). A beast appears AS its species (a wolf, never a
+// human); the phrase deliberately avoids the words human/person/man/woman so it does not
+// trip the character-portrait detector (which would drop the scene framing guard).
+function entitySceneSubject(run, npc) {
   const nat = entityNature(npc);
   if (!nat) return "";
   // The subject rides WEIGHTED so the checkpoint renders it — a mid-prompt species token
   // loses to the landscape bias (1-of-2 empty clearings in the proof); the emphasis lands it.
+  const violet = corruptionArtFragment(run, npc, nat);
+  const violetTail = violet ? `, ${violet}` : (nat.corrupted ? ", subtly corrupted, an uncanny wrongness" : "");
   if (nat.isAnimal) {
     const cond = nat.injured ? "wounded " : "";
-    const corr = nat.corrupted ? "subtly corrupted " : "";
     const sp = nat.species || "beast";
-    // Reads "animal, not humanoid" WITHOUT the words human/person/man/woman — those
-    // trip the character-portrait detector and would drop the scene framing guard.
-    return `(a single ${cond}${corr}${sp}:1.4), the clear midground subject, a four-legged ${sp} on all fours standing low on the ground beneath a tree, watchful, unmistakably a wild animal`;
+    return `(a single ${cond}${sp}:1.4), the clear midground subject, a four-legged ${sp} on all fours standing low on the ground beneath a tree, watchful, unmistakably a wild animal${violetTail}`;
   }
-  if (nat.kind === "demon") return `(a single ${nat.corrupted ? "corrupted " : ""}demonic figure:1.3), the clear midground subject, standing on the ground`;
+  if (nat.kind === "demon") return `(a single demonic figure:1.3), the clear midground subject, standing on the ground${violetTail}`;
   // human-kind: a lone person, midground (the negative human-ban is relaxed for these —
   // the "lone figure" phrase is the gate the sealer keys on, so keep it verbatim).
   return "(a single lone figure:1.25), the clear midground subject, standing on the ground";
+}
+
+// Committed entities PRESENT at a location (not gone/dead). Shared by the general scene
+// subject (any present entity) and the hostile-only injector.
+function presentSceneEntities(run, locationId) {
+  const here = locationId || run?.currentLocationId;
+  return Object.values(run?.npcs || {}).filter(
+    (n) => n && n.currentLocationId === here && n.status !== "gone" && n.status !== "dead"
+  );
+}
+
+// The species-true midground subject from a committed present entity — HOSTILE FIRST (a
+// present threat is always the scene's subject), else any present entity. Returns "" when
+// the location is empty of entities — then sceneCanonSubject carries the midground (a
+// canon feature). Never invents people.
+function sceneEntitySubject(run, locationId) {
+  const present = presentSceneEntities(run, locationId);
+  if (!present.length) return "";
+  const npc = present.find((n) => n?.flags?.hostile === true) || present[0];
+  return entitySceneSubject(run, npc);
+}
+
+// F5 — the committed PRESENT HOSTILE subject ONLY (flags.hostile). The LIVE location cook
+// receives a canon-only basePrompt (buildLocationBasePrompt: "…wide establishing shot, no
+// people") with NO subject, so a committed present hostile (the Limping Grey) otherwise
+// rendered an EMPTY path. This species-true, violet-marked phrase is injected into that
+// cook (runLocationImageJob). "" when no present hostile — then no injection (the scene
+// keeps its canon-feature midground). Exported for the injection guard + the test.
+export function sceneHostileSubject(run, locationId) {
+  const hostile = presentSceneEntities(run, locationId).find((n) => n?.flags?.hostile === true);
+  return hostile ? entitySceneSubject(run, hostile) : "";
 }
 function buildLocationPromptFallback(run, location, locationId) {
   return buildScenePrompt(run, location, locationId);
@@ -1519,7 +1559,18 @@ export async function runLocationImageJob(job = {}) {
   // Compose FOR the wide banner: the subject (caller prompt or fallback) plus the
   // STYLE-AWARE location art direction (per-style aesthetic + establishing-shot
   // composition), so the scene reads as a backdrop in the run's actual art style.
-  const subject = String(job.basePrompt || buildLocationPromptFallback(run, location, locationId)).trim();
+  const rawSubject = String(job.basePrompt || buildLocationPromptFallback(run, location, locationId)).trim();
+  // F5 — SCENE HOSTILE INJECTION (+ INSP-09). The live caller (buildLocationBasePrompt)
+  // passes a canon-only basePrompt with NO subject, so a committed PRESENT hostile (the
+  // Limping Grey) rendered an EMPTY path. Inject the species-true hostile as the LEADING
+  // midground subject + its violet corruption markers. DEDUPE: this only runs on a FRESH
+  // cook (the job returned `skipped` above when the asset was already generated — the
+  // guard against redrawing a served/library scene), and is skipped when the prompt
+  // already carries the injected subject (the fallback builder path already added it).
+  const hostileSubject = sceneHostileSubject(run, locationId);
+  const subject = hostileSubject && !rawSubject.toLowerCase().includes("the clear midground subject")
+    ? `${hostileSubject}, ${rawSubject}`
+    : rawSubject;
   const locationDirection = artStyleDirection(style, "location");
   const prompt = subject ? `${subject}, ${locationDirection}` : locationDirection;
   // Filesystem-safe folder segment for this location's assets.
