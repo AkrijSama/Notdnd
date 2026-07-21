@@ -44,13 +44,13 @@ import {
   generateImage,
   dryRunPlan,
   assertSafeWindow,
-  freeVramMb,
   stopComfy,
   comfyReachable,
   queuePrompt,
   waitForOutput,
   fetchImageBytes
 } from "./generate.mjs";
+import { cookResourceStatus } from "../../server/ai/resourceGate.js";
 import { buildPrompt, laneForKind } from "./promptAssembly.js";
 import { addAsset, assetExists, getAsset, libraryRoot, rateAsset, tagAsset, linkIdentity, checkoutFace } from "./library.mjs";
 
@@ -195,13 +195,21 @@ async function main() {
   const cooked = [];
   const skippedExisting = [];
   const failed = [];
+  const pending = [];
   try {
     for (const spec of specs) {
-      const free = freeVramMb();
-      if (free !== null && free < 1024) {
-        throw new Error(`GPU-SAFETY: free VRAM dropped to ${free} MiB mid-batch — aborting.`);
+      // STABILIZER LAW (owner 2026-07-21): gate BEFORE EACH cook against the shared
+      // Law-6 floor (VRAM + system RAM), not the old 1024 MiB VRAM-only per-chunk
+      // check. A starving machine SKIPS-AND-MARKS-PENDING this spec and moves on — it
+      // never queues a render into starvation and never aborts the whole manifest.
+      const gate = cookResourceStatus();
+      if (!gate.ok) {
+        pending.push({ id: spec.id, why: gate.reason });
+        console.warn(`  PENDING ${spec.id} — ${gate.reason}. Machine starving; not queued.`);
+        continue;
       }
       let lastErr = null;
+      let deferred = false;
       for (let attempt = 1; attempt <= 2; attempt += 1) {
         try {
           const r = await cookOne(spec);
@@ -217,11 +225,19 @@ async function main() {
           lastErr = null;
           break;
         } catch (err) {
+          // A resource-gate block (headroom dropped after the pre-check) is NOT a
+          // failure and must not burn a retry — mark pending and move on.
+          if (err?.code === "RESOURCE_GATE_BLOCKED") {
+            deferred = true;
+            pending.push({ id: spec.id, why: err.status?.reason || "insufficient resources" });
+            console.warn(`  PENDING ${spec.id} — gate blocked mid-batch; not queued.`);
+            break;
+          }
           lastErr = err;
           console.warn(`  RETRY? ${spec.id} attempt ${attempt} failed: ${err.message}`);
         }
       }
-      if (lastErr) {
+      if (!deferred && lastErr) {
         failed.push({ id: spec.id, why: lastErr.message });
         console.error(`  FAILED ${spec.id} — skipped after 2 attempts: ${lastErr.message}`);
       }
@@ -259,10 +275,14 @@ async function main() {
     }
   }
 
-  console.log(`\ncook-manifest done: ${cooked.length} cooked, ${skippedExisting.length} already present, ${failed.length} failed.`);
+  console.log(`\ncook-manifest done: ${cooked.length} cooked, ${skippedExisting.length} already present, ${failed.length} failed, ${pending.length} pending (deferred — machine starving).`);
   if (failed.length) {
     console.log("FAILED SPECS:");
     for (const f of failed) console.log(`  - ${f.id}: ${f.why}`);
+  }
+  if (pending.length) {
+    console.log("PENDING SPECS (re-run when the machine has headroom):");
+    for (const p of pending) console.log(`  - ${p.id}: ${p.why}`);
   }
   console.log("ComfyUI stopped. Owner re-review: node scripts/art/review.mjs (auto-keeps are tagged).");
 }

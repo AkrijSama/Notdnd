@@ -40,6 +40,7 @@ import path from "node:path";
 import { resolveRecipeFile, loadRecipe, injectWorkflow, isApiWorkflow, dimsFor } from "../../scripts/art/generate.mjs";
 import { toCanonicalStyle } from "../solo/artStyle.js";
 import { applyPreferenceSlots } from "../solo/portraitPreferences.js";
+import { withCookSlot } from "./resourceGate.js";
 
 // GAP 1 (art-live-recipes): the live image path routes each (style, kind) through
 // the SAME validated per-lane workflow exports the batch cook uses. When a
@@ -693,7 +694,19 @@ function sleep(ms) {
  * so generateImage's failover chain can move on to pollinations/cloudflare.
  * @param {{ prompt?: string, style?: string, seed?: number|null, width?: number|null, height?: number|null, fetchImpl?: typeof fetch }} args
  */
-export async function comfyuiImage({ prompt, style, kind, seed, width, height, referenceImageUrl = null, appearance = "", avoid = "", fetchImpl = fetch } = {}) {
+export async function comfyuiImage(args = {}) {
+  // STABILIZER LAW (owner 2026-07-21): every REAL ComfyUI cook routes through the
+  // resource gate + sequential cook-slot (server/ai/resourceGate.js) — free VRAM +
+  // system-RAM headroom is checked against a floor BEFORE the job, and cooks are
+  // serialised with a cool-down when the desktop shares the card, so a batch can
+  // never again starve the machine into a freeze. A mocked cook (a test passing its
+  // own fetchImpl) bypasses the gate so the suite stays hermetic on any machine.
+  const mocked = args.fetchImpl && args.fetchImpl !== fetch;
+  if (mocked) return comfyuiImageInner(args);
+  return withCookSlot(`comfyui/${args.kind || "image"}`, () => comfyuiImageInner(args));
+}
+
+async function comfyuiImageInner({ prompt, style, kind, seed, width, height, referenceImageUrl = null, appearance = "", avoid = "", fetchImpl = fetch } = {}) {
   const base = comfyuiBaseUrl();
   const connectTimeoutMs = Math.max(500, Number(env("COMFYUI_CONNECT_TIMEOUT_MS", "5000")) || 5000);
   // NOVRAM cold-load renders reach ~153s (see imageWorker JOB_TIMEOUT_MS note); the old

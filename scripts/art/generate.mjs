@@ -22,6 +22,10 @@ import { addAsset, assetExists, libraryRoot } from "./library.mjs";
 import { buildPrompt, laneForKind, mapNpcToSlots, mapLocationToSlots } from "./promptAssembly.js";
 import { fileURLToPath } from "node:url";
 import { validateWorkflow } from "./validateWorkflow.mjs";
+// STABILIZER LAW (owner 2026-07-21): the shared cook resource gate. Pure node
+// built-ins — no db/server import chain — so this offline batch tool stays
+// decoupled while sharing ONE Law-6 floor with the runtime path (comfyui.js).
+import { withCookSlot, cookResourceStatus, formatCookStatus } from "../../server/ai/resourceGate.js";
 
 const COMFY = process.env.COMFY_URL || "http://127.0.0.1:8188";
 const PLAY_STATUS = process.env.PLAY_STATUS_URL || "http://localhost:4173/api/debug/status";
@@ -381,9 +385,16 @@ export async function generateImage(spec) {
   }
   const clientId = `inkborne-art-${id}`;
   const t0 = Date.now();
-  const promptId = await queuePrompt(graph, clientId);
-  const image = await waitForOutput(promptId);
-  const bytes = await fetchImageBytes(image);
+  // STABILIZER LAW: the actual GPU work runs inside the sequential cook slot — the
+  // resource gate is re-checked AFTER acquiring the slot (throws RESOURCE_GATE_BLOCKED
+  // if the machine is starving) and a cool-down is held between cooks when the desktop
+  // shares the card. This is the single choke-point for every offline cook (runBatch,
+  // cook-manifest, tailor) so the per-job floor can never be bypassed by a batch loop.
+  const bytes = await withCookSlot(`cook/${kind}/${id}`, async () => {
+    const promptId = await queuePrompt(graph, clientId);
+    const image = await waitForOutput(promptId);
+    return fetchImageBytes(image);
+  });
   fs.mkdirSync(libraryRoot(), { recursive: true });
   fs.writeFileSync(pngPath, bytes);
   // meta records templateVersion + blockVersions + slotValues so a tossed image
@@ -423,11 +434,15 @@ export async function assertSafeWindow() {
   if (idleMin !== null && idleMin < 10) {
     throw new Error(`GPU-SAFETY: play server served a turn ${idleMin.toFixed(1)} min ago — owner may be playing. Authorize a batch window before generating.`);
   }
-  const free = freeVramMb();
-  if (free !== null && free < 1024) {
-    throw new Error(`GPU-SAFETY: only ${free} MiB VRAM free (< 1024) — abort. Free the GPU (close the game / other loads) before generating.`);
+  // STABILIZER LAW (owner 2026-07-21): the pre-batch window check now shares the
+  // runtime cook floor (server/ai/resourceGate.js) — free VRAM *and* system-RAM
+  // headroom, not the old 1024 MiB VRAM-only floor that let a batch dive into
+  // starvation. A blocked window aborts LOUD before a single job is queued.
+  const status = cookResourceStatus();
+  if (!status.ok) {
+    throw new Error(`GPU-SAFETY: ${status.reason} — abort. Free the GPU/RAM before generating. [${formatCookStatus(status)}]`);
   }
-  return { idleMin, freeVramMb: free };
+  return { idleMin, ...status };
 }
 
 export function stopComfy() {
@@ -447,25 +462,36 @@ export function stopComfy() {
 
 // Run a batch of specs in chunks of <=chunkSize, re-checking VRAM between chunks,
 // stopping ComfyUI at the end no matter what. Idempotent per id (resume-safe).
-export async function runBatch(specs, { chunkSize = 10, onProgress = () => {} } = {}) {
+export async function runBatch(specs, { onProgress = () => {} } = {}) {
   await assertSafeWindow();
   const results = [];
+  const pending = [];
   try {
-    for (let i = 0; i < specs.length; i += chunkSize) {
-      const free = freeVramMb();
-      if (free !== null && free < 1024) {
-        throw new Error(`GPU-SAFETY: free VRAM dropped to ${free} MiB mid-batch — aborting before chunk ${i / chunkSize + 1}.`);
-      }
-      const chunk = specs.slice(i, i + chunkSize);
-      for (const spec of chunk) {
+    // STABILIZER LAW (owner 2026-07-21): gate BEFORE EVERY job, not between chunks of
+    // ten. Each cook runs through the sequential slot (generateImage → withCookSlot),
+    // so a starving machine SKIPS-AND-MARKS-PENDING that item and continues — it never
+    // queues a render into a machine without headroom, and never aborts the whole batch
+    // for a transient dip. The pending list is returned so the caller can re-run later.
+    for (const spec of specs) {
+      try {
         const r = await generateImage(spec);
         results.push(r);
         onProgress(r);
+      } catch (error) {
+        if (error?.code === "RESOURCE_GATE_BLOCKED") {
+          const entry = { id: spec.id, pending: true, reason: error.status?.reason || "insufficient resources" };
+          pending.push(entry);
+          onProgress(entry);
+          console.warn(`[cook] SKIP (pending): ${spec.id} — ${entry.reason}. Machine starving; not queued.`);
+          continue;
+        }
+        throw error; // a real cook failure still aborts loud
       }
     }
   } finally {
     stopComfy();
   }
+  results.pending = pending;
   return results;
 }
 

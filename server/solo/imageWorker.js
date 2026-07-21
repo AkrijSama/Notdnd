@@ -1292,6 +1292,15 @@ export async function runDraftPortraitJob(job = {}) {
     if (supersedes && supersedes !== draftId) destroyDraftAssets(supersedes);
     return { ok: true, uri };
   } catch (error) {
+    // STABILIZER LAW (owner 2026-07-21): a resource-gate block is NOT a failure —
+    // the machine was starving so we never queued. Mark it retryable ("busy") and
+    // keep NOTHING to destroy (the gate throws before any file is written), so the
+    // owner's Retry re-cooks cleanly the moment the machine has headroom again.
+    if (error?.code === "RESOURCE_GATE_BLOCKED") {
+      draftPortraits.set(draftId, { status: "failed", uri: null, reason: "busy", retryable: true });
+      logWorker(`draft portrait deferred for ${draftId} — ${String(error?.message || "").slice(0, 140)}`);
+      return { ok: false, reason: "busy", deferred: true };
+    }
     const reason = classifyImageFailure(error);
     // ASSET LIFECYCLE LAW (owner 2026-07-20): a failed job is GARBAGE — destroy any
     // partial output on the spot (file + dir), never retain-with-a-flag. The in-memory
