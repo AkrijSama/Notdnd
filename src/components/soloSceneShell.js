@@ -603,8 +603,11 @@ export function renderNarrationLog(entries = []) {
       // an ellipsis for layout, but the full text is preserved in the title attr
       // (hover) and in the stored entry (transcript / grader player-echo).
       const intentDisplay = intent && intent.length > 120 ? `${intent.slice(0, 119)}…` : intent;
+      // R2: the committed cost of this turn, from state (never narration).
+      const costLine = consequenceCostLine(entry);
+      const costTag = costLine ? `<span class="solo-log-cost">${escapeHtml(costLine)}</span>` : "";
       const header = intent
-        ? `<header class="solo-log-action"><span class="solo-log-you">You</span><span class="solo-log-intent" title="${escapeHtml(intent)}">${escapeHtml(intentDisplay)}</span>${rollTag}</header>`
+        ? `<header class="solo-log-action"><span class="solo-log-you">You</span><span class="solo-log-intent" title="${escapeHtml(intent)}">${escapeHtml(intentDisplay)}</span>${rollTag}${costTag}</header>`
         : "";
       const hasDialogue = /[“"][^”"]+[”"]/.test(String(entry.text));
       // #20-full: prefer the server's grounded per-line speakers — a multi-NPC beat
@@ -945,6 +948,22 @@ export function renderSearchResultPanel(searchResult = null, discoveredDetails =
       }
     </section>
   `;
+}
+
+// R2 — VISIBLE COSTS (walk-2, sharpened by F2's HP mystery). A failed check's committed
+// cost is stated in the roll banner, derived from the COMMITTED consequence/damage record
+// (never from narration): "cost: −2 vitality". No committed cost may be invisible.
+export function consequenceCostLine(entry = {}) {
+  const c = entry && entry.consequence ? entry.consequence : null;
+  const dmg = entry && entry.damage ? entry.damage : (c && c.type === "damage" ? c : null);
+  if (dmg && Number.isFinite(dmg.hpBefore) && Number.isFinite(dmg.hpAfter) && dmg.hpAfter < dmg.hpBefore) {
+    return `cost: −${dmg.hpBefore - dmg.hpAfter} vitality`;
+  }
+  if (dmg && Number.isFinite(dmg.amount) && dmg.amount > 0) return `cost: −${dmg.amount} vitality`;
+  if (c && c.type === "condition" && (c.condition || c.kind)) return `cost: now ${String(c.condition || c.kind)}`;
+  if (c && c.type === "resource" && c.resource) return `cost: −${Number(c.amount) || 1} ${c.resource}`;
+  if (c && c.applied && typeof c.summary === "string" && c.summary.trim()) return `cost: ${c.summary.trim()}`;
+  return "";
 }
 
 function renderCheckResult(checkResult = null) {
