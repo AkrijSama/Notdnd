@@ -17,10 +17,19 @@
 # VERIFIES the port is free, relaunches detached, then FAILS LOUDLY (non-zero) if
 # the old PID survives, the port never frees, or the new process dies within 5s.
 #
+# STANDING ENFORCEMENT (2026-07-21 reaping finding): EVERY launch is detached/supervised
+# (setsid → the process is a SESSION LEADER, reaper-safe). The DEFAULT is now detached
+# (a bare launch used to foreground-exec and get REAPED on session exit — the crash root
+# cause). Foreground is an explicit --fg opt-in only. A permanent preflight row —
+# "process detached/supervised: PASS/FAIL" — checks SID==PID; a bare/un-detached launch
+# FAILS the preflight (non-zero), and no restart may report done without it passing.
+#
 # Usage:
-#   scripts/play-server.sh [PORT]              # foreground, PORT default 4173
+#   scripts/play-server.sh [PORT]              # DETACHED (default), PORT default 4173
 #   scripts/play-server.sh 4173 --bg           # detached, logs to LOGFILE below
-#   scripts/play-server.sh 4173 --restart      # kill-by-port + verified relaunch
+#   scripts/play-server.sh 4173 --restart      # kill-by-port + verified detached relaunch
+#   scripts/play-server.sh 4173 --check-detached  # preflight probe: print the detached row
+#   scripts/play-server.sh 4173 --fg           # EXPLICIT foreground (reapable; debug only)
 #
 # To ALLOW the local 8b (accepting the GPU risk), export it before launch:
 #   INKBORNE_GM_LOCAL_FALLBACK=true scripts/play-server.sh
@@ -81,6 +90,28 @@ launch_bg() {
   echo "  pid ${NEWPID} (pidfile ${PIDFILE})"
 }
 
+# PERMANENT PREFLIGHT ROW (standing enforcement 2026-07-21): a launched server MUST be
+# detached/supervised — a SESSION LEADER (its SID == its PID), the property setsid gives
+# and a foreground/bare `node server/index.js` does NOT (it inherits the shell's session
+# and is reaped when that session ends — the crash root cause). A bare launch FAILS this.
+# Prints "process detached/supervised: PASS|FAIL" and returns non-zero on FAIL.
+is_detached() {
+  local pid="$1"
+  [ -n "$pid" ] || return 1
+  local sid
+  sid="$(ps -o sid= -p "$pid" 2>/dev/null | tr -d ' ')"
+  [ "$sid" = "$pid" ]
+}
+preflight_detached() {
+  local pid="$1"
+  if is_detached "$pid"; then
+    echo "  process detached/supervised: PASS (pid ${pid} is a session leader, reaper-safe)"
+    return 0
+  fi
+  echo "  process detached/supervised: FAIL (pid ${pid} is NOT a session leader — a bare/foreground launch, reapable). Relaunch via --restart/--bg." >&2
+  return 1
+}
+
 if [ "$MODE" = "--restart" ]; then
   # 1. Kill whatever holds the port (by PORT, never by a command-line pattern —
   #    the pkill-pattern self-kill hazard). fuser when available, else ss+kill.
@@ -125,8 +156,28 @@ if [ "$MODE" = "--restart" ]; then
   fi
   echo "$LISTENER" > "$PIDFILE"
   echo "  restart VERIFIED: pid ${LISTENER} is the sole :${PORT} listener (pidfile updated)"
+  # 5. PERMANENT preflight row: the new listener MUST be detached/supervised. A launch
+  #    that somehow bound un-detached FAILS LOUDLY (non-zero) — no restart reports done
+  #    without this row passing.
+  preflight_detached "$LISTENER" || exit 1
 elif [ "$MODE" = "--bg" ]; then
   launch_bg
-else
+  sleep 1
+  preflight_detached "$(port_pids | head -1)" || exit 1
+elif [ "$MODE" = "--check-detached" ]; then
+  # Preflight probe only: report the detached/supervised row for the running listener.
+  preflight_detached "$(port_pids | head -1)"
+  exit $?
+elif [ "$MODE" = "--fg" ]; then
+  # EXPLICIT foreground (interactive debugging only) — reapable by design, so it is an
+  # opt-in, never the default. Standing rule: real launches use --restart/--bg.
+  echo "  WARNING: foreground launch is REAPABLE (tied to this shell's session). Use --restart/--bg for a durable server." >&2
   exec "${COMMON[@]}" node server/index.js
+else
+  # DEFAULT is now DETACHED (root-cause fix 2026-07-21): a bare `play-server.sh 4173`
+  # used to foreground-exec and get reaped on session exit. Every launch is now
+  # detached/supervised unless the operator explicitly asks for --fg.
+  launch_bg
+  sleep 1
+  preflight_detached "$(port_pids | head -1)" || exit 1
 fi
