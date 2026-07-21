@@ -25,6 +25,8 @@ docs/design/romance-legacy-law.md (R-laws, economy laws, narration law, ads law)
 
 | Item | Law ref | Closed by |
 |---|---|---|
+| Map-knowledge loot pickup (Ranger Station 9 / The Unfinished Map seed the `map:babel` reveal fact) | Verdance region-v1 gap ledger item 2 / affordances-map-law ("this pass ships the read") | c494ab7 (verdance plumbing): `babel.json` `grantKnowledge:["map:babel"]` on both takeable maps → `take.js` stamps the tag onto the take fact → `regionMap.mapKnowledgeReveals` unlocks the nodes. Verified: `verdance-region.test.js` map-reveal case. |
+| Service kinds beyond inn/market/training (Elkwater quest-board, Root Shrine lore) | Verdance region-v1 gap ledger item 3 | c494ab7 (verdance plumbing): `LOCATION_SERVICE_KINDS` now carries `quest-board` + `lore` (`schema.js`); `SERVICE_META` affordances live (`affordances.js`); Root Shrine seeds a `lore` service (`babel.json`). |
 | Em-dash auditor + universal enforcement | Narration law (em-dash ban, ratified 2026-07-16) | e98b392: detector (`gm/voice.js`) + chokepoint substitution (`gm/prompting.js`) + 54-fix UI-copy sweep |
 | R10 block-and-regenerate on the live turn path | Law R10 (SFW enforcement) | VERIFIED LIVE 2026-07-17 on local 8b (zero cloud): blocked→regen-clean path AND blocked→retry-violated→template path both fired; probe also found + fixed the fallback-template intent-echo hole (`stripRomanceRegister`) |
 | Weather in the time-of-day icon | Owner checklist item 1 (ruled cheap by tonight's grading) | a20ca37: persistent `world.weather` + sky-hazard overlay (`deriveWeather`) + phase-adjacent weather glyph |

@@ -296,7 +296,11 @@ export function upsertTrace(run, trace) {
 }
 
 // Shape a well-formed trace record. Callers pass committed refs only.
-export function makeTrace({ id, kind, source, locationId, path = [], bornMinutes = 0, standing = false, standingBand = null, meta = {} }) {
+// `sourceNpcId` (optional) is the STRONG link to the roster entity that laid the
+// trail — its death/removal destroys the trail (see the DESTROY FATE section). A
+// placement trail carries the encounter it leads to on `meta.encounter` instead
+// (a soft link); a free-descriptor drift trail carries neither and dies only by age.
+export function makeTrace({ id, kind, source, locationId, path = [], bornMinutes = 0, standing = false, standingBand = null, sourceNpcId = null, meta = {} }) {
   const k = TRACE_KINDS.includes(kind) ? kind : "trail";
   const rec = {
     id: String(id),
@@ -307,6 +311,7 @@ export function makeTrace({ id, kind, source, locationId, path = [], bornMinutes
     bornMinutes: isFiniteNumber(bornMinutes) ? bornMinutes : 0,
     standing: Boolean(standing),
     standingBand: isString(standingBand) ? standingBand : null,
+    sourceNpcId: isString(sourceNpcId) ? sourceNpcId : null,
     meta: isPlainObject(meta) ? meta : {}
   };
   return rec;
@@ -341,9 +346,104 @@ export function mintTraceFromSpawn(run, spawn, { id, locationId, nowMinutes } = 
     path: trailTo ? [trailTo] : [],
     bornMinutes: born,
     standing: kind === "residue",
+    sourceNpcId: isString(spawn.sourceNpcId) ? spawn.sourceNpcId : null,
     meta: isPlainObject(spawn.meta) ? spawn.meta : {}
   });
   return upsertTrace(run, trace);
+}
+
+// ── DESTROY FATE / LIFECYCLE (verdance-region-v1 §law-5) ─────────────────────
+// A followable TRAIL is a perishable thing: it must not outlive the demon that
+// laid it, nor its own recency. Without a destroy fate a followed trail stays
+// followable after its owner (the hostile) is dead, and the array grows unbounded.
+//
+// Two death fates, applied to NON-standing trails only:
+//   (a) SOURCE DEAD/REMOVED — the roster entity the trail belongs to is dead,
+//       defeated, or gone from the run entirely.
+//   (b) EXPIRY — the trail has aged past the horizon (a track gone truly cold).
+//
+// STANDING residue/marks are EXEMPT: a portal's guardians never leave (residue),
+// a handler renews the chalk (mark) — regional law 2's replenishment exception.
+// They persist until an owner beat removes them explicitly. Pure — no I/O.
+
+// The age horizon beyond which a non-standing trail is destroyed (Law-6 tunable,
+// one place). Well past the coldest band (14d) — a trail nobody followed in a
+// month is gone, which also bounds run.essenceTraces growth. Tunable here only.
+export const TRACE_EXPIRY_MINUTES = 30 * 1440; // 30 days
+
+// (a) Is the trail's SOURCE entity dead/removed? A trail links to its owner two ways:
+//   • STRONG — `sourceNpcId` (an explicit roster ref): its ABSENCE from the roster
+//     means the source was removed from the world (a death fate), and present-and-
+//     dead is a death fate too.
+//   • SOFT — the encounter the trail LEADS TO (`meta.encounter`, stamped by a
+//     bestiary placement) or a `source` that happens to resolve to a committed npc:
+//     only a PRESENT-and-dead source kills the trail. An absent soft ref may be a
+//     not-yet-spawned encounter (spawnOnEnter), so it is NOT treated as removed.
+// Standing traces have no source-death fate. Free-descriptor trails (no linkable
+// entity) return false here and die only by expiry.
+export function isTraceSourceDead(run, trace) {
+  if (!isPlainObject(trace) || trace.standing) {
+    return false;
+  }
+  const npcs = isPlainObject(run?.npcs) ? run.npcs : {};
+  const isDeadNpc = (npc) => isPlainObject(npc) && (npc.status === "dead" || npc.flags?.defeated === true);
+  // STRONG link.
+  if (isString(trace.sourceNpcId)) {
+    const npc = npcs[trace.sourceNpcId];
+    return npc === undefined || npc === null ? true : isDeadNpc(npc);
+  }
+  // SOFT link — the encounter it leads to, else a source that names a committed npc.
+  const soft =
+    (isPlainObject(trace.meta) && isString(trace.meta.encounter) && trace.meta.encounter) ||
+    (isString(trace.source) && npcs[trace.source] ? trace.source : null);
+  if (soft) {
+    return isDeadNpc(npcs[soft]);
+  }
+  return false;
+}
+
+// (b) Has a non-standing trail aged past the destroy horizon?
+export function traceReachedExpiry(trace, nowMinutes) {
+  if (!isPlainObject(trace) || trace.standing) {
+    return false;
+  }
+  const born = Number(trace.bornMinutes);
+  const now = Number(nowMinutes);
+  if (!Number.isFinite(born) || !Number.isFinite(now)) {
+    return false;
+  }
+  return now - born > TRACE_EXPIRY_MINUTES;
+}
+
+// Prune destroyed trails from run.essenceTraces IN PLACE. A standing residue/mark
+// is never touched; a non-standing trail whose source is dead/removed OR that has
+// aged past the horizon is spliced out (destroyed — served to nothing, no longer
+// followable). Idempotent + resume-safe: a legacy run with no field is a no-op.
+// Returns the ids of the destroyed trails (for observability on the tick record).
+// Wired onto the world-clock tick (worldClock.advanceClock) so a followed trail
+// cannot outlive its source or its recency.
+export function pruneEssenceTraces(run, nowMinutes = null) {
+  if (!isPlainObject(run) || !Array.isArray(run.essenceTraces) || run.essenceTraces.length === 0) {
+    return [];
+  }
+  const now = nowMinutes == null ? currentWorldMinutes(run) : nowMinutes;
+  const removed = [];
+  run.essenceTraces = run.essenceTraces.filter((trace) => {
+    if (!isPlainObject(trace)) {
+      return true; // leave anything we don't understand untouched
+    }
+    if (trace.standing) {
+      return true; // STANDING residue/mark — exempt from every death fate
+    }
+    if (isTraceSourceDead(run, trace) || traceReachedExpiry(trace, now)) {
+      if (isString(trace.id)) {
+        removed.push(trace.id);
+      }
+      return false;
+    }
+    return true;
+  });
+  return removed;
 }
 
 // ── SEEDING (loader) ─────────────────────────────────────────────────────────

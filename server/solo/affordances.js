@@ -72,30 +72,111 @@ function serviceAffordances(location) {
   return out;
 }
 
-function castAffordances(run) {
-  const here = run?.currentLocationId;
+// COMMITTED LOCATION NAMES — the personification guard's reference (U1). A talk /
+// face chip whose "subject" collides with a committed LOCATION name is a place that
+// was mis-read as a person (the "Talk to Mile" bug, from the ROAD "the Waking Mile")
+// and must be dropped. The comparison is on distinctive name TOKENS so a fragment
+// ("Mile") still matches its parent location ("The Waking Mile").
+const LOCATION_NAME_STOPWORDS = new Set(["the", "a", "an", "of", "and", "to", "at", "in", "on", "near", "old", "new"]);
+function locationNameTokens(name) {
+  return String(name || "")
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((token) => token.length > 2 && !LOCATION_NAME_STOPWORDS.has(token));
+}
+function committedLocationTokenSets(run) {
+  const locations = isPlainObject(run?.locations) ? Object.values(run.locations) : [];
+  const sets = [];
+  for (const loc of locations) {
+    if (!isPlainObject(loc) || !isStr(loc.name)) continue;
+    const tokens = locationNameTokens(loc.name);
+    if (tokens.length) sets.push(new Set(tokens));
+  }
+  return sets;
+}
+// A subject NAME personifies a place when ALL its distinctive tokens fall inside a
+// single committed location's token set (so "Mile" ⊆ {waking,mile} and "Waking Mile"
+// ⊆ {waking,mile} both match). A subject with no distinctive tokens never matches.
+// A rare token-collision with a real person's name (an NPC literally named "Pine"
+// beside a "Hollow Pine") is an accepted trade for never personifying geography.
+function subjectPersonifiesLocation(subjectName, locationTokenSets) {
+  const tokens = locationNameTokens(subjectName);
+  if (!tokens.length) return false;
+  return locationTokenSets.some((set) => tokens.every((token) => set.has(token)));
+}
+
+// Generate one raw candidate chip per NPC, carrying subject metadata (subjectId /
+// subjectName / subjectKind) for the sanity auditor. Kind + verb are derived from
+// committed nature (entityNature): "Talk to" is for the SOCIAL-CAPABLE rung (humans,
+// bandits, demons); a beast / chaos-beast gets Face (hostile) or Approach — never a
+// Talk chip implying human speech.
+function castCandidates(run) {
   const npcs = isPlainObject(run?.npcs) ? Object.values(run.npcs) : [];
   const out = [];
   for (const npc of npcs) {
-    if (!isPlainObject(npc) || npc.currentLocationId !== here) continue;
-    if (npc.status === "gone" || npc.status === "dead") continue;
+    if (!isPlainObject(npc)) continue;
     const name = npc.generatedName || npc.displayName || npc.role;
     if (!isStr(name)) continue;
-    // NATURE-GATED AFFORDANCE (species coherence): "Talk to" is for the SOCIAL-CAPABLE
-    // rung (humans, bandits, demons — the threat ladder's social tier). A beast or a
-    // chaos-beast can't be talked to — it gets Face (hostile) / Approach (otherwise),
-    // never a Talk chip that implies human speech.
     const nat = entityNature(npc);
-    if (nat && nat.socialCapable === false) {
+    const beast = Boolean(nat && nat.socialCapable === false);
+    let subjectKind;
+    let label;
+    let intent;
+    if (beast) {
       const hostile = npc.flags?.hostile === true;
-      out.push(hostile
-        ? { label: `Face ${clip(name, 22)}`, intent: `Face ${name}.`, source: "cast", feasibility: "ok" }
-        : { label: `Approach ${clip(name, 22)}`, intent: `Approach ${name}.`, source: "cast", feasibility: "ok" });
+      subjectKind = hostile ? "face" : "approach";
+      label = `${hostile ? "Face" : "Approach"} ${clip(name, 22)}`;
+      intent = `${hostile ? "Face" : "Approach"} ${name}.`;
     } else {
-      out.push({ label: `Talk to ${clip(name, 22)}`, intent: `Talk to ${name}.`, source: "cast", feasibility: "ok" });
+      subjectKind = "talk";
+      label = `Talk to ${clip(name, 22)}`;
+      intent = `Talk to ${name}.`;
     }
+    out.push({ label, intent, source: "cast", feasibility: "ok", subjectId: npc.npcId, subjectName: name, subjectKind });
   }
   return out;
+}
+
+// AFFORDANCE-SANITY AUDITOR (U1). Every talk-class chip must resolve to a committed
+// entity that is (1) PRESENT at the player's current location, (2) NOT a personified
+// LOCATION name, and (3) tagged with the verb its committed nature warrants (Talk for
+// social-capable cast; Face / Approach for beasts). A chip that fails any gate is
+// DROPPED — a place is never a talk subject ("Talk to Mile"), an absent NPC never
+// gets a chip ("Talk to Esk"), and a beast never gets "Talk". Exported for testing.
+export function auditCastAffordances(run, chips) {
+  const here = isStr(run?.currentLocationId) ? run.currentLocationId : null;
+  const npcs = isPlainObject(run?.npcs) ? run.npcs : {};
+  const locationTokenSets = committedLocationTokenSets(run);
+  const out = [];
+  for (const chip of Array.isArray(chips) ? chips : []) {
+    if (!isPlainObject(chip)) continue;
+    // (1) subject must resolve to a PRESENT committed NPC (co-located, not gone/dead).
+    const npc = isStr(chip.subjectId) ? npcs[chip.subjectId] : null;
+    if (!isPlainObject(npc)) continue;
+    if (!here || npc.currentLocationId !== here) continue;
+    if (npc.status === "gone" || npc.status === "dead") continue;
+    // (2) a location name is NEVER a talk/face subject.
+    if (subjectPersonifiesLocation(chip.subjectName, locationTokenSets)) continue;
+    // (3) the chip verb must match the subject's committed nature.
+    const nat = entityNature(npc);
+    const social = !nat || nat.socialCapable !== false;
+    if (chip.subjectKind === "talk" && !social) continue;
+    if ((chip.subjectKind === "face" || chip.subjectKind === "approach") && social) continue;
+    out.push(chip);
+  }
+  return out;
+}
+
+function castAffordances(run) {
+  // Generate candidates from committed cast, run them through the sanity auditor,
+  // then strip the internal subject metadata so the emitted chip keeps the minimal
+  // { label, intent, source, feasibility } shape.
+  return auditCastAffordances(run, castCandidates(run)).map((chip) => ({
+    label: chip.label,
+    intent: chip.intent,
+    source: chip.source,
+    feasibility: chip.feasibility
+  }));
 }
 
 // TRAVEL IS NOT A CHIP (owner ruling 2026-07-19): exit/travel affordances were

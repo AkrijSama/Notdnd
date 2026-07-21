@@ -173,20 +173,22 @@ exist (no engine wired this pass):
    IMPLEMENTATION section below. The STATUS WINDOW now draws committed traces;
    the Warm House / St. Brigid's / Tithing Mill / Cold Door rows carry
    `traceSeeds`. (The gap is closed; retained here for provenance.)
-2. **Map-knowledge loot items.** Ranger Station 9 and The Unfinished Map are
-   canon map-reveal sources. The regionMap reveal READ (`map:babel` fact →
-   nodes) already exists (`server/solo/regionMap.js` `mapKnowledgeReveals`), but
-   **no loader seeds the pickup fact/item** — creating the map items is world-book
-   content (per affordances-map-law: "this pass ships the read"). Ledgered:
-   commit a `memoryFact { type:"map_knowledge", tags:["map:babel","item"] }` when
-   the player loots either site.
-3. **Service kinds beyond inn/market/training.** `LOCATION_SERVICE_KINDS` is only
-   `["inn","market","training"]`. Elkwater's **quest-board** and Root Shrine's
-   **lore** have no service-kind → not seeded as services (Elkwater seeds
-   market+inn, which ARE live). Root Shrine's **rest** needs no service — Rest is
-   a standing verb (`server/solo/affordances.js`). Ledgered: add `quest_board` /
-   `lore` service kinds (or surface quest-board via the existing board/questOffer
-   path) when those affordances are wanted.
+2. **Map-knowledge loot items.** ✅ **CLOSED (c494ab7, verdance plumbing).** The
+   pickup is now seeded: Ranger Station 9's pinned maps (`item_ranger_maps`) and
+   The Unfinished Map both carry an authored `grantKnowledge: ["map:babel"]` on
+   their takeable `searchDetails` row (`server/campaign/scenarios/babel.json`).
+   The take path stamps that `map:*` tag onto the committed take fact
+   (`server/solo/take.js`, the `grantKnowledge` branch), which the existing
+   regionMap reveal READ (`server/solo/regionMap.js` `mapKnowledgeReveals`) then
+   consumes to unlock the region nodes. Looting either site now charts the map.
+3. **Service kinds beyond inn/market/training.** ✅ **CLOSED (c494ab7, verdance
+   plumbing).** `LOCATION_SERVICE_KINDS` is now
+   `["inn","market","training","quest-board","lore"]`
+   (`server/solo/schema.js`). The **quest-board** and **lore** affordances are
+   live (`server/solo/affordances.js` `SERVICE_META["quest-board"]` / `["lore"]`),
+   and Root Shrine seeds a **lore** service (`babel.json` `services[].kind: "lore"`).
+   Elkwater still seeds market+inn (live); Root Shrine's **rest** stays a standing
+   verb (no service needed).
 4. **Layout templates.** `dam` / `flooded-road` / `cistern` don't exist; the
    Reservoir / Drowned Highway / Cold Door are pinned to nearest existing
    templates (see wishlist above). No templates built this pass.

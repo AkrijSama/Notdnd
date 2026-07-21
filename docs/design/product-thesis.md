@@ -53,7 +53,10 @@ This is the uncopyable asset. It is real and it is rare:
 - **Un-negotiable death**: engine-owned, closed action set, LLM firewalled from
   adjudicating or reviving (`death.js`).
 - **Real combat**: CTB tempo, three-band resolution with committed costs, statuses,
-  morale/flee, telegraphed AI — 83 behavioral tests (`combat.js`).
+  morale/flee, telegraphed AI — **76 behavioral tests** across the combat suite
+  (reproduce: `node --test tests/combat-*.test.js` → `# tests 76`; add the substrate
+  vertical-slice test, `tests/substrate-combat.test.js`, for 90). Corrected 2026-07-21
+  from a stale "83"; the count is now self-verifying via the command shown.
 - **Provider cannot mutate state**: `stateMutations` hard-rejected (`attempt.js`).
 
 Rename the moat accordingly: it is **not "durability"** (copyable) — it is the
@@ -144,7 +147,7 @@ firewalled). Bank the moat there. The repo's own architecture docs already say t
 | D2 | Dramatic memory is unsolved industry-wide — our invention | **Prior art** (Generative Agents, 2023); port, don't invent | §4 |
 | D3 | Beauty is ~50% and gets cheaper for free | Beauty is **unmeasured (0%)**; cheap grounded prose got a **live collapse**, not a free ride | §3 |
 | D4 | Durability is the uncopyable moat | The **adjudication discipline** is the moat; durable memory is commoditizing | §5 |
-| D5 | "combat-62" proves the game | **Phantom citation** — no artifact "62"; the real proof is **83 tests** + the mechanics | §2A |
+| D5 | "combat-62" proves the game | **Phantom citation** — no artifact "62"; the real proof is **76 combat tests** (`node --test tests/combat-*.test.js`) + the mechanics | §2A |
 | D6 | Stakes are un-bully-able | Un-*reversible* once committed, but was **bluff-able at the entry gate**; **fixed this session** | §2B |
 
 The PM's *core instinct* survived every check: the field ships chat products, not

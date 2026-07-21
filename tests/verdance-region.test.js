@@ -28,6 +28,12 @@ const POI_IDS = [
   "loc_stillborn_field", "loc_choir_cave", "loc_cold_door", "loc_her_clearing"
 ];
 
+// The three positional worldgen nodes the region grafts onto (not loc_ POIs): the
+// beckoning start, its worldgen neighbour, and the latent warden node third_location.
+// Reachability must cover THESE too — a graft that stranded a positional node would
+// pass a POI-only BFS while leaving the warden unreachable.
+const POSITIONAL_NODES = ["start_location", "second_location", "third_location"];
+
 test("verdance: the 20 POIs load as real locations and the run stays schema-valid", () => {
   const run = babelRun();
   assert.equal(validateSoloRun(run).ok, true, "run valid after loading the region");
@@ -48,6 +54,13 @@ test("verdance: every POI is reachable from the start via the exit graph (BFS)",
     }
   }
   for (const id of POI_IDS) assert.ok(seen.has(id), `POI ${id} reachable from start via committed exits`);
+  // The positional worldgen nodes are reachable too — including third_location, the
+  // warden node that is reachable now but latent (INSP-08: cover it, don't leave it
+  // dark to the BFS just because no POI graft landed on it yet).
+  for (const id of POSITIONAL_NODES) {
+    assert.ok(run.locations[id], `positional node ${id} exists in the graph`);
+    assert.ok(seen.has(id), `positional node ${id} reachable from start via committed exits`);
+  }
 });
 
 test("verdance: authored edges are symmetrized (undirected reachability), worldgen links kept", () => {

@@ -18,6 +18,8 @@
 // Pure functions only — no I/O, no Date.now (callers pass `now` for lastAdvancedAt).
 // ---------------------------------------------------------------------------
 
+import { pruneEssenceTraces } from "./essence.js";
+
 export const DAY_MINUTES = 1440;
 
 // A single freeform action may not advance more than half a day. The GM has full
@@ -179,6 +181,11 @@ export function advanceClock(run, minutes, { now = null, fallback = DEFAULT_ACTI
   if (typeof now === "string" && now) {
     time.lastAdvancedAt = now;
   }
+  // ESSENCE-SIGHT lifecycle (verdance-region-v1 §law-5): the world-clock tick is
+  // where essence trails meet their destroy fate — a trail whose source is dead
+  // or that has aged past the horizon is pruned here, so a followed trail can
+  // never outlive its owner or its recency. Standing residue/marks are exempt.
+  const prunedTraceIds = pruneEssenceTraces(run, time.minutes);
   return {
     minutes: spend,
     beforeMinutes: beforeTotal,
@@ -186,7 +193,8 @@ export function advanceClock(run, minutes, { now = null, fallback = DEFAULT_ACTI
     before: { day: before.day, clock: before.hhmm, phase: before.phase },
     after: { day: after.day, clock: after.hhmm, phase: after.phase },
     dayRolled: after.day > before.day,
-    phaseChanged: after.phase !== before.phase
+    phaseChanged: after.phase !== before.phase,
+    prunedTraceIds
   };
 }
 

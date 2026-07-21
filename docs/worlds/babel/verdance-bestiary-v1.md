@@ -79,9 +79,12 @@ bounded by the **TIER_BUDGET** (Law-6):
 ### Essence-sight integration (§sight-ledger)
 A minted chaosling carries `carriedSkills` and `sightReadable: true`.
 `sightReadableSkills(block)` returns those skills — the **DATA flag is live**.
-**LEDGER (UI not yet wired):** `buildSightPayload` (essence.js) currently surfaces
-committed *traces* only; rendering a chaosling's carried skills on the sight layer
-is a follow-up surface. The data seam exists; the client read is owed.
+**LEDGER (server payload done — `readableEnemies`; client render owed):**
+`buildSightPayload` (essence.js) now returns a `readableEnemies` layer alongside
+committed traces — for each sightReadable creature co-located with the MC it
+reads its carried chaos skills into short in-fiction phrases (`readableEnemiesAt`
+→ `readChaosSkillPhrase`, the bloodhound "you read: a bite that chills" edge). The
+**server seam is closed**; only the VN/status client render of that layer is owed.
 
 ---
 

@@ -23,6 +23,7 @@ import { getRecentDevelopment } from "./momentum.js";
 import { individualReputation, factionTierForStanding } from "./reputation.js";
 import { buildFallbackSuggestions, sceneSuggestionsKey } from "./suggestions.js";
 import { deriveAffordances } from "./affordances.js";
+import { displayLocationName, isLocationNameKnown } from "./locationNaming.js";
 import { getUsableInventoryItems } from "./useItem.js";
 import {
   NPC_EXPRESSIONS,
@@ -72,10 +73,15 @@ function policyAllows(entity, policyProfile) {
   return validateEntityAgainstPolicy(entity, policyProfile).ok;
 }
 
-function locationPayload(location) {
+function locationPayload(location, run) {
   return {
     locationId: location.locationId,
-    name: location.name,
+    // NAME HONESTY (knowledge-honesty law): the proper name rides ONLY once the
+    // player has been told it (entering / sign / NPC / VOICE / map); an un-told
+    // location surfaces its DESCRIPTOR instead, and its proper name never crosses
+    // the wire. nameKnown lets the client label the "unknown place" state honestly.
+    name: displayLocationName(run, location),
+    nameKnown: isLocationNameKnown(run, location),
     description: location.description,
     imageAssetId: location.imageAssetId ?? null,
     state: location.state || {},
@@ -167,7 +173,11 @@ function attemptHistoryPayload(run, policyProfile, limit = 5) {
       outcomeLabel: event.payload?.outcomeLabel || null,
       checkResult: event.payload?.checkResult || null,
       narration: event.payload?.narration || "",
-      warnings: event.payload?.warnings || []
+      warnings: event.payload?.warnings || [],
+      // R2 — VISIBLE COSTS: carry the COMMITTED cost (damage record / consequence) so the
+      // client roll banner can state it from state, never narration.
+      damage: event.payload?.damage || null,
+      consequence: event.payload?.consequence || null
     }));
 }
 
@@ -1411,7 +1421,7 @@ export function buildSoloScenePayload(run, options = {}) {
     // runVnBodyImageJob). Distinct from the bust portraitUri on the cast roster;
     // the VN overlay (separate task) consumes this. Null when ambient.
     vnBodyUri: resolveVnBodyUri(run, vnState),
-    location: locationPayload(currentLocation),
+    location: locationPayload(currentLocation, run),
     // Generated location background image (null until the worker produces it;
     // the client shows a "Generating scene art…" placeholder meanwhile).
     locationImageUri: resolveLocationImageUri(run, currentLocation),
