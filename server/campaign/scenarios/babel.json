@@ -63,7 +63,27 @@
         "Cal",
         "Wren"
       ]
-    }
+    },
+    "plausibleFauna": [
+      "deer",
+      "elk",
+      "black bear",
+      "grey wolf",
+      "coyote",
+      "mountain lion",
+      "bobcat",
+      "raccoon",
+      "marmot",
+      "beaver",
+      "otter",
+      "raven",
+      "hawk",
+      "owl",
+      "rattlesnake",
+      "salmon",
+      "frog",
+      "wild boar"
+    ]
   },
   "locations": {
     "start_location": {

@@ -23,7 +23,7 @@ import { resolveAbilityCheck, bandFromMargin, RESOLUTION_BANDS } from "./rules.j
 import { applyDamage, getHp, isDying, isDead } from "./death.js";
 import { awardXp } from "./progression.js";
 import { grantItemToRun } from "./search.js";
-import { resolveStatBlock, DEFAULT_STAT_BLOCK_ID } from "../campaign/bestiary.js";
+import { resolveStatBlock, resolveOrMintCreatureBlock, DEFAULT_STAT_BLOCK_ID } from "../campaign/bestiary.js";
 import { classifyCombatInput, COMBAT_STUNT_EFFECTS } from "./combatContract.js";
 import { advanceCombatRounds } from "./worldClock.js";
 import {
@@ -257,12 +257,18 @@ export function enterCombatFromAttackIntent(run, { targetNpcId, intent }, option
   if (!npc) {
     return { ok: false, code: "COMBAT_NO_TARGET" };
   }
-  const statBlockId = npc.statBlockId || npc.flags?.statBlockId || DEFAULT_STAT_BLOCK_ID;
-  const block = resolveStatBlock(statBlockId);
+  // PANTRY LAW (walk-2): a committed block wins; else an unrowed CREATURE MINTS one on
+  // demand (nearest chassis + tier budget, runtime-registered — resolveOrMintCreatureBlock
+  // stamps npc.statBlockId). A person with no block still falls to the civilian default.
+  // Only a truly unresolvable target refuses (never narrate a phantom fight — leak #9).
+  const committedId = npc.statBlockId || npc.flags?.statBlockId;
+  let block = committedId ? resolveStatBlock(committedId) : null;
+  if (!block) block = resolveOrMintCreatureBlock(run, npc);
+  if (!block) block = resolveStatBlock(DEFAULT_STAT_BLOCK_ID);
   if (!block) {
-    // Unknown stat block → never narrate a phantom fight (coherence leak #9).
     return { ok: false, code: "COMBAT_UNKNOWN_STATBLOCK" };
   }
+  const statBlockId = block.statBlockId;
 
   const combatId = `cbt_${hashSeed(`${run.worldSeed || run.runId}|${targetNpcId}|${run.timeline?.length || 0}`)}`;
   const combatantId = makeCombatantId(targetNpcId);

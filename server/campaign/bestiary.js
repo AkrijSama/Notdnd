@@ -460,3 +460,118 @@ export function sightReadableSkills(statBlock) {
   }
   return statBlock.carriedSkills;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PANTRY, NOT CENSUS (owner law, walk-2). The world holds EVERY era/biome-plausible
+// creature, rows or not. Narration may describe them freely (no mint, no row needed).
+// A MECHANICAL touch (combat / check / damage / capture) MINTS a lawful block ON DEMAND:
+// nearest chassis + tier budget, deterministic seed, runtime-registered. Generalizes the
+// chaosling mint (a plain beast — no chaos skills). Auditors flag CANON violations
+// (implausible species per region/era), NEVER mere absence-of-row.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// species keyword -> nearest committed chassis (BASE_ANIMALS). Ordered; first match wins.
+const CHASSIS_KEYWORDS = Object.freeze([
+  [/\bbear\b/i, "black_bear"],
+  [/\b(lion|cougar|puma|panther|lynx|bobcat|cat)\b/i, "mountain_lion"],
+  [/\b(wolf|dog|hound|coyote|jackal)\b/i, "grey_wolf"],
+  [/\b(elk|moose|caribou)\b/i, "roosevelt_elk"],
+  [/\b(deer|doe|stag|buck|fawn)\b/i, "black_tailed_deer"],
+  [/\b(boar|pig|hog|sow)\b/i, "wild_boar"],
+  [/\b(snake|serpent|viper|adder|rattler)\b/i, "rattlesnake"],
+  [/\b(raven|crow|bird|hawk|eagle|owl|falcon|jay)\b/i, "raven"],
+  [/\b(otter|beaver|mink|marten)\b/i, "river_otter"]
+]);
+function nearestChassis(descriptor) {
+  const d = String(descriptor || "");
+  for (const [re, id] of CHASSIS_KEYWORDS) if (re.test(d)) return id;
+  return "grey_wolf"; // a mid, common temperate chassis as the honest default
+}
+
+/**
+ * Mint a lawful stat block ON DEMAND for an unrowed creature (the pantry law). Nearest
+ * chassis + tier budget (hp/ac boost, Law-6), deterministic on (species, seed). A PLAIN
+ * beast — no chaos skills (that is the chaosling mint's job). Pure; register separately.
+ * @param {{ species?: string, tier?: number, seed?: string }} spec
+ * @returns {object}
+ */
+export function mintCreatureOnDemand({ species, tier = 1, seed = "" } = {}) {
+  const chassisId = nearestChassis(species);
+  const base = BASE_ANIMALS[chassisId];
+  const t = clampTier(tier);
+  const budget = TIER_BUDGET[t];
+  const h = hashSeed(`creature|${species}|${chassisId}|${t}|${seed}`);
+  const hpBoost = h % (budget.hpBoost + 1);
+  const acBoost = Math.trunc(h / 7) % (budget.acBoost + 1);
+  const name = String(species || base.name).trim() || base.name;
+  return Object.freeze({
+    statBlockId: `creature_${chassisId}_${hashSeed(`${species}|${seed}`)}`,
+    name,
+    kind: "wildlife",
+    tier: t,
+    baseAnimalId: chassisId,
+    maxHp: base.maxHp + hpBoost,
+    ac: base.ac + acBoost,
+    dexMod: base.dexMod,
+    xp: base.xp + t * 15,
+    attacks: base.attacks,
+    intents: base.intents,
+    behaviors: base.behaviors,
+    loot: base.loot,
+    mintedOnDemand: true,
+    tags: Object.freeze([...base.tags, "minted", "pantry"])
+  });
+}
+
+/**
+ * Resolve a committed block, or MINT one on demand for an unrowed CREATURE (the mechanical-
+ * touch entry point). Registers the mint so combat + resolveStatBlock find it, and stamps
+ * the npc so future touches resolve the same block. Returns null for a NON-creature (a
+ * social NPC with no block falls to the civilian default, never a beast mint).
+ * @param {object} run
+ * @param {object} npc
+ * @returns {object|null}
+ */
+export function resolveOrMintCreatureBlock(run, npc) {
+  const sbId = npc?.statBlockId || npc?.flags?.statBlockId;
+  if (sbId) {
+    const b = resolveStatBlock(sbId);
+    if (b) return b;
+  }
+  const kindStr = String(npc?.kind || npc?.nature?.kind || "").toLowerCase();
+  const looksCreature = /beast|wildlife|creature|animal|monster|chaosling|demon/.test(kindStr) || Boolean(npc?.species);
+  if (!looksCreature) return null; // a person without a block is not a beast — civilian default
+  const block = mintCreatureOnDemand({
+    species: npc?.species || npc?.displayName || npc?.appearance || "creature",
+    tier: Number(npc?.tier) || 1,
+    seed: `${run?.worldSeed || run?.runId || "seed"}|${npc?.npcId || "npc"}`
+  });
+  registerStatBlock(block);
+  if (npc && typeof npc === "object") npc.statBlockId = block.statBlockId; // stamp so it persists
+  return block;
+}
+
+// AUDITOR (pantry law): flag a CANON VIOLATION — a species implausible for the region/era
+// — never mere absence-of-row. Default is PLAUSIBLE (the pantry holds everything era/biome-
+// plausible). A world may declare `plausibleFauna` (an OPEN hint, informational) and/or
+// `implausibleFauna` (a denylist that flags), and `faunaClosed:true` (only listed fauna are
+// lawful). Returns { plausible, reason }.
+const EARTHLIKE_IMPLAUSIBLE = /\b(dragon|wyvern|dinosaur|raptor|t-?rex|kraken|leviathan|unicorn|griffin|phoenix|alien|xenomorph|robot|android|penguin|kangaroo|elephant|lion\s+king)\b/i;
+export function speciesPlausibility(world, species) {
+  const s = String(species || "").trim();
+  if (!s) return { plausible: true, reason: "no species named" };
+  const w = world || {};
+  const deny = Array.isArray(w.implausibleFauna) ? w.implausibleFauna : [];
+  if (deny.some((d) => new RegExp(`\\b${String(d).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(s))) {
+    return { plausible: false, reason: `${s} is on this region's implausible-fauna denylist` };
+  }
+  const allow = Array.isArray(w.plausibleFauna) ? w.plausibleFauna : null;
+  if (w.faunaClosed === true && allow && !allow.some((a) => new RegExp(`\\b${String(a).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(s))) {
+    return { plausible: false, reason: `${s} is not in this region's closed fauna list` };
+  }
+  // A mundane (non-magical) Earth-like region flags overtly fantastical/anachronistic species.
+  if (w.faunaMundane === true && EARTHLIKE_IMPLAUSIBLE.test(s)) {
+    return { plausible: false, reason: `${s} is not plausible for a mundane Earth-like region` };
+  }
+  return { plausible: true, reason: "plausible for the region" };
+}
