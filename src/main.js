@@ -1026,6 +1026,12 @@ function startDraftPortraitPoll(draftId, key) {
       }
       if (res?.status === "generated" && res.uri) {
         uiState.onboarding.draftPortraitUri = res.uri;
+        // F3 — BYTE-IDENTITY: pair the committed id with the SHOWN uri. The poll used to
+        // set only the uri, so the id (what enterWorld → copyDraftPortraitToRun commits)
+        // could diverge from the image the player is looking at → a different portrait
+        // in-game. Setting both here (and in revertPortraitVersion) makes the committed
+        // portrait byte-identical to the selected draft, killing the version-id/poll race.
+        uiState.onboarding.draftPortraitId = draftId;
         uiState.onboarding.draftPortraitStatus = "generated";
         uiState.onboarding.portraitEditPending = false;
         recordPortraitVersion(draftId, res.uri); // version history (gen / redo / edit)
