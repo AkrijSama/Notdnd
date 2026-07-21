@@ -1950,6 +1950,18 @@ export function renderSoloThinkingIndicator(state = {}, now = null) {
   return `<div class="solo-thinking" role="status">${label}</div>`;
 }
 
+// U4 — the classified WHY a turn submission failed (mirrors classifyImageFailure). A
+// message the player can act on, not a bare "failed". Retry is always offered alongside.
+export function classifyTurnFailure(error) {
+  const m = String(error?.message || error || "").toLowerCase();
+  const status = Number(error?.status || error?.statusCode) || 0;
+  if (/timeout|timed out|deadline|aborted/.test(m)) return "The game master took too long to answer. Retry when ready.";
+  if (/failed to fetch|network|econnrefused|unreachable|offline|load failed/.test(m)) return "The connection to the server dropped. Check your connection and retry.";
+  if (status === 429 || /rate|too many/.test(m)) return "The server is busy right now. Give it a moment, then retry.";
+  if (status >= 500 || /server error|internal/.test(m)) return "The server hit an error on this turn. Your text is kept; retry.";
+  return "The turn didn't reach the server. Your text is kept; retry.";
+}
+
 // INPUT INTEGRITY surface — the failed-turn recovery banner and the one-deep queued
 // chip. A failed turn is NEVER silently dropped: the player sees exactly which
 // action is at risk and chooses Retry (idempotent resubmit) or Discard.
@@ -1958,9 +1970,11 @@ export function renderSoloTurnLifecycle(state = {}) {
   const pending = state.pendingTurn;
   if (pending && pending.status === "failed") {
     const label = firstWordsLabel(pending.text) || "your last action";
+    // U4: carry the classified WHY (timeout / provider / network), never a bare failure.
+    const why = typeof pending.reason === "string" && pending.reason.trim() ? ` ${pending.reason.trim()}` : "";
     parts.push(
       `<div class="solo-turn-failed" role="alert" data-solo-turn-failed>` +
-        `<span class="solo-turn-failed-msg">Your action “${escapeHtml(label)}” wasn't processed.</span>` +
+        `<span class="solo-turn-failed-msg">Your action “${escapeHtml(label)}” wasn't processed.${escapeHtml(why)}</span>` +
         `<span class="solo-turn-failed-actions">` +
         `<button type="button" class="solo-turn-retry" data-solo-turn-retry>Retry</button>` +
         `<button type="button" class="solo-turn-discard" data-solo-turn-discard>Discard</button>` +
@@ -5111,10 +5125,11 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       // idempotently rather than re-rolling.
       try {
         response = await postAction(createAttemptAction({ intent, mode }), turnId);
-      } catch {
+      } catch (secondError) {
         // Both attempts failed: SURFACE (contract clause 1c), never drop. Keep the
-        // player's text so Retry/Discard/edit are all possible.
-        state.pendingTurn = { turnId, text: submittedText, mode, status: "failed", startedAt: state.pendingTurn?.startedAt || nowMs() };
+        // player's text so Retry/Discard/edit are all possible. U4: carry the classified
+        // WHY (timeout / unreachable / server) so the banner explains, not just alarms.
+        state.pendingTurn = { turnId, text: submittedText, mode, status: "failed", reason: classifyTurnFailure(firstError || secondError), startedAt: state.pendingTurn?.startedAt || nowMs() };
         state.attemptDraft = submittedText;
         persistDraft(submittedText);
         state.banner = "";
