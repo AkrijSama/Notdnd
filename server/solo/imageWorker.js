@@ -5,7 +5,7 @@ import { engineStyleForRun, styleForRun, hasCommittedArtStyle, ART_RECIPE_VERSIO
 import { deriveWeather, deriveClock } from "./worldClock.js";
 import { detectImageExt } from "../api/http.js";
 import { addAsset, libraryRoot } from "../../scripts/art/library.mjs";
-import { taste } from "./fridgeTaster.js";
+import { tasteAsync } from "./fridgeTaster.js";
 import {
   ensureLocationImageAsset,
   ensureNpcImageAssets,
@@ -37,7 +37,50 @@ function slugForTag(text) {
 
 // Land a live-generated image in the library (additive — the run still serves its
 // own asset at the run path). Best-effort: never throws, never blocks a turn.
-export function intakeToLibrary({ id, bytes, kind, run, subjectId = null, promptUsed = "", workflow = "", extraTags = [], provider = null }) {
+/**
+ * What an image is SUPPOSED to depict, in plain words, for the taster's
+ * "expected subject present?" question. Committed state is truth and OUTRANKS the
+ * assembled prompt — the prompt can itself be the bug (the pre-nature-coherence
+ * era wrote "a woman" into a wolf's portrait). Returns "" when nothing is
+ * committed, which the assessor treats as n/a rather than a failure.
+ */
+export function expectedSubjectFor({ kind, run, subjectId, promptUsed = "" } = {}) {
+  try {
+    if (kind === "scene") {
+      const loc = subjectId && run?.locations ? run.locations[subjectId] : null;
+      const name = loc?.name || loc?.title || "";
+      const desc = String(loc?.description || "").slice(0, 160);
+      return [name, desc].filter(Boolean).join(" — ");
+    }
+    // portrait | fullbody
+    const npc = subjectId && run?.npcs ? run.npcs[subjectId] : null;
+    if (npc) {
+      const nat = entityNature(npc) || {};
+      const name = npc.displayName || npc.name || "";
+      // SPECIES TRUTH FIRST: an animal-bodied creature is an animal, whatever the
+      // prompt says. This is the check that catches "wolf rendered as a woman".
+      if (nat.isAnimal || nat.kind === "wildlife") {
+        const sp = nat.species || "animal";
+        return `a ${nat.corrupted ? "corrupted " : ""}${sp} (a four-legged animal, NOT a human)`;
+      }
+      if (nat.kind === "demon" || nat.kind === "chaosling") {
+        return `${name || "a creature"} — a non-human ${nat.kind}`;
+      }
+      return `${name || "a person"} — a human ${npc.gender || ""}`.trim();
+    }
+    // The player's own portrait: declared identity is state.
+    const p = run?.player;
+    if (p && (kind === "portrait" || kind === "fullbody")) {
+      const bits = [p.name, p.gender ? `a ${p.gender}` : "", p.bodyType ? `${p.bodyType} build` : "", "a human person"];
+      return bits.filter(Boolean).join(", ");
+    }
+    return String(promptUsed || "").slice(0, 160);
+  } catch {
+    return ""; // never let subject derivation break intake
+  }
+}
+
+export async function intakeToLibrary({ id, bytes, kind, run, subjectId = null, promptUsed = "", workflow = "", extraTags = [], provider = null }) {
   try {
     if (!bytes || !bytes.length || !id) {
       return null;
@@ -71,7 +114,22 @@ export function intakeToLibrary({ id, bytes, kind, run, subjectId = null, prompt
     // QUARANTINE (a holding pen served to nothing, resolved by the owner in
     // scripts/art/review.mjs). Default assessor is a zero-cost deterministic mock —
     // see server/solo/fridgeTaster.js + docs/design/fridge-taster.md (config seat).
-    const verdict = taste({ id, bytes, kind, run, subjectId, promptUsed, defaultRating: LIVE_INTAKE_RATING });
+    // ASYNC (2026-07-21): the taster's real assessor is a VISION MODEL (a network
+    // call), so intake awaits it. This is off the player's critical path — the
+    // image is already written and served to the run before intake pools it into
+    // the shared library. Seat unset => the zero-cost mock resolves immediately.
+    const verdict = await tasteAsync({
+      id,
+      bytes,
+      kind,
+      run,
+      subjectId,
+      promptUsed,
+      // What this image is SUPPOSED to depict, for the "expected subject present?"
+      // question. Committed species-truth beats the prompt (which can itself be wrong).
+      expectedSubject: expectedSubjectFor({ kind, run, subjectId, promptUsed }),
+      defaultRating: LIVE_INTAKE_RATING
+    });
     return addAsset({
       id,
       origin: "generated",
@@ -448,7 +506,7 @@ export async function runEnemyBodyImageJob(job = {}) {
     ...VN_BODY_DIMENSIONS
   });
   if (enemyBody.ok && enemyBody.bytes) {
-    intakeToLibrary({
+    await intakeToLibrary({
       id: `live_${runId}_${npcId}_enemyBody`,
       bytes: enemyBody.bytes,
       kind: "fullbody",
@@ -995,7 +1053,7 @@ export async function runImageJob(job = {}) {
     });
     // GAP 2: land the NPC bust in the library (kind portrait).
     if (base.ok && base.bytes) {
-      intakeToLibrary({
+      await intakeToLibrary({
         id: `live_${runId}_${npcId}_base`,
         bytes: base.bytes,
         kind: "portrait",
@@ -1120,7 +1178,7 @@ export async function runVnBodyImageJob(job = {}) {
   // GAP 2: land the fullbody sprite in the library (kind fullbody). identityRef
   // links it to the bust it was tailored from when a face ref was used.
   if (vnBody.ok && vnBody.bytes) {
-    intakeToLibrary({
+    await intakeToLibrary({
       id: `live_${runId}_${npcId}_vnBody`,
       bytes: vnBody.bytes,
       kind: "fullbody",
@@ -1192,7 +1250,7 @@ export async function runPlayerImageJob(job = {}) {
     updatePlayerPortrait(runId, uri);
     countGeneratedImageForRun(runId);
     // GAP 2: land the player portrait in the library (kind portrait).
-    intakeToLibrary({
+    await intakeToLibrary({
       id: `live_${runId}_player`,
       bytes,
       kind: "portrait",
@@ -1606,7 +1664,7 @@ export async function runLocationImageJob(job = {}) {
     updateImageAssetStatus(runId, linked.assetId, "generated", finalUri);
     countGeneratedImageForRun(runId);
     // GAP 2: land the scene backdrop in the library (kind scene, loc:<slug> tag).
-    intakeToLibrary({
+    await intakeToLibrary({
       id: `live_${runId}_loc_${locationId}`,
       bytes,
       kind: "scene",

@@ -34,10 +34,10 @@ beforeEach(() => {
   delete process.env.NOTDND_TASTER_MODEL;
 });
 
-test("PASS -> FRIDGE: auto-kept and servable", () => {
+test("PASS -> FRIDGE: auto-kept and servable", async () => {
   taster.setTasteFixtures({ sc_pass: "pass" });
   const run = runFor("passtown");
-  intakeToLibrary({ id: "sc_pass", bytes: PNG, kind: "scene", run, provider: "comfyui" });
+  await intakeToLibrary({ id: "sc_pass", bytes: PNG, kind: "scene", run, provider: "comfyui" });
 
   const s = lib.getAsset("sc_pass");
   assert.equal(s.rating, "keep", "pass lands as a library keep");
@@ -47,10 +47,10 @@ test("PASS -> FRIDGE: auto-kept and servable", () => {
   assert.equal(artLib.resolveSceneArtForRun(run), artLib.libraryAssetUri("sc_pass"));
 });
 
-test("SUSPECT -> QUARANTINE: unservable (serve/resolve path skips it)", () => {
+test("SUSPECT -> QUARANTINE: unservable (serve/resolve path skips it)", async () => {
   taster.setTasteFixtures({ sc_susp: "suspect" });
   const run = runFor("susptown");
-  intakeToLibrary({ id: "sc_susp", bytes: PNG, kind: "scene", run, provider: "comfyui" });
+  await intakeToLibrary({ id: "sc_susp", bytes: PNG, kind: "scene", run, provider: "comfyui" });
 
   const s = lib.getAsset("sc_susp");
   assert.equal(taster.isQuarantined("sc_susp"), true, "in the holding pen");
@@ -62,10 +62,10 @@ test("SUSPECT -> QUARANTINE: unservable (serve/resolve path skips it)", () => {
   assert.ok(taster.listQuarantined().some((a) => a.id === "sc_susp"), "listed for owner review");
 });
 
-test("QUARANTINED FACE never checks out and is unservable via the face path", () => {
+test("QUARANTINED FACE never checks out and is unservable via the face path", async () => {
   taster.setTasteFixtures({ pf_susp: "suspect" });
   const run = runFor("facetown", { npcs: { npc1: { gender: "female" } } });
-  intakeToLibrary({ id: "pf_susp", bytes: PNG, kind: "portrait", run, subjectId: "npc1", provider: "comfyui" });
+  await intakeToLibrary({ id: "pf_susp", bytes: PNG, kind: "portrait", run, subjectId: "npc1", provider: "comfyui" });
 
   const s = lib.getAsset("pf_susp");
   assert.equal(taster.isQuarantined("pf_susp"), true);
@@ -73,10 +73,10 @@ test("QUARANTINED FACE never checks out and is unservable via the face path", ()
   assert.equal(artLib.resolveNpcFaceFromLibrary(run, "npc1", "portrait"), null, "face serve path skips it");
 });
 
-test("RESOLVE -> FRIDGE: promotes to keep and becomes servable", () => {
+test("RESOLVE -> FRIDGE: promotes to keep and becomes servable", async () => {
   taster.setTasteFixtures({ sc_fridge: "suspect" });
   const run = runFor("fridgetown");
-  intakeToLibrary({ id: "sc_fridge", bytes: PNG, kind: "scene", run, provider: "comfyui" });
+  await intakeToLibrary({ id: "sc_fridge", bytes: PNG, kind: "scene", run, provider: "comfyui" });
   assert.equal(artLib.resolveSceneArtForRun(run), null, "unservable while quarantined");
 
   taster.resolveQuarantine("sc_fridge", "fridge");
@@ -87,10 +87,10 @@ test("RESOLVE -> FRIDGE: promotes to keep and becomes servable", () => {
   assert.equal(artLib.resolveSceneArtForRun(run), artLib.libraryAssetUri("sc_fridge"), "now servable");
 });
 
-test("RESOLVE -> TRASH: destroys the image + sidecar", () => {
+test("RESOLVE -> TRASH: destroys the image + sidecar", async () => {
   taster.setTasteFixtures({ sc_trash: "suspect" });
   const run = runFor("trashtown");
-  intakeToLibrary({ id: "sc_trash", bytes: PNG, kind: "scene", run, provider: "comfyui" });
+  await intakeToLibrary({ id: "sc_trash", bytes: PNG, kind: "scene", run, provider: "comfyui" });
   assert.equal(taster.isQuarantined("sc_trash"), true);
 
   const r = taster.resolveQuarantine("sc_trash", "trash");
@@ -99,11 +99,11 @@ test("RESOLVE -> TRASH: destroys the image + sidecar", () => {
   assert.equal(pngExists("sc_trash"), false, "image file is gone");
 });
 
-test("30-DAY AUTO-TRASH SWEEP removes an aged quarantine entry, spares a fresh one", () => {
+test("30-DAY AUTO-TRASH SWEEP removes an aged quarantine entry, spares a fresh one", async () => {
   taster.setTasteFixtures({ sc_aged: "suspect", sc_fresh: "suspect" });
   const run = runFor("sweeptown");
-  intakeToLibrary({ id: "sc_aged", bytes: PNG, kind: "scene", run, provider: "comfyui" });
-  intakeToLibrary({ id: "sc_fresh", bytes: PNG, kind: "scene", run, provider: "comfyui" });
+  await intakeToLibrary({ id: "sc_aged", bytes: PNG, kind: "scene", run, provider: "comfyui" });
+  await intakeToLibrary({ id: "sc_fresh", bytes: PNG, kind: "scene", run, provider: "comfyui" });
 
   // Backdate the aged entry past the Law-6 max age.
   const aged = lib.getAsset("sc_aged");
@@ -117,13 +117,13 @@ test("30-DAY AUTO-TRASH SWEEP removes an aged quarantine entry, spares a fresh o
   assert.equal(taster.isQuarantined("sc_fresh"), true, "fresh entry survives the sweep");
 });
 
-test("MOCK HEURISTIC (no fixture): flags a declared-human rendered as a skull-demon", () => {
+test("MOCK HEURISTIC (no fixture): flags a declared-human rendered as a skull-demon", async () => {
   const v = taster.taste({ id: "heur_monster", kind: "portrait", promptUsed: "portrait of a man, skull demon face, monstrous", run: { npcs: {} }, subjectId: null });
   assert.equal(v.verdict, "suspect", "human subject + monster tokens -> suspect");
   assert.ok(v.quarantine, "produces a quarantine marker");
 });
 
-test("MOCK HEURISTIC: a clean scene passes; a declared demon rendered monstrous is spared", () => {
+test("MOCK HEURISTIC: a clean scene passes; a declared demon rendered monstrous is spared", async () => {
   const clean = taster.taste({ id: "heur_clean", kind: "scene", promptUsed: "a quiet forest clearing at dawn, painterly", run: {} });
   assert.equal(clean.verdict, "pass");
 
@@ -132,7 +132,7 @@ test("MOCK HEURISTIC: a clean scene passes; a declared demon rendered monstrous 
   assert.equal(spared.verdict, "pass", "a declared non-human is allowed to look monstrous");
 });
 
-test("CONFIG SEAT: defaults to mock, fails closed when unwired, selects a registered adapter (no paid call)", () => {
+test("CONFIG SEAT: defaults to mock, fails closed when unwired, selects a registered adapter (no paid call)", async () => {
   assert.equal(taster.getAssessor().model, "mock", "default assessor is the mock");
 
   // Seat set but no adapter registered -> FAIL CLOSED to the mock (never a paid call).

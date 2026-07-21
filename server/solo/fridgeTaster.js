@@ -264,24 +264,9 @@ function mockAssess({ id, kind, run, subjectId, promptUsed } = {}) {
 // The caller (imageWorker.intakeToLibrary) merges these into its addAsset call.
 // ---------------------------------------------------------------------------
 
-/**
- * @param {{ id, bytes, kind, run, subjectId, promptUsed, defaultRating }} input
- * @returns {{ verdict, model, rating, quarantine, tags, checks, reason }}
- */
-export function taste(input = {}) {
-  const { model, assess: assessFn } = getAssessor();
-  let assessment;
-  try {
-    assessment = assessFn(input) || {};
-  } catch (error) {
-    // A broken assessor must never destroy a generation. Fail SAFE to quarantine
-    // (held for review), never to an unreviewed auto-keep.
-    assessment = {
-      verdict: "suspect",
-      checks: [],
-      reason: `assessor error: ${String(error?.message || error)}`
-    };
-  }
+// Map a raw assessment onto the intake lifecycle fields. Shared by taste() and
+// tasteAsync() so the sync mock and the async vision adapter can never drift.
+function decideFrom(assessment, model, input) {
   const verdict = TASTE_VERDICTS.includes(assessment.verdict) ? assessment.verdict : "suspect";
   const defaultRating = input.defaultRating ?? "keep";
   if (verdict === "pass") {
@@ -292,10 +277,10 @@ export function taste(input = {}) {
       quarantine: null,
       tags: ["taste:pass"],
       checks: assessment.checks || [],
-      reason: assessment.reason || ""
+      reason: assessment.reason || "",
+      observedSubject: assessment.observedSubject || ""
     };
   }
-  // suspect -> quarantine holding pen (served to nothing).
   return {
     verdict,
     model,
@@ -303,8 +288,61 @@ export function taste(input = {}) {
     quarantine: buildQuarantine({ model, assessment }),
     tags: ["taste:suspect", "quarantine"],
     checks: assessment.checks || [],
-    reason: assessment.reason || ""
+    reason: assessment.reason || "",
+    observedSubject: assessment.observedSubject || ""
   };
+}
+
+// The failure assessment — a broken assessor must never destroy a generation, and
+// must never silently auto-keep. Fail SAFE to quarantine (held for review).
+function assessorFailure(error) {
+  return {
+    verdict: "suspect",
+    checks: [],
+    reason: `assessor error: ${String(error?.message || error)}`
+  };
+}
+
+/**
+ * ASYNC taste — the path a REAL (network) assessor must take. Awaits the assessor,
+ * so it works for both the sync mock (await on a plain object is a no-op) and an
+ * async vision adapter. Live intake uses this; the sync taste() below is retained
+ * for mock-only/offline callers.
+ * @param {{ id, bytes, kind, run, subjectId, promptUsed, defaultRating }} input
+ * @returns {Promise<{ verdict, model, rating, quarantine, tags, checks, reason }>}
+ */
+export async function tasteAsync(input = {}) {
+  const { model, assess: assessFn } = getAssessor();
+  let assessment;
+  try {
+    assessment = (await assessFn(input)) || {};
+  } catch (error) {
+    assessment = assessorFailure(error);
+  }
+  return decideFrom(assessment, model, input);
+}
+
+/**
+ * @param {{ id, bytes, kind, run, subjectId, promptUsed, defaultRating }} input
+ * @returns {{ verdict, model, rating, quarantine, tags, checks, reason }}
+ */
+export function taste(input = {}) {
+  const { model, assess: assessFn } = getAssessor();
+  let assessment;
+  try {
+    assessment = assessFn(input) || {};
+    // A real (async) assessor was registered but called through the SYNC door —
+    // a promise is not an assessment. Fail closed to quarantine rather than
+    // silently auto-keeping on a thenable. Callers should use tasteAsync().
+    if (assessment && typeof assessment.then === "function") {
+      throw new Error("async assessor called through sync taste() — use tasteAsync()");
+    }
+  } catch (error) {
+    // A broken assessor must never destroy a generation. Fail SAFE to quarantine
+    // (held for review), never to an unreviewed auto-keep.
+    assessment = assessorFailure(error);
+  }
+  return decideFrom(assessment, model, input);
 }
 
 // The quarantine marker written onto a suspect asset's sidecar.

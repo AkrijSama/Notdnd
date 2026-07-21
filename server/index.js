@@ -30,6 +30,7 @@ loadDotenv();
 
 import { createAiJobProcessor } from "./ai/processor.js";
 import { generateNarrative, generateRaw, getCampaignUsage, getModelTiers, gmKeyState, localFallbackEnabled, resolveCloudChain, resolveGmModel, runWithBatteryContext, verifyGmKey } from "./ai/openrouter.js";
+import { registerVisionAssessor } from "./ai/tasterVision.js";
 
 // GM key preflight (audit 5d548ac #1): the boot check caches the last verification so
 // /api/debug/status can surface a red row and the client can raise a banner. Initialized
@@ -4529,6 +4530,20 @@ server.listen(port, host, () => {
   // an EADDRINUSE loop (where only [DB] prints and the port never binds).
   // eslint-disable-next-line no-console
   console.log(`[SERVER] Inkborne listening on port ${port} — build ${b.sha}${b.dirty ? " (dirty)" : ""} @ ${b.startedAt}`);
+
+  // FRIDGE TASTER BRAIN (2026-07-21). Arms the real vision assessor ONLY when the
+  // owner's config seat NOTDND_TASTER_MODEL names it AND an API key exists —
+  // otherwise the zero-cost mock stays in place. Announced at boot so a paid
+  // per-image call is never silent. ~$0.00025/image, logged to the taster ledger.
+  {
+    const armed = registerVisionAssessor();
+    // eslint-disable-next-line no-console
+    console.log(
+      armed
+        ? `[taster] vision assessor ARMED — ${armed} (~$0.00025/image at intake)`
+        : "[taster] vision assessor OFF — deterministic mock (zero cost). Set NOTDND_TASTER_MODEL to arm."
+    );
+  }
 
   // GM KEY PREFLIGHT (audit 5d548ac #1). A missing/placeholder key is LOUD at boot,
   // then confirmed by ONE cheap models-list ping (never a generation; skipped in mock

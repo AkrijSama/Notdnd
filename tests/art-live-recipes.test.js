@@ -59,21 +59,33 @@ function withTempLibrary(fn) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "live-lib-"));
   const prev = process.env.NOTDND_ASSET_LIBRARY_ROOT;
   process.env.NOTDND_ASSET_LIBRARY_ROOT = dir;
-  try {
-    return fn(dir);
-  } finally {
+  let cleaned = false;
+  const cleanup = () => {
+    if (cleaned) return;
+    cleaned = true;
     if (prev === undefined) delete process.env.NOTDND_ASSET_LIBRARY_ROOT;
     else process.env.NOTDND_ASSET_LIBRARY_ROOT = prev;
     fs.rmSync(dir, { recursive: true, force: true });
+  };
+  try {
+    const r = fn(dir);
+    // intakeToLibrary is async (the taster's real assessor is a vision call), so
+    // an async callback must keep the temp library alive until it settles.
+    if (r && typeof r.then === "function") return r.finally(cleanup);
+    cleanup();
+    return r;
+  } catch (e) {
+    cleanup();
+    throw e;
   }
 }
 
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");
 const sceneRun = { runId: "run_x", userId: "usr_1", world: { name: "Ashenmoor", artStyleOptions: { default: "realistic" } } };
 
-test("intake: a scene lands with origin/creator/kind + Law-5 tags (kind/style/world/loc), auto-keep", () => {
-  withTempLibrary((dir) => {
-    const sidecar = intakeToLibrary({ id: "live_run_x_loc_ravine", bytes: PNG, kind: "scene", run: sceneRun, subjectId: "ravine", promptUsed: "a ravine", workflow: "landscape-realistic.json" });
+test("intake: a scene lands with origin/creator/kind + Law-5 tags (kind/style/world/loc), auto-keep", async () => {
+  await withTempLibrary(async (dir) => {
+    const sidecar = await intakeToLibrary({ id: "live_run_x_loc_ravine", bytes: PNG, kind: "scene", run: sceneRun, subjectId: "ravine", promptUsed: "a ravine", workflow: "landscape-realistic.json" });
     assert.ok(sidecar);
     assert.equal(sidecar.origin, "generated");
     assert.equal(sidecar.creator, "usr_1");
@@ -93,25 +105,25 @@ test("intake: a scene lands with origin/creator/kind + Law-5 tags (kind/style/wo
   });
 });
 
-test("intake: a face-kind (portrait/fullbody) is checked out to its run (not pooled unreviewed)", () => {
-  withTempLibrary(() => {
-    const bust = intakeToLibrary({ id: "live_run_x_npc1_base", bytes: PNG, kind: "portrait", run: sceneRun, subjectId: "npc1", extraTags: ["expr:neutral"] });
+test("intake: a face-kind (portrait/fullbody) is checked out to its run (not pooled unreviewed)", async () => {
+  await withTempLibrary(async () => {
+    const bust = await intakeToLibrary({ id: "live_run_x_npc1_base", bytes: PNG, kind: "portrait", run: sceneRun, subjectId: "npc1", extraTags: ["expr:neutral"] });
     assert.equal(bust.kind, "portrait");
     assert.deepEqual(bust.checkout, { runId: "run_x", npcId: "npc1" });
     assert.ok(bust.tags.includes("subject:npc1"));
     assert.ok(bust.tags.includes("expr:neutral"));
-    const body = intakeToLibrary({ id: "live_run_x_npc1_vnBody", bytes: PNG, kind: "fullbody", run: sceneRun, subjectId: "npc1", extraTags: ["pose:standing", "face-ref"] });
+    const body = await intakeToLibrary({ id: "live_run_x_npc1_vnBody", bytes: PNG, kind: "fullbody", run: sceneRun, subjectId: "npc1", extraTags: ["pose:standing", "face-ref"] });
     assert.deepEqual(body.checkout, { runId: "run_x", npcId: "npc1" });
     assert.ok(body.tags.includes("face-ref"));
   });
 });
 
-test("intake never throws or writes on empty bytes (dialogue-never-blocks discipline)", () => {
-  withTempLibrary(() => {
-    assert.equal(intakeToLibrary({ id: "x", bytes: Buffer.alloc(0), kind: "scene", run: sceneRun }), null);
-    assert.equal(intakeToLibrary({ id: "", bytes: PNG, kind: "scene", run: sceneRun }), null);
-    // A malformed run must not throw.
-    assert.doesNotThrow(() => intakeToLibrary({ id: "y", bytes: PNG, kind: "scene", run: null }));
+test("intake never throws or writes on empty bytes (dialogue-never-blocks discipline)", async () => {
+  await withTempLibrary(async () => {
+    assert.equal(await intakeToLibrary({ id: "x", bytes: Buffer.alloc(0), kind: "scene", run: sceneRun }), null);
+    assert.equal(await intakeToLibrary({ id: "", bytes: PNG, kind: "scene", run: sceneRun }), null);
+    // A malformed run must not reject (intake swallows and returns a sidecar/null).
+    await assert.doesNotReject(() => intakeToLibrary({ id: "y", bytes: PNG, kind: "scene", run: null }));
   });
 });
 
@@ -130,10 +142,10 @@ const FACE_BODY_SITES = [
 ];
 
 for (const s of FACE_BODY_SITES) {
-  test(`provenance guard: ${s.site} REFUSES a non-comfyui (failover/mock) attribution`, () => {
-    withTempLibrary((dir) => {
+  test(`provenance guard: ${s.site} REFUSES a non-comfyui (failover/mock) attribution`, async () => {
+    await withTempLibrary(async (dir) => {
       for (const bad of ["pollinations", "cloudflare", "fal", "placeholder", "local"]) {
-        const refused = intakeToLibrary({ id: s.id, bytes: PNG, kind: s.kind, run: sceneRun, subjectId: s.subjectId, provider: bad });
+        const refused = await intakeToLibrary({ id: s.id, bytes: PNG, kind: s.kind, run: sceneRun, subjectId: s.subjectId, provider: bad });
         assert.equal(refused, null, `${s.site} pooled a "${bad}" attribution`);
         assert.equal(fs.existsSync(path.join(dir, `${s.id}.png`)), false, `${s.site} wrote "${bad}" bytes into the library`);
         assert.ok(!getAsset(s.id), `${s.site} left a "${bad}" sidecar behind`);
@@ -141,9 +153,9 @@ for (const s of FACE_BODY_SITES) {
     });
   });
 
-  test(`provenance guard: ${s.site} still pools a validated comfyui attribution (checked out)`, () => {
-    withTempLibrary((dir) => {
-      const kept = intakeToLibrary({ id: s.id, bytes: PNG, kind: s.kind, run: sceneRun, subjectId: s.subjectId, provider: "comfyui" });
+  test(`provenance guard: ${s.site} still pools a validated comfyui attribution (checked out)`, async () => {
+    await withTempLibrary(async (dir) => {
+      const kept = await intakeToLibrary({ id: s.id, bytes: PNG, kind: s.kind, run: sceneRun, subjectId: s.subjectId, provider: "comfyui" });
       assert.ok(kept, `${s.site} refused a validated comfyui attribution`);
       assert.equal(kept.kind, s.kind);
       assert.deepEqual(kept.checkout, { runId: "run_x", npcId: s.subjectId }, "face/body is checked out to its run, never pooled unreviewed");

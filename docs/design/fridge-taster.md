@@ -103,11 +103,82 @@ mock on and rely on the deterministic prompt/context heuristics.
 the owner wants pixel-level canon enforcement, at ≈ $0.0014/image (ASSUMPTION), by
 registering a Claude Haiku 4.5 (or local) adapter and setting `NOTDND_TASTER_MODEL`.
 
+## SHIPPED — the real assessor (owner-stamped 2026-07-21)
+
+The taster now has a brain. `server/ai/tasterVision.js` is the registered adapter.
+
+**Model: `google/gemini-2.5-flash-lite`** — $0.10 / M input, $0.40 / M output
+(OpenRouter live pricing, verified 2026-07-21).
+
+*Why not the cheaper option:* `openai/gpt-5-nano` is $0.05/M input, but the nano tier
+is REASONING-class and spends hidden reasoning tokens — the exact cost unpredictability
+that burned the GM lane (the v4-flash collapse). flash-lite is non-reasoning, has
+reliable strict-JSON structured output, and at our volume the gap is < $0.001.
+
+**MEASURED cost (not an assumption — 30 real images):** **$0.00025 / image**
+(~1,600 image+prompt tokens in, ~150 out). The earlier $0.0014/image Haiku figure
+above is superseded.
+
+| Volume | Cost |
+|---|---|
+| 1 image | $0.00025 |
+| 100 generated images | $0.025 |
+| 1,000 generated images | $0.25 |
+
+### Calibration (5/5, re-verified after fixes)
+
+| Case | Expected | Result |
+|---|---|---|
+| 3 known-good fridge keeps | PASS | PASS |
+| Planted wrong-subject (wolf scene declared a marketplace) | FLAG | FLAG — "found a wolf in a forest" |
+| Real modern-intrusion (`babel-scene-hollow-pine-anime`, a live keep) | FLAG | FLAG — "power lines and poles are visible" |
+
+Calibration earned its keep — it caught two defects in the adapter itself:
+
+1. **Missing setting context.** "no aircraft/vehicles/modern-city *unless committed*"
+   is unanswerable without the committed era, so a fantasy forest scene showing train
+   tracks and a power-line tower PASSED. Fixed: every request now states the committed
+   setting (`DEFAULT_SETTING_ERA`, since no world carries an `era` field yet).
+2. **Unconditional questions.** A wolf was marked ok=false for
+   "human-when-declared-human?" and "clothed?", which would trash every correct animal
+   portrait. Fixed: the prompt now carries the conditional-question law, mirroring the
+   mock's `subjectIsDeclaredNonHuman` gate.
+
+Also hardened: `max_tokens` 600 → 1600 (600 truncated JSON mid-string), and ONE retry
+on an unparseable body (~3/11 intermittent malformed JSON even at `finish_reason=stop`;
+a false parse error would quarantine a good image).
+
+### The verdict is DERIVED, not trusted
+
+Any check with `ok=false` forces `suspect` regardless of what the model wrote in its
+own `verdict` field — models contradict themselves.
+
+### Sync vs async
+
+A real assessor is a network call, so `fridgeTaster.tasteAsync()` is the live path and
+`imageWorker.intakeToLibrary` is now **async**. This is off the player's critical path:
+the image is written and served to the run before intake pools it into the library.
+The sync `taste()` remains for mock/offline callers and FAILS CLOSED (quarantines) if
+handed an async assessor, so a pending promise can never become a silent auto-keep.
+
+### Operator tool
+
+```
+node --env-file=.env scripts/art/taste-quarantine.mjs --calibrate     # 3 pass + 2 flag
+node --env-file=.env scripts/art/taste-quarantine.mjs                 # DRY RUN, mutates nothing
+node --env-file=.env scripts/art/taste-quarantine.mjs --apply <id>=fridge,<id>=trash
+node --env-file=.env scripts/art/taste-quarantine.mjs --apply accept-recommendations
+```
+
+Quarantine resolution is **owner-stamped**: the tool presents verdicts and never
+auto-destroys. A `NOTDND_TASTER_COST_FENCE_USD` (default $0.05) hard-stops the tool.
+
 ## Env knobs
 
 | Env var | Default | Effect |
 |---|---|---|
-| `NOTDND_TASTER_MODEL` | `mock` | Selects the assessor. Unwired real model → fails closed to mock. |
+| `NOTDND_TASTER_MODEL` | `mock` | Selects the assessor. Set to `google/gemini-2.5-flash-lite` to ARM the vision brain (~$0.00025/image at intake). Unwired/keyless → fails closed to mock. |
+| `NOTDND_TASTER_COST_FENCE_USD` | `0.05` | Hard spend stop for `taste-quarantine.mjs`. |
 | `NOTDND_QUARANTINE_MAX_AGE_DAYS` | `30` | Law-6 auto-trash age for the quarantine sweep. |
 
 ## Wiring touch point
