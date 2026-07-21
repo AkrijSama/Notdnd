@@ -3,6 +3,7 @@ import { generateWithProvider } from "../ai/providers.js";
 import { getSoloRun, updateNpcIdentity } from "../db/repository.js";
 import { rebuildCampaignIndex } from "../gm/memoryStore.js";
 import { writeNpcMemoryDoc } from "./npcMemory.js";
+import { entityNature } from "./entityNature.js";
 
 // ---------------------------------------------------------------------------
 // Procedural NPC identity.
@@ -242,6 +243,16 @@ export function backfillNpcMannerisms(run, npcIds = []) {
   for (const npcId of ids) {
     const npc = run?.npcs?.[npcId];
     if (!npc) {
+      continue;
+    }
+    // WALK-3 V1 SPECIES GATE: the mannerism pool is human body-language ("folds
+    // their arms and then thinks better of it") and the voice pool is human speech
+    // register. An animal-bodied creature gets NEITHER — it has no arms to fold and
+    // does not hold a conversation. (This backfill is invoked from the prompt
+    // builder, so without the gate merely rendering a turn minted human tics onto
+    // a wolf and persisted them.)
+    const nat = entityNature(npc);
+    if (nat && nat.isAnimal) {
       continue;
     }
     const seed = Number.isFinite(npc.identitySeed) ? npc.identitySeed : indexFromNpcId(npcId);

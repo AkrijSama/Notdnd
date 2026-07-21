@@ -253,9 +253,23 @@ const PLAYER_PORTRAIT_ART_DIRECTION =
 // an aerial/postcard vista. Eye-level camera, ground/floor in the lower third,
 // canon features in the midground, sky no more than the upper third. (Vocabulary
 // tuned to what JANKU obeys; the negative guard bans aerial/bird's-eye/sky-only.)
+// WALK-3 V3 KITCHEN TREATMENT (owner incident, run_eea2d9e4): the law RODE the prompt
+// in full and still produced a close-up of the wolf's paws — because the law's own
+// vocabulary commanded it. "ground level view" literally specifies a camera AT ground
+// level, and "standing on the ground" + "foreground detail anchoring the lower third"
+// all pull the framing down; nothing in the line commanded DISTANCE. Restated
+// positively around distance and weighted, since an unweighted tail loses to the
+// (:1.4) subject at the head. Low-camera words are GONE.
+// BALANCE NOTE (2-proof, 2026-07-21): a first pass stacked THREE weighted framing
+// clauses here and in the subject. It killed the paw close-up but starved the
+// environment — the location collapsed to blank texture and a second animal appeared.
+// Exactly ONE weighted clause carries the framing, and it weights the LOCATION (the
+// thing that was losing), not the subject (already weighted at 1.4).
 const LOCATION_COMPOSITION =
-  "eye-level shot, ground level view, standing on the ground, " +
-  "foreground detail anchoring the lower third, A CLEAR SUBJECT in the midground, sky only in the upper third, " +
+  "(a wide establishing shot of the whole location:1.25), " +
+  "the subject seen in full at a natural distance in the midground, " +
+  "eye-level camera at standing height, horizon near the middle, " +
+  "the ground receding into distance, sky only in the upper third, " +
   "landscape orientation, environmental scene, natural depth, a path leading into the scene";
 
 // Per-art-style base direction. generateImage() appends ", <style> style" as the
@@ -875,7 +889,7 @@ function playerPortraitSeed(character = {}, world = {}) {
 // Draft asset namespace id: hashed over EVERY prompt-affecting field so any
 // change (race/class/background/pronouns/name) yields a fresh namespace and a
 // regeneration, while identical choices reuse the cached asset.
-export function computeDraftPortraitId(character = {}, nonce = 0, world = {}, editTag = "") {
+export function computeDraftPortraitId(character = {}, nonce = 0, world = {}, editTag = "", prefs = {}) {
   const c = normalizePortraitCharacter(character);
   // artStyle + tone are part of the generated prompt, so they MUST be part of the
   // cache namespace. Without them, switching art style (e.g. illustrated -> anime)
@@ -893,7 +907,13 @@ export function computeDraftPortraitId(character = {}, nonce = 0, world = {}, ed
   // new character whose base params hash to a PRE-SEAL id re-serves the stale cached file
   // (the owner's Jul-18 "mustard bust" collision). Folding ART_RECIPE_VERSION in makes all
   // pre-bump cache unreachable by construction — bump the version, never archaeology.
-  const base = `rv:${ART_RECIPE_VERSION}|${c.name || ""}|${c.race || ""}|${c.characterClass || ""}|${c.background || ""}|${c.pronouns || ""}|${style}|${tone}${edit ? `|e:${edit}` : ""}`;
+  // WALK-3 V4: the PREFERENCE SLOTS are part of the produced image, so they must be
+  // part of the cache namespace. Without them two different avoid strings at the same
+  // nonce collided on one draftId and the disk cache re-served the older image — the
+  // owner's avoid box appeared to do nothing.
+  const prefTag = `${String(prefs?.appearance || "").trim().toLowerCase()}|${String(prefs?.avoid || "").trim().toLowerCase()}`;
+  const prefPart = prefTag === "|" ? "" : `|p:${prefTag}`;
+  const base = `rv:${ART_RECIPE_VERSION}|${c.name || ""}|${c.race || ""}|${c.characterClass || ""}|${c.background || ""}|${c.pronouns || ""}|${style}|${tone}${edit ? `|e:${edit}` : ""}${prefPart}`;
   // A redo nonce (>0) yields a fresh namespace so the disk cache is bypassed and
   // a NEW image is generated. nonce 0 keeps a stable id for a given combo, so
   // first-generation and carry-forward behaviour are unchanged.
@@ -1234,10 +1254,17 @@ export async function runPlayerImageJob(job = {}) {
   const prompt = buildPlayerPortraitPrompt(merged, run.world || {});
   const seed = playerPortraitSeed(merged, run.world || {});
 
+  // WALK-3 V4: the LIVE player-portrait route dropped the preference slots entirely,
+  // so any run that regenerated from scratch (rather than carrying an accepted draft
+  // forward) silently lost the player's appearance/avoid boxes. They are committed
+  // state — read them off the player record and ride them like every other route.
+  const appearance = String(player.appearancePref || character.appearancePref || "");
+  const avoid = String(player.avoidPref || character.avoidPref || "");
+
   try {
     // The player portrait is a portrait-kind → routes through the validated
     // portrait recipe for the run's style.
-    const result = await generateImage({ prompt, style, kind: "portrait", seed, ...PLAYER_PORTRAIT_DIMENSIONS });
+    const result = await generateImage({ prompt, style, kind: "portrait", seed, appearance, avoid, ...PLAYER_PORTRAIT_DIMENSIONS });
     const bytes = result?.bytes;
     if (!bytes || !bytes.length) {
       throw new Error("image provider returned no bytes");
@@ -1551,9 +1578,15 @@ function entitySceneSubject(run, npc) {
   if (nat.isAnimal) {
     const cond = nat.injured ? "wounded " : "";
     const sp = nat.species || "beast";
-    return `(a single ${cond}${sp}:1.4), the clear midground subject, a four-legged ${sp} on all fours standing low on the ground beneath a tree, watchful, unmistakably a wild animal${violetTail}`;
+    // WALK-3 V3: "standing low on the ground beneath a tree" pulled the camera down to
+    // the animal's feet. The subject is stated at DISTANCE and WHOLE instead — the
+    // framing must read as "seen across the clearing", never a close-up of paws.
+    // ONE weighted clause only (the species). The distance cue rides UNWEIGHTED here —
+    // the weighted establishing-shot clause in LOCATION_COMPOSITION carries the framing,
+    // and "only one" is stated to stop the second-animal drift the 2-proof surfaced.
+    return `(a single ${cond}${sp}:1.4), only one ${sp}, the clear midground subject, a four-legged ${sp} standing under a tree several paces away, seen in full from head to paws, watchful, unmistakably a wild animal${violetTail}`;
   }
-  if (nat.kind === "demon") return `(a single demonic figure:1.3), the clear midground subject, standing on the ground${violetTail}`;
+  if (nat.kind === "demon") return `(a single demonic figure:1.3), the clear midground subject, (seen in full at a distance:1.2), standing several paces away${violetTail}`;
   // human-kind: a lone person, midground (the negative human-ban is relaxed for these —
   // the "lone figure" phrase is the gate the sealer keys on, so keep it verbatim).
   return "(a single lone figure:1.25), the clear midground subject, standing on the ground";
@@ -1838,7 +1871,11 @@ export function enqueueDraftPortrait(job = {}) {
   // REDO-DESTROYS-PREDECESSOR (asset lifecycle law): the draft this replaces. Its assets
   // are destroyed once THIS replacement lands (generated) — keep exactly the live one.
   const supersedes = typeof job.supersedes === "string" ? job.supersedes.trim() : "";
-  const draftId = computeDraftPortraitId(character, nonce, world, editInstruction);
+  // T8 preference slots ride the job to the sealed builder (additive; identity + safety
+  // win) AND the cache namespace (WALK-3 V4 — different prefs must never share an id).
+  const appearance = typeof job.appearance === "string" ? job.appearance : "";
+  const avoid = typeof job.avoid === "string" ? job.avoid : "";
+  const draftId = computeDraftPortraitId(character, nonce, world, editInstruction, { appearance, avoid });
 
   // Idempotent: if already generated on disk, mark generated and skip the queue. The
   // replacement has "landed" instantly, so the predecessor is destroyed now.
@@ -1849,9 +1886,6 @@ export function enqueueDraftPortrait(job = {}) {
     return draftId;
   }
 
-  // T8 preference slots ride the job to the sealed builder (additive; identity + safety win).
-  const appearance = typeof job.appearance === "string" ? job.appearance : "";
-  const avoid = typeof job.avoid === "string" ? job.avoid : "";
   draftPortraits.set(draftId, { status: "generating", uri: null });
   queue.push({ kind: "draft", draftId, character, world, nonce, editInstruction, sourceImageUrl, supersedes, appearance, avoid });
   Promise.resolve().then(drainQueue).catch((error) => logWorker("drain failed", error));

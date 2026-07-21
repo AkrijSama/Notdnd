@@ -1099,7 +1099,10 @@ async function maybeRequestDraftPortrait() {
   // Key on the visual-driving fields + the art style + the redo nonce, so a Redo (which
   // bumps the nonce) OR a style change re-fires this instead of being skipped.
   const nonce = uiState.onboarding.draftPortraitNonce || 0;
-  const key = `${c.race}|${c.characterClass}|${c.background || ""}|${world.artStyle}|${nonce}`;
+  // WALK-3 V4: the preference slots MUST be part of the dedupe key. Without them,
+  // editing the avoid box alone produced an identical key and the request was skipped
+  // entirely — the owner's avoid text never reached a cook until he hit Redo.
+  const key = `${c.race}|${c.characterClass}|${c.background || ""}|${world.artStyle}|${nonce}|${c.appearancePref || ""}|${c.avoidPref || ""}`;
   if (key === uiState.onboarding.draftPortraitKey) {
     return; // already requested for this exact combo
   }
@@ -1278,7 +1281,10 @@ async function submitPortraitEdit(rawInstruction) {
       instruction,
       sourceImageUrl: sourceUri,
       nonce,
-      supersedes
+      supersedes,
+      // WALK-3 V4: the player's preference slots ride the refine route too.
+      appearance: c.appearancePref || "",
+      avoid: c.avoidPref || ""
     });
     if (uiState.onboarding.draftPortraitKey !== key) {
       return; // superseded by a newer action

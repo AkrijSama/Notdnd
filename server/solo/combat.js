@@ -57,8 +57,22 @@ export function combatActive(run) {
 
 // The aggressive-verb subset (combat ENTRY). Mirrors combatContract's ATTACK_RE;
 // entry grounds on a PRESENT NPC (never minted), the take/move discipline.
+// WALK-3 V1 (owner incident, run_eea2d9e4): the ENGAGEMENT verbs were missing, and
+// affordances.js emits `Face <hostile>.` as THE hostile chip — the one string this
+// regex did not match, so the game's own combat button fell through to a generic INT
+// check vs DC 12 and no combat ever started. Engagement verbs are combat entry when
+// aimed at a hostile: you do not "face" a wolf socially. Kept in sync with
+// affordances.js by tests/combat-chip-route.test.js (the generator/detector pairing law).
 const ATTACK_ENTRY_RE =
-  /\b(attack|attacking|strike|striking|hit|hitting|fight|fighting|swing|swinging|slash|slashing|stab|stabbing|cut|cutting|cleave|thrust|lunge|lunging|punch|punching|kick|kicking|shove|shoving|smash|smashing|bash|bashing|slam|slamming|club|charge|charging|shoot|shooting|fire at|gun down|grapple|tackle|wrestle|maim|kill|killing|slay|slaying|behead|impale|skewer|gut|run through|take (?:him|her|them|it) (?:down|out)|draw .*(?:blade|sword|knife|gun|weapon))\b/i;
+  /\b(attack|attacking|strike|striking|hit|hitting|fight|fighting|swing|swinging|slash|slashing|stab|stabbing|cut|cutting|cleave|thrust|lunge|lunging|punch|punching|kick|kicking|shove|shoving|smash|smashing|bash|bashing|slam|slamming|club|charge|charging|shoot|shooting|fire at|gun down|grapple|tackle|wrestle|maim|kill|killing|slay|slaying|behead|impale|skewer|gut|run through|assault|assaulting|take (?:him|her|them|it) (?:down|out)|draw .*(?:blade|sword|knife|gun|weapon))\b/i;
+
+// ENGAGEMENT verbs (WALK-3 V1). These are combat entry ONLY against a HOSTILE target:
+// you do not "face" a wolf socially, but you may well confront a barkeep without a
+// brawl. affordances.js emits `Face <hostile>.` as THE hostile chip — that string must
+// open the combat door (it previously fell through to a generic INT check vs DC 12 and
+// nothing happened). Against a non-hostile these stay on the honest attempt path.
+const ENGAGE_ENTRY_RE =
+  /\b(face|facing|square up(?: to| against)?|engage|engaging|confront|confronting|challenge|challenging|duel)\b/i;
 const STOPWORD_TOKENS = new Set(["the", "a", "an", "of", "and", "reeve's", "reeves", "mr", "ms"]);
 
 /**
@@ -71,22 +85,31 @@ const STOPWORD_TOKENS = new Set(["the", "a", "an", "of", "and", "reeve's", "reev
 export function detectAttackIntent(run, intent) {
   if (combatActive(run)) return null;
   const text = String(intent || "").toLowerCase();
-  if (!ATTACK_ENTRY_RE.test(text)) return null;
+  const isAttack = ATTACK_ENTRY_RE.test(text);
+  const isEngage = ENGAGE_ENTRY_RE.test(text);
+  if (!isAttack && !isEngage) return null;
 
   const present = Object.values(run?.npcs || {}).filter(
     (npc) => npc && npc.currentLocationId === run.currentLocationId && npc.status !== "dead" && npc.flags?.defeated !== true
   );
   if (!present.length) return null;
 
+  // An ENGAGEMENT verb alone opens the door only against a hostile; an unambiguous
+  // ATTACK verb works on anyone present (the lethal game).
+  const hostileOnly = isEngage && !isAttack;
+
   // Named target: any distinctive token of an NPC's display name appears in the text.
   const named = present.filter((npc) => {
     const tokens = String(npc.displayName || "").toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length >= 4 && !STOPWORD_TOKENS.has(t));
     return tokens.some((t) => text.includes(t));
   });
-  if (named.length === 1) return { targetNpcId: named[0].npcId };
+  if (named.length === 1) {
+    if (hostileOnly && named[0].flags?.hostile !== true) return null; // "confront the barkeep" is not a brawl
+    return { targetNpcId: named[0].npcId };
+  }
   if (named.length > 1) return null; // ambiguous — clarify via the honest attempt path
 
-  // Bare "attack him / attack": default to the sole present HOSTILE, never a bystander.
+  // Bare "attack him / face it": default to the sole present HOSTILE, never a bystander.
   const hostiles = present.filter((npc) => npc.flags?.hostile === true);
   if (hostiles.length === 1) return { targetNpcId: hostiles[0].npcId };
   return null;

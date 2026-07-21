@@ -437,8 +437,17 @@ function joinCsv(parts) {
 // view, never an aerial/postcard vista, and carries no aircraft/vehicles/modern
 // city/crowds unless the location's canon states them. Applied to NON-character
 // subjects only (a portrait has no framing to guard).
+// WALK-3 V3: the guard banned the SKY end of the framing range but not the GROUND end,
+// so a scene could collapse into a macro shot of an animal's feet and still pass. The
+// close-up vocabulary is now banned symmetrically (the owner's wolf-feet render).
 const SCENE_FRAMING_NEGATIVE =
-  "aerial view, bird's-eye view, top-down view, drone shot, satellite view, sky focus, clouds close-up, horizon-only vista, aircraft, airplane, biplane, vehicle, car, modern city skyline, skyscrapers, crowd, group of people, multiple people, empty floor, bare ground only, no subject";
+  "aerial view, bird's-eye view, top-down view, drone shot, satellite view, sky focus, clouds close-up, horizon-only vista, " +
+  "close-up, extreme close-up, macro shot, cropped subject, cut off subject, worm's-eye view, ground-level camera, " +
+  "paws close-up, feet close-up, legs only, detail shot, zoomed in, " +
+  "aircraft, airplane, biplane, vehicle, car, modern city skyline, skyscrapers, crowd, group of people, multiple people, empty floor, bare ground only, no subject, " +
+  // 2-proof residue: a world whose tone is literally "modern arcane" pulls small modern
+  // props into an otherwise pre-modern scene (a camera appeared at a tree base).
+  "camera, photographic equipment, tripod, electronics, machinery, plastic, signage";
 // THE HUMAN BAN (the biplane-net's "no humans unless a human is committed", owner ruling
 // 2026-07-19). Stray people in a scene are a coherence crime — EXCEPT when the committed
 // present subject is human/demon, in which case the scene prompt emits "lone figure" /

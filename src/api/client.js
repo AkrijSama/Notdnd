@@ -382,10 +382,12 @@ export function createApiClient(baseUrl = "") {
     // (sourceImageUrl). nonce bumps per edit so each version gets a fresh draftId.
     // Returns { draftId, status, consistentEdit, entitlement } — same poll as a
     // generation. status "quota_reached" when the daily image quota is spent.
-    async editDraftPortrait({ character, world, instruction, sourceImageUrl, nonce, supersedes }) {
+    async editDraftPortrait({ character, world, instruction, sourceImageUrl, nonce, supersedes, appearance, avoid }) {
       return request("/api/onboarding/portrait/edit", {
         method: "POST",
-        body: JSON.stringify({ character, world, instruction, sourceImageUrl, nonce, supersedes })
+        // WALK-3 V4: the refine route DROPPED the preference slots, so every refine
+        // silently wiped the player's appearance/avoid boxes for that render.
+        body: JSON.stringify({ character, world, instruction, sourceImageUrl, nonce, supersedes, appearance, avoid })
       });
     },
     async getGmMemory(campaignId) {

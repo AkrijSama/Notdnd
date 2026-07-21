@@ -12,7 +12,7 @@ import { generatePlaceholderGmNarration, validateGmSceneOutput } from "./gm.js";
 import { getAvailableMoves } from "./movement.js";
 import { buildRegionMapPayload } from "./regionMap.js";
 import { buildSightPayload, readStatBlockSkills } from "./essence.js";
-import { naturePhrase } from "./entityNature.js";
+import { naturePhrase, entityNature } from "./entityNature.js";
 import {
   placeEntities as placeLayoutEntities,
   placeMarkers as placeLayoutMarkers,
@@ -515,6 +515,15 @@ export function collectNpcsNeedingIdentity(run, visibleEntities = null) {
     if (!npc) {
       continue;
     }
+    // WALK-3 V1 SPECIES GATE: an animal-bodied creature is never handed a human
+    // identity. The Fenn incident minted a wolf, queued it here with no species
+    // check, and identity-minting gave it the name "Fenn", he/him, a "learned"
+    // voice and the mannerism "folds their arms" (a wolf has no arms). Creatures
+    // are known by their species, not by a personal name.
+    const nat = entityNature(npc);
+    if (nat && nat.isAnimal) {
+      continue;
+    }
     if (!isString(npc.generatedName)) {
       needing.push(npcId);
     }
@@ -612,15 +621,21 @@ export function buildOpenJobOffers(run) {
     }));
 }
 
+// Resolve a generated portrait URI from an asset id. Shared so the cast roster and
+// the opening-speaker payload resolve portraits through ONE door (WALK-3 V2: the
+// opening used a hand-built `img_<npcId>` key that never matched the minted
+// `img_<npcId>_base`, so the VOICE's portrait was permanently null).
+export function generatedAssetUri(run, assetId) {
+  const assets = isPlainObject(run?.imageAssets) ? run.imageAssets : {};
+  const asset = assetId ? assets[assetId] : null;
+  return asset && asset.status === "generated" && isString(asset.uri) ? asset.uri : null;
+}
+
 export function buildCastRoster(run, policyProfile) {
   if (!isPlainObject(run) || !isPlainObject(run.npcs)) {
     return [];
   }
-  const assets = isPlainObject(run.imageAssets) ? run.imageAssets : {};
-  const uriFor = (assetId) => {
-    const asset = assetId ? assets[assetId] : null;
-    return asset && asset.status === "generated" && isString(asset.uri) ? asset.uri : null;
-  };
+  const uriFor = (assetId) => generatedAssetUri(run, assetId);
 
   return Object.values(run.npcs)
     .filter((npc) => isPlainObject(npc) && policyAllows(npc, policyProfile))
@@ -1445,11 +1460,15 @@ export function buildSoloScenePayload(run, options = {}) {
       const sid = isOpeningMoment(run) && isString(run.openingSpeakerId) ? run.openingSpeakerId : "";
       const npc = sid && run.npcs ? run.npcs[sid] : null;
       if (!npc) return null;
-      const asset = run.imageAssets && run.imageAssets[`img_${sid}`];
+      // WALK-3 V2: the key was `img_<npcId>`, but portrait assets are minted as
+      // `img_<npcId>_base` (repository.js ensureAsset) — so this ALWAYS resolved to
+      // undefined and the VOICE's avatar branch could never fire. Resolve through the
+      // same door the cast roster uses (npc.imageAssetId → uriFor), with the library
+      // fallback, so she gets her light-form portrait like any other cast member.
       return {
         npcId: sid,
         displayName: isString(npc.displayName) ? npc.displayName : "The VOICE",
-        portraitUri: asset && isString(asset.uri) ? asset.uri : null
+        portraitUri: generatedAssetUri(run, npc.imageAssetId) || generatedAssetUri(run, `img_${sid}_base`) || null
       };
     })(),
     rest: restPayload(currentLocation, policyProfile),

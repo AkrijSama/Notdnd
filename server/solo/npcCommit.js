@@ -606,6 +606,21 @@ export function detectInventedAgents(text, { knownAgentTokens = new Set(), hasCa
 // not ground, as a real cast member, so it persists instead of being a phantom the
 // next turn contradicts. Returns the display names committed. `knownNames` is the
 // committed/visible/location set + player.
+// WALK-3 V1: species nouns that a COMMITTED creature already answers to. The Fenn
+// incident: the GM correctly narrated the committed Limping Grey as "It is a wolf",
+// but "wolf" was not among that NPC's display-name tokens, so the auditor built to
+// stop invention INVENTED A PERSON out of a correct description — minting
+// npc_wolf_25acb38c, which was then named "Fenn" and given arms to fold. A creature's
+// SPECIES is as much its identity as its name, so it must vouch the noun.
+const SPECIES_VOUCH_TAGS = new Set([
+  "wolf", "bear", "boar", "lion", "elk", "deer", "coyote", "snake", "rattlesnake", "raven",
+  "otter", "beast", "wildlife", "animal", "hound", "cat", "bird", "creature", "chaosling", "demon"
+]);
+// Nouns that name a non-human body. Committed with a species tag so entityNature
+// classifies them as wildlife (NOT the "human" default that tags:["unnamed"] produced),
+// which re-arms natureAudit and keeps human names/voices/mannerisms off them.
+const ANIMAL_AGENT_NOUNS = new Set(["wolf", "hound", "beast", "creature"]);
+
 export function auditAndCommitInventedAgents(run, narrationText, knownNames = [], options = {}) {
   const hasCast = isPlainObject(run?.npcs) && Object.values(run.npcs).some((n) => isPlainObject(n) && n.status !== "gone");
   const knownAgentTokens = new Set();
@@ -618,11 +633,34 @@ export function auditAndCommitInventedAgents(run, narrationText, knownNames = []
       if (clean.length >= 3) knownAgentTokens.add(clean);
     }
   }
+  // SPECIES VOUCHING: every committed NPC's species tags (and stat-block chassis)
+  // vouch their noun, so describing a committed animal by its species is recognised
+  // as a paraphrase of that animal rather than a new cast member.
+  if (isPlainObject(run?.npcs)) {
+    for (const npc of Object.values(run.npcs)) {
+      if (!isPlainObject(npc) || npc.status === "gone") continue;
+      const tags = Array.isArray(npc.tags) ? npc.tags : [];
+      for (const t of tags) {
+        const clean = String(t || "").toLowerCase().trim();
+        if (SPECIES_VOUCH_TAGS.has(clean)) knownAgentTokens.add(clean);
+      }
+      const chassis = String(npc.statBlockId || npc.flags?.statBlockId || "").toLowerCase();
+      for (const part of chassis.split(/[^a-z]+/)) {
+        if (SPECIES_VOUCH_TAGS.has(part)) knownAgentTokens.add(part);
+      }
+    }
+  }
   const agents = detectInventedAgents(narrationText, { knownAgentTokens, hasCast });
   const before = isPlainObject(run?.npcs) ? new Set(Object.keys(run.npcs)) : new Set();
   const committed = [];
   for (const displayName of agents) {
-    const npc = commitNarratedNpc(run, { displayName, role: "figure", tags: ["unnamed"] }, options);
+    // The display name IS the capitalized noun that matched, so it recovers the noun
+    // the mint previously discarded.
+    const noun = String(displayName || "").toLowerCase().trim();
+    const tags = ANIMAL_AGENT_NOUNS.has(noun)
+      ? ["unnamed", noun, "wildlife"] // species truth survives the mint
+      : ["unnamed"];
+    const npc = commitNarratedNpc(run, { displayName, role: "figure", tags }, options);
     if (npc && !before.has(npc.npcId)) {
       committed.push(npc.displayName);
     }

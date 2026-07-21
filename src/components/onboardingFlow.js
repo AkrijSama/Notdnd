@@ -284,6 +284,26 @@ function renderAuthoredReview(c, portrait = {}, scenarioId = "") {
 // blank box: it always shows the image, a spinner while first generating, the
 // current image under a pulsing "Regenerating…" overlay while a race/class
 // change generates a new one, the failed note, or an idle hint.
+// WALK-3 V4: the redo tip line. Each entry names a DEFECT the player can see and the
+// phrasing that actually fixes it — stated POSITIVELY, because a positive cue beats a
+// negative one (the kitchen lesson) and because writing "no arms" into the Avoid box
+// is a double negative that produces armless portraits. Kept in lockstep with
+// server/solo/portraitPreferences.js AVOID_VOCABULARY.
+export const REDO_HINTS = [
+  "Getting cropped shoulders? Add “chest-up, torso in frame” to Appearance.",
+  "Head looks like it's floating? Add “grounded, neck and shoulders connected” to Appearance.",
+  "Arms missing or cut off? Add “both arms visible” to Appearance, not “no arms” to Avoid.",
+  "Tip: describe what you WANT in Appearance. “no X” in Avoid can backfire and give you X.",
+  "Too close-up? Add “upper body, natural framing” to Appearance.",
+  "Face not landing? Try “sharp focus, expressive face” in Appearance."
+];
+
+export function renderRedoHint(redoCount = 0) {
+  const n = Math.max(0, Math.trunc(Number(redoCount) || 0));
+  const hint = REDO_HINTS[n % REDO_HINTS.length];
+  return `<p class="onb-redo-hint" aria-live="polite">${esc(hint)}</p>`;
+}
+
 function renderPortraitPreview(portrait = {}, options = {}) {
   const variant = options.variant === "review" ? " onb-portrait-review" : "";
   const uri = typeof portrait.portraitUri === "string" ? portrait.portraitUri : "";
@@ -298,6 +318,11 @@ function renderPortraitPreview(portrait = {}, options = {}) {
   const redoBtn = canRedo
     ? `<button type="button" class="onb-portrait-redo" data-cw-portrait-redo ${regenerating ? "disabled" : ""} aria-label="Redo portrait">↻ Redo</button>`
     : "";
+  // WALK-3 V4 TIP-UX (owner request): a rotating hint under Redo, driven by the SAME
+  // failure-vocabulary map the avoid-normalizer uses. Rerolling the same seed-shuffle
+  // does not fix a framing defect — telling the player the phrasing that does is what
+  // breaks the loop. Rotates by redo count so it reads as advice, not a fixed label.
+  const redoHint = canRedo ? renderRedoHint(portrait.redoCount || 0) : "";
   if (uri) {
     // FIX G: the player keeps rerolling until they explicitly accept. Once locked,
     // a confirmation badge shows but Redo stays available so they can still change
@@ -312,6 +337,7 @@ function renderPortraitPreview(portrait = {}, options = {}) {
         ${regenerating ? `<div class="onb-portrait-overlay"><span class="onb-portrait-spinner" aria-hidden="true"></span>${cookLabel("Regenerating", portrait.startedAt)}</div>` : ""}
         ${acceptControl}
         ${redoBtn}
+        ${redoHint}
       </div>`;
   }
   if (status === "generating") {
@@ -694,6 +720,8 @@ function renderCharacterWizard(state) {
     portraitStatus: state.draftPortraitStatus,
     startedAt: state.draftPortraitStartedAt, // TRUTHFUL COOK TIME: live elapsed counter source
     accepted: state.draftPortraitAccepted === true,
+    // WALK-3 V4: drives the rotating redo hint (advice changes as they keep rerolling).
+    redoCount: Math.trunc(Number(state.draftPortraitNonce) || 0),
     // Conversational editor: version history + the entitlement-gated edit count.
     versions: Array.isArray(state.portraitVersions) ? state.portraitVersions : [],
     entitlement: state.portraitEntitlement || null,

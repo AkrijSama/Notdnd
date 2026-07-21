@@ -83,6 +83,34 @@ enumerate placed hostiles/cast/services/traces actually present; confirm each se
 system has ≥1 reachable instance. A system reachable only in a unit test but never on
 Babel is not shipped for a player.
 
+#### (b2) THE ROUTE-INVENTORY LAW — applied to GAME INTENTS (walk-3)
+Added after the walk-3 coherence F- (see `walk3-coherence-forensics.md`). All four
+defects were the same shape: **a real door was built, and the owner walked a different
+one.** Combat entry worked for typed `attack`, but the chip the server itself generates
+says `Face X`; VN-as-cast worked on the live-turn path, but the opening path never set
+`run.vn`; preference slots worked on generate, but he used redo with negated phrasing.
+Every one had a GREEN TEST, because each test exercised the built door.
+
+A feature is **not shipped when one route works**. Reachability MUST enumerate every
+player-facing route and assert the feature on each:
+
+| Axis | Routes that must each be asserted |
+|---|---|
+| Entry path | authored opening (zero-LLM beats) **vs** live GM turn |
+| Input mode | server-generated affordance chip **vs** typed free text |
+| Regeneration | first draft **vs** redo **vs** refine/edit **vs** committed/live job |
+| Art lane | anime **vs** illustrated **vs** cinematic |
+
+**Corollary — GENERATOR/DETECTOR PAIRING.** Wherever the server GENERATES the strings a
+player can submit (affordance chips, quick actions, suggested actions), a test must
+assert that **every generated string is accepted by the detector meant to consume it.**
+A chip whose own detector rejects its intent string is the Fenn bug class, and it is
+mechanically preventable. Standing net: `tests/walk3-coherence.test.js`
+("ROUTE-INVENTORY: every hostile affordance chip the server emits opens the combat door").
+
+**Finding shape:** "feature X is asserted on route A only; routes B/C are unexercised" —
+with the route table above as the checklist.
+
 ### (c) LIFECYCLE
 Every artifact type walks **created → judged → destroyed**. For each mutable
 collection on `run` (essenceTraces, mintedStatBlocks, npcs, memoryFacts, timeline,

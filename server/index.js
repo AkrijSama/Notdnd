@@ -3416,7 +3416,10 @@ async function handleApi(req, res) {
         editInstruction: instruction,
         sourceImageUrl: typeof payload?.sourceImageUrl === "string" ? payload.sourceImageUrl : "",
         // REDO-DESTROYS-PREDECESSOR: the prior draft to destroy once this edit lands.
-        supersedes: typeof payload?.supersedes === "string" ? payload.supersedes : ""
+        supersedes: typeof payload?.supersedes === "string" ? payload.supersedes : "",
+        // WALK-3 V4: preference slots ride EVERY regeneration route, refine included.
+        appearance: typeof payload?.appearance === "string" ? payload.appearance : "",
+        avoid: typeof payload?.avoid === "string" ? payload.avoid : ""
       });
       // IDENTITY-AS-STATE: an identity-class edit ("male", "she", "older") is a
       // FIELD change, not token soup — return the resolved identity so the client

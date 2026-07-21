@@ -44,12 +44,17 @@ test("committed state rides as mandatory slots: weather, time-of-day, danger, er
   assert.match(p, /modern arcane/, "world tone");
 });
 
-test("scene FRAMING LAW: the location direction is eye-level with ground in frame, sky capped", () => {
+test("scene FRAMING LAW: the location direction is eye-level, at DISTANCE, sky capped", () => {
   const dir = artStyleDirection("anime", "location");
   assert.match(dir, /eye-level/);
-  assert.match(dir, /ground level|foreground.*lower third/);
   assert.match(dir, /sky only in the upper third/);
-  assert.doesNotMatch(dir, /wide establishing shot/);
+  // WALK-3 V3: the law must command DISTANCE. The owner's wolf-feet render happened
+  // with the whole law riding, because nothing in it asked for distance.
+  assert.match(dir, /natural distance|seen in full/i, "the framing law must command distance");
+  // …and must NOT contain the low-camera words that CAUSED the close-up. "ground level
+  // view" literally specifies a camera at ground level — that IS the paws shot.
+  assert.doesNotMatch(dir, /ground level view/i, "a ground-level camera is the wolf-feet defect");
+  assert.doesNotMatch(dir, /standing low on the ground/i);
 });
 
 test("the seal's scene guard bans aerial/vista/vehicles/city for non-character subjects", () => {

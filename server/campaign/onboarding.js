@@ -1150,6 +1150,13 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
     const speakerId = isStr(scenario?.opening?.beatsSpeaker) ? scenario.opening.beatsSpeaker.trim() : "";
     if (speakerId && run.npcs && run.npcs[speakerId]) {
       run.openingSpeakerId = speakerId;
+      // WALK-3 V2 — THE MISSING DOOR. openingSpeakerId alone only fed a look-alike
+      // nameplate in the narration log; the real VN cast surface
+      // (renderSoloDialogueOverlay) gates on scene.vnMode ← run.vn, which the
+      // authored-opening path never set. So the VOICE was NARRATED, never staged.
+      // Committing run.vn here routes the opening through the same VN surface a
+      // live talk beat uses, with her committed identity + portrait.
+      run.vn = { active: true, speakerId };
     }
   }
 

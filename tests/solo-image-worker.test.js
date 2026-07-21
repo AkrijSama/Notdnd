@@ -245,14 +245,16 @@ test("every location direction is the player's eye-level view with a midground s
   for (const style of ["illustrated", "anime", "cinematic"]) {
     const dir = artStyleDirection(style, "location");
     // Scene art is the PLAYER'S VIEW, not an aerial/postcard vista (owner ruling).
-    assert.match(dir, /eye-level|ground level/i, `${style} location is an eye-level ground view`);
-    // The framing law over-corrected to a bare floor; it now REQUIRES a midground subject,
-    // anchors the ground, limits the sky, and cues depth (owner ruling 2026-07-19). It must
+    assert.match(dir, /eye-level/i, `${style} location is an eye-level view`);
+    // The framing law REQUIRES a midground subject, limits the sky, and cues depth. It must
     // NOT forbid people — that ban suppressed the committed beast (the Grey → bare floor).
-    assert.match(dir, /clear subject.*midground|subject in the midground/i, `${style} location requires a midground subject`);
-    assert.match(dir, /lower third/i, `${style} location anchors the foreground`);
+    assert.match(dir, /subject.*midground|midground/i, `${style} location requires a midground subject`);
     assert.match(dir, /sky only in the upper third/i, `${style} location limits the sky`);
     assert.doesNotMatch(dir, /no people, no characters/i, `${style} location no longer bans subjects`);
+    // WALK-3 V3: DISTANCE is now commanded, and the low-camera vocabulary that produced
+    // the owner's close-up-of-paws render is banned from the law itself.
+    assert.match(dir, /natural distance|seen in full/i, `${style} location commands distance`);
+    assert.doesNotMatch(dir, /ground level view/i, `${style} must not command a ground-level camera`);
   }
 });
 

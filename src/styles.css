@@ -6002,3 +6002,22 @@ textarea.hb-input { min-height: 76px; resize: vertical; }
   outline: 2px solid var(--accent-bright, #e7e9ee);
   outline-offset: 2px;
 }
+
+/* WALK-3 V4: the redo tip line — advice under the Redo control, not a label.
+   Sits inside the portrait preview frame, bottom edge, readable over the image. */
+.onb-redo-hint {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 40px;
+  margin: 0;
+  z-index: 2;
+  font-size: 11px;
+  line-height: 1.35;
+  text-align: center;
+  color: var(--ink-dim, #cbbf9f);
+  background: rgba(12, 10, 8, 0.72);
+  border-radius: 6px;
+  padding: 4px 8px;
+  pointer-events: none;
+}
