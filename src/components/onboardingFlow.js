@@ -42,7 +42,14 @@ const TONE_CHIPS = ["dark fantasy", "high fantasy", "grimdark", "sword and sorce
 export const ART_STYLE_OPTIONS = [
   { id: "illustrated", label: "Illustrated Dark Fantasy", blurb: "Oil-dark painterly portraits: grim, textured, dramatic light", sample: "/public/assets/art-illustrated.jpg", tier: "early" },
   { id: "anime", label: "Anime VN", blurb: "Flat cel color, clean line art: crisp faces, vivid grounds", sample: "/public/assets/art-anime.png", tier: "polished" },
-  { id: "cinematic", label: "Dark Cinematic", blurb: "Photoreal, moody, filmic: like a prestige-TV key frame", sample: "/public/assets/art-cinematic.jpg", tier: "polished" }
+  // DISPLAY-ONLY rename (owner ruling 2026-07-22): "Dark Cinematic" named a MOOD while the
+  // other two name a MEDIUM — not comparable. Label is now "Realism" (a medium). The `id`
+  // stays "cinematic" — it is LOAD-BEARING: run.world.artStyle persists it, artStyle.js
+  // ENGINE_STYLES + the cinematic→realistic lane map read it, comfyui selects the workflow
+  // by it. Renaming the key would need a migration across existing runs; the label is not
+  // persisted anywhere (only here), so a display rename is safe. The subtitle already
+  // carried "photoreal, moody, filmic" (the mood the old name did) — kept verbatim.
+  { id: "cinematic", label: "Realism", blurb: "Photoreal, moody, filmic: like a prestige-TV key frame", sample: "/public/assets/art-cinematic.jpg", tier: "polished" }
 ];
 
 // Small honesty badge for a style card. "Polished" = a lane we've tuned and stand
