@@ -12,8 +12,31 @@
 // so a broken/absent library can never break scene rendering.
 // ---------------------------------------------------------------------------
 
-import { queryAssets } from "../../scripts/art/library.mjs";
+import { queryAssets, getAsset } from "../../scripts/art/library.mjs";
 import { styleForRun, toCanonicalStyle } from "./artStyle.js";
+
+// OWNER WORLD-CARD PIN (2026-07-21). A world's lobby card may be pinned to a SPECIFIC
+// library asset by id, overriding the newest-keep pick. Babel's cover IS the obsidian
+// Tower render — a colossal impossible Tower on an antarctic obsidian plain, the Tower
+// of Babel's key art — authored in the library under its own world "antarctica-obsidian".
+// The pin serves it for babel's card WITHOUT retagging the asset (it keeps its own
+// provenance/world). The pin only binds when the asset is present AND owner-rated keep;
+// otherwise the resolver falls through to the normal world+kind keep pick.
+const WORLD_CARD_PIN = Object.freeze({
+  babel: "w7_worldcard_obsidian_tower_anime"
+});
+
+function resolvePinnedWorldCard(world) {
+  const id = WORLD_CARD_PIN[world];
+  if (!id) return null;
+  let asset;
+  try {
+    asset = getAsset(id);
+  } catch {
+    return null;
+  }
+  return asset && asset.rating === "keep" ? libraryAssetUri(id) : null;
+}
 
 // Served URI for a library asset PNG. The library lives at data/assets/library/
 // under the repo root, which serveStatic serves verbatim, so <id>.png is public.
@@ -69,6 +92,11 @@ function keepsFor({ world, kind, style }) {
  * @returns {string|null}
  */
 export function resolveLibraryArt({ world, kind, style } = {}) {
+  // Owner pin wins for a pinned world-card (the asset carries its own world tag).
+  if (kind === "world-card" && world) {
+    const pinned = resolvePinnedWorldCard(world);
+    if (pinned) return pinned;
+  }
   const chosen = pickStable(keepsFor({ world, kind, style }));
   return chosen ? libraryAssetUri(chosen.id) : null;
 }

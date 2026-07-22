@@ -253,3 +253,23 @@ test("collectNpcsNeedingArt: an NPC wearing a checked-out library face is art-co
     "only the faceless NPC needs generated art — the library face never gets swapped"
   );
 });
+
+// OWNER WORLD-CARD PIN (2026-07-21): babel's lobby card is pinned to the obsidian
+// Tower render (authored under world "antarctica-obsidian" — the Tower of Babel's
+// key art). The pin serves it for babel WITHOUT retagging the asset's provenance.
+test("world-card PIN: babel's card serves the pinned obsidian Tower over its own newest keep", () => {
+  // babel's OWN newest keep (would normally win by createdAt)...
+  keep({ id: "babel-worldcard-anime-v2", world: "babel", kind: "world-card", style: "anime", createdAt: "2026-07-20T00:00:00Z" });
+  // ...but the pinned Tower render (older, under its OWN world tag, keep-rated) wins.
+  keep({ id: "w7_worldcard_obsidian_tower_anime", world: "antarctica-obsidian", kind: "world-card", style: "anime", createdAt: "2026-07-01T00:00:00Z" });
+  assert.equal(
+    resolveLibraryArt({ world: "babel", kind: "world-card" }),
+    libraryAssetUri("w7_worldcard_obsidian_tower_anime"),
+    "the owner pin overrides the newest-keep pick, and the asset keeps its own world tag"
+  );
+  // The pinned asset does NOT leak into its OWN world's card pick logic (still a normal keep there).
+  assert.equal(
+    resolveLibraryArt({ world: "antarctica-obsidian", kind: "world-card" }),
+    libraryAssetUri("w7_worldcard_obsidian_tower_anime")
+  );
+});
