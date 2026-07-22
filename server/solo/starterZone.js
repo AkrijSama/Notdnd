@@ -32,6 +32,13 @@ export function isStarterZoneLocation(location = {}) {
 // ("the trees shift around you… your sense of direction unravels… the dirt track
 // south is gone behind you") flags, while the Waking Mile boundary description and
 // the corrected Fringe description do not.
+// NOTE ON COMPLETENESS: a pattern list can never catch every disorientation phrasing
+// a language model can invent — this is a fundamentally open set. Detection is therefore
+// the ALARM, not the guarantee; the guarantee is the PROMPT-LEVEL directive
+// (gmProvider.js — "STARTER ZONE (Her kept-clear ground): …") that prevents the motif at
+// the source. The families below were added after the walk-3 slip "the path twists wrong"
+// (embedded mid-sentence, so a post-hoc strip would MANGLE the prose — see the report;
+// enforcement is preventive-at-prompt, not a mangling strip).
 export const LOST_MOTIF_PATTERNS = [
   /\bdisorient(?:ed|ing|ation)?\b/i,
   /\bturned around\b/i,
@@ -49,7 +56,17 @@ export const LOST_MOTIF_PATTERNS = [
   /swallow\w* (?:by |up )?(?:the )?(?:woods|forest|trees|light|dark|whole|path|trail)/i,
   /sun (?:stays|hangs|sits|holds|remains) (?:fixed|still|put)\b/i,
   /no clear direction/i,
-  /nothing (?:looks|seems|feels) (?:the same|familiar)/i
+  /nothing (?:looks|seems|feels) (?:the same|familiar)/i,
+  // walk-3 gap family: a path/way that "twists/turns/shifts wrong" — the qualifier
+  // (wrong/strange/oddly/on itself/back on) is required so a legit "the path bends
+  // around the hill" is NOT flagged.
+  /(?:path|track|trail|way|road)s? (?:that )?(?:twist\w*|turn\w*|bend\w*|fold\w*|shift\w*|writh\w*|buckl\w*) (?:wrong|strange\w*|oddly|on itself|back on)/i,
+  // losing your bearings / footing-as-orientation / your way
+  /\b(?:lose|losing|lost)\s+(?:your|my|his|her|their)\s+(?:bearings|sense of (?:place|direction)|way\b)/i,
+  // the ground itself becoming unreliable / unfamiliar underfoot ("gives way to
+  // something unfamiliar" — allow a few words between the verb and the qualifier)
+  /ground (?:that )?(?:gives?\s+way|shift\w*|tilt\w*|drop\w*|buckl\w*)[^.!?]{0,24}\b(?:unfamiliar|strange|nowhere|beneath you)/i,
+  /(?:everything|the world) (?:looks|seems|feels) (?:unfamiliar|strange|wrong)/i
 ];
 
 // Returns the list of lost-motif hits IF the narration is set in a starter-zone

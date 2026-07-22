@@ -319,7 +319,7 @@ export function buildProviderPromptMessages(gmInput, options = {}) {
     // Green Static Fringe are HER kept-clear ground. Disorientation motifs belong
     // BEYOND the shimmer, never on the ground the player stands on here.
     location.starterZone
-      ? "STARTER ZONE (Her kept-clear ground): the paths here are HONEST and orientation is NEVER in doubt. Do NOT narrate getting lost, disorientation, being turned around, a failing sense of direction, wandering, trails that vanish or lead nowhere, a track that is gone behind you, trees that shift or rearrange, a sun that hangs fixed, or woods that swallow the way. The shimmer at the zone's edge is a BOUNDARY MARKER, not a confusion field — the wrongness lives BEYOND it. Keep light soft, paths clear, and the way easy to read."
+      ? "STARTER ZONE (Her kept-clear ground): the paths here are HONEST and orientation is NEVER in doubt. Do NOT narrate getting lost, disorientation, being turned around, a failing sense of direction, wandering, trails that vanish or lead nowhere, a track that is gone behind you, a path or way that twists, turns, shifts, or folds WRONG, losing your bearings, ground that gives way to something unfamiliar, trees that shift or rearrange, a sun that hangs fixed, woods that swallow the way, or anything looking unfamiliar or wrong here. The shimmer at the zone's edge is a BOUNDARY MARKER, not a confusion field — the wrongness lives BEYOND it. Keep light soft, paths clear, and the way easy to read."
       : null,
     "Respect the edition and policy profile. Never leak forbidden or blocked content into mainline scenes.",
     objective ? `The player is pursuing: ${objective}. Weave this goal naturally into scene framing and dialogue.` : null,

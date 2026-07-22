@@ -92,3 +92,46 @@ test("AUDITOR: fires ONLY inside the starter zone (same lost text beyond the shi
   assert.deepEqual(detectStarterZoneLostMotif(TURN4, HEART), [], "the Heart is beyond the shimmer — disorientation is allowed there");
   assert.deepEqual(detectStarterZoneLostMotif(TURN4, {}), [], "no location -> no audit");
 });
+
+// ── WALK-3 GAP FAMILY (coherence walk finding #4): "the path twists wrong" ──────
+// The live T6 slip inside start_location. It matched no prior pattern AND the prompt
+// directive did not forbid it. Both are now widened. Detection is the alarm; the
+// directive is the preventive guarantee (a post-hoc strip would mangle — the motif is
+// embedded mid-sentence: "You push through the underbrush … but the path twists wrong.").
+test("AUDITOR (widened): 'the path twists wrong' flags inside the starter zone", () => {
+  const T6 = "You push through the underbrush toward where you thought you heard the wolf, but the path twists wrong. A root catches your ankle and you stumble into a pocket of still air.";
+  const hits = detectStarterZoneLostMotif(T6, FRINGE);
+  assert.ok(hits.length > 0, "the walk-3 phrase must now flag");
+  assert.match(hits[0].phrase, /twists?\s+wrong/i);
+});
+
+test("AUDITOR (widened): sibling disorientation phrasings flag", () => {
+  for (const s of [
+    "the way shifts wrong beneath you",
+    "you lose your bearings among the trunks",
+    "the ground gives way to something unfamiliar",
+    "everything looks unfamiliar here"
+  ]) {
+    assert.ok(detectStarterZoneLostMotif(s, WAKING).length > 0, `should flag: "${s}"`);
+  }
+});
+
+test("AUDITOR (widened): legitimate path description is NOT flagged (no over-fire)", () => {
+  // A path bending around real geography is honest orientation, not disorientation.
+  for (const s of [
+    "the path bends around the hill toward the flagpole",
+    "the trail turns east at the old fence and runs straight to town",
+    "the way curves gently down to the stream"
+  ]) {
+    assert.equal(detectStarterZoneLostMotif(s, FRINGE).length, 0, `must NOT flag legit prose: "${s}"`);
+  }
+});
+
+test("DIRECTIVE (preventive): the starter-zone contract now forbids the twists-wrong family", () => {
+  // The directive gates on location.starterZone (gm.js surfaces the kept-clear flag).
+  const msgs = buildProviderPromptMessages({ location: { locationId: "start_location", name: "The Green Static — Fringe", starterZone: true } });
+  const text = JSON.stringify(msgs);
+  // The preventive guarantee must name the family the auditor alarms on.
+  assert.match(text, /twists, turns, shifts, or folds WRONG/i);
+  assert.match(text, /losing your bearings/i);
+});
