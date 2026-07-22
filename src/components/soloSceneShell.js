@@ -408,6 +408,17 @@ function beatToParas(beat) {
   return (paras.length ? paras : [stripDashes(beat)]).map((part) => `<p>${paragraphInnerHtml(part)}</p>`).join("");
 }
 
+// Split the authored opening beats at the committed speaker-from index (from the
+// scenario's beatsSpeakerFrom, carried on the payload). Beats before it are scene-
+// setting narration; beats from it are the committed speaker's (the VOICE) SPOKEN lines,
+// which must render in the real VN box — never as narration-log prose. Index-based, not
+// bracket-based: a VOICE beat can be multi-block or have an unclosed bracket.
+export function splitOpeningBeats(openingBeats = null, speakerFrom = 0) {
+  const beats = Array.isArray(openingBeats) ? openingBeats : [];
+  const from = Number.isInteger(speakerFrom) && speakerFrom >= 0 && speakerFrom <= beats.length ? speakerFrom : 0;
+  return { narration: beats.slice(0, from), spoken: beats.slice(from) };
+}
+
 export function renderSoloSceneOpening(openingNarration = "", openingBeats = null, speaker = null) {
   // PACED set-piece: when the opening is an authored BEAT SEQUENCE (openingBeats),
   // reveal the beats one at a time in a staggered cascade instead of dumping the
@@ -425,19 +436,35 @@ export function renderSoloSceneOpening(openingNarration = "", openingBeats = nul
     const blocks = beats
       .map((beat, i) => `<div class="solo-opening-beat" style="animation-delay:${(i * 1.1).toFixed(2)}s">${beatToParas(beat)}</div>`)
       .join("");
-    const speakerName = speaker && typeof speaker.displayName === "string" ? speaker.displayName : "The VOICE";
-    const speakerNpcId = speaker && typeof speaker.npcId === "string" ? speaker.npcId : "";
-    const avatar = speaker && typeof speaker.portraitUri === "string" && speaker.portraitUri
-      ? `<img class="solo-opening-speaker-avatar" src="${escapeHtml(speaker.portraitUri)}" alt="${escapeHtml(speakerName)}" />`
-      : "";
-    return `
-      <section class="solo-scene-opening solo-opening-paced solo-measure solo-opening-vn" role="note" aria-label="${escapeHtml(speakerName)} speaks"${speakerNpcId ? ` data-solo-speaker="${escapeHtml(speakerNpcId)}"` : ""}>
+    const pacedStyle = `
         <style>
           .solo-opening-paced .solo-opening-beat { opacity: 0; animation: soloBeatIn 0.9s ease forwards; }
           .solo-opening-paced .solo-opening-beat + .solo-opening-beat { margin-top: 0.9rem; padding-top: 0.9rem; border-top: 1px solid rgba(255,255,255,0.08); }
           @keyframes soloBeatIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
           @media (prefers-reduced-motion: reduce) { .solo-opening-paced .solo-opening-beat { opacity: 1; animation: none; } }
-        </style>
+        </style>`;
+    // WALK-3 V4: with a committed speaker, the SPOKEN beats now render in the real VN box
+    // (loadScene routes them there), so this renderer receives ONLY the scene-setting
+    // narration beats with speaker=null — render them as GM narration, NOT a "VOICE speaks"
+    // look-alike frame. (A speaker IS still honored when passed directly, e.g. in unit tests
+    // of the frame itself, but the live opening path no longer narrates the VOICE's words.)
+    if (!speaker || typeof speaker.npcId !== "string" || !speaker.npcId) {
+      return `
+      <section class="solo-scene-opening solo-opening-paced solo-measure" role="note" aria-label="Opening narration">
+        ${pacedStyle}
+        <span class="solo-scene-opening-kicker">The GM sets the scene</span>
+        ${blocks}
+      </section>
+    `;
+    }
+    const speakerName = typeof speaker.displayName === "string" ? speaker.displayName : "The VOICE";
+    const speakerNpcId = speaker.npcId;
+    const avatar = typeof speaker.portraitUri === "string" && speaker.portraitUri
+      ? `<img class="solo-opening-speaker-avatar" src="${escapeHtml(speaker.portraitUri)}" alt="${escapeHtml(speakerName)}" />`
+      : "";
+    return `
+      <section class="solo-scene-opening solo-opening-paced solo-measure solo-opening-vn" role="note" aria-label="${escapeHtml(speakerName)} speaks" data-solo-speaker="${escapeHtml(speakerNpcId)}">
+        ${pacedStyle}
         <div class="solo-opening-speaker">${avatar}<span class="solo-scene-opening-kicker">${escapeHtml(speakerName)} speaks</span></div>
         ${blocks}
       </section>
@@ -2120,7 +2147,7 @@ export function sceneArtInnerHtml(uri, { locked = false } = {}) {
   return `<img class="solo-scene-art-img" src="${escapeHtml(uri)}" alt="Location background" />${controls}`;
 }
 
-export function renderSoloSceneArt(locationImageUri = null, { locked = false } = {}) {
+export function renderSoloSceneArt(locationImageUri = null, { locked = false, status = "" } = {}) {
   const uri = typeof locationImageUri === "string" ? locationImageUri.trim() : "";
   if (uri) {
     // Generated location background fills the banner area (object-fit: cover),
@@ -2132,15 +2159,28 @@ export function renderSoloSceneArt(locationImageUri = null, { locked = false } =
       </div>
     `;
   }
-  // No image yet: decorative firelit vignette + a subtle generating label,
-  // mirroring the portrait-placeholder pattern.
+  // No image yet. The pending overlay lives ON the art slot (JOB 3): it carries the
+  // "appears as it's ready" message the old page-level banner used to, and it resolves to
+  // a real end-state — a FAILED overlay with a retry when the cook fails, so a pending
+  // promise never hangs forever. It clears automatically when the image arrives (the uri
+  // branch above renders instead), tying its lifetime to the asset's ready state, not a timer.
+  const overlay =
+    status === "failed"
+      ? `<div class="solo-scene-art-pending solo-scene-art-failed" role="status">
+           <span>Scene art didn't finish.</span>
+           <button type="button" class="solo-scene-art-btn" data-scene-redo>↻ Try again</button>
+         </div>`
+      : `<div class="solo-scene-art-pending" role="status" aria-live="polite">
+           <span class="solo-scene-art-spinner" aria-hidden="true"></span>
+           <span class="solo-scene-art-pending-msg">Painting the scene…<small>appears here as it's ready, usually a minute or two</small></span>
+         </div>`;
   return `
     <div class="solo-scene-art" data-scene-art>
       <div class="solo-scene-art-glow"></div>
       <div class="solo-scene-art-window"></div>
       <div class="solo-scene-art-hearth"></div>
       <div class="solo-scene-art-floor"></div>
-      <div class="solo-scene-art-pending">Painting the scene…</div>
+      ${overlay}
     </div>
   `;
 }
@@ -3436,7 +3476,7 @@ export function renderSoloSceneShell(state = {}) {
                 <!-- ZONE 1 — PINNED STAGE -->
                 <div class="solo-stage${state.dialogueActive && state.talkResult ? " vn-active" : ""}" data-solo-stage>
                   ${renderSoloUpgradePrompt(scene)}
-                  ${renderSoloSceneArt(scene.locationImageUri, { locked: scene.locationImageLocked })}
+                  ${renderSoloSceneArt(scene.locationImageUri, { locked: scene.locationImageLocked, status: scene.locationImageStatus })}
                   <!-- Floating HUD: portrait dock (top-left, in the frame), MAP
                        widget + TIME/WEATHER chip + Cast·Exits toggle (top-right). -->
                   <div data-solo-stage-hud-slot>${renderSoloStageHud(scene, state)}</div>
@@ -3449,7 +3489,12 @@ export function renderSoloSceneShell(state = {}) {
                 <div class="solo-narration-log" data-solo-log>
                   ${
                     (typeof scene.openingNarration === "string" && scene.openingNarration.trim()) || (Array.isArray(scene.openingBeats) && scene.openingBeats.length)
-                      ? renderSoloSceneOpening(scene.openingNarration, scene.openingBeats, scene.openingSpeaker)
+                      // WALK-3 V4: when the opening commits a VN speaker (the VOICE), her SPOKEN
+                      // beats render in the real VN box (loadScene routes them), so this log gets
+                      // ONLY the narration beats with speaker=null — never her words as prose.
+                      ? (scene.vnMode === true && scene.openingSpeaker
+                          ? renderSoloSceneOpening(scene.openingNarration, splitOpeningBeats(scene.openingBeats, scene.openingBeatsSpeakerFrom).narration, null)
+                          : renderSoloSceneOpening(scene.openingNarration, scene.openingBeats, scene.openingSpeaker))
                       : Array.isArray(state.narrationLog) && state.narrationLog.length
                         ? renderNarrationLog(state.narrationLog)
                         : renderLocationPanel(location, scene.gmNarration, scene.gmStatus, selectedGmMode, debug, {})
@@ -4830,34 +4875,6 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     render();
   }
 
-  // One-time-per-session amber notice on first scene entry, explaining that
-  // images stream in so the early placeholders read as intentional, not broken.
-  // sessionStorage-gated (shows once per tab session); skipped entirely where
-  // sessionStorage is unavailable (tests / SSR), so it never alters test output.
-  const IMAGE_WAIT_BANNER_KEY = "notdnd_image_wait_banner_seen";
-  function maybeShowImageWaitBanner() {
-    const ss = typeof window !== "undefined" ? window.sessionStorage : null;
-    if (!ss) {
-      return;
-    }
-    let seen = false;
-    try {
-      seen = ss.getItem(IMAGE_WAIT_BANNER_KEY) === "true";
-    } catch {
-      return;
-    }
-    if (seen) {
-      return;
-    }
-    state.banner =
-      "Your world is being illustrated. Portraits and scenes appear as they're ready, usually within a minute or two.";
-    state.bannerKind = "info";
-    try {
-      ss.setItem(IMAGE_WAIT_BANNER_KEY, "true");
-    } catch {
-      // best-effort; the banner still shows this load if the write fails.
-    }
-  }
 
   // ---- Async feedback wrapper ----------------------------------------------
   // Wraps every network action so it can never fail silently or wait
@@ -5723,10 +5740,11 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
         // when the payload genuinely lacks a player).
         state.character = characterFromScenePlayer(state.scene.player, state.scene.world);
       }
-      if (initial) {
-        // First entry this session: explain that images stream in.
-        maybeShowImageWaitBanner();
-      }
+      // (removed) the page-level "Your world is being illustrated…" banner. It was pinned
+      // at the top, disconnected from the art it described, dismiss-only, and outlived the
+      // cook. That message now lives ON the pending art slot as an overlay (renderSoloSceneArt),
+      // tied to the asset's ready state: it clears when the image arrives and becomes a
+      // FAILED state if the cook fails — never a promise that hangs forever (JOB 3).
       // Terminal-run detection from the server's STATE CONTRACT (runStatus /
       // isDead / resumable / player.status). A concluded run — most importantly a
       // DEAD run re-opened from saved campaigns — is routed to an outcome screen
@@ -5791,6 +5809,31 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       // (vnMode=false) leaves the overlay closed; the manual Talk button is
       // unaffected (it opens via handleTalk + refreshSceneAfterAction, not here).
       if (state.scene && state.scene.vnMode === true && typeof state.scene.speakerId === "string" && state.scene.speakerId.trim()) {
+        // WALK-3 V4 — THE OPENING VN BRIDGE (the VOICE bug, escaped 4×). On the authored
+        // opening the speaker's SPEECH rides scene.openingBeats, NOT gmNarration.body, so
+        // logNarration's split never populated vnDialogueSplit → the VN box opened EMPTY
+        // while the words fell to the yellow prose renderer. Synthesize the split from the
+        // committed speaker's beats (beats[from..]) so her first line lands in the real VN
+        // box exactly like a live talk beat. Only when the normal split didn't already set it.
+        // Fire UNLESS a NON-EMPTY split already exists for this speaker. logNarration
+        // runs its own split off gmBody FIRST and, at the opening, produces a split with
+        // the right speakerId but EMPTY vnText (the VOICE's words live in openingBeats,
+        // not gmBody) — an empty split must NOT block the opening bridge (the bug in the
+        // first cut of this fix: it saw the matching-but-empty split and skipped).
+        const existingVnText =
+          state.vnDialogueSplit && state.vnDialogueSplit.speakerId === state.scene.speakerId
+            ? String(state.vnDialogueSplit.vnText || "").trim()
+            : "";
+        if (!existingVnText && Array.isArray(state.scene.openingBeats) && state.scene.openingBeats.length) {
+          const { spoken } = splitOpeningBeats(state.scene.openingBeats, state.scene.openingBeatsSpeakerFrom);
+          if (spoken.length) {
+            state.vnDialogueSplit = {
+              speakerId: state.scene.speakerId,
+              speakerName: (state.scene.openingSpeaker && state.scene.openingSpeaker.displayName) || "The VOICE",
+              vnText: spoken.join("\n\n")
+            };
+          }
+        }
         await openVnDialogueForSpeaker(state.scene.speakerId);
       }
     } catch (error) {

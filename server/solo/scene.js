@@ -1196,6 +1196,22 @@ export function resolveLocationImageUri(run, location) {
   return libraryScene || generated;
 }
 
+// The lifecycle STATUS of this location's scene art, so the client's pending overlay
+// can resolve to a real end-state instead of a promise that hangs forever (JOB 3.3):
+//   "ready"      — an image is resolvable (generated OR a library keep) → no overlay
+//   "generating" — a cook is in flight → "painting…" overlay
+//   "failed"     — the cook failed → a FAILED overlay (retry), never an eternal "painting…"
+//   "none"       — no cook has been requested yet → treated as generating by the client
+export function resolveLocationImageStatus(run, location) {
+  if (resolveLocationImageUri(run, location)) return "ready";
+  const assets = isPlainObject(run?.imageAssets) ? run.imageAssets : {};
+  const assetId = locationImageAssetId(location);
+  const asset = assetId ? assets[assetId] : null;
+  if (asset && asset.status === "failed") return "failed";
+  if (asset && asset.status === "generating") return "generating";
+  return "none";
+}
+
 // The active VN speaker's full-body sprite URI: the run's own generated vnBody
 // asset first (the face the player has already seen never swaps), else the
 // library fullbody CHECKED OUT to this exact (run, npc) in the run's locked
@@ -1450,6 +1466,10 @@ export function buildSoloScenePayload(run, options = {}) {
     // Generated location background image (null until the worker produces it;
     // the client shows a "Generating scene art…" placeholder meanwhile).
     locationImageUri: resolveLocationImageUri(run, currentLocation),
+    // Scene-art lifecycle status (ready|generating|failed|none) so the client's pending
+    // overlay resolves to a real end-state — a "painting…" that becomes a FAILED state if
+    // the cook fails, never a promise that hangs forever (JOB 3.3).
+    locationImageStatus: resolveLocationImageStatus(run, currentLocation),
     // Whether the player has locked this location's image (hides Redo/Save).
     locationImageLocked: resolveLocationImageLocked(run, currentLocation),
     // AI-generated world-entry opening (stored on the run, generated once).
@@ -1481,6 +1501,12 @@ export function buildSoloScenePayload(run, options = {}) {
         portraitUri: generatedAssetUri(run, npc.imageAssetId) || generatedAssetUri(run, `img_${sid}_base`) || null
       };
     })(),
+    // WALK-3 V4: the index from which openingBeats are the speaker's SPOKEN lines. The
+    // client routes beats[from..] into the real VN box (renderSoloDialogueOverlay) and
+    // keeps beats[0..from) as opening narration — so the VOICE's speech renders through
+    // the VN component, never as yellow narration-log prose (the 4×-escaped bug).
+    openingBeatsSpeakerFrom:
+      isOpeningMoment(run) && Number.isInteger(run.openingBeatsSpeakerFrom) ? run.openingBeatsSpeakerFrom : 0,
     rest: restPayload(currentLocation, policyProfile),
     player: buildPlayerPayload(run),
     visibleEntities,

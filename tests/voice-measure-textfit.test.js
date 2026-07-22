@@ -16,10 +16,16 @@ const css = fs.readFileSync(new URL("../src/styles.css", import.meta.url), "utf8
 
 // ---- voice-block-layout-fix: ONE measure rule for every prose block ----
 
-test("VOICE opening (both variants) carries the shared measure class", () => {
+test("VOICE opening (all variants) carries the shared measure class", () => {
+  // WALK-3 V4: paced beats with NO committed speaker are GM narration (the VOICE's spoken
+  // beats now route to the real VN box, not this prose renderer) — still the measure class.
   const paced = renderSoloSceneOpening("", ["First beat.", "Second beat."]);
   assert.match(paced, /solo-scene-opening solo-opening-paced solo-measure/);
-  assert.match(paced, /The VOICE speaks/);
+  assert.match(paced, /The GM sets the scene/);
+  assert.doesNotMatch(paced, /The VOICE speaks/, "no committed speaker → GM narration, not a VN look-alike");
+  // paced beats WITH a committed speaker (the defensive direct-call frame) also carry it
+  const withSpeaker = renderSoloSceneOpening("", ["Beat."], { npcId: "npc_voice", displayName: "The VOICE" });
+  assert.match(withSpeaker, /solo-scene-opening solo-opening-paced solo-measure/);
   const plain = renderSoloSceneOpening("A single opening block.", null);
   assert.match(plain, /solo-scene-opening solo-measure/);
 });

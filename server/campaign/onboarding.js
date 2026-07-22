@@ -1150,6 +1150,16 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
     const speakerId = isStr(scenario?.opening?.beatsSpeaker) ? scenario.opening.beatsSpeaker.trim() : "";
     if (speakerId && run.npcs && run.npcs[speakerId]) {
       run.openingSpeakerId = speakerId;
+      // WALK-3 V4 — THE MISSING WORDS. WALK-3 V2 committed run.vn so vnMode is true,
+      // but the opening's SPEECH still rode scene.openingBeats (not gmNarration.body),
+      // which the client's VN-content bridge never reads — so the VN box opened EMPTY
+      // and the words fell to the yellow prose renderer (the 4×-escaped bug). Carry the
+      // index from which the authored beats are the SPEAKER's spoken lines (earlier beats
+      // are scene-setting narration): the client routes beats[from..] into the real VN
+      // box and keeps beats[0..from) as opening narration. Brackets are NOT a reliable
+      // split (a VOICE beat can be multi-block or unclosed) — the authored index is truth.
+      const beatsFrom = Number(scenario?.opening?.beatsSpeakerFrom);
+      run.openingBeatsSpeakerFrom = Number.isInteger(beatsFrom) && beatsFrom >= 0 ? beatsFrom : 0;
       // WALK-3 V2 — THE MISSING DOOR. openingSpeakerId alone only fed a look-alike
       // nameplate in the narration log; the real VN cast surface
       // (renderSoloDialogueOverlay) gates on scene.vnMode ← run.vn, which the

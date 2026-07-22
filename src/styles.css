@@ -2239,6 +2239,49 @@ button:disabled {
   background: rgba(10, 7, 5, 0.55);
   padding: 4px 9px;
   border-radius: 5px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  max-width: min(82%, 380px);
+}
+/* JOB 3: the pending overlay carries the "appears as it's ready" copy (moved off the old
+   page-level banner) and a spinner; it clears when the image arrives (the img renders
+   instead of this slot). */
+.solo-scene-art-pending-msg {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.3;
+}
+.solo-scene-art-pending-msg small {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 10px;
+  opacity: 0.75;
+  margin-top: 2px;
+}
+.solo-scene-art-spinner {
+  width: 11px;
+  height: 11px;
+  flex: none;
+  border: 2px solid rgba(240, 228, 204, 0.28);
+  border-top-color: rgba(240, 228, 204, 0.85);
+  border-radius: 50%;
+  animation: soloSceneSpin 0.8s linear infinite;
+}
+@keyframes soloSceneSpin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .solo-scene-art-spinner { animation: none; } }
+/* JOB 3.3: the FAILED end-state — a cook that failed says so and offers a retry, instead
+   of a "painting…" that never resolves. */
+.solo-scene-art-failed {
+  color: rgba(255, 216, 200, 0.94);
+  background: rgba(58, 18, 12, 0.74);
+  text-transform: none;
+  letter-spacing: 0;
+  gap: 10px;
+}
+.solo-scene-art-failed .solo-scene-art-btn {
+  text-transform: none;
+  padding: 2px 8px;
 }
 /* Redo / Save controls overlaid on the scene image (bottom-right). Hidden once
    the image is locked. Uses the solo skin vars (defined on .solo-game-shell)
@@ -3367,20 +3410,21 @@ button:disabled {
    a small window still leaves the log readable room; object-fit:cover on the
    img (already set) means the image never distorts. */
 .solo-stage .solo-scene-art {
-  /* walk-fix (owner ruling: the ground must ALWAYS be in frame AND nothing gets cut).
-     The old box was a variable full-bleed STRIP (aspect ~2.3-4.6 by viewport) and
-     object-fit:cover silently cropped up to ~62% off the top. Fix: the box now holds the
-     scene cook aspect (1344x768 = 7:4), so the image fills it EXACTLY — no crop, no
-     letterbox. On wide viewports it caps at ~560px tall and centers (max-width = 560*7/4);
-     on narrow ones it is full-width, height following the aspect. Cook 1344x768 IS the
-     correct dimension for this box — they are now aligned, so nothing is ever cut. */
-  aspect-ratio: 1344 / 768;
+  /* REVERTED (owner: the fixed 7:4 box was an UNSTAMPED design change that crushed the
+     narration log to ~34px at a laptop viewport — unreadable). Restored to the deliberate
+     full-bleed STRIP: a viewport-clamped height, full width, NOT a centered box. The
+     non-negotiable requirement (ground always in frame, NOTHING cut) is met by the img's
+     object-fit:contain (below) — the whole scene shows, letterboxed when its aspect differs
+     from the strip's, never cropped. NOTE (owner decision pending, JOB 2.3): the strip's
+     aspect is viewport-dependent (height clamps 220-560px over a full-width box), so no
+     single cooked aspect fills it with BOTH zero crop AND zero letterbox at every viewport;
+     a fixed-aspect strip that would is a design change — proposed, not shipped. */
+  aspect-ratio: auto;
   width: 100%;
-  max-width: calc(560px * 1344 / 768);
-  height: auto;
-  min-height: 0;
-  max-height: none;
-  margin-inline: auto;
+  height: clamp(220px, 35vh, 560px);
+  min-height: 220px;
+  max-height: 560px;
+  margin-inline: 0;
 }
 /* #34 step 1: the log IS the scroller — flex:1 to take the remaining bounded
    height, min-height:0 so it can actually shrink-and-scroll, overflow-y:auto. */

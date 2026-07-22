@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { loadScenarioFile, loadScenarioIntoRun } from "../server/campaign/scenarioLoader.js";
 import { createDefaultSoloRun, validateSoloRun } from "../server/solo/schema.js";
-import { renderSoloSceneOpening } from "../src/components/soloSceneShell.js";
+import { renderSoloSceneOpening, splitOpeningBeats } from "../src/components/soloSceneShell.js";
 import { commitNpcReveal, resolveNpcArtForm, npcPortraitArtKey, isNpcRevealed, VOICE_NPC_ID } from "../server/solo/npcReveal.js";
 
 function babelRun() {
@@ -28,17 +28,22 @@ test("the VOICE is a committed cast member — a ball of warm green-gold light, 
   assert.equal(validateSoloRun(run).ok, true, JSON.stringify(validateSoloRun(run).errors));
 });
 
-test("her opening renders as HER VN SPEAKER SURFACE (named, portrait-ready), not anonymous narration", () => {
-  const speaker = { npcId: VOICE_NPC_ID, displayName: "The VOICE", portraitUri: "/data/assets/x/img_npc_voice.png" };
-  const html = renderSoloSceneOpening("", ["[ YOU ARE HEARD. ]", "[ CLIMB. ]"], speaker);
-  assert.match(html, /solo-opening-vn/, "rendered as a VN speaker surface");
-  assert.match(html, /data-solo-speaker="npc_voice"/, "attributed to her committed cast id");
-  assert.match(html, /solo-opening-speaker-avatar/, "her portrait avatar renders when present");
-  assert.match(html, /The VOICE speaks/, "she is named as the speaker");
-  // graceful fallback: no portrait yet → still her named speaker frame, no broken img
-  const noArt = renderSoloSceneOpening("", ["[ YOU ARE HEARD. ]"], { npcId: VOICE_NPC_ID, displayName: "The VOICE", portraitUri: null });
-  assert.doesNotMatch(noArt, /solo-opening-speaker-avatar/, "no avatar when the art is not cooked yet");
-  assert.match(noArt, /The VOICE speaks/, "still her named frame");
+test("WALK-3 V4: the VOICE's opening SPEECH is split OUT of the narration log (routes to the VN box, not yellow prose — the 4×-escaped bug)", () => {
+  // Payload shape: beats[0] is scene-setting narration; beats[from..] are the VOICE's
+  // spoken lines (authored beatsSpeakerFrom → payload openingBeatsSpeakerFrom).
+  const beats = ["The last of the old life is four seconds long: a glass set down.", "[ YOU ARE HEARD. ]", "[ CLIMB. RECLAIM WHAT WAS LEFT OPEN. ]"];
+  const { narration, spoken } = splitOpeningBeats(beats, 1);
+  assert.deepEqual(narration, [beats[0]], "beats before speakerFrom are scene-setting narration");
+  assert.deepEqual(spoken, [beats[1], beats[2]], "beats from speakerFrom are the VOICE's spoken lines (loadScene routes these to the VN box)");
+  // brackets are NOT the split: a partial/unclosed bracket still splits by INDEX
+  assert.deepEqual(splitOpeningBeats(["n", "[ multi ]\n\n[ block ]", "[ unclosed"], 1).spoken.length, 2, "index split, not bracket-based");
+  // The LIVE opening render passes ONLY the narration beats + null speaker, so the VOICE's
+  // words never render as narration-log prose / yellow .solo-voice-dialogue / a look-alike frame.
+  const log = renderSoloSceneOpening("", narration, null);
+  assert.doesNotMatch(log, /YOU ARE HEARD|RECLAIM WHAT WAS LEFT/, "the VOICE's words are NOT in the narration log");
+  assert.doesNotMatch(log, /solo-voice-dialogue/, "no yellow bracketed VOICE prose in the log");
+  assert.doesNotMatch(log, /solo-opening-vn|VOICE speaks/, "no VN look-alike frame — her words live in the real VN box (.solo-vn-box)");
+  assert.match(log, /The GM sets the scene/, "the scene-setting narration renders as GM narration");
 });
 
 test("REVEAL LAW: her art upgrades per-run to a revealed form on a committed event (mechanism)", () => {

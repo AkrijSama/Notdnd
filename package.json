@@ -15,6 +15,7 @@
     "check": "for f in $(rg --files -g '*.js' -g '*.mjs' src server tests scripts); do node --check \"$f\" || exit 1; done",
     "unit": "NOTDND_BOOTSTRAP_DEMO=true node --test tests/*.test.js",
     "verify": "npm run check && npm run unit",
+    "vn-guard": "node --no-warnings --experimental-websocket scripts/walk-harness/vn-opening-check.mjs",
     "smoke": "node scripts/smoke.mjs",
     "smoke:ai": "node scripts/smoke-ai.mjs",
     "e2e": "node scripts/e2e.mjs",
