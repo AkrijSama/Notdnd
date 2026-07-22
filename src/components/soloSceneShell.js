@@ -1227,6 +1227,9 @@ export const SOLO_SKINS = {
   // texture so run panels catch light like the lobby's. Grain retained. Mirrors :root
   // Variant 1 "Obsidian"; the :root[data-leather="polished"] variant previews on the
   // lobby — swap these values to the polished set to carry it into runs.
+  // DRIFT-LOCK: tests/obsidian-surface-unified.test.js asserts every color token below
+  // equals the styles.css :root Obsidian value (the --accent-2 overload aside), so the
+  // RUN surface can never silently drift off the lobby's Obsidian again.
   ashen: {
     "--bg": "#06070a", "--panel": "#0c0e13", "--card": "#0e1016", "--inset": "#060709",
     "--card-dim": "#0a0b10", "--tabbar": "#07080d", "--border": "#1d1f28", "--border-faint": "#161821",
