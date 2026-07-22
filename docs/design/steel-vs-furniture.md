@@ -191,6 +191,48 @@ choke-point + `art-path-wall`**) · `bestiary.js:112-135,241-246,323-355` (`rapt
 `LIMPING_GREY`, `CHAOS_VIOLET_MARKERS` → `babel.json bestiary.statBlocks` +
 `world.corruption`; the runtime-overlay path already exists at `bestiary.js:361-381`).
 
+#### MODERATE — routability audit (2026-07-21, the leaks pass)
+
+Each moderate item was traced end-to-end against the runtime data flow. **The finding:
+none of the object-shaped moderate migrations is independently landable — every one is
+gated on the loader whitelist (`scenarioLoader.js:233`) and/or the `WORLD_BOOK_SLOTS`
+registry (`worldBook.js`).** This is §0's GOVERNING FACT made concrete: `run.world` is the
+only runtime carrier, and it is whitelisted to seven **string** keys. `run.worldBook` and
+`run.scenario` **do not exist at runtime** (verified: the only mention is a dead
+`CONTRACT.md` note for `progressionMap`). So any object/array/new-string world field is
+DROPPED at load and never reaches the consumer.
+
+The regression gate cannot be met inside a single fenced commit: to keep Babel byte-identical
+the moved field must REACH Babel at runtime (needs the loader), and to close the leak the
+engine default must be neutral — but a neutral default that never receives world data drops
+Babel to nothing. The "additive local constant + ledger-for-merge" mechanism cannot square
+this: a Babel-carrying default still leaks to every world; a neutral default breaks Babel
+until the loader is widened. **These migrations are therefore CLI-2-gated, not deferrable-by-choice.**
+
+| Item | Target | Runtime carrier needed | Blocking fence | Exact unblock (CLI 2) |
+|---|---|---|---|---|
+| `gm/systemLore.js:12-28` | `world.systemLore` (object) | `run.world.systemLore` | loader whitelist is string-only | object copy at `scenarioLoader.js:233` + `WORLD_BOOK_SLOTS.systemLore` slot |
+| `actionNarration.js:575-585,622-625` | `world.opening.orientationBeats[]` / `world.startArea.register` (array/object) | `run.world.opening` / `run.startArea` | same | loader object-copy + two registry slots |
+| `babelStats.js:19-41` | `world.sheetSpec.stats[]` / `.statAliases` (object) | `run.world.sheetSpec` | same | loader object-copy + `sheetSpec` slot |
+| `progression.js:92,104-112` | `world.rankLadder` (array) + run `player.babelSkills`→`rankedSkills` | `run.world.rankLadder` + a run-field rename | loader (array) **and** a `run.player` schema rename across persistence | loader array-copy + `rankLadder` slot; the `rankedSkills` rename is its own schema+DB migration |
+| `imageWorker.js:725-741,800-836` | `world.playerOrigin.artFraming` (new field on the origin object) | `run.playerOrigin.artFraming` | the `playerOrigin` door (`scenarioLoader.js:251-263`) carries only ability-boost + named feat; a new field is dropped — **and this is the SEALED art choke-point (`art-path-wall`)** | widen the playerOrigin copy + a wall/drift-test-guarded art change (high-risk, own pass) |
+| `bestiary.js` `rapture_drifter`/`LIMPING_GREY` | `babel.json bestiary.statBlocks` (overlay door is OPEN) | already reachable via `registerStatBlock` (`scenarioLoader.js:146-149`) | **not the loader — the FROZEN-BLOCK test contract.** ~8 tests (`verdance-bestiary`, `missing-rungs`, `combat-narration`, `scene-hostile-injection`, `combat-battle-surface`, `combat-door`, `minted-block-pruning`, `combat-grey-depth`) call `resolveStatBlock("limping_grey"/"rapture_drifter")` directly with no scenario load; `minted-block-pruning` asserts frozen blocks are NEVER pruned | moving to the runtime overlay inverts the prune contract and breaks those tests — land only alongside a test-contract rework, not as a "moderate" |
+| `gmProvider.js:322` | prose → world data | — | **stale ledger reference: no file at `server/ai/gmProvider.js`** | re-locate the "Her kept-clear ground"/"the shimmer" strings before migrating |
+
+**Essence-vocabulary family (the 9-module span, JOB 2.3):** same wall. All vocabulary
+(`SIGHT_PHRASES`, `TRACE_BAND_META`/`TRACE_KIND_META` words, the "champion / essence /
+demon-essence" directive register) lives as module-level constants in `essence.js`; the
+**trace CONTENT** (sources, `handlerScent`, seeds) already flows from world data via
+`scenario.traceSeeds` → `run.essenceTraces`, but the **register layer** takes no world handle.
+Routing world vocabulary in would require either `run.world.*` (fenced loader) or threading a
+worldBook handle through all 10 consumers **plus** the client mirror (`soloSceneShell.js:1832`,
+bound to the server copy by the `em-dash-server-strings.test.js:71` `deepEqual` parity lock)
+plus rewriting `essence-sight`, the parity, and `nature-coherence` tests (which assert the exact
+Babel strings). Deferred as a coherent CLI-2-gated commit. **One in-family coherence bug was
+fixed in this pass without migration:** `buildEssenceTraceDirective` hardcoded the male pronoun
+"it is his sight alone" for every player of every world (misgenders non-male players even in
+Babel) → neutralized to "it is theirs alone" (register tests stay green; no world data needed).
+
 ### Deferred — RISKY / arguably generic law
 `essence.js` whole module (`SIGHT_PHRASES`, "the champion's sight", hardcoded male pronoun) —
 **9 consuming modules**; do as one vocabulary rename with the ~12 `ESSENCE-SIGHT` tag sites ·

@@ -515,7 +515,7 @@ export function buildEssenceTraceDirective(run) {
   return (
     " ESSENCE-SIGHT SIGHT-FACTS (committed world-state, the champion's unique trait; describe these, invent no others): " +
     `the WINDOW reads ${lines.join("; ")}. ` +
-    "PERCEPTION REGISTER: ONLY the champion perceives essence. No NPC can see, point at, smell, or discuss a trace as a visible thing; it is his sight alone. " +
+    "PERCEPTION REGISTER: ONLY the champion perceives essence. No NPC can see, point at, smell, or discuss a trace as a visible thing; it is theirs alone. " +
     "Describe ONLY the traces listed here; never invent a trail, residue, or scent the WINDOW does not show."
   );
 }
