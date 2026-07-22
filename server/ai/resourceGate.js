@@ -24,6 +24,7 @@
 import { execFileSync } from "node:child_process";
 import os from "node:os";
 import fs from "node:fs";
+import { maybeRecycleComfyBeforeCook } from "./comfyRecycle.js";
 
 const num = (v, d) => {
   const n = Number(v);
@@ -158,6 +159,13 @@ export async function withCookSlot(label, fn) {
       const cd = cookCooldownMs();
       if (since < cd) await sleep(cd - since);
     }
+    // COMFYUI RECYCLE (owner stamp 2026-07-22): BEFORE-EACH-COOK trigger. We are at the
+    // start of a SERIALIZED cook slot — no cook is in flight — so recycling a bloated
+    // ComfyUI here can never interrupt a job (comfyRecycle also refuses if /queue shows a
+    // running job). If RSS crossed the floor, the leashed restart runs now so the NEXT
+    // cook is a cold SUCCESS instead of a thrash-timeout. No-op on any box with no
+    // measurable ComfyUI unit. Runs before the resource assert so freed RAM is seen.
+    try { await maybeRecycleComfyBeforeCook(label); } catch (e) { /* recycle is best-effort; a cook must never fail because the recycle probe hiccuped */ void e; }
     assertCookResources(label);
     try {
       return await fn();

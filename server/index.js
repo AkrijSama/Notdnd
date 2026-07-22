@@ -134,6 +134,7 @@ import { interpretAttemptWithGm } from "./gm/attemptInterpreter.js";
 import { attributeSceneDialogue, resolveGmNarration } from "./solo/gmProvider.js";
 import { buildGmRuntimeStatus } from "./solo/gmSmoke.js";
 import { classifyImageFailure, enqueueDraftPortrait, enqueueImageJob, enqueueLocationImageJob, enqueuePlayerImageJob, enqueueVnBodyImageJob, enqueueEnemyBodyImageJob, getDraftPortrait, imageWorkerStatus, locationCanonFragment, parseIdentityEdit, pronounsToGender, writeUploadedBasePortrait } from "./solo/imageWorker.js";
+import { comfyRecycleStatus, startComfyRecycleMonitor } from "./ai/comfyRecycle.js";
 import { recordRequest, shouldLogRequest, lastAuthEvents } from "./logging/requestLog.js";
 import { enqueueIdentityJob, runIdentityJob, backfillNpcMannerisms, buildVoiceDirective } from "./solo/npcIdentity.js";
 import { buildDisagreementDirective, detectComplianceViolations } from "./gm/disagreementAudit.js";
@@ -1809,7 +1810,11 @@ async function handleApi(req, res) {
         served: getImageServe(),
         // Loud worker health: a dead/wedged image worker can no longer masquerade
         // as a cache issue (autopsy 2026-07-18).
-        worker: imageWorkerStatus()
+        worker: imageWorkerStatus(),
+        // ComfyUI recycle (owner stamp 2026-07-22): RSS floor, current RSS, and the
+        // recycle counters split by reason (rss_threshold vs unresponsive) + last
+        // downtime/RSS-after — so a recycle STORM is legible, not silent self-healing.
+        comfyRecycle: comfyRecycleStatus()
       },
       // Item 7: per-turn latency stage breakdown (interpreter/commit/gm/auditor/
       // renderReady) — last turn + a short ring of recent turns, so a slow outlier
@@ -4619,6 +4624,13 @@ server.listen(port, host, () => {
   // an EADDRINUSE loop (where only [DB] prints and the port never binds).
   // eslint-disable-next-line no-console
   console.log(`[SERVER] Inkborne listening on port ${port} — build ${b.sha}${b.dirty ? " (dirty)" : ""} @ ${b.startedAt}`);
+
+  // COMFYUI RECYCLE — IDLE MONITOR (owner stamp 2026-07-22, Job 2.3). Absorbs the
+  // cold-start BETWEEN sessions: when ComfyUI is idle (queue empty) and its cgroup RSS
+  // is over the floor, recycle now instead of in front of the next player. The
+  // before-each-cook trigger (resourceGate.withCookSlot) is the safety net; this shifts
+  // the recycle to idle when it can. No-op on any box with no measurable ComfyUI unit.
+  startComfyRecycleMonitor();
 
   // FRIDGE TASTER BRAIN (2026-07-21). Arms the real vision assessor ONLY when the
   // owner's config seat NOTDND_TASTER_MODEL names it AND an API key exists —
