@@ -63,7 +63,7 @@ export function combatActive(run) {
 // check vs DC 12 and no combat ever started. Engagement verbs are combat entry when
 // aimed at a hostile: you do not "face" a wolf socially. Kept in sync with
 // affordances.js by tests/combat-chip-route.test.js (the generator/detector pairing law).
-const ATTACK_ENTRY_RE =
+export const ATTACK_ENTRY_RE =
   /\b(attack|attacking|strike|striking|hit|hitting|fight|fighting|swing|swinging|slash|slashing|stab|stabbing|cut|cutting|cleave|thrust|lunge|lunging|punch|punching|kick|kicking|shove|shoving|smash|smashing|bash|bashing|slam|slamming|club|charge|charging|shoot|shooting|fire at|gun down|grapple|tackle|wrestle|maim|kill|killing|slay|slaying|behead|impale|skewer|gut|run through|assault|assaulting|take (?:him|her|them|it) (?:down|out)|draw .*(?:blade|sword|knife|gun|weapon))\b/i;
 
 // ENGAGEMENT verbs (WALK-3 V1). These are combat entry ONLY against a HOSTILE target:
@@ -71,7 +71,7 @@ const ATTACK_ENTRY_RE =
 // brawl. affordances.js emits `Face <hostile>.` as THE hostile chip — that string must
 // open the combat door (it previously fell through to a generic INT check vs DC 12 and
 // nothing happened). Against a non-hostile these stay on the honest attempt path.
-const ENGAGE_ENTRY_RE =
+export const ENGAGE_ENTRY_RE =
   /\b(face|facing|square up(?: to| against)?|engage|engaging|confront|confronting|challenge|challenging|duel)\b/i;
 const STOPWORD_TOKENS = new Set(["the", "a", "an", "of", "and", "reeve's", "reeves", "mr", "ms"]);
 

@@ -45,6 +45,7 @@ import {
 import { advanceQuests, capturePlayerObjective } from "./quests.js";
 import { advanceMomentum } from "./momentum.js";
 import { combatActive, detectAttackIntent, enterCombatFromAttackIntent, resolveCombatInput, getCombatActionMenu } from "./combat.js";
+import { detectAbsentTargetRefusal, buildAbsentTargetRefusalResult } from "./absentTarget.js";
 import { resolveEnemyAggression, tickAggressionClocks } from "./tactics.js";
 import { pruneRuntimeStatBlocks } from "../campaign/bestiary.js";
 import { advanceThreads, fireDueThreadBeatOnClock, resolveThreadLifecycle, enforceThreadDeadlines } from "./threads.js";
@@ -1246,6 +1247,23 @@ export function resolveSoloAction(run, action, options = {}) {
         }, options);
       }
       // Entry failed (unknown stat block / target vanished) — fall through.
+    }
+    // ABSENT-TARGET REFUSAL (Finding #2 — the phantom-hostile moat leak). Before the
+    // intent falls through to FREE NARRATION (which will manufacture whatever it names),
+    // refuse an intent that targets an AGENT the server never committed at this location:
+    // "attack the wolf" with no wolf present, "talk to / follow / steal from / give to /
+    // flee from / ambush" an absent person. Whole-class gate; conservative (fires only
+    // when no committed agent of the relevant kind is present — see absentTarget.js). The
+    // refusal is diegetic, commits NO state (run untouched), and still offers moves so the
+    // player is never stranded. Gated by !interrogative — a QUESTION about a wolf is not
+    // an attack on a phantom.
+    const absentRefusal = interrogative ? null : detectAbsentTargetRefusal(run, normalized.intent);
+    if (absentRefusal) {
+      return finalizeQuestProgress(
+        run,
+        buildAbsentTargetRefusalResult(run, normalized, absentRefusal, { getAvailableMoves, getAvailableSoloActions }),
+        options
+      );
     }
     // Deterministic test-hook injection (gated like the other test hooks): an
     // attempt may carry `testHook: { fixedRoll, providerOutput }` so the self-play
