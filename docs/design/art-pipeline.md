@@ -58,7 +58,7 @@ Checkpoints verified on disk: `/home/akrij/ComfyUI/models/checkpoints/{Illustrio
 
 Enforced by `assertSafeWindow()` + `runBatch()`:
 
-1. **ComfyUI launches with `--novram`** (proven safe on this card): `cd ~/ComfyUI && ./venv/bin/python main.py --listen --novram`.
+1. **ComfyUI launches via `scripts/comfyui-server.sh`** — the canonical launcher. It sets `--novram` (proven safe on this card) AND a cgroup memory leash (MemoryHigh=24G/MemoryMax=28G, env-tunable via `NOTDND_COMFY_MEM_*`) so a runaway cook is throttled/cgroup-OOM'd rather than taking the whole machine down (the 2026-07-21 kernel-confirmed OOM freeze: ComfyUI at ~50 GB anon-rss). A bare `python main.py` is un-leashed and must not be used. Verify the leash: `scripts/comfyui-server.sh 8188 --status`.
 2. **No batch while the play server served a turn in the last 10 min** (owner may be playing) — checked via `/api/debug/status` `turnTiming`. If recent: abort, "authorize batch window".
 3. **Free VRAM ≥ 1GB** before start and **between every chunk** (chunks ≤ 10, `nvidia-smi`). Abort if it drops below.
 4. **ComfyUI is stopped at the end of every batch** (`stopComfy()`, kill-by-port) — it never idles.

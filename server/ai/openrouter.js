@@ -3,6 +3,7 @@ import path from "node:path";
 import os from "node:os";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { recordGmServe } from "../runtimeStatus.js";
+import { gmLocalGpuStatus } from "./resourceGate.js";
 
 // OpenAI-compatible chat-completions endpoint. Defaults to OpenRouter but can
 // point at any compatible provider (Gemini AI Studio, Groq, etc.) via env.
@@ -389,6 +390,9 @@ function resolveLocalProvider() {
  *                           enabled; THROWS GM_LOCAL_FALLBACK_DISABLED otherwise.
  * This is the SINGLE lowest-level enforcement of the fallback gate: no path —
  * known or future — can obtain a fallback-local provider while it is disabled.
+ * (The VRAM-FLOOR half of the guard — refusing the 8b when the shared card can't
+ * hold it — is enforced at the two cloud->local LOAD sites below via
+ * gmLocalGpuStatus(), where the actual request that wakes ollama is issued.)
  * Forbidden Mode is a deliberate local model (not a fallback) and is never gated.
  * @param {string} edition
  * @param {{ fallback?: boolean }} [opts]
@@ -883,14 +887,21 @@ export async function requestViaCloudChain(messages, lanes, options = {}) {
   }
   // Every cloud lane failed/skipped -> LOCAL 8b as the LAST resort (never before).
   if (localFallbackEnabled() && !mockModeEnabled()) {
-    const local = resolveGmProvider("mainline", { fallback: true });
-    console.warn(`[GM] cloud chain EXHAUSTED; falling back to LOCAL ${local.baseUrl} (model ${local.model})`);
-    const t0 = Date.now();
-    try {
-      const res = await requestFn(messages, local.model, { ...laneOptions, provider: local, stream: false });
-      return { ...res, providerLabel: "local", latencyMs: Date.now() - t0 };
-    } catch (localError) {
-      console.warn(`[GM] cloud chain: LOCAL last-resort ALSO failed: ${String(localError?.message || localError).slice(0, 160)}`);
+    const gpuFloor = gmLocalGpuStatus();
+    if (!gpuFloor.ok) {
+      // The 8b shares the 8GB cook card; loading it onto a starving GPU is the
+      // 2026-07-08 freeze hazard. Refuse and degrade rather than blind-load. (Law-6)
+      console.warn(`[GM] cloud chain EXHAUSTED; LOCAL 8b fallback REFUSED — ${gpuFloor.reason}`);
+    } else {
+      const local = resolveGmProvider("mainline", { fallback: true });
+      console.warn(`[GM] cloud chain EXHAUSTED; falling back to LOCAL ${local.baseUrl} (model ${local.model})`);
+      const t0 = Date.now();
+      try {
+        const res = await requestFn(messages, local.model, { ...laneOptions, provider: local, stream: false });
+        return { ...res, providerLabel: "local", latencyMs: Date.now() - t0 };
+      } catch (localError) {
+        console.warn(`[GM] cloud chain: LOCAL last-resort ALSO failed: ${String(localError?.message || localError).slice(0, 160)}`);
+      }
     }
   }
   throw lastError || Object.assign(new Error("cloud chain: all providers failed"), { code: "CLOUD_CHAIN_EXHAUSTED", statusCode: 502 });
@@ -965,17 +976,23 @@ async function requestWithFallback(messages, preferredModel, options = {}) {
     // survives a quota wall or outage. Best-effort; surfaces the cloud cause if
     // local also fails. Skipped in mock mode so tests stay hermetic.
     if (localFallbackEnabled() && !mockModeEnabled()) {
-      const local = resolveGmProvider("mainline", { fallback: true });
-      console.warn(
-        `[GM] cloud GM call failed (${cloudError?.statusCode || cloudError?.code || "error"}); ` +
-          `falling back to LOCAL ${local.baseUrl} (model ${local.model})`
-      );
-      try {
-        const tl = Date.now();
-        const res = await requestOpenRouter(messages, local.model, { ...options, provider: local, stream: false });
-        return { ...res, providerLabel: "local", latencyMs: Date.now() - tl, local: true };
-      } catch (localError) {
-        console.warn(`[GM] LOCAL fallback also failed: ${String(localError?.message || localError).slice(0, 160)}`);
+      const gpuFloor = gmLocalGpuStatus();
+      if (!gpuFloor.ok) {
+        // Shared-card freeze guard (Law-6): never blind-load the 8b onto a starving GPU.
+        console.warn(`[GM] cloud GM call failed; LOCAL 8b fallback REFUSED — ${gpuFloor.reason}`);
+      } else {
+        const local = resolveGmProvider("mainline", { fallback: true });
+        console.warn(
+          `[GM] cloud GM call failed (${cloudError?.statusCode || cloudError?.code || "error"}); ` +
+            `falling back to LOCAL ${local.baseUrl} (model ${local.model})`
+        );
+        try {
+          const tl = Date.now();
+          const res = await requestOpenRouter(messages, local.model, { ...options, provider: local, stream: false });
+          return { ...res, providerLabel: "local", latencyMs: Date.now() - tl, local: true };
+        } catch (localError) {
+          console.warn(`[GM] LOCAL fallback also failed: ${String(localError?.message || localError).slice(0, 160)}`);
+        }
       }
     }
 

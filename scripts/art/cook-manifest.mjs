@@ -188,7 +188,7 @@ async function main() {
   }
 
   if (!(await comfyReachable())) {
-    throw new Error(`ComfyUI not reachable at ${COMFY} — launch it with --novram first.`);
+    throw new Error(`ComfyUI not reachable at ${COMFY} — launch it leashed first: scripts/comfyui-server.sh`);
   }
   await assertSafeWindow();
 

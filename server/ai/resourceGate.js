@@ -39,6 +39,15 @@ export const cookVramFloorMb = () => num(process.env.NOTDND_COOK_VRAM_FLOOR_MB, 
 export const cookRamFloorMb = () => num(process.env.NOTDND_COOK_RAM_FLOOR_MB, 6000);
 export const cookCooldownMs = () => num(process.env.NOTDND_COOK_COOLDOWN_MS, 4000);
 
+// The local 8b GM fallback (ollama inkborne-gm:8b) loads ~5.5 GB onto the SAME 8 GB
+// card ComfyUI cooks on. Dropping it onto a card whose VRAM is already committed to a
+// resident checkpoint is the 2026-07-08 freeze hazard, INDEPENDENT of the cook gate.
+// This floor — reusing the same nvidia-smi probe — refuses the load when the card
+// cannot hold it. Enforced at the two cloud->local load sites in openrouter.js (the
+// only paths that request against a fallback-local provider). Env-tunable; the default
+// is sized to the 8b's resident footprint plus a small working margin.
+export const gmLocalVramFloorMb = () => num(process.env.NOTDND_GM_LOCAL_VRAM_FLOOR_MB, 5500);
+
 // The whole gate can be disabled (a truly dedicated render box, or a test harness
 // that wants the old unguarded behaviour). Default ON.
 export function gateEnabled() {
@@ -164,6 +173,24 @@ export async function withCookSlot(label, fn) {
     () => undefined
   );
   return p;
+}
+
+// The GM-local-fallback floor verdict. `ok` = the card can hold the 8b right now.
+// Same principle as cookResourceStatus: an unmeasurable GPU (no nvidia-smi) never
+// blocks, and the whole gate honours NOTDND_COOK_RESOURCE_GATE=false for test/headless
+// boxes. Returns the measured numbers so the caller can log WHY it refused.
+export function gmLocalGpuStatus() {
+  if (!gateEnabled()) return { ok: true, reason: "", freeVramMb: null, floor: gmLocalVramFloorMb(), gpuMeasured: false, disabled: true };
+  const gpu = gpuMemoryMb();
+  const floor = gmLocalVramFloorMb();
+  const ok = !gpu.ok || gpu.free >= floor;
+  return {
+    ok,
+    reason: ok ? "" : `free VRAM ${gpu.free} MiB < GM-local floor ${floor} MiB (loading the 8b would thrash the shared card)`,
+    freeVramMb: gpu.free,
+    floor,
+    gpuMeasured: gpu.ok
+  };
 }
 
 // Human-readable one-liner for logs / reports.

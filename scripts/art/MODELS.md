@@ -54,7 +54,11 @@ experiments) and are not recovery-critical for art generation.
 
 ## Runtime notes (hard-won — do not relearn)
 
-- ComfyUI serves on **http://127.0.0.1:8188** (`~/ComfyUI`, `venv/bin/python main.py`).
+- ComfyUI serves on **http://127.0.0.1:8188**. Launch it via the canonical leashed
+  launcher — **`scripts/comfyui-server.sh`** — never a bare `venv/bin/python main.py`.
+  It sets `--novram` AND a cgroup memory leash (MemoryHigh=24G/MemoryMax=28G, env-tunable)
+  so a runaway cook is throttled/cgroup-OOM'd instead of taking the whole box down (the
+  2026-07-21 OOM freeze). `scripts/comfyui-server.sh 8188 --status` shows the leash.
 - **`--novram` is required on this 8 GB GPU** (RTX 4060) for the heavier stacks; the
   card has a 3-freeze history (see generate.mjs GPU-safety rules: batch aborts under
   1 GB free VRAM, ComfyUI never idles after a batch).

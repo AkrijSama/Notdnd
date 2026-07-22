@@ -170,7 +170,7 @@ async function main() {
     throw new Error(`proof-batch: expected 14 specs, built ${list.length}`);
   }
   if (!(await comfyReachable())) {
-    throw new Error(`proof-batch: ComfyUI not reachable at 127.0.0.1:8188. Launch it with --novram first:\n  cd ~/ComfyUI && ./venv/bin/python main.py --listen --novram`);
+    throw new Error(`proof-batch: ComfyUI not reachable at 127.0.0.1:8188. Launch it leashed first:\n  scripts/comfyui-server.sh 8188`);
   }
   const t0 = Date.now();
   const results = await runBatch(list, {
