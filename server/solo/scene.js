@@ -21,6 +21,7 @@ import {
 import { getQuestPayload } from "./quests.js";
 import { getRecentDevelopment } from "./momentum.js";
 import { individualReputation, factionTierForStanding } from "./reputation.js";
+import { resolveEntityForm, entityFormAssetSuffix } from "./entityForms.js";
 import { buildFallbackSuggestions, sceneSuggestionsKey } from "./suggestions.js";
 import { deriveAffordances } from "./affordances.js";
 import { displayLocationName, isLocationNameKnown } from "./locationNaming.js";
@@ -587,7 +588,15 @@ export function buildNpcIntroDirective(run) {
     if (isString(npc.introInstructions)) {
       return `- ${name} (${npc.role}): ${String(npc.introInstructions).trim()}${natureLine}`;
     }
-    const appearance = isString(npc.appearance) ? ` Appearance: ${npc.appearance.trim()}.` : "";
+    // FORM-SHIFTING ENTITY (moat, 1.5): the model DESCRIBES the committed form, never invents
+    // which form she is in. When the entity is in a committed form (server-owned, disposition-
+    // derived), feed THAT form's appearance — not the authored base — so the narration matches
+    // the rendered sprite (ball-of-light / elk / dragon / woman).
+    const activeForm = resolveEntityForm(run, npc);
+    const appearanceText = activeForm
+      ? activeForm.appearance
+      : (isString(npc.appearance) ? npc.appearance.trim() : "");
+    const appearance = appearanceText ? ` Appearance: ${appearanceText}.` : "";
     return (
       `- ${name} (${npc.role}): FIRST APPEARANCE — this character has never been narrated before. ` +
       `Introduce them with a concrete presence beat (where they are, what they are doing) before they speak or act;` +
@@ -1224,9 +1233,18 @@ export function resolveVnBodyUri(run, vnState) {
   }
   const speakerId = vnState.speakerId;
   const npcId = speakerId.includes(":") ? speakerId.split(":").slice(1).join(":") : speakerId;
+  const npc = run?.npcs?.[npcId] || null;
+  // FORM-SHIFTING ENTITY: serve the sprite for the COMMITTED form (server-owned, derived
+  // from disposition). The form-specific slot never collides with another form. A form-
+  // shifter does NOT fall back to the form-blind library — that could serve a stale wrong-
+  // form image (an elk where she is now a woman); its own slot is filled by the cook.
+  const form = resolveEntityForm(run, npc);
   const assets = isPlainObject(run?.imageAssets) ? run.imageAssets : {};
-  const asset = assets[`img_${npcId}_vnBody`];
+  const asset = assets[`img_${npcId}_vnBody${entityFormAssetSuffix(form)}`];
   const generated = asset && asset.status === "generated" && isString(asset.uri) ? asset.uri : null;
+  if (form) {
+    return generated;
+  }
   return generated || resolveNpcFaceFromLibrary(run, npcId, "fullbody");
 }
 

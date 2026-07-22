@@ -17,6 +17,7 @@ import {
 import { NPC_EXPRESSIONS } from "./schema.js";
 import { resolveStatBlock } from "../campaign/bestiary.js";
 import { entityNature } from "./entityNature.js";
+import { resolveEntityForm, nonHumanoidBodyArtDirection, entityFormAssetSuffix } from "./entityForms.js";
 
 // GAP 2 (art-live-recipes): live-generated images join the curated library.
 // Default rating matches the batch cook's auto-keep (rating "keep" + an
@@ -1156,38 +1157,55 @@ export async function runVnBodyImageJob(job = {}) {
   }
 
   const run = getSoloRun(runId);
-  // Generate-once / cache-forever: an existing full-body sprite is reused as-is.
-  const existing = run?.imageAssets?.[linked.vnBody] || null;
+  const npc = run?.npcs?.[npcId] || null;
+  // FORM-SHIFTING ENTITY: the server owns which FORM this entity is in this run (derived
+  // from committed disposition). Resolve it FIRST so the asset slot, the subject prompt, and
+  // the art direction are all form-specific. An ordinary NPC resolves to null and keeps the
+  // single-slot humanoid path unchanged.
+  const form = resolveEntityForm(run, npc);
+  const vnBodyKey = `${linked.vnBody}${entityFormAssetSuffix(form)}`;
+
+  // Generate-once / cache-forever: an existing sprite FOR THIS FORM is reused as-is.
+  const existing = run?.imageAssets?.[vnBodyKey] || null;
   if (existing && existing.status === "generated" && typeof existing.uri === "string" && existing.uri) {
     return { ok: true, vnBody: { slot: "vnBody", ok: true, uri: existing.uri, reused: true } };
   }
 
-  const npc = run?.npcs?.[npcId] || null;
   const style = job.style ? String(job.style).trim() : "";
   // Seed-locked to the bust so the full-body sprite reads as the same character.
   const seed = Number.isFinite(Number(npc?.identitySeed)) ? Number(npc.identitySeed) : null;
   const tone = run?.world?.tone || "dark fantasy";
-  const basePrompt = String(
-    job.basePrompt ||
-    npc?.portraitPrompt ||
-    `a ${npc?.role || npcId}, dark fantasy, detailed`
-  ).trim();
+  // SUBJECT: a form-shifter takes the ACTIVE FORM's appearance VERBATIM; an ordinary NPC
+  // keeps its committed portrait prompt.
+  const basePrompt = form
+    ? form.appearance
+    : String(
+        job.basePrompt ||
+        npc?.portraitPrompt ||
+        `a ${npc?.role || npcId}, dark fantasy, detailed`
+      ).trim();
 
   // FACE-REF FULLBODY: if the NPC has a committed bust portrait, hand it to the
   // provider as the IPAdapter face reference so the sprite reads as the same
   // character (the tailor path fires only when a validated tailor export exists
   // for the run's style — realistic; anime/dark-fantasy/sketch have no tailor, so
   // this degrades to a fresh txt2img standing sprite, never blocking).
-  const bustAsset = run?.imageAssets?.[linked.base] || null;
+  // A NON-HUMANOID form (orb/elk/dragon) has no face to match — it must NOT inherit the
+  // committed bust as a face reference; only a humanoid form / ordinary NPC does.
+  const bustAsset = form && !form.humanoid ? null : (run?.imageAssets?.[linked.base] || null);
   const faceRef = bustAsset && bustAsset.status === "generated" && typeof bustAsset.uri === "string" && bustAsset.uri
     ? bustAsset.uri
     : null;
-  const prompt = `${basePrompt}, ${vnBodyArtDirection(tone)}`;
+  // ART DIRECTION: a non-humanoid form SKIPS the humanoid scaffold (standing-character /
+  // detailed-face / wardrobe floor) — it would fight an orb or a beast; a humanoid form
+  // (woman) or an ordinary NPC uses vnBodyArtDirection as before (JOB 1.3).
+  const artDirection = form && !form.humanoid ? nonHumanoidBodyArtDirection(tone) : vnBodyArtDirection(tone);
+  const prompt = `${basePrompt}, ${artDirection}`;
   const vnBody = await generateSlot({
     runId,
     npcId,
     slot: "vnBody",
-    assetId: linked.vnBody,
+    assetId: vnBodyKey,
     prompt,
     style,
     kind: "fullbody",
@@ -1199,7 +1217,7 @@ export async function runVnBodyImageJob(job = {}) {
   // links it to the bust it was tailored from when a face ref was used.
   if (vnBody.ok && vnBody.bytes) {
     await intakeToLibrary({
-      id: `live_${runId}_${npcId}_vnBody`,
+      id: `live_${runId}_${npcId}_vnBody${entityFormAssetSuffix(form)}`,
       bytes: vnBody.bytes,
       kind: "fullbody",
       run,
@@ -1207,7 +1225,7 @@ export async function runVnBodyImageJob(job = {}) {
       promptUsed: prompt,
       workflow: vnBody.workflow,
       provider: vnBody.provider || null,
-      extraTags: ["pose:standing", ...(faceRef ? ["face-ref"] : [])]
+      extraTags: ["pose:standing", ...(form ? [`form:${form.id}`] : []), ...(faceRef ? ["face-ref"] : [])]
     });
   }
   return { ok: true, vnBody };
