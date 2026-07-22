@@ -2626,9 +2626,16 @@ async function handleApi(req, res) {
         // (same discipline as the VN block below) so no interleaving image-worker
         // write is clobbered; skipped entirely when nothing phantom was named.
         if (typeof gmNarration === "string" && gmNarration.trim()) {
+          // knownNames is the NON-agent stoplist for the phantom-person / invented-agent
+          // detectors. It MUST carry EVERY committed location name, not just the current
+          // one (roster-inflation finding #5): the narration at the Fringe names other
+          // committed places — "The Waking Mile", "The Green Static" — and with only the
+          // current location listed those bare place-names were detected as phantom PEOPLE
+          // and minted as named cast (npc_waking_mile_… → "Dru"). A place is never an agent;
+          // listing all committed location names keeps the observation from spawning ghosts.
           const knownNames = [
             responseRun.player?.displayName,
-            responseRun.locations?.[responseRun.currentLocationId]?.name,
+            ...Object.values(responseRun.locations || {}).map((loc) => loc?.name),
             ...Object.values(responseRun.npcs || {}).map((npc) => npc?.displayName)
           ].filter(Boolean);
           const freshForNpc = getSoloRun(responseRun.runId);
