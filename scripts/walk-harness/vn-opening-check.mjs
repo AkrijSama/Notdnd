@@ -7,6 +7,11 @@
 // from the lobby and asserts, at the DOM level, that on the authored opening:
 //   (1) the VOICE's first speech renders through the real VN box (.solo-vn-box), AND
 //   (2) it does NOT appear as narration-log text (.solo-voice-dialogue / a look-alike frame).
+// VN-PRESENTATION extension: also asserts the owner's TWO-BOXES law at the DOM level — no
+// spoken VOICE line leaks into the narration log (JOB 3), the narration box is present during
+// the VN beat (JOB 1), and the sprite is staged on the RIGHT when present (JOB 1.2). The
+// non-speaker dimming + player-LEFT sprite (JOB 1.3/1.2) are UNBUILT — no player fullbody
+// exists — and are reported as NOTEs, never faked green.
 //
 // Run:  node --experimental-websocket scripts/walk-harness/vn-opening-check.mjs
 //       (needs a running play-server on :4173 and google-chrome; it mints its own guest run)
@@ -92,6 +97,31 @@ async function inspectDom(tok) {
         yellowVoiceSpansInLog: log ? log.querySelectorAll('.solo-voice-dialogue').length : -1,
         lookalikeFramesInLog: log ? log.querySelectorAll('.solo-opening-vn').length : -1,
         spritePresent: !!(sprite && sprite.naturalWidth > 0),
+        // NARRATION BOX (owner law): the narration log is ALWAYS present during a VN beat —
+        // it is never replaced or hidden by the dialogue surface.
+        narrationLogPresent: !!log,
+        // SPRITE PLACEMENT (owner law: the speaking NPC stands on the RIGHT). When a sprite is
+        // present, its horizontal centre must sit right-of-stage-centre. null when absent.
+        spriteSide: (() => {
+          const sp = document.querySelector('.solo-vn-sprite');
+          const st = document.querySelector('.solo-stage');
+          if (!sp || !st) return null;
+          const a = sp.getBoundingClientRect(), b = st.getBoundingClientRect();
+          return (a.left + a.right) / 2 >= (b.left + b.right) / 2 ? 'right' : 'left';
+        })(),
+        // SPRITE↔HUD overlap (owner JOB 1.5): reported, not enforced — the large-sprite-vs-HUD
+        // coexistence is an unresolved owner STOP (the sprite currently overlaps the top-right
+        // HUD row; making it "large" per 1.4 deepens the overlap). Surfaces the intersection so
+        // a regression that grows it is visible in the guard log.
+        hudSpriteOverlap: (() => {
+          const sp = document.querySelector('.solo-vn-sprite');
+          const hud = document.querySelector('.solo-stage-hud');
+          if (!sp || !hud) return null;
+          const a = sp.getBoundingClientRect(), h = hud.getBoundingClientRect();
+          const ix = Math.max(0, Math.min(a.right, h.right) - Math.max(a.left, h.left));
+          const iy = Math.max(0, Math.min(a.bottom, h.bottom) - Math.max(a.top, h.top));
+          return Math.round(ix) + 'x' + Math.round(iy) + 'px';
+        })(),
         vnTextBottom: bottom(vnTextEl),
         logBottom: bottom(log),
         scenePaintedW, sceneContainerW,
@@ -116,6 +146,15 @@ async function inspectDom(tok) {
     ["VOICE's words are NOT in the narration log", dom.logHasVoiceWords === false],
     ["no yellow .solo-voice-dialogue prose in the log", dom.yellowVoiceSpansInLog === 0],
     ["no VN look-alike frame in the log", dom.lookalikeFramesInLog === 0],
+    // OWNER LAW (JOB 3): dialogue lives ONLY in the VN box, narration ONLY in the log. This is
+    // the durable guard on logNarration's opening-beat split — a spoken VOICE line must never
+    // re-file into the narration channel again (the exact regression this dispatch fixed).
+    ["no spoken VOICE line leaks into the narration log (JOB 3)", dom.logHasVoiceWords === false],
+    // OWNER LAW (JOB 1): the narration box is ALWAYS present during a VN beat, never hidden.
+    ["narration box is present during the VN beat (never hidden)", dom.narrationLogPresent === true],
+    // OWNER LAW (JOB 1.2): the speaking NPC stands on the RIGHT. Assert-when-present (the sprite
+    // is library/quota-gated on a guest run, so a spriteless run reports rather than fails).
+    [`VN sprite is staged on the RIGHT when present (side=${dom.spriteSide})`, dom.spriteSide == null || dom.spriteSide === 'right'],
     // JOB 4.2a — LAYOUT: the VN dialogue text and the narration must both stay ON screen. The
     // ~600px VN sprite once pushed them off the bottom (JOB 3). Only meaningful with the sprite
     // present (the overflow condition) — reported below so a spriteless run isn't a silent pass.
@@ -128,7 +167,9 @@ async function inspectDom(tok) {
   ];
   console.log(`=== VN OPENING GUARD (DOM-level, real browser @ ${dom.viewportW}x${dom.viewportH}) ===`);
   for (const [label, ok] of checks) console.log(`  ${ok ? "PASS" : "FAIL"}  ${label}`);
-  console.log(`  NOTE  VN sprite present this run: ${dom.spritePresent} (layout checks are only a real guard when true)`);
+  console.log(`  NOTE  VN sprite present this run: ${dom.spritePresent} (side/layout checks are only a real guard when true)`);
+  console.log(`  NOTE  sprite↔HUD overlap: ${dom.hudSpriteOverlap == null ? "no sprite this run" : dom.hudSpriteOverlap + " — reported not enforced (JOB 1.4/1.5 large-sprite-vs-HUD STOP, owner call)"}`);
+  console.log(`  NOTE  non-speaker DIMMING + player-LEFT sprite are UNBUILT (JOB 1.2/1.3): no player fullbody asset exists and there is no player-speaking VN beat, so only one (NPC) sprite ever renders — nothing to dim, no left slot to stage. Not asserted (would be a fake green).`);
   console.log(`  NOTE  scene image span: ${dom.sceneSpanRatio == null ? "image not cooked yet this run" : dom.sceneSpanRatio + "% of container width (" + dom.scenePaintedW + "/" + dom.sceneContainerW + "px) — JOB 2 conflict, reported not enforced"}`);
   const failed = checks.filter(([, ok]) => !ok);
   if (failed.length) { console.log(`\nFAIL — ${failed.length} check(s) failed. DOM: ${JSON.stringify(dom)}`); process.exit(1); }

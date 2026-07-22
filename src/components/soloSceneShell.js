@@ -5649,11 +5649,24 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
   function logNarration() {
     const scene = state.scene || {};
     const gmBody = String(scene.gmNarration?.narration?.body || "").trim();
+    // JOB 3.1 (owner law: dialogue lives ONLY in the VN box, never the narration log).
+    // On a VN opening the committed speaker's SPOKEN beats ride openingBeats and are
+    // diverted to the real VN box by loadScene (the beatsSpeakerFrom split). Folding ALL
+    // beats into the log here re-filed her spoken words as narration — the exact rule
+    // violation. Log only the SCENE-SETTING narration beats (beats[0..speakerFrom)); the
+    // spoken beats go to the VN box alone. The split mirrors loadScene's synthesize path
+    // EXACTLY (same splitOpeningBeats call), so conservation is total: narration→log,
+    // spoken→VN, never both, never dropped. A non-VN opening (no speaker) keeps ALL beats
+    // as narration, unchanged.
+    const openingIsVnSpeaker = scene.vnMode === true && typeof scene.speakerId === "string" && scene.speakerId.trim();
     const opening =
       typeof scene.openingNarration === "string" && scene.openingNarration.trim()
         ? scene.openingNarration.trim()
         : Array.isArray(scene.openingBeats)
-          ? scene.openingBeats.filter(Boolean).join("\n\n")
+          ? (openingIsVnSpeaker
+              ? splitOpeningBeats(scene.openingBeats, scene.openingBeatsSpeakerFrom).narration
+              : scene.openingBeats
+            ).filter(Boolean).join("\n\n")
           : "";
     const isFirst = state.narrationLog.length === 0;
     let text = gmBody || (isFirst ? opening : "") || String(scene.location?.description || "").trim();
