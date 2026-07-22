@@ -173,7 +173,11 @@ test("V4: the redo tip rotates and teaches positive phrasing", () => {
   const second = renderRedoHint(1);
   assert.notEqual(first, second, "the hint must rotate as they keep rerolling");
   const all = REDO_HINTS.join(" ");
-  assert.match(all, /chest-up/i);
+  // The "chest-up, torso in frame" cropped-shoulders tip was REMOVED: that framing now lives
+  // in the recipe (imageWorker PLAYER_SINGLE_SUBJECT), verified over 6 cooks (shoulders frame
+  // correctly with no player-typed words), and "torso in frame" was actively inviting JANKU's
+  // bare-torso default. A pipeline must frame correctly without the player knowing magic words.
+  assert.doesNotMatch(all, /chest-up/i, "the cropped-shoulders tip is gone — the recipe frames chest-up now");
   assert.match(all, /grounded/i);
   // The core lesson: describe what you want, don't write "no X".
   assert.match(all, /can backfire/i);

@@ -378,7 +378,11 @@ function renderAuthoredReview(c, portrait = {}, scenarioId = "") {
 // is a double negative that produces armless portraits. Kept in lockstep with
 // server/solo/portraitPreferences.js AVOID_VOCABULARY.
 export const REDO_HINTS = [
-  "Getting cropped shoulders? Add “chest-up, torso in frame” to Appearance.",
+  // (removed) "Getting cropped shoulders? Add 'chest-up, torso in frame'…" — that framing
+  // now lives in the RECIPE (imageWorker PLAYER_SINGLE_SUBJECT "chest-up, shoulders and
+  // upper torso fully in frame"), verified over 6 cooks: shoulders frame correctly with NO
+  // player-typed words. The tip also actively caused harm — "torso in frame" invited JANKU's
+  // bare-torso default. A pipeline must frame correctly without the player knowing magic words.
   "Head looks like it's floating? Add “grounded, neck and shoulders connected” to Appearance.",
   "Arms missing or cut off? Add “both arms visible” to Appearance, not “no arms” to Avoid.",
   "Tip: describe what you WANT in Appearance. “no X” in Avoid can backfire and give you X.",

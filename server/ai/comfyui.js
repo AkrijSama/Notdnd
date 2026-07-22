@@ -322,8 +322,25 @@ const ANIME_BLOCK_FALLBACK = Object.freeze({
 // so they are dialled back to ~1.25 (live-proof tuned 2026-07-18).
 const PORTRAIT_NEGATIVE_LAW =
   "(character reference sheet:1.25), (model sheet:1.25), (multiple views:1.25), multiple angles, turnaround, (multiple heads:1.2), two heads, grid, split panel, contact sheet, extra heads, duplicate character, cropped head, sketch, rough sketch, unfinished, lineart only, monochrome, greyscale";
-// AGE LAW (negation half): keep the young default off adult subjects.
-const AGE_NEGATIVE_LAW = "child, kid, teenager, teen, young, youthful, baby face, chibi";
+// AGE LAW (negation half). TWO bounds, not one. The MINOR FLOOR is non-negotiable (never
+// a child). The ELDERLY CEILING is the new half: JANKU's checkpoint bias drifts a DEFAULT
+// adult OLD (the owner's grey-haired wrinkled shirtless man; 3/4 repro cooks read 40s–
+// elderly), so the ceiling holds the face young — but it is DROPPED when the subject
+// DECLARES an older age (imageWorker emits "older adult, aged features, weathered"), so a
+// player who asks for elderly still gets it. CRUCIAL: "young/youthful" are NO LONGER banned
+// — the adult positive anchor is literally "youthful adult, smooth unlined skin", and
+// negating those exact tokens cancelled the anchor and left age UNBOUNDED both ways (a teen
+// appeared too). The floor + a conditional ceiling replace the old single, self-defeating law.
+const AGE_MINOR_FLOOR = "child, kid, teenager, teen, baby face, chibi, shota, loli";
+const AGE_ELDERLY_CEILING =
+  "(elderly:1.3), (old man:1.3), (old woman:1.3), (aged:1.2), (wrinkled:1.2), wrinkles, deep wrinkles, forehead creases, crow's feet, liver spots, sagging skin, gaunt face, sunken cheeks, grey-haired old man, white-haired old man, elderly features, balding, receding hairline, middle-aged";
+function ageNegativeFor(positive) {
+  const p = String(positive || "").toLowerCase();
+  // A DECLARED elderly/older subject keeps its age (imageWorker's eld/old anchor emits
+  // these very words) — never ban what the sheet commanded.
+  const declaredOld = /\b(elderly|older adult|aged features|weathered)\b/.test(p);
+  return declaredOld ? AGE_MINOR_FLOOR : joinCsv([AGE_MINOR_FLOOR, AGE_ELDERLY_CEILING]);
+}
 
 // ── LANE-INVARIANT IDENTITY LAW (owner ruling 2026-07-20) ────────────────────
 // A declared HUMAN character must carry the same identity protection in EVERY style
@@ -366,20 +383,53 @@ const PORTRAIT_STYLE_COLLAPSE_NEGATIVE =
 // So when a human character portrait carries NO committed wardrobe, the seal injects a
 // specific default garment; committed gear (armor/coat/robe/…) OVERRIDES and suppresses
 // the default. Replaces the weak generic "fully clothed" token.
-const DEFAULT_GARMENT = "wearing a plain dark shirt";
+// WARDROBE FLOOR garment: WEIGHTED so it holds against JANKU's bare-chest default (a
+// SPECIFIC garment beats the negative — owner kitchen lesson). 1.2 sits below the gender
+// anchor (1.3) and inside the safe object-suppression band (never weight STYLE tokens).
+const DEFAULT_GARMENT = "(wearing a plain dark shirt:1.2), clothed, covered chest and shoulders";
+// A COMMITTED garment = a SPECIFIC named item. GENERIC words (clothing, clothes, attire,
+// outfit, wearing, clad, garb, dressed) are DELIBERATELY EXCLUDED: the isekai default clause
+// says "casual clothing, present-day outfit" — a generic phrase that (a) IS the weak token
+// that loses to JANKU's bare-chest default, and (b) was TRIPPING this detector, suppressing
+// the specific garment floor that would actually hold. That was the undress root cause. Now
+// only a specific worn item counts as committed, so the floor fires for the isekai/default
+// subject while real committed gear (a red coat, plate armour) still stands alone.
 const COMMITTED_WARDROBE_RE =
-  /\b(shirt|coat|jacket|vest|tunic|robe|cloak|dress|gown|armou?r|breastplate|cuirass|chainmail|plate|leather|uniform|clothes|clothing|attire|wearing|clad|garb|hood|hooded|scarf|shawl|blouse|doublet|surcoat|tabard|kimono|habit|cassock|apron|overcoat)\b/i;
-// The specific default garment for a human character portrait with no committed wardrobe,
-// or "" (scene/item subject, a committed non-human, or committed gear already present).
-// Human-gated by the SAME predicate as characterVocab (elfDefenseFor fires only for a
-// human/person subject), so a beast NPC never gets dressed.
+  /\b(shirt|t-shirt|coat|overcoat|jacket|blazer|vest|waistcoat|tunic|robe|cloak|cape|dress|gown|armou?r|breastplate|cuirass|chainmail|plate|leather\s+armou?r|uniform|hood|hooded|scarf|shawl|blouse|doublet|surcoat|tabard|kimono|habit|cassock|apron|sweater|hoodie|jumper|cardigan|suit|jeans|trousers|slacks)\b/i;
+// A DRESSABLE / humanoid PERSON — human, elf, tiefling, dragonborn, any humanoid race — but
+// NOT a four-legged beast/animal (a wolf NPC keeps its natural coat). Gates BOTH the wardrobe
+// floor and the undress backstop, so an ELF player is clothed too: the old elfDefenseFor-only
+// gate SKIPPED elves (elfDefenseFor returns "" on pointed ears) and left them bare-chested.
+const BEAST_SUBJECT_RE =
+  /\b(wolf|hound|feline|canine|lupine|equine|quadruped|four-legged|paws|snout|muzzle|fur-covered|animal companion|boar|bear|stag|deer|fox|horse|hawk|owl|serpent)\b/i;
+function isHumanoidPersonSubject(positive) {
+  const p = String(positive || "");
+  if (!isCharacterSubject(p)) return false;
+  if (BEAST_SUBJECT_RE.test(p)) return false;
+  return true;
+}
 function wardrobeGarmentFor(positive) {
   const p = String(positive || "");
-  if (!isCharacterSubject(p)) return "";
-  if (!elfDefenseFor(p)) return "";
+  if (!isHumanoidPersonSubject(p)) return "";
   if (COMMITTED_WARDROBE_RE.test(p)) return "";
   return DEFAULT_GARMENT;
 }
+// UNDRESS BAN (safety, non-negotiable, LANE-INVARIANT). The wardrobe floor (a specific worn
+// garment in the POSITIVE) does the heavy lifting; this WEIGHTED negative is the backstop,
+// and unlike the old anime-only "shirtless, bare chest, topless" it now (a) rides EVERY lane
+// — realistic / dark-fantasy / sketch previously had NO undress ban at all — and (b) names
+// the terms JANKU actually drifted to (nude / naked / bare torso / nipples / exposed chest).
+const UNDRESS_NEGATIVE =
+  "(shirtless:1.4), (bare chest:1.4), (topless:1.4), (nude:1.4), (naked:1.4), (bare torso:1.3), exposed chest, exposed torso, undressed, unclothed, partially nude, nipples, cleavage, underwear only, lingerie";
+function undressNegativeFor(positive) {
+  return isHumanoidPersonSubject(positive) ? UNDRESS_NEGATIVE : "";
+}
+// FRAMING INTEGRITY (repro finding): JANKU renders the "isekai protagonist" cue as a LIGHT-
+// NOVEL COVER — a bust floating inside a trading-card / poster frame with a garbled title
+// caption (3/4 repro cooks: "ISEKAI FOR'ONGHO" on an ornate card). A portrait is one figure
+// filling the frame, not a framed print. Character-portrait gated, applied lane-invariantly.
+const PORTRAIT_FRAMING_INTEGRITY_NEGATIVE =
+  "trading card, card frame, card border, tarot card, ornate frame, decorative border, framed print, framed portrait, poster, poster border, paper texture, torn paper, drop shadow, title text, name plate, caption, label text, banner text, cover art, book cover, magazine cover";
 
 let _animeBlock = null;
 function animeBlock() {
@@ -478,7 +528,7 @@ export function sealPortraitPrompt(styleKey, positive, presetNegative) {
   const garment = wardrobeGarmentFor(pos0);
   if (styleKey !== "anime") {
     const charLaws = isChar
-      ? joinCsv([PORTRAIT_NEGATIVE_LAW, AGE_NEGATIVE_LAW, PORTRAIT_STYLE_COLLAPSE_NEGATIVE])
+      ? joinCsv([PORTRAIT_NEGATIVE_LAW, ageNegativeFor(pos0), PORTRAIT_STYLE_COLLAPSE_NEGATIVE, PORTRAIT_FRAMING_INTEGRITY_NEGATIVE, undressNegativeFor(pos0)])
       : "";
     const positiveOut = garment ? joinCsv([pos0, garment]) : pos0;
     return { positive: positiveOut, negative: joinCsv([presetNegative, charLaws, monsterBan, elf, genderLock, sceneGuard]) };
@@ -522,8 +572,10 @@ export function sealPortraitPrompt(styleKey, positive, presetNegative) {
   const negativeOut = joinCsv([
     block.negativeBase,
     isChar ? PORTRAIT_NEGATIVE_LAW : "",
-    isChar ? AGE_NEGATIVE_LAW : "",
+    isChar ? ageNegativeFor(pos0) : "",
+    isChar ? PORTRAIT_FRAMING_INTEGRITY_NEGATIVE : "",
     isHuman ? block.humanNegative : "",
+    undressNegativeFor(pos0),
     monsterBan,
     elf,
     genderLock,
