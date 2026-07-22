@@ -12,19 +12,26 @@
      charcoal, dark leather); the accent is SILVER, not gold/brown/blue. Legacy
      var NAMES (--gold-foil, --gold-edge, --accent-border) are kept so no consumer
      breaks; their VALUES are now silver. */
-  --bg: #050506;
-  --panel: #0d0d10;
-  --panel-alt: #17171b;
-  --surface: #0a0a0d;
-  --surface-strong: #1a1a1f;
-  --input-bg: #060607;
-  --ink: #d9dbe0;           /* silvered vellum — reads on black */
+  /* OBSIDIAN (owner correction: not warm-brown, not neutral gray — VOLCANIC GLASS). The
+     app surface IS the Tower of Babel's material. Near-black with a COOL blue-black
+     undertone (B>R, no brown/sepia); the "not gray" read comes from SHEEN + GLASS DEPTH
+     (the specular sheen at --glass-sheen + a crisp --emboss top edge + layered gradients),
+     not from color warmth. Grain is retained (--leather-grain). Never pure #000 — it kills
+     the sheen and flattens panel edges. Variant 1 "Obsidian" is the default; Variant 2
+     "Polished" (stronger sheen/depth) is :root[data-leather="polished"] below. */
+  --bg: #06070a;
+  --panel: #0c0e13;
+  --panel-alt: #15171f;
+  --surface: #08090e;
+  --surface-strong: #181a23;
+  --input-bg: #050609;
+  --ink: #d9dbe0;           /* silvered vellum — reads on obsidian black */
   --muted: #8b8e96;
-  --accent: #c2c6cf;        /* SILVER — the accent against black leather */
-  --accent-2: #9498a1;      /* cool steel — legacy GM surfaces (was warm red) */
+  --accent: #c2c6cf;        /* SILVER — the accent against obsidian glass */
+  --accent-2: #9498a1;      /* cool steel — legacy GM surfaces */
   --accent-3: #71757e;
-  --line: #262629;          /* charcoal seam */
-  --line-strong: #3a3a40;
+  --line: #24262f;          /* cool obsidian seam */
+  --line-strong: #373b47;
   --good: #86b06a;
   --warn: #c9b083;          /* pale pewter-amber (desaturated, not gold) */
   --pill-good-bg: rgba(134, 176, 106, 0.16);
@@ -37,16 +44,16 @@
      home/onboarding surfaces override these via soloThemeVarString on a themed
      root. Defining them HERE means they are never phantom: any surface resolves
      a real value with or without a skin applied. Fonts default to "Tome". */
-  --card: #101013;
-  --inset: #070708;
+  --card: #0e1016;
+  --inset: #060709;
   --text: #d9dbe0;
   --text-bright: #f1f2f5;
   --text-2: #b0b3bb;
   --text-muted: #8b8e96;
-  --border: #202024;
-  --border-strong: #34343b;
+  --border: #1d1f28;
+  --border-strong: #31343f;
   --on-accent: #0a0a0b;     /* black ink on silver foil */
-  --accent-border: #4c4d54; /* steel-tooled edge under foil controls */
+  --accent-border: #464a57; /* steel-tooled edge under foil controls */
   /* Lighter silver highlight (the skins' --accent-2). Separate name so it never
      collides with :root --accent-2 (a cool steel used by legacy GM surfaces). */
   --accent-bright: #e7e9ee; /* bright silver — the foil edge / highlight */
@@ -54,12 +61,17 @@
   --font-body: 'Spectral', Georgia, 'Times New Roman', serif;
 
   /* ---- Depth & material system (CSS only — no binary assets) ----
-     Reused everywhere so the UI reads as layered black leather, not flat panels. */
-  --oxblood: #0a0a0d;       /* near-black depth shadow */
+     Reused everywhere so the UI reads as layered OBSIDIAN GLASS, not flat panels. */
+  --oxblood: #08090e;       /* obsidian near-black depth shadow */
   /* Hot-foil gradient for stamped display type (background-clip: text) — SILVER. */
   --gold-foil: linear-gradient(176deg, #f4f5f8 0%, #d2d5dc 36%, #a9adb6 64%, #71757e 100%);
   --gold-edge: rgba(214, 217, 224, 0.16);   /* hairline silver rule on key surfaces */
-  --emboss: inset 0 1px 0 rgba(214, 217, 224, 0.08), inset 0 -14px 30px rgba(0, 0, 0, 0.5);
+  /* OBSIDIAN GLASS SHEEN: a diagonal specular highlight a panel can layer on top of its
+     grain+gradient so the surface catches light like polished volcanic glass (the "not
+     gray" read). Cool white, low alpha — a glancing reflection, not a gloss bar. */
+  --glass-sheen: linear-gradient(133deg, rgba(226, 232, 240, 0.07) 0%, rgba(226, 232, 240, 0.02) 16%, transparent 42%, transparent 100%);
+  /* Crisper top edge-light (glass rim) + the base inner shadow. */
+  --emboss: inset 0 1px 0 rgba(214, 217, 224, 0.11), inset 0 -14px 30px rgba(0, 0, 0, 0.5);
   --deboss: inset 0 2px 5px rgba(0, 0, 0, 0.78), inset 0 -1px 0 rgba(214, 217, 224, 0.06);
   --elev-1: 0 8px 22px rgba(0, 0, 0, 0.5);
   --elev-2: 0 18px 44px rgba(0, 0, 0, 0.6);
@@ -80,14 +92,49 @@ body {
   font-family: "Space Grotesk", sans-serif;
   color: var(--ink);
   min-height: 100vh;
-  /* Black leather with a faint SILVER sheen at the spine (top), a cool charcoal
-     pooling toward the bottom corner, and a vignette so attention settles inward.
-     Reads as a closed black tome's cover, genre-neutral. No gold, no brown. */
+  /* OBSIDIAN PANE — a cool near-black glass with a glancing specular sheen at the top-left
+     (light raking across polished volcanic glass), a cool depth pooling at the bottom, and
+     a vignette so attention settles inward. Blue-black, no brown; the sheen is what keeps
+     it from reading as flat gray. */
   background:
     var(--vignette),
-    radial-gradient(125% 80% at 50% -12%, rgba(214, 217, 224, 0.05), transparent 56%),
-    radial-gradient(110% 80% at 82% 116%, rgba(18, 18, 22, 0.6), transparent 62%),
-    linear-gradient(162deg, #080809 0%, #0d0d10 54%, #060607 100%);
+    radial-gradient(120% 70% at 34% -14%, rgba(210, 224, 240, 0.06), transparent 52%),
+    radial-gradient(110% 80% at 82% 116%, rgba(16, 20, 30, 0.6), transparent 62%),
+    linear-gradient(162deg, #070811 0%, #0c0e15 52%, #05060a 100%);
+  background-attachment: fixed;
+}
+
+/* ── VARIANT 2 "Polished" (owner pick, JOB 5) — deeper base + a STRONGER glass sheen than
+   the default Obsidian, so it reads as highly-polished volcanic glass (more specular
+   reflection, more depth) rather than the softer matte-obsidian default. Same COOL
+   blue-black hue — the difference is SHEEN/DEPTH, not warmth. Toggle at runtime with
+   document.documentElement.dataset.leather = 'polished' (remove / set to '' for the
+   Obsidian default). One flip re-skins the whole app via the tokens; grain is retained. */
+:root[data-leather="polished"] {
+  --bg: #05060b;
+  --panel: #0a0c12;
+  --panel-alt: #14161f;
+  --surface: #06070d;
+  --surface-strong: #171922;
+  --input-bg: #040509;
+  --card: #0c0e15;
+  --inset: #050609;
+  --oxblood: #06070d;
+  --line: #23262f;
+  --line-strong: #383c49;
+  --border: #1b1d27;
+  --border-strong: #31343f;
+  --accent-border: #474b59;
+  /* Brighter rim-light + a stronger glancing reflection = glossier glass. */
+  --emboss: inset 0 1px 0 rgba(214, 217, 224, 0.16), inset 0 -14px 30px rgba(0, 0, 0, 0.55);
+  --glass-sheen: linear-gradient(133deg, rgba(226, 232, 240, 0.11) 0%, rgba(226, 232, 240, 0.03) 18%, transparent 46%, transparent 100%);
+}
+:root[data-leather="polished"] body {
+  background:
+    var(--vignette),
+    radial-gradient(118% 68% at 32% -16%, rgba(214, 228, 244, 0.09), transparent 50%),
+    radial-gradient(110% 80% at 82% 116%, rgba(14, 18, 28, 0.62), transparent 62%),
+    linear-gradient(162deg, #06070f 0%, #0a0c13 52%, #040509 100%);
   background-attachment: fixed;
 }
 
@@ -234,9 +281,9 @@ button.alt:hover {
   /* Raised leather header band: cordovan with grain, a hairline gold edge, and
      a debossed lower rule (the gilt line across a book's spine). */
   background:
-    var(--leather-grain),
+    var(--glass-sheen), var(--leather-grain),
     linear-gradient(180deg, var(--panel-alt, #1e1714), var(--panel, #17120f));
-  background-size: 160px 160px, auto;
+  background-size: auto, 160px 160px, auto;
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   padding: 14px 18px;
@@ -400,9 +447,9 @@ button.alt:hover {
 .panel {
   position: relative;
   background:
-    var(--leather-grain),
+    var(--glass-sheen), var(--leather-grain),
     linear-gradient(168deg, var(--panel-alt, #1e1714), var(--panel, #17120f));
-  background-size: 160px 160px, auto;
+  background-size: auto, 160px 160px, auto;
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   box-shadow:
@@ -949,7 +996,7 @@ button.alt:hover {
   padding: 14px 16px;
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
-  background: rgba(34, 26, 19, 0.94);
+  background: var(--panel-alt, #15171f);
   box-shadow: var(--shadow);
 }
 
@@ -4849,10 +4896,10 @@ button:disabled {
     /* Composed leather: grain + faint gilt head-sheen + a debossed well, matching
        the primary tome but quieter so it reads as reserved, framed space. */
     background:
-      var(--leather-grain),
+      var(--glass-sheen), var(--leather-grain),
       radial-gradient(130% 80% at 50% -20%, rgba(214, 217, 224, 0.06), transparent 60%),
       linear-gradient(168deg, rgba(30, 23, 20, 0.55), rgba(10, 7, 6, 0.55));
-    background-size: 160px 160px, auto, auto;
+    background-size: auto, 160px 160px, auto, auto;
     box-shadow:
       inset 0 0 0 1px var(--gold-edge, rgba(214, 217, 224, 0.16)),
       inset 0 2px 40px rgba(0, 0, 0, 0.5);
@@ -4940,11 +4987,11 @@ button:disabled {
      grain over all of it, and a debossed inner well so the page sits below its
      gold-edged cover. */
   background:
-    var(--leather-grain),
+    var(--glass-sheen), var(--leather-grain),
     radial-gradient(130% 70% at 50% -10%, rgba(214, 217, 224, 0.10), transparent 58%),
     radial-gradient(120% 90% at 50% 120%, rgba(42, 15, 14, 0.4), transparent 60%),
     linear-gradient(168deg, var(--panel-alt, #1e1714) 0%, var(--panel, #17120f) 52%, var(--inset, #0a0706) 100%);
-  background-size: 160px 160px, auto, auto, auto;
+  background-size: auto, 160px 160px, auto, auto, auto;
   box-shadow:
     inset 0 0 0 1px var(--gold-edge, rgba(214, 217, 224, 0.16)),
     inset 0 2px 60px rgba(0, 0, 0, 0.6),
@@ -5034,9 +5081,9 @@ button:disabled {
   border: 1px solid var(--border, #2c2018);
   border-radius: 11px;
   background:
-    var(--leather-grain),
+    var(--glass-sheen), var(--leather-grain),
     linear-gradient(168deg, var(--card, #19130f), var(--card-dim, #120d09));
-  background-size: 160px 160px, auto;
+  background-size: auto, 160px 160px, auto;
   box-shadow:
     var(--emboss, inset 0 1px 0 rgba(214, 217, 224, 0.07)),
     var(--elev-1, 0 8px 22px rgba(0, 0, 0, 0.5));
@@ -5878,7 +5925,7 @@ textarea.hb-input { min-height: 76px; resize: vertical; }
   border-radius: var(--radius-md, 12px);
   border: 1px solid var(--border, #202024);
   background:
-    var(--leather-grain),
+    var(--glass-sheen), var(--leather-grain),
     linear-gradient(180deg, var(--card, #101013), var(--inset, #070708));
   box-shadow: var(--deboss);
 }

@@ -1220,14 +1220,21 @@ export const SOLO_SKINS = {
   // Default skin — "Black grimoire": black leather + SILVER (#21). Mirrors the
   // :root black-leather token map so the scene shell matches home/onboarding
   // surfaces. All accents are silver/steel — no gold, brown, or cobalt.
+  // OBSIDIAN default skin (owner correction). The scene shell applies THIS skin's tokens
+  // as inline style on .app-shell, overriding :root — so the RUN's obsidian must be set
+  // HERE too, not only in :root (a run verified gray while the lobby was obsidian). Cool
+  // blue-black volcanic glass (B>R), silver accents; a specular sheen is added into the
+  // texture so run panels catch light like the lobby's. Grain retained. Mirrors :root
+  // Variant 1 "Obsidian"; the :root[data-leather="polished"] variant previews on the
+  // lobby — swap these values to the polished set to carry it into runs.
   ashen: {
-    "--bg": "#050506", "--panel": "#0d0d10", "--card": "#101013", "--inset": "#070708",
-    "--card-dim": "#0b0b0e", "--tabbar": "#08080a", "--border": "#202024", "--border-faint": "#17171a",
-    "--border-strong": "#34343b", "--text": "#d9dbe0", "--text-bright": "#f1f2f5", "--text-2": "#b0b3bb",
+    "--bg": "#06070a", "--panel": "#0c0e13", "--card": "#0e1016", "--inset": "#060709",
+    "--card-dim": "#0a0b10", "--tabbar": "#07080d", "--border": "#1d1f28", "--border-faint": "#161821",
+    "--border-strong": "#31343f", "--text": "#d9dbe0", "--text-bright": "#f1f2f5", "--text-2": "#b0b3bb",
     "--text-muted": "#8b8e96", "--text-label": "#83868e", "--text-faint": "#5f626a", "--accent": "#c2c6cf",
     "--accent-2": "#e7e9ee", "--accent-bright": "#e7e9ee", "--accent-grad-a": "#cfd3db", "--accent-grad-b": "#9498a1",
-    "--accent-border": "#4c4d54", "--on-accent": "#0a0a0b",
-    "--texture": "repeating-linear-gradient(34deg,rgba(214,217,224,.02) 0 1px,transparent 1px 3px),repeating-linear-gradient(-22deg,rgba(0,0,0,.22) 0 1px,transparent 1px 4px)",
+    "--accent-border": "#464a57", "--on-accent": "#0a0a0b",
+    "--texture": "linear-gradient(133deg,rgba(226,232,240,.06) 0%,rgba(226,232,240,.02) 15%,transparent 42%),repeating-linear-gradient(34deg,rgba(214,217,224,.02) 0 1px,transparent 1px 3px),repeating-linear-gradient(-22deg,rgba(0,0,0,.22) 0 1px,transparent 1px 4px)",
     "--texture-size": "auto"
   },
   dragon: {
