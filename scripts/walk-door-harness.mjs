@@ -21,6 +21,17 @@ import {
   cropInfo, evalDisplayAspect, servedBytesVerdict, coverageVerdict, CANNOT_CATCH
 } from "./walk-harness/model.mjs";
 import { runAllCoherence } from "./walk-harness/coherence.mjs";
+import { runBrowserStage } from "./walk-harness/browser.mjs";
+
+// The browser stage drives CDP over a WebSocket, which Node 20 only exposes behind
+// --experimental-websocket. Transparently re-exec ourselves with the flag so plain
+// `node scripts/walk-door-harness.mjs` still works. (--no-warnings hushes the flag notice.)
+if (typeof WebSocket === "undefined" && !process.env.__HARNESS_WS) {
+  const { spawnSync } = await import("node:child_process");
+  const r = spawnSync(process.execPath, ["--no-warnings", "--experimental-websocket", process.argv[1], ...process.argv.slice(2)], { stdio: "inherit", env: { ...process.env, __HARNESS_WS: "1" } });
+  process.exit(r.status ?? 1);
+}
+const SKIP_BROWSER = process.argv.includes("--no-browser");
 
 const BASE = (process.env.NOTDND_HARNESS_BASE_URL || "http://127.0.0.1:4173").replace(/\/$/, "");
 const LIB_ROOT = process.env.NOTDND_HARNESS_LIB_ROOT || "/home/akrij/Notdnd/data/assets/library";
@@ -164,10 +175,42 @@ async function main() {
   // ── JOB 5: coherence (in-process, $0) ─────────────────────────────────────
   report.jobs.job5_coherence = runAllCoherence("babel").map((c) => ({ name: c.name, ok: c.ok, failed: c.failed, total: c.total, failures: c.findings.filter((x) => !x.ok).map((x) => x.detail), warnings: c.warnings || [] }));
 
+  // ── BROWSER STAGE: the closed blind spot — real DOM + console via headless Chrome ──
+  // This is the layer four walks died in: an HTTP 200 said "art door open," but the
+  // BROWSER showed a portrait error, a dead websocket, and 110 uncounted console lines.
+  if (SKIP_BROWSER) {
+    report.jobs.job_browser = { skipped: true, why: "--no-browser flag" };
+  } else {
+    // Opt-in existing run for the live-run page (env NOTDND_HARNESS_RUN_ID). We do NOT
+    // mint a run here: that would cook a scene every harness run, violating "cook nothing
+    // beyond what's needed." The character-creation page already exercises the portrait
+    // cook (the JOB 1 surface). Absent a run id, the live-run page is skipped + UNVERIFIED.
+    const runId = process.env.NOTDND_HARNESS_RUN_ID || null;
+    let browser;
+    try { browser = await runBrowserStage({ base: BASE, guestToken: token, runId }); }
+    catch (e) { browser = { ok: false, error: String(e?.message || e), pages: [] }; }
+    report.jobs.job_browser = browser;
+  }
+
   // ── JOB 6: honesty — UNVERIFIED list + coverage verdict + cannot-catch ────
   const cov = coverageVerdict(report.surfaces);
   const coherenceFail = report.jobs.job5_coherence.some((c) => !c.ok);
-  const anyFail = report.surfaces.some((s) => s.status === "FAIL") || coherenceFail;
+  // browser hard-fails: any error-level console/exception, any failed request (incl ws),
+  // any shown image that rendered 0×0 or is missing, any visible error-state text.
+  const b = report.jobs.job_browser || {};
+  const browserZeroDim = (b.pages || []).some((p) => (p.zeroDimImages || []).length > 0 || String(p.imageAssertion || "").startsWith("NO IMAGES"));
+  const browserErrText = (b.pages || []).some((p) => (p.errorTextVisible || []).length > 0);
+  const browserFailReasons = [];
+  if (!b.skipped) {
+    if (b.ok === false) browserFailReasons.push(`browser stage crashed: ${b.error}`);
+    if ((b.counts?.errors || 0) > 0) browserFailReasons.push(`${b.counts.errors} console error(s)`);
+    if ((b.netFailures || []).length) browserFailReasons.push(`${b.netFailures.length} failed network request(s)`);
+    if (b.wsFailed) browserFailReasons.push("websocket failed");
+    if (browserZeroDim) browserFailReasons.push("image(s) rendered 0×0 / missing where expected");
+    if (browserErrText) browserFailReasons.push("error-state text visible where content expected");
+  }
+  const browserHardFail = browserFailReasons.length > 0;
+  const anyFail = report.surfaces.some((s) => s.status === "FAIL") || coherenceFail || browserHardFail;
   const findings = report.surfaces.filter((s) => s.aspectFinding).map((s) => s.aspectFinding);
   report.jobs.job6_unverified = report.surfaces
     .filter((s) => s.playerFacing && !s.noArt && s.reachedLayerRank < LAYERS.SERVED_BYTES.rank)
@@ -177,7 +220,7 @@ async function main() {
   const guestFindings = report.surfaces.filter((s) => s.guestFinding).map((s) => s.guestFinding);
   report.verdict = {
     walkReady: cov.walkReady && !anyFail,
-    hardFails: [...cov.fails, ...(coherenceFail ? ["coherence"] : [])],
+    hardFails: [...cov.fails, ...(coherenceFail ? ["coherence"] : []), ...browserFailReasons],
     aspectFindings: findings,
     guestFindings,
     surfacesBelowHttpLayer: cov.belowHttpCount,
@@ -224,6 +267,24 @@ function printHuman(r) {
   for (const u of r.jobs.job6_unverified) P(`    · ${u.surface} — stopped at ${u.stoppedAtLayer}: ${u.why}`);
   P("  THIS HARNESS STRUCTURALLY CANNOT CATCH:");
   for (const c of r.jobs.job6_cannot_catch) P(`    · ${c}`);
+  const b = r.jobs.job_browser;
+  if (b) {
+    P("\nBROWSER STAGE — real DOM + console (headless Chrome/CDP):");
+    if (b.skipped) P(`  SKIPPED — ${b.why}`);
+    else if (b.ok === false) P(`  ✗ STAGE CRASHED: ${b.error}`);
+    else {
+      P(`  captured: ${b.counts.errors} errors · ${b.counts.warnings} warnings · ${b.counts.issues} devtools-issues · ${b.counts.netFailures} net-failures (+${b.counts.netAborted || 0} aborted/non-fatal) · ${b.counts.wsEvents} ws-events`);
+      P(`  websocket: ${b.wsFailed ? "✗ FAILED" : b.counts.wsEvents ? "✓ connected" : "— none opened"}`);
+      for (const p of b.pages) {
+        const zd = (p.zeroDimImages || []).length, et = (p.errorTextVisible || []).length;
+        P(`  · ${p.name.padEnd(20)} imgs=${p.images.length} render=${p.imageAssertion}${zd ? ` ⚠${zd} zero-dim` : ""}${et ? `  ⚠ error-text: ${p.errorTextVisible.join(", ")}` : ""}`);
+      }
+      if (b.errors.length) { P("  ERROR-LEVEL console (all of them):"); for (const e of b.errors) P(`      ✗ [${e.page}] ${e.text}`); }
+      if (b.netFailures.length) { P("  FAILED network requests:"); for (const n of b.netFailures) P(`      ✗ [${n.page}] ${n.type}: ${n.error}`); }
+      // warnings/issues counted, not spammed — the ranked table lives in the report JSON
+      if (b.warnings.length) P(`  (${b.warnings.length} warnings + ${b.issues.length} devtools-issues in --json report)`);
+    }
+  }
   P(`\n=== VERDICT: ${r.verdict.walkReady ? "WALK-READY" : "NOT WALK-READY"} ===`);
   P(`  ${r.verdict.reason}`);
   if (r.verdict.hardFails.length) P(`  HARD FAILS: ${r.verdict.hardFails.join(", ")}`);

@@ -463,7 +463,15 @@ const wsHub = createWsHub({
     return getUserBySessionToken(token);
   },
   canJoinCampaign(user, campaignId) {
-    return Boolean(user && userCanAccessCampaign(user.id, campaignId));
+    if (!user) return false;
+    // "global" is the LOBBY pseudo-channel the client joins by default (presence + the
+    // player's own AI-stream) — it is NOT a real campaign, and broadcastAuthoritativeState
+    // never sends campaign state to it (see the `campaignId === "global"` guard there). The
+    // old check ran it through userCanAccessCampaign, which requires real membership and
+    // threw → 403 on EVERY solo connection since inception (the ws?campaignId=global console
+    // error). Any authenticated user may join the lobby channel; real campaigns still gate.
+    if (!campaignId || campaignId === "global") return true;
+    return userCanAccessCampaign(user.id, campaignId);
   },
   getCampaignRuntime(campaignId) {
     return getCampaignRuntimeState(campaignId, { internal: true });

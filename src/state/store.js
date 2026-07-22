@@ -154,8 +154,9 @@ export function createStore({ apiClient = null } = {}) {
         notify();
       }
     } catch (error) {
-      // eslint-disable-next-line no-console
-      console.error("Failed to hydrate from server:", error);
+      // A 401 here is the NORMAL unauthenticated state (a fresh visitor with no session),
+      // not a fault — clear auth quietly. Only a genuine (non-401) hydrate failure is a
+      // console error worth surfacing. (Previously every first-load logged a red error.)
       if (error?.code === "UNAUTHORIZED" || error?.status === 401) {
         state = {
           ...state,
@@ -164,6 +165,9 @@ export function createStore({ apiClient = null } = {}) {
           }
         };
         notify();
+      } else {
+        // eslint-disable-next-line no-console
+        console.error("Failed to hydrate from server:", error);
       }
     }
   }
@@ -172,30 +176,55 @@ export function createStore({ apiClient = null } = {}) {
     if (!apiClient) {
       return [];
     }
-    const response = await apiClient.listAiProviders();
-    state = {
-      ...state,
-      aiProviders: response.providers || []
-    };
-    notify();
-    return state.aiProviders;
+    // Guarded symmetrically to hydrateFromServer: bootstrapRemote() calls this
+    // unconditionally (main.js bootstrap runs it even when unauthenticated), so an
+    // UNAUTHORIZED/other failure here must NOT throw — an unhandled rejection would abort
+    // the rest of bootstrap (loadGmMemoryDocs, the guest render path) and print a red
+    // uncaught error on every first, tokenless load. Fall back to no providers.
+    try {
+      const response = await apiClient.listAiProviders();
+      state = {
+        ...state,
+        aiProviders: response.providers || []
+      };
+      notify();
+      return state.aiProviders;
+    } catch (error) {
+      if (!(error?.code === "UNAUTHORIZED" || error?.status === 401)) {
+        // eslint-disable-next-line no-console
+        console.error("Failed to load AI providers:", error);
+      }
+      return state.aiProviders || [];
+    }
   }
 
   async function loadGmMemoryDocs(campaignId = state.selectedCampaignId) {
     if (!apiClient || !campaignId) {
       return [];
     }
-    const response = await apiClient.getGmMemory(campaignId);
-    const docs = response.entities || response.docs || [];
-    state = {
-      ...state,
-      gmMemoryDocsByCampaign: {
-        ...state.gmMemoryDocsByCampaign,
-        [campaignId]: docs
+    // Guarded like the other bootstrap fetches. A GUEST is authenticated but is not a
+    // member of the default "global" campaign, so getGmMemory returns 403 — that must NOT
+    // throw. Left unguarded it was an uncaught rejection on every guest's first load (the
+    // owner-observed console error). No memory docs for a non-member is the correct state.
+    try {
+      const response = await apiClient.getGmMemory(campaignId);
+      const docs = response.entities || response.docs || [];
+      state = {
+        ...state,
+        gmMemoryDocsByCampaign: {
+          ...state.gmMemoryDocsByCampaign,
+          [campaignId]: docs
+        }
+      };
+      notify();
+      return docs;
+    } catch (error) {
+      if (!(error?.code === "UNAUTHORIZED" || error?.status === 401 || error?.status === 403)) {
+        // eslint-disable-next-line no-console
+        console.error("Failed to load GM memory:", error);
       }
-    };
-    notify();
-    return docs;
+      return state.gmMemoryDocsByCampaign?.[campaignId] || [];
+    }
   }
 
   async function saveGmMemoryDoc({ campaignId = state.selectedCampaignId, docKey, content }) {
@@ -325,7 +354,13 @@ export function createStore({ apiClient = null } = {}) {
       subscribers.add(fn);
       return () => subscribers.delete(fn);
     },
-    async bootstrapRemote() {
+    async bootstrapRemote({ authenticated = true } = {}) {
+      // When there is no session, make NO authed fetches — hydrate/providers/memory all
+      // require auth and would only 401. (Default true keeps the post-login/guest callers,
+      // which bootstrap immediately after authenticating, working unchanged.)
+      if (!authenticated) {
+        return;
+      }
       await hydrateFromServer();
       await loadAiProviders();
       if (state.selectedCampaignId) {

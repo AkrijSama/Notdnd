@@ -408,7 +408,7 @@ function renderAuthPanel(state) {
           <button data-action="logout">Logout</button>
         </div>
         <form id="member-invite-form" class="inline">
-          <input name="email" placeholder="member@email.com" required />
+          <input name="email" autocomplete="off" placeholder="member@email.com" required />
           <select name="role">
             <option value="viewer">viewer</option>
             <option value="player">player</option>
@@ -441,9 +441,9 @@ function renderAuthPanel(state) {
         <button class="ghost" data-action="auth-mode-register">Create Account</button>
       </div>
       <form id="auth-form" class="field">
-        <input name="displayName" placeholder="Display Name (new accounts only)" ${registering ? "" : "style='display:none;'"} />
-        <input name="email" type="email" placeholder="email" required />
-        <input name="password" type="password" placeholder="password (min 8 chars)" required />
+        <input name="displayName" autocomplete="name" placeholder="Display Name (new accounts only)" ${registering ? "" : "style='display:none;'"} />
+        <input name="email" type="email" autocomplete="username" placeholder="email" required />
+        <input name="password" type="password" autocomplete="${registering ? "new-password" : "current-password"}" placeholder="password (min 8 chars)" required />
         <button type="submit">${registering ? "Create account & begin" : "Sign in"}</button>
       </form>
       <div class="small">Free to start. Your adventure saves automatically.</div>
@@ -2302,16 +2302,21 @@ async function bootstrap() {
     uiState.roadmap = [];
   }
 
+  // Only probe /me when a token actually exists. A brand-new visitor has none, and
+  // calling the authed endpoints tokenless just prints a row of red 401 "Failed to load
+  // resource" console errors before they've even clicked Play. No token → logged out.
   let authenticated = false;
-  try {
-    const me = await apiClient.me();
-    authenticated = Boolean(me?.user);
-  } catch {
-    authenticated = false;
+  if (apiClient.getAuthToken()) {
+    try {
+      const me = await apiClient.me();
+      authenticated = Boolean(me?.user);
+    } catch {
+      authenticated = false;
+    }
   }
 
   realtimeClient.setToken(authenticated ? apiClient.getAuthToken() : "");
-  await store.bootstrapRemote();
+  await store.bootstrapRemote({ authenticated });
   if (authenticated) {
     await loadCampaignMembers();
     const campaigns = store.getState().campaigns || [];

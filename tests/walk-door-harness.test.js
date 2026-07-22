@@ -83,9 +83,12 @@ test("coverage gate: a separate-fetch surface below SERVED_BYTES blocks; an auth
   assert.equal(fail.walkReady, false);
 });
 
-test("honesty: the harness names what it cannot catch (DOM, pixels, taste, long-session)", () => {
+test("honesty: the harness names its TRUE residuals now the browser stage closed the DOM/console gap (pixels, taste, viewport, long-session)", () => {
   const text = CANNOT_CATCH.join(" ").toLowerCase();
-  for (const kw of ["dom", "pixel", "taste", "long-session"]) assert.match(text, new RegExp(kw));
+  // The browser stage catches rendered-DOM + console defects, so those are no longer in
+  // the cannot-catch set. What remains structurally out of reach is visual QUALITY, taste,
+  // untested viewports, and long-session emergence — the honesty list must still name them.
+  for (const kw of ["pixel", "taste", "viewport", "long-session"]) assert.match(text, new RegExp(kw));
 });
 
 // ── coherence (Job 5) — the structural checks are clean on babel + catch a plant ──

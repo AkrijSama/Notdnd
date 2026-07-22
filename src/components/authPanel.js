@@ -39,8 +39,8 @@ export function renderGuestAuthPanel(authMode) {
           <button type="button" class="ghost linklike" data-action="auth-mode-register">save your adventure</button>.
         </p>
         <form id="auth-form" class="field">
-          <input name="email" type="email" placeholder="email" required />
-          <input name="password" type="password" placeholder="password" required />
+          <input name="email" type="email" autocomplete="username" placeholder="email" required />
+          <input name="password" type="password" autocomplete="current-password" placeholder="password" required />
           <button type="submit">Sign in</button>
         </form>
         <div class="inline">
@@ -57,9 +57,9 @@ export function renderGuestAuthPanel(authMode) {
       </div>
       <p class="small">Create a free account to keep this adventure. Your progress stays exactly where it is.</p>
       <form id="auth-form" class="field">
-        <input name="displayName" placeholder="Display Name" />
-        <input name="email" type="email" placeholder="email" required />
-        <input name="password" type="password" placeholder="password (min 8 chars)" required />
+        <input name="displayName" autocomplete="name" placeholder="Display Name" />
+        <input name="email" type="email" autocomplete="username" placeholder="email" required />
+        <input name="password" type="password" autocomplete="new-password" placeholder="password (min 8 chars)" required />
         <button type="submit">Save my adventure</button>
       </form>
       <div class="inline">

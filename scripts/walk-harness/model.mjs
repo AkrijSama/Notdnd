@@ -293,9 +293,14 @@ export function coverageVerdict(surfaceResults) {
 // What this harness structurally CANNOT catch (Job 6.3) — stated so a green run is
 // never read as "the owner can walk".
 export const CANNOT_CATCH = Object.freeze([
-  "Rendered-DOM defects: whether the client's img.src swap or CSS class actually applied in a live browser (no jsdom/playwright in this harness).",
-  "Actual pixels / visual composition: framing, crop as a human perceives it, whether an image 'looks right'. Aspect/crop is COMPUTED here, not seen.",
+  // The rendered-DOM/console gap is NOW CLOSED by the browser stage (headless Chrome/CDP):
+  // it reads real img.naturalWidth/Height, captures every console entry, and fails on any
+  // error / failed request / websocket drop. What remains structurally out of reach:
+  "Actual pixels / visual composition: framing, crop as a human perceives it, whether an image 'looks right', anatomy, or style fidelity. The browser stage proves an image RENDERED (non-zero dimensions) — never that it renders WELL.",
+  "A LIVE portrait/scene cook driven to completion: the stage reaches the character-creation identity step (where JOB 1's error text WOULD render, and is scanned for) but does not drive the full race/class/style wizard through a ~50s generation. The naturalWidth render-assertion is proven on committed art (lobby world-card, live-run scene when present); a freshly-cooking image is verified by the ABSENCE of its error state, not by waiting for its pixels.",
   "Taste, fun, pacing, prose quality, emotional payoff — outside any structural harness.",
+  "Viewports not driven: the browser stage runs one desktop size (1440×900). Mobile/tablet reflow, touch, and small-screen crop are unverified.",
+  "Defects on pages/states the stage never navigates to (only lobby, character-creation, and — when a run id is supplied — one live run are visited; deep sub-flows and modal states beyond those are unseen).",
   "Long-session coherence that only emerges across many turns (this run drives short, scripted turns).",
   "Any paid-model narration quality (turns run deterministic/placeholder at $0 by default)."
 ]);
