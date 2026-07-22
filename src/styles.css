@@ -1984,14 +1984,19 @@ button:disabled {
    [Cast·Exits]. flex + nowrap ⇒ the items lay out sequentially and can never
    overlap. Positioned BELOW the settings gear (top:52 > gear bottom 46) so the two
    never intersect at any width. */
-/* U6 — PERSISTENT MINI-MAP WIDGET. Docked BOTTOM-LEFT of the scene frame: the portrait
-   dock owns top-left (8px), the stage HUD owns top-right (8px), the input bar sits below
-   the frame, so bottom-left is the free corner (no pairwise overlap with any docked peer).
-   z-index 28 sits below the HUD (30) and well below the full-view drawers (46) so an opened
-   drawer cleanly overlays it. Compact + capped so it never grows into the other corners. */
+/* U6 — PERSISTENT MINI-MAP WIDGET. RE-ANCHORED BOTTOM-RIGHT (walk-3 verdict): off the
+   left column so it is no longer under the portrait dock (top-left, 8px). It now shares
+   the RIGHT edge with the stage HUD (top-right, 8px) but is vertically disjoint — the HUD
+   bottom sits 36px from the frame top; the mini-map top sits (frameH - 8 - height) with
+   height <= 42% of the frame, so they clear for any frame taller than ~76px (the stage art
+   is always >>400px). max-width 40% keeps the widget entirely in the right portion of the
+   frame, so it can never grow left into the portrait dock's column, and it lives INSIDE the
+   stage zone so it can never touch the narration column (a separate grid row below). z-index
+   28 sits below the HUD (30) and well below the full-view drawers (46) so an opened drawer
+   cleanly overlays it. Compact + capped so it never grows into the other corners. */
 .solo-minimap {
   position: absolute;
-  left: 8px;
+  right: 8px;
   bottom: 8px;
   z-index: 28;
   width: 168px;
@@ -2001,7 +2006,7 @@ button:disabled {
   border-radius: 10px;
   pointer-events: auto;
 }
-.solo-minimap .solo-minimap-body { transform-origin: bottom left; }
+.solo-minimap .solo-minimap-body { transform-origin: bottom right; }
 /* the shared map renderers set their own chrome; the dock just bounds + positions them */
 .solo-minimap .solo-presence,
 .solo-minimap .solo-region { max-width: 100%; max-height: 100%; }

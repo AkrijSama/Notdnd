@@ -2838,8 +2838,9 @@ export function renderSoloRightRail(state = {}) {
 // (the clock is absent on a legacy payload; the info toggle always has exits).
 // U6 — PERSISTENT MINI-MAP WIDGET. Always on the scene (LOCAL by default), toggled
 // local/regional IN PLACE via the same data-solo-map-view control the HUD carries; the
-// full-view drawer stays. Docked bottom-left, clear of the top-left portrait dock, the
-// top-right HUD row, and the bottom input bar (pairwise-overlap net, pre-mortem c). Honest
+// full-view drawer stays. Docked bottom-RIGHT (walk-3 re-anchor: off the left column, no
+// longer under the top-left portrait dock), vertically clear of the top-right HUD row and
+// horizontally clear of the portrait dock (pairwise-overlap net, pre-mortem c). Honest
 // to known-map state — the map renderers fog unknown nodes. No map data → nothing docked
 // (empty-state law). Hides when any drawer opens (mirrors the HUD row) so it never overlaps.
 export function renderSoloMiniMap(scene = {}, state = {}) {

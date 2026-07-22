@@ -63,16 +63,19 @@ test("HONEST to known-map state: an unmapped scene docks nothing (empty-state la
 });
 
 // ── BOUNDING-BOX / PAIRWISE-OVERLAP NET (pre-mortem c) ────────────────────────
-test("docked BOTTOM-LEFT: cornered at left:8/bottom:8, with NO top and NO right (a distinct corner)", () => {
+// RE-ANCHORED BOTTOM-RIGHT (walk-3 verdict): the widget left the left column so it is no
+// longer under the top-left portrait dock. New contract: right:8/bottom:8, no left, no top.
+test("docked BOTTOM-RIGHT: cornered at right:8/bottom:8, with NO top and NO left (a distinct corner, off the portrait column)", () => {
   const mini = rule(".solo-minimap {");
   assert.match(mini, /position:\s*absolute/);
-  assert.equal(pxProp(mini, "left"), 8, "left-anchored at 8px (mirrors the dock/HUD 8px inset)");
+  assert.equal(pxProp(mini, "right"), 8, "right-anchored at 8px (mirrors the HUD/dock 8px inset) — re-anchored to the RIGHT of the stage");
   assert.equal(pxProp(mini, "bottom"), 8, "bottom-anchored at 8px");
-  assert.equal(pxProp(mini, "top"), null, "NOT top-anchored (can't share the top-left dock corner)");
-  assert.equal(pxProp(mini, "right"), null, "NOT right-anchored (can't share the top-right HUD corner)");
+  assert.equal(pxProp(mini, "top"), null, "NOT top-anchored (can't share the top-right HUD corner)");
+  assert.equal(pxProp(mini, "left"), null, "NOT left-anchored (off the top-left portrait dock's column — the re-anchor point)");
 });
 
-test("pairwise: the mini-map (bottom-left) is vertically clear of the HUD row (top-right) for any real frame", () => {
+test("pairwise: the mini-map (bottom-right) is vertically clear of the HUD row (top-right) for any real frame", () => {
+  // Both now share the RIGHT edge, so non-overlap is purely vertical.
   // HUD: top:8, height 28  -> its bottom edge sits 36px from the frame top.
   // Mini-map: bottom:8, max-height:42% -> its TOP edge sits at frameH - 8 - height,
   //   with height <= 0.42*frameH. Non-overlap needs HUD.bottom(36) < miniMap.top:
@@ -85,8 +88,36 @@ test("pairwise: the mini-map (bottom-left) is vertically clear of the HUD row (t
   const hudBottom = 8 + 28; // HUD top + uniform chip height
   const minFrame = Math.ceil((hudBottom + 8) / (1 - frac)); // frameH threshold
   assert.ok(minFrame < 400, `clears the HUD for any frame taller than ${minFrame}px (stage is >>400px)`);
-  // and its left origin equals the HUD/dock inset, so nothing drifts under a neighbour
-  assert.equal(pxProp(mini, "left"), 8);
+  // and its right origin equals the HUD inset, so nothing drifts under a neighbour
+  assert.equal(pxProp(mini, "right"), 8);
+});
+
+// 2.2 — bounding-box net: no overlap with the portrait dock (left column) or the
+// narration column (a separate grid row below), at ANY viewport the client supports.
+test("bounding-box: right-anchored + max-width<=40% keeps the widget in the right portion, clear of the portrait dock at every width", () => {
+  const mini = rule(".solo-minimap {");
+  const mw = /max-width:\s*(\d+)%/.exec(mini);
+  assert.ok(mw, "the mini-map caps its width as a fraction of the frame");
+  const frac = parseInt(mw[1], 10) / 100;
+  // Portrait dock: left-anchored, width clamp(120px,12vw,172px) -> at most 12vw of the
+  // FRAME... it is the left column. The mini-map is right-anchored and spans at most
+  // `frac` of the frame from the right edge, so its LEFT edge sits at >= (1-frac) of the
+  // frame width. Non-overlap with a left column of width <= `dock` needs (1-frac) >= dock.
+  // The dock caps at 12vw ~= 0.12 of the frame; (1-0.40)=0.60 >> 0.12 at every width.
+  const dockMaxFrac = 0.12; // 12vw ceiling of the portrait dock
+  assert.ok(1 - frac >= dockMaxFrac, `mini-map left edge (${((1 - frac) * 100).toFixed(0)}%) clears the portrait dock column (<=${dockMaxFrac * 100}%) at every width`);
+});
+
+test("bounding-box: the mini-map lives INSIDE the stage zone, never in the narration column (structural non-overlap)", () => {
+  const html = renderSoloSceneShell({ scene: SCENE, mapView: "local" });
+  // The minimap slot must sit within the pinned stage (data-solo-stage), which is a
+  // SEPARATE grid row from the scrollable narration log (data-solo-log) below it — so
+  // the widget can never overlap the narration column regardless of viewport height.
+  const stageStart = html.indexOf("data-solo-stage");
+  const logStart = html.indexOf("data-solo-log");
+  const miniSlot = html.indexOf("data-solo-minimap-slot");
+  assert.ok(stageStart >= 0 && logStart >= 0 && miniSlot >= 0, "stage, log, and minimap-slot all render");
+  assert.ok(miniSlot > stageStart && miniSlot < logStart, "the minimap slot is inside the stage zone, above the narration log (never over it)");
 });
 
 test("z-order: below the HUD (30) and well below the full-view drawers (46) so an open drawer overlays it", () => {

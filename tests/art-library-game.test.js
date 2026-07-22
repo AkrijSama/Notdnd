@@ -273,3 +273,39 @@ test("world-card PIN: babel's card serves the pinned obsidian Tower over its own
     libraryAssetUri("w7_worldcard_obsidian_tower_anime")
   );
 });
+
+// FRIDGE-OR-TRASH lifecycle (2026-07-22): the quarantine "trash" fate DESTROYS an
+// asset's bytes + row. This locks the read-path guarantee proven for the destroyed
+// "Green Static" truck scene (live_run_eea2d9e4…_loc_start_location): a run resolving
+// a scene whose backing library keep was trashed degrades to the run's OWN generated
+// image — it never throws and never points a surface at the deleted file.
+test("FRIDGE-OR-TRASH: a destroyed scene keep degrades to the run's own image, never a broken slot", async () => {
+  const { destroyAsset } = await import("../scripts/art/library.mjs");
+  const run = {
+    world: { variant: "wtruck" },
+    flags: { artStyle: "anime" },
+    imageAssets: {
+      img_location_green_static: { status: "generated", uri: "/data/assets/run_wtruck/location_green_static/base.png" }
+    }
+  };
+  const location = { locationId: "green_static", name: "The Green Static, Fringe", imageAssetId: "img_location_green_static" };
+
+  // The library scene keep serves first (library rung wins over the generated image).
+  keep({ id: "truck-scene-keep", world: "wtruck", kind: "scene", style: "anime" });
+  assert.equal(resolveSceneArtForRun(run, location), libraryAssetUri("truck-scene-keep"), "library keep serves before trash");
+  assert.equal(resolveLocationImageUri(run, location), libraryAssetUri("truck-scene-keep"));
+
+  // TRASH = destroyed. The scene rung must return null and the caller must fall
+  // through to the run's own generated image — never throw, never serve the deleted file.
+  assert.equal(destroyAsset("truck-scene-keep"), true, "destroy removed the backing bytes + row");
+  assert.equal(resolveSceneArtForRun(run, location), null, "a destroyed keep is never served");
+  assert.doesNotThrow(() => resolveLocationImageUri(run, location));
+  assert.equal(
+    resolveLocationImageUri(run, location),
+    "/data/assets/run_wtruck/location_green_static/base.png",
+    "degrades gracefully to the run's own generated image"
+  );
+
+  // And the simple world/kind resolve returns null (caller keeps its fallback), never the dead id.
+  assert.equal(resolveLibraryArt({ world: "wtruck", kind: "scene", style: "anime" }), null);
+});
