@@ -150,6 +150,13 @@ export function createApiClient(baseUrl = "") {
     async getState() {
       return request("/api/state");
     },
+    // World-card / lobby cover art. Goes through the authed wrapper (adds the Bearer
+    // token) — a hand-rolled fetch here 401'd and the lobby silently kept the static bust.
+    async artLibrary({ world, kind = "world-card", style } = {}) {
+      const q = new URLSearchParams({ world: world || "", kind });
+      if (style) q.set("style", style);
+      return request(`/api/art/library?${q.toString()}`);
+    },
     // BETA THUMB (owner-feedback calibration). verdict: "up" | "down" | "clear".
     async artThumb({ uri, kind, world, verdict, reasons } = {}) {
       return request("/api/art/thumb", { method: "POST", body: JSON.stringify({ uri, kind, world, verdict, reasons: reasons || [] }) });

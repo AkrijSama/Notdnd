@@ -1788,7 +1788,7 @@ function bindAppEvents() {
   });
   // Library-first world-card art for the home doors (same path as the catalogue).
   const homeWorlds = appRoot.querySelector(".solo-home-worlds");
-  if (homeWorlds) bindWorldCardArt(homeWorlds);
+  if (homeWorlds) bindWorldCardArt(homeWorlds, apiClient);
 
   appRoot.querySelectorAll("[data-action='open-run']").forEach((button) => {
     button.addEventListener("click", () => {
@@ -2153,6 +2153,7 @@ function renderApp() {
     const onboardingRoot = appRoot.querySelector("#onboarding-root");
     if (onboardingRoot) {
       bindOnboardingFlow(onboardingRoot, {
+        apiClient, // world-card art must resolve through the authed wrapper (bindWorldCardArt)
         onStart: startOnboarding,
         onSendMessage: sendOnboardingMessage,
         onWorldField: onWorldFieldSelect,

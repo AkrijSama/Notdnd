@@ -207,27 +207,32 @@ export function renderWorldDoors(state = {}) {
 // library for a rated "keep" world-card and swap the static placeholder in when one
 // exists. Zero keeps (or any error) → the committed static art stays. Single-sourced
 // so the catalogue and the home landing share one art-plumbing path.
-export function bindWorldCardArt(root) {
-  if (!root || typeof root.querySelectorAll !== "function" || typeof fetch !== "function") return;
+// Swap each world card's static placeholder for its committed library cover. MUST go
+// through the AUTHENTICATED api wrapper (apiClient.artLibrary) — /api/art/library runs
+// requireAuth, so a hand-rolled token-less fetch 401s BEFORE resolveLibraryArt is ever
+// reached, and the lobby silently keeps the bundled bust (the world-card divergence).
+export function bindWorldCardArt(root, apiClient) {
+  if (!root || typeof root.querySelectorAll !== "function") return;
+  if (!apiClient || typeof apiClient.artLibrary !== "function") return; // no unauth fetch fallback
   root.querySelectorAll("[data-world-scenario]").forEach((button) => {
     const world = button.getAttribute("data-world-scenario");
     const img = button.querySelector(".onb-world-card-art");
     if (!world || !img) return;
-    fetch(`/api/art/library?world=${encodeURIComponent(world)}&kind=world-card`)
-      .then((res) => (res.ok ? res.json() : null))
+    apiClient
+      .artLibrary({ world, kind: "world-card" })
       .then((data) => {
         if (data && typeof data.uri === "string" && data.uri) {
           img.src = data.uri;
-          if (data.betaThumb) mountWorldCardThumb(button, data.uri); // JOB 1 / route-inventory: the world-card surface
+          if (data.betaThumb) mountWorldCardThumb(button, data.uri, apiClient); // route-inventory: the world-card surface
         }
       })
-      .catch(() => { /* keep the static placeholder on any error */ });
+      .catch(() => { /* keep the static placeholder on any error (e.g. a guest 401) */ });
   });
 }
 
 // BETA THUMB on the lobby world-card (its own wiring — not the solo dispatcher). Reuses
 // the shared .art-thumb styles. stopPropagation keeps a thumb tap from starting the world.
-function mountWorldCardThumb(button, uri) {
+function mountWorldCardThumb(button, uri, apiClient) {
   if (!button || button.querySelector("[data-art-thumb]")) return;
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const chips = ["wrong subject", "bad crop", "wrong camera", "wrong style", "just ugly"];
@@ -237,8 +242,11 @@ function mountWorldCardThumb(button, uri) {
   box.innerHTML = '<button type="button" class="art-thumb-btn art-thumb-up" data-art-vote="up" aria-label="Good image" title="Good image">▲</button>'
     + '<button type="button" class="art-thumb-btn art-thumb-down" data-art-vote="down" aria-label="Bad image" title="Bad image">▼</button>'
     + '<div class="art-thumb-reasons" data-art-reasons hidden>' + chips.map((r) => '<button type="button" class="art-thumb-chip" data-art-reason="' + esc(r) + '">' + esc(r) + "</button>").join("") + "</div>";
-  const tokenHeader = () => { try { const t = localStorage.getItem("notdnd_auth_token_v1"); return t ? { Authorization: "Bearer " + t } : {}; } catch { return {}; } };
-  const post = (verdict, reasons) => { try { fetch("/api/art/thumb", { method: "POST", headers: { "Content-Type": "application/json", ...tokenHeader() }, body: JSON.stringify({ uri, kind: "world-card", world: button.getAttribute("data-world-scenario") || "", verdict, reasons: reasons || [] }) }); } catch { /* best-effort */ } };
+  // Through the AUTHED wrapper (not a hand-rolled fetch — the very class this dispatch fixes).
+  const post = (verdict, reasons) => {
+    if (!apiClient || typeof apiClient.artThumb !== "function") return;
+    try { apiClient.artThumb({ uri, kind: "world-card", world: button.getAttribute("data-world-scenario") || "", verdict, reasons: reasons || [] }); } catch { /* best-effort */ }
+  };
   box.addEventListener("click", (ev) => {
     ev.stopPropagation(); ev.preventDefault();
     const chip = ev.target.closest("[data-art-reason]");
@@ -1144,7 +1152,7 @@ export function bindOnboardingFlow(root, handlers = {}) {
   });
   // Library-first world-card art (art-plumbing item 3) — single-sourced in
   // bindWorldCardArt so the catalogue and the home landing share one path.
-  bindWorldCardArt(root);
+  bindWorldCardArt(root, handlers.apiClient);
   root.querySelectorAll("[data-world-field]").forEach((field) => {
     if (typeof field.addEventListener === "function") {
       field.addEventListener("input", () => handlers.onWorldFieldInput?.(field.getAttribute("data-world-field"), field.value));
