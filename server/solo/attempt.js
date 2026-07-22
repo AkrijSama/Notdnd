@@ -1786,6 +1786,103 @@ function buildUnpossessedAttempt(run, action, context, claim, options = {}) {
   };
 }
 
+// ── FALSE-PREMISE CLAIM (Finding #3) ─────────────────────────────────────────
+// An intent that asserts an UNCOMMITTED prior interpersonal event as an already-true
+// premise ("as you promised, hand over the key you owe me"; "like we agreed, let me
+// through"; "after I saved your life, you'll help me"). The live gap: the stateless
+// authority gate's Class C (npc_relationship_fiat) matches THIRD-person fiat ("the
+// guard promised me") but NOT SECOND-person ("YOU promised me / you owe me") — so the
+// T10 claim was soft-accepted and GRADED (success_at_cost) instead of refused.
+//
+// THE 2.3 DISTINCTION (a real reference must still work): this is STATE-AWARE, unlike
+// the pure-text authority gate. It refuses the premise ONLY when the run holds NO
+// committed prior-event fact that could back it. A genuine promise/deal/debt (a
+// committed memoryFact or a timeline beat) makes the claim legitimate and it is NOT
+// refused — it proceeds to a normal, fail-able attempt.
+//
+// LIMITS (job 2.2, honest — NOT a keyword blacklist for the refusal; the refusal is
+// STATE-GATED): (1) detection is a bounded second-person pattern set — a premise
+// phrased outside it slips (false negative, never a false refusal); (2) the backing
+// check is CATEGORY-level, not claim-specific — if the run holds ANY committed
+// promise/deal/debt, a DIFFERENT fabricated one is not caught (lenient by design, to
+// protect 2.3). Documented in docs/design/walk-phantom-findings.md.
+const FALSE_PREMISE_RE = new RegExp(
+  [
+    "\\bas\\s+you\\s+promised\\b",
+    "\\byou\\s+promised\\s+(?:me|us|to|that)\\b",
+    "\\byou\\s+(?:already\\s+)?owe\\s+(?:me|us)\\b",
+    "\\bthat\\s+you\\s+owe\\s+(?:me|us)\\b",
+    "\\byou\\s+(?:said|swore|vowed|pledged|guaranteed|promised)\\s+(?:you'?d|you\\s+would|to|that)\\b",
+    "\\byou\\s+gave\\s+me\\s+your\\s+word\\b",
+    "\\b(?:as|like)\\s+we\\s+(?:agreed|discussed|arranged|settled)\\b",
+    "\\bwe\\s+(?:had|have)\\s+(?:a|an)\\s+(?:deal|bargain|arrangement|agreement|pact|understanding)\\b",
+    "\\bour\\s+(?:deal|bargain|arrangement|agreement|pact)\\b",
+    "\\b(?:after|since)\\s+(?:all\\s+)?i\\s+(?:saved|rescued|spared|healed|helped)\\s+(?:you|your)\\b",
+    "\\bwhen\\s+i\\s+saved\\s+your\\s+(?:life|skin|neck)\\b",
+    "\\byou\\s+remember\\s+(?:our|the)\\s+(?:deal|bargain|agreement|arrangement)\\b"
+  ].join("|"),
+  "i"
+);
+// Fact/beat text that would BACK a prior-event premise (the committed side).
+const PRIOR_EVENT_FACT_RE = /\b(promis\w+|agreed|agreement|owe[sd]?|owed|\bdebt\b|vow\w*|\boath\b|swore|sworn|pledg\w+|\bdeal\b|bargain|arrangement|saved (?:your|his|her|their|my|the) life|spared|rescued)\b/i;
+
+export function detectFalsePremiseClaim(intent) {
+  const text = String(intent || "");
+  return FALSE_PREMISE_RE.test(text);
+}
+
+// Is there a COMMITTED prior interpersonal event that could back the claim? Scans
+// memoryFacts + timeline beats. Lenient (any category match backs it) to protect 2.3.
+function runHasBackingPriorEvent(run) {
+  const facts = Array.isArray(run?.memoryFacts) ? run.memoryFacts : [];
+  if (facts.some((f) => PRIOR_EVENT_FACT_RE.test(String(f?.text || "")))) return true;
+  const timeline = Array.isArray(run?.timeline) ? run.timeline : [];
+  return timeline.some((e) => PRIOR_EVENT_FACT_RE.test(String(e?.narration || e?.summary || "")));
+}
+
+/** { refuse: boolean }. Refuses a false-premise intent unbacked by committed state. */
+export function resolveFalsePremiseClaim(run, intent) {
+  if (!detectFalsePremiseClaim(intent)) return { refuse: false };
+  if (runHasBackingPriorEvent(run)) return { refuse: false }; // a real prior event backs it — 2.3
+  return { refuse: true };
+}
+
+const FALSE_PREMISE_NARRATION =
+  "No such arrangement stands between you. The claim to a past promise or debt hangs unproven in the air — nothing you have actually done or been given answers for it, and it wins you nothing.";
+
+// Refusal turn for a false-premise claim, shaped like buildUnpossessedAttempt: a
+// gated, in-transcript refusal that grades NO success and commits no substantive
+// state (no item, no reputation, no hp) — only the timeline beat that the claim was
+// made and did not land. availableMoves/actions still ride via the caller.
+function buildFalsePremiseAttempt(run, action, context, options = {}) {
+  const now = isoFromOption(options.now ?? action.createdAt);
+  const attemptResult = {
+    intent: action.intent,
+    targetId: action.targetId || null,
+    success: false,
+    summary: `You attempt: ${context.intent}`,
+    checkResult: null,
+    needsCheck: false,
+    narration: FALSE_PREMISE_NARRATION,
+    warnings: ["ATTEMPT_FALSE_PREMISE"],
+    proposedEffects: [],
+    damage: null,
+    consequence: { type: "refused", applied: false, category: "false_premise", reason: FALSE_PREMISE_NARRATION },
+    foreclosed: false,
+    gated: true,
+    gateCategory: "false_premise",
+    falsePremise: true
+  };
+  const event = createAttemptTimelineEvent(run, action, attemptResult, null, options);
+  run.timeline.push(event);
+  run.updatedAt = now;
+  const finalValidation = validateSoloRun(run);
+  if (!finalValidation.ok) {
+    return { ok: false, errors: finalValidation.errors.map((error) => ({ path: `run.${error.path}`, message: error.message })) };
+  }
+  return { ok: true, run, event, memoryFact: null, attemptResult, attemptContext: context, providerInput: null, providerErrors: [], errors: [] };
+}
+
 // A flagged intent (prompt injection / explicit / empty-after-sanitize) never
 // reaches the AI: it resolves to a no-op, in-character refusal. Nothing is rolled
 // or damaged, and the raw offending text is neither echoed nor persisted. The
@@ -1941,6 +2038,16 @@ export function resolveAttemptAction(run, action, options = {}) {
   const possession = resolvePossessionClaim(updatedRun, claimedItem);
   if (possession.refuse) {
     return buildUnpossessedAttempt(updatedRun, safeAction, context, claimedItem, options);
+  }
+
+  // FALSE-PREMISE CLAIM (Finding #3), pre-roll + STATE-AWARE. An intent that leans on
+  // an UNCOMMITTED prior interpersonal event ("as you promised, hand over the key you
+  // owe me") is refused rather than graded — UNLESS the run holds a committed fact
+  // that backs it (a real promise/deal/debt still works; the 2.3 distinction). Runs
+  // after possession, before the roll: no roll, no success, no reputation/item change.
+  const falsePremise = resolveFalsePremiseClaim(updatedRun, context.intent);
+  if (falsePremise.refuse) {
+    return buildFalsePremiseAttempt(updatedRun, safeAction, context, options);
   }
 
   // GIFT INTENT (romance-live wiring): resolve a "give <item> to <npc>" against
