@@ -1,31 +1,42 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { SYSTEM_LORE, buildSystemLoreClause, detectSystemLoreViolations } from "../server/gm/systemLore.js";
+import { buildSystemLoreClause, detectSystemLoreViolations } from "../server/gm/systemLore.js";
 import { buildOpeningGmMessage } from "../server/gm/actionNarration.js";
 import { repairNarrationPronouns } from "../server/solo/npcCommit.js";
 import { enforceHandles } from "../server/gm/handlesEnforcement.js";
+import { loadScenarioFile } from "../server/campaign/scenarioLoader.js";
 
 // ---- ITEM 1: WINDOW/VOICE system lore ----------------------------------------
+// MIGRATED (2026-07-21): the lore content is FURNITURE — it rides world.systemLore
+// (babel.json authors it), so the clause + auditor now take a `world`. Babel's world
+// is the fixture; a world with no systemLore opts the whole subsystem out.
+const babelWorld = { systemLore: loadScenarioFile("babel").world.systemLore };
 
-test("item1: system lore has the mandatory does / does-not split and the clause carries both", () => {
-  assert.ok(SYSTEM_LORE.window.does.length > 0 && SYSTEM_LORE.window.doesNot.length > 0);
-  assert.ok(SYSTEM_LORE.window.doesNot.includes("remember"), "the live-observed violation is in the does-not list");
-  const clause = buildSystemLoreClause();
+test("item1: babel's system lore has the mandatory does / does-not split and the clause carries both", () => {
+  assert.ok(babelWorld.systemLore.window.does.length > 0 && babelWorld.systemLore.window.doesNot.length > 0);
+  assert.ok(babelWorld.systemLore.window.doesNot.includes("remember"), "the live-observed violation is in the does-not list");
+  const clause = buildSystemLoreClause(babelWorld);
   assert.match(clause, /does NOT remember/);
   assert.match(clause, /status display/i);
 });
 
+test("item1: a world with no committed system gets NO clause and NO auditor (the leak fix)", () => {
+  const bare = { name: "Neon City", tone: "cyberpunk" };
+  assert.equal(buildSystemLoreClause(bare), "", "a cyberpunk alley's GM is never told about the WINDOW/VOICE");
+  assert.deepEqual(detectSystemLoreViolations("The window will remember what direction you go.", bare), [], "no committed system → nothing to audit");
+});
+
 test("item1: 'the window will remember' is flagged; 'the window shows your level' is NOT", () => {
-  const bad = detectSystemLoreViolations("The window will remember what direction you go.");
+  const bad = detectSystemLoreViolations("The window will remember what direction you go.", babelWorld);
   assert.equal(bad.length, 1);
   assert.equal(bad[0].subject, "window");
   assert.equal(bad[0].verb, "remember");
-  assert.deepEqual(detectSystemLoreViolations("The window shows your level and your six measures."), []);
+  assert.deepEqual(detectSystemLoreViolations("The window shows your level and your six measures.", babelWorld), []);
   // negated attribution is the lore stated CORRECTLY — never flagged
-  assert.deepEqual(detectSystemLoreViolations("The window does not remember anything; it only displays."), []);
+  assert.deepEqual(detectSystemLoreViolations("The window does not remember anything; it only displays.", babelWorld), []);
   // voice side
-  assert.equal(detectSystemLoreViolations("The voice watches you from the treeline.").length, 1);
-  assert.deepEqual(detectSystemLoreViolations("The voice spoke once at your arrival."), []);
+  assert.equal(detectSystemLoreViolations("The voice watches you from the treeline.", babelWorld).length, 1);
+  assert.deepEqual(detectSystemLoreViolations("The voice spoke once at your arrival.", babelWorld), []);
 });
 
 // ---- ITEM 2: opening re-register (chaos-gradient law) -------------------------

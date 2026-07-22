@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createDefaultSoloRun } from "../server/solo/schema.js";
+import { loadScenarioFile } from "../server/campaign/scenarioLoader.js";
 import { buildOocGroundingContext, buildOocSystemPrompt, OOC_FRAMING } from "../server/gm/oocGrounding.js";
 
 // ooc-grounding (owner 2026-07-10): the OOC channel worked but the GM answering
@@ -15,6 +16,9 @@ function groundedRun() {
   run.narration = "You burst onto the track. Black smoke rises from Hollow Pine. You have maybe five minutes to decide.";
   run.world = run.world || {};
   run.world.time = { day: 1, tick: 0, minutes: 447, clock: "07:27", phase: "day" };
+  // SYSTEM LORE is now furniture (world.systemLore) — a grounded Babel-style OOC run
+  // carries it so the WINDOW/VOICE world-law rides the OOC context (see below).
+  run.world.systemLore = loadScenarioFile("babel").world.systemLore;
   // run.quests is an internal KEYED map (getQuestPayload reads Object.values).
   run.quests = {
     quest_momentum_smoke: {
@@ -74,10 +78,12 @@ test("buildOocSystemPrompt = grounding block THEN the framing", () => {
 });
 
 test("grounding never throws on a sparse run (non-fatal OOC path)", () => {
-  // A run with no narration / no quests must still produce a prompt (system lore
-  // at minimum) rather than throwing — OOC must stay non-fatal.
+  // A run with no narration / no quests / no committed system must still produce a
+  // string rather than throwing — OOC must stay non-fatal. Post steel/furniture
+  // migration, a worldless run carries NO SYSTEM LORE (that's furniture now), so the
+  // invariant here is non-fatality, not the presence of any one block.
   const bare = createDefaultSoloRun({ runId: "run_ooc_bare" });
   const ctx = buildOocGroundingContext(bare);
   assert.equal(typeof ctx, "string");
-  assert.match(ctx, /SYSTEM LORE/);
+  assert.doesNotMatch(ctx, /SYSTEM LORE/, "a worldless run inherits no VOICE/WINDOW system lore");
 });

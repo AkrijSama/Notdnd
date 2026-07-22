@@ -1271,9 +1271,10 @@ async function narrateActionWithGm(run, resolved, user) {
   // narrator describes the clearing where the clearing IS, and never invents
   // placement the map would contradict.
   message += buildLayoutDirective(run);
-  // SYSTEM LORE (item 1): the WINDOW/VOICE world-law facts ground every turn, so
-  // the model never invents system capabilities ("the window will remember…").
-  message += buildSystemLoreClause();
+  // SYSTEM LORE (item 1): a world's committed system facts (Babel's WINDOW/VOICE)
+  // ground every turn, so the model never invents system capabilities ("the window
+  // will remember…"). Furniture now — a world with no systemLore adds nothing.
+  message += buildSystemLoreClause(run.world);
   // ESSENCE-SIGHT (verdance-region-v1 §law-5): the committed demon-essence traces
   // at the scene ride as SIGHT-FACTS with a perception register (only the MC
   // perceives them; NPCs cannot see/discuss them) + a hard ban on inventing a
@@ -2366,7 +2367,7 @@ async function handleApi(req, res) {
       // SYSTEM-LORE AUDITOR (item 1, live check — NOT a ruler change): flag any
       // narration attributing a does-NOT capability to the WINDOW or VOICE.
       if (typeof gmNarration === "string" && gmNarration.trim()) {
-        const loreViolations = detectSystemLoreViolations(gmNarration);
+        const loreViolations = detectSystemLoreViolations(gmNarration, responseRun.world);
         if (loreViolations.length > 0) {
           logTurnEvent(
             responseRun.runId,

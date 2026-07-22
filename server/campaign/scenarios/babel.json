@@ -87,6 +87,23 @@
     "sceneRegister": "beautiful yet subtly wrong, uneasy stillness, faint shimmer in the air, over-still water, off light",
     "deathLaw": {
       "epilogue": "The Green Static releases its hold. An ocean away, a coma that was never death stirs, and the Tower keeps its hundred floors. It will call another."
+    },
+    "systemLore": {
+      "window": {
+        "what": "The WINDOW is a diegetic status display granted by the VOICE, a pane of light only the champion perceives.",
+        "does": [
+          "displays the character's six measures (status)",
+          "displays level and growth",
+          "displays the tracked objective",
+          "updates to reflect committed state when read"
+        ],
+        "doesNot": ["remember", "advise", "predict", "watch", "speak", "warn", "guide", "decide", "judge", "listen"]
+      },
+      "voice": {
+        "what": "The VOICE is the power that brought the champion here. It spoke once at the arrival and speaks rarely, if ever, again.",
+        "does": ["spoke the arrival orientation", "granted the WINDOW"],
+        "doesNot": ["lie", "advise", "predict", "watch", "answer", "intervene", "command"]
+      }
     }
   },
   "locations": {

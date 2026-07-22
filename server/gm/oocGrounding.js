@@ -125,7 +125,9 @@ export function buildOocGroundingContext(run) {
   }
 
   // 9) SYSTEM LORE (WINDOW/VOICE world-law) so an OOC answer about them is exact.
-  parts.push(buildSystemLoreClause().trim());
+  // Furniture: a world with no committed system contributes nothing here.
+  const loreClause = buildSystemLoreClause(run.world).trim();
+  if (loreClause) parts.push(loreClause);
 
   return parts.join("\n\n");
 }

@@ -1121,7 +1121,7 @@ export async function createWorldOnboardingRun(userId, { world = {}, character =
       baseBuilding: openBaseBuilding,
       questObjective: openObjective,
       worldTime: openWorldTime
-    }) + buildSystemLoreClause(),
+    }) + buildSystemLoreClause(run.world),
     playerName: characterName,
     actorUserId,
     fallback: buildOpeningFallback({
