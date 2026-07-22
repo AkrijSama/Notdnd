@@ -288,3 +288,17 @@ test("a genuine phantom PERSON is still committed (the moat-closer is not broken
   const committed = auditAndCommitNarratedNpcs(run, "Sable steps out from the treeline and lowers her rifle.", knownNames, { idFactory: seq() });
   assert.ok(committed.includes("Sable"), "a real narrated person must still be committed");
 });
+
+// finding#5 follow-up: possessive location fragments + modern landmarks are not people.
+test("a possessive LOCATION fragment ('Green Static's shimmer') is not personified", () => {
+  const known = ["Ash", "The Green Static, Fringe", "The Waking Mile"];
+  assert.deepEqual(detectPhantomNpcNames("the Green Static's shimmer licks at the treeline", known), []);
+  // token match must survive the comma in "The Green Static, Fringe"
+  assert.deepEqual(detectPhantomNpcNames("Static hangs heavy over the clearing today", known), []);
+});
+test("modern-frontier landmarks (the Stump bar, Doc Han's clinic) route to place, not a person", () => {
+  const known = ["Ash"];
+  // "bar"/"clinic"/"lot"/"office" are place suffixes now — the landmark is not a phantom person.
+  assert.ok(!detectPhantomNpcNames("you pass the Stump bar", known).includes("Stump"));
+  assert.ok(!detectPhantomNpcNames("Doc Han's clinic is dark", known).includes("Clinic"));
+});

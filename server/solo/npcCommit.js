@@ -177,7 +177,14 @@ const POSSESSIVE_STOPLIST = new Set([
 ]);
 
 function normalizeName(name) {
-  return String(name || "").trim().toLowerCase();
+  // Strip surrounding punctuation and a trailing possessive so a known location token
+  // ("Static," from "The Green Static, Fringe") matches the noun a possessive yields
+  // ("Green Static's shimmer" → "Static") — else the place gets personified (finding #5).
+  return String(name || "")
+    .trim()
+    .toLowerCase()
+    .replace(/['’]s$/, "")
+    .replace(/^[^a-z0-9']+|[^a-z0-9]+$/g, "");
 }
 
 // #50: infer a committed NPC's gender + pronouns from how the narration refers to
@@ -225,7 +232,11 @@ const PLACE_SUFFIX_WORDS = new Set([
   "sanctum", "vault", "crossing", "pass", "ridge", "hollow", "reach", "wastes", "fields",
   "woods", "forest", "inn", "tavern", "palace", "spire", "bastion", "well", "chapel",
   "monastery", "abbey", "barrow", "crypt", "tomb", "catacombs", "sept", "sanctuary",
-  "garrison", "watch", "ward", "wards"
+  "garrison", "watch", "ward", "wards",
+  // modern-frontier landmarks (Babel is a present-day zone): "the Stump bar", "Grace's
+  // office", "Doc Han's clinic", "Vail's salvage lot", "the Tithing Mill", "Ranger Station".
+  "bar", "office", "clinic", "lot", "yard", "mill", "station", "shop", "store", "depot",
+  "cache", "diner", "motel", "garage", "warehouse", "outpost", "camp", "lodge", "highway"
 ]);
 
 function endsInPlaceSuffix(rawName) {
