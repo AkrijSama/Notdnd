@@ -227,7 +227,9 @@ test("fixed-box text carries data-textfit; prose does NOT", () => {
   });
   assert.match(shell, /solo-vn-box-speaker" data-textfit/, "VN speaker fits");
   assert.match(shell, /solo-cast-name" data-textfit/, "cast names fit");
-  assert.match(shell, /solo-presence-loc" data-textfit/, "location label fits");
+  // NOTE: the local presence map's "Where you are" location label (.solo-presence-loc) was
+  // REMOVED (owner ruling 2026-07-22) — redundant with the map itself. The REGION map keeps
+  // its own .solo-presence-loc; textfit coverage is still asserted via the chips above/below.
   assert.match(shell, /solo-roll-total [^"]*" data-textfit/, "roll chips fit");
   // prose renderers never get fit-scaling
   const log = renderNarrationLog([{ id: "n1", intent: "", text: "Prose." }]);

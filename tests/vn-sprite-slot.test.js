@@ -33,8 +33,13 @@ test("the full-body sprite (vnBodyUri) is preferred over the bust portrait", () 
   const html = renderSoloDialogueOverlay(
     stateWith({}, { cast: [{ npcId: "vex", portraitUri: "/bust.png" }], vnBodyUri: "/fullbody.png" })
   );
-  assert.match(html, /src="\/fullbody\.png"/);
-  assert.doesNotMatch(html, /src="\/bust\.png"/);
+  // the SPRITE uses the full-body sprite...
+  assert.match(html, /class="solo-vn-sprite-img[^"]*"[^>]*src="\/fullbody\.png"/);
+  // ...and NOT the bust. Scope the exclusion to the sprite <img>: the bust now legitimately
+  // appears in the NPC FACE THUMBNAIL (.solo-vn-face, owner HUD arrangement 2026-07-22), a
+  // separate cluster element that IS the speaker's face — so a whole-overlay /bust/ exclusion
+  // would wrongly fail on it.
+  assert.doesNotMatch(html, /class="solo-vn-sprite-img[^"]*"[^>]*src="\/bust\.png"/);
 });
 
 test("falls back to the 2:3 bust portrait when there is no full-body sprite yet", () => {

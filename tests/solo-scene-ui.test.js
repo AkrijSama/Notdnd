@@ -130,11 +130,16 @@ function sampleScene() {
   };
 }
 
-test("renderSoloSceneShell renders location name and description", () => {
+test("renderSoloSceneShell renders the location description", () => {
   const html = renderSoloSceneShell({ scene: sampleScene() });
   assert.match(html, /solo-scene-shell-polished/);
-  assert.match(html, /Start Location/);
   assert.match(html, /Neutral placeholder description/);
+  // NOTE (owner ruling 2026-07-22): the "Where you are" label + its visible location NAME
+  // (.solo-presence-loc) were removed. In the polished shell that presence label was the ONLY
+  // visible source of the location name (the legacy .solo-scene-header h2 is not rendered), so
+  // the name is no longer visible text here — it survives in the presence map's aria-label
+  // ("Presence map of <name>"). Flagged in the dispatch report; a visible caption would be a
+  // separate, stamped addition.
 });
 
 test("renderSoloSceneShell error state surfaces the message, a retry, and a way back home", () => {

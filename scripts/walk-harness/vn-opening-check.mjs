@@ -69,6 +69,28 @@ async function inspectDom(tok) {
       if (loaded) break;
       await sleep(3000);
     }
+    // CLUSTER GEOMETRY GUARD (owner HUD arrangement 2026-07-22): the cook-gated VN sprite +
+    // face thumb don't render on a guest run, so inject a real 832x1216 sprite + a face thumb
+    // (matching the live classes) and force .vn-active — the ordering / no-overlap / large-
+    // sprite assertions below then run deterministically instead of trivially skipping. This
+    // mirrors the exact DOM the overlay produces when the assets exist.
+    await ev(`(()=>{
+      const stage=document.querySelector('.solo-stage'); if(!stage) return;
+      stage.classList.add('vn-active');
+      if(!document.querySelector('.solo-vn-sprite')){
+        const c=document.createElement('canvas');c.width=832;c.height=1216;c.getContext('2d').fillRect(0,0,832,1216);
+        const d=document.createElement('div');d.className='solo-vn-sprite';
+        const i=document.createElement('img');i.className='solo-vn-sprite-img is-loaded';i.src=c.toDataURL('image/png');
+        d.appendChild(i);stage.appendChild(d);
+      }
+      if(!document.querySelector('.solo-vn-face')){
+        const c=document.createElement('canvas');c.width=200;c.height=260;c.getContext('2d').fillRect(0,0,200,260);
+        const d=document.createElement('div');d.className='solo-vn-face';
+        const i=document.createElement('img');i.className='solo-vn-face-img';i.src=c.toDataURL('image/png');
+        d.appendChild(i);stage.appendChild(d);
+      }
+    })()`);
+    await sleep(400);
     return await ev(`(()=>{
       const VH = window.innerHeight, VWp = window.innerWidth;
       const vn = document.querySelector('.solo-vn-box');
@@ -122,6 +144,17 @@ async function inspectDom(tok) {
           const iy = Math.max(0, Math.min(a.bottom, h.bottom) - Math.max(a.top, h.top));
           return Math.round(ix) + 'x' + Math.round(iy) + 'px';
         })(),
+        // VN-BEAT HUD CLUSTER (owner arrangement): order MAP > FACE > SPRITE (right→left),
+        // the VN body LARGE (not a thumbnail), and NOTHING overlaps (sprite behind the VN box
+        // is the one intended exception and is not measured here).
+        cluster: (() => {
+          const R = (s) => { const el = document.querySelector(s); if (!el) return null; const b = el.getBoundingClientRect(); return { t: Math.round(b.top), l: Math.round(b.left), r: Math.round(b.right), b: Math.round(b.bottom), w: Math.round(b.width), h: Math.round(b.height) }; };
+          const g = { sprite: R('.solo-vn-sprite'), face: R('.solo-vn-face'), map: R('.solo-minimap'), hud: R('.solo-stage-hud'), dock: R('.solo-portrait-dock-aside') };
+          const ov = (a, b) => { if (!a || !b) return 0; const ix = Math.max(0, Math.min(a.r, b.r) - Math.max(a.l, b.l)); const iy = Math.max(0, Math.min(a.b, b.b) - Math.max(a.t, b.t)); return ix > 0 && iy > 0 ? (ix + 'x' + iy) : 0; };
+          const pairs = [['sprite', 'face'], ['sprite', 'map'], ['sprite', 'hud'], ['sprite', 'dock'], ['face', 'map'], ['hud', 'map'], ['hud', 'dock']];
+          const bad = pairs.filter(([a, b]) => ov(g[a], g[b]) !== 0).map(([a, b]) => a + '~' + b + '=' + ov(g[a], g[b]));
+          return { orderOK: g.map && g.face && g.sprite ? (g.map.r > g.face.r && g.face.r > g.sprite.r) : null, spriteTall: g.sprite ? g.sprite.h : 0, badOverlaps: bad };
+        })(),
         vnTextBottom: bottom(vnTextEl),
         logBottom: bottom(log),
         scenePaintedW, sceneContainerW,
@@ -155,6 +188,11 @@ async function inspectDom(tok) {
     // OWNER LAW (JOB 1.2): the speaking NPC stands on the RIGHT. Assert-when-present (the sprite
     // is library/quota-gated on a guest run, so a spriteless run reports rather than fails).
     [`VN sprite is staged on the RIGHT when present (side=${dom.spriteSide})`, dom.spriteSide == null || dom.spriteSide === 'right'],
+    // OWNER HUD ARRANGEMENT (2026-07-22): the top-right cluster is MAP > FACE > SPRITE (right→
+    // left), the VN body is LARGE (not a thumbnail), and nothing in the cluster overlaps.
+    [`VN cluster order is MAP > FACE > SPRITE, right→left (orderOK=${dom.cluster.orderOK})`, dom.cluster.orderOK === true],
+    [`VN body is LARGE, not a corner thumbnail (height ${dom.cluster.spriteTall} >= 200)`, dom.cluster.spriteTall >= 200],
+    [`nothing overlaps in the VN cluster (${dom.cluster.badOverlaps.join(', ') || 'clear'})`, dom.cluster.badOverlaps.length === 0],
     // JOB 4.2a — LAYOUT: the VN dialogue text and the narration must both stay ON screen. The
     // ~600px VN sprite once pushed them off the bottom (JOB 3). Only meaningful with the sprite
     // present (the overflow condition) — reported below so a spriteless run isn't a silent pass.
@@ -168,7 +206,7 @@ async function inspectDom(tok) {
   console.log(`=== VN OPENING GUARD (DOM-level, real browser @ ${dom.viewportW}x${dom.viewportH}) ===`);
   for (const [label, ok] of checks) console.log(`  ${ok ? "PASS" : "FAIL"}  ${label}`);
   console.log(`  NOTE  VN sprite present this run: ${dom.spritePresent} (side/layout checks are only a real guard when true)`);
-  console.log(`  NOTE  sprite↔HUD overlap: ${dom.hudSpriteOverlap == null ? "no sprite this run" : dom.hudSpriteOverlap + " — reported not enforced (JOB 1.4/1.5 large-sprite-vs-HUD STOP, owner call)"}`);
+  console.log(`  NOTE  sprite↔HUD overlap: ${dom.hudSpriteOverlap == null ? "no sprite this run" : dom.hudSpriteOverlap + " (0-width = clear — the HUD row now tucks to the top gap left of the sprite; the no-overlap cluster check above enforces it)"}`);
   console.log(`  NOTE  non-speaker DIMMING + player-LEFT sprite are UNBUILT (JOB 1.2/1.3): no player fullbody asset exists and there is no player-speaking VN beat, so only one (NPC) sprite ever renders — nothing to dim, no left slot to stage. Not asserted (would be a fake green).`);
   console.log(`  NOTE  scene image span: ${dom.sceneSpanRatio == null ? "image not cooked yet this run" : dom.sceneSpanRatio + "% of container width (" + dom.scenePaintedW + "/" + dom.sceneContainerW + "px) — JOB 2 conflict, reported not enforced"}`);
   const failed = checks.filter(([, ok]) => !ok);

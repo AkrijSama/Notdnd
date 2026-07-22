@@ -3323,6 +3323,60 @@ button:disabled {
   .solo-vn-sprite-img { transition: none; opacity: 1; }
   .solo-vn-sprite-breathe { animation: none; }
 }
+
+/* ── VN-BEAT HUD CLUSTER (owner arrangement 2026-07-22) ─────────────────────────────
+   During a VN beat the top-right corner is a deliberate cluster, OUTER CORNER INWARD:
+     MAP widget (hard to the corner) | NPC face thumbnail (left of map) | VN BODY sprite
+     (large, left of the face).
+   Every OTHER control (Local/Region, Map-open, clock, Cast·Exits, settings gear) tucks
+   into the top gap between the portrait dock (top-left) and the sprite — reachable,
+   grouped, clear of the sprite/cluster/VN box. The A−/A+ VN sizer already lives inside
+   the VN box head (not chrome). Gated on .solo-stage.vn-active so normal exploration
+   layout is untouched. The VN body is NOT shrunk (locked ruling): the HUD moves around it.
+   --vn-map-w / --vn-face-w drive the right-offsets so the three read as one row without a
+   shared flex container (map + sprite/face live in separate DOM subtrees). */
+.solo-stage { --vn-map-w: 168px; --vn-face-w: 76px; --vn-cluster-gap: 8px; --vn-dock-w: clamp(120px, 12vw, 172px); }
+
+/* 1 · MAP widget → the upper-most top-right corner. */
+.solo-stage.vn-active .solo-minimap { top: 8px; bottom: auto; }
+
+/* 2 · NPC face thumbnail → directly LEFT of the map. */
+.solo-vn-face {
+  position: absolute;
+  top: 8px;
+  right: calc(8px + var(--vn-map-w) + var(--vn-cluster-gap));
+  z-index: 29;
+  width: var(--vn-face-w);
+  height: calc(var(--vn-face-w) * 4 / 3);
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--border-strong, #34343b);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+  background: var(--inset, #070708);
+  pointer-events: none;
+}
+.solo-vn-face-img { width: 100%; height: 100%; object-fit: cover; object-position: top center; display: block; }
+
+/* 3 · VN BODY sprite → LEFT of the face; fills the stage height (LARGE, not shrunk). Its
+      lower body stands behind the translucent VN box (VN convention). */
+.solo-stage.vn-active .solo-vn-sprite {
+  top: 8px;
+  bottom: 0;
+  right: calc(8px + var(--vn-map-w) + var(--vn-cluster-gap) + var(--vn-face-w) + 12px);
+}
+.solo-stage.vn-active .solo-vn-sprite-img { max-width: min(46vw, 460px); }
+
+/* EVERYTHING ELSE tucked into the top gap right of the portrait dock, clear of the sprite. */
+.solo-stage.vn-active .solo-stage-hud {
+  top: 8px;
+  bottom: auto;
+  right: auto;
+  left: calc(var(--vn-dock-w) + 12px);
+  max-width: calc(100% - var(--vn-dock-w) - var(--vn-map-w) - var(--vn-face-w) - 260px);
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  row-gap: 6px;
+}
 .solo-vn-box {
   position: absolute;
   left: 0;

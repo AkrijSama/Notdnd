@@ -2339,9 +2339,12 @@ export function renderSoloPresenceMap(scene = {}) {
   const bm = scene && typeof scene.battleMap === "object" && scene.battleMap ? scene.battleMap : {};
   const tokens = Array.isArray(bm.tokens) ? bm.tokens : [];
   const locationName = scene.location && typeof scene.location.name === "string" && scene.location.name ? scene.location.name : "Here";
-  const head = `<div class="solo-presence-head"><span class="solo-stat-kicker">Where you are</span><span class="solo-presence-loc" data-textfit>${escapeHtml(locationName)}</span></div>`;
+  // "WHERE YOU ARE" label REMOVED (owner ruling): redundant — the map itself shows the
+  // player's location. Removed outright, not tucked. The REGION map keeps its own header
+  // (renderSoloRegionMap), and the shared .solo-presence-head/.solo-presence-loc CSS stays
+  // for it. locationName is still used for the grid's aria-label below.
   if (!tokens.length) {
-    return `<div class="solo-presence">${head}<div class="solo-presence-empty">The ground beneath you hasn't taken shape yet.</div></div>`;
+    return `<div class="solo-presence"><div class="solo-presence-empty">The ground beneath you hasn't taken shape yet.</div></div>`;
   }
   const width = Number.isFinite(bm.width) && bm.width > 0 ? Math.min(24, Math.trunc(bm.width)) : 12;
   const height = Number.isFinite(bm.height) && bm.height > 0 ? Math.min(24, Math.trunc(bm.height)) : 12;
@@ -2441,7 +2444,7 @@ export function renderSoloPresenceMap(scene = {}) {
       return `<span class="solo-presence-token solo-token-${escapeHtml(kind)}" style="grid-column:${x + 1};grid-row:${y + 1};" title="${escapeHtml(name)}" aria-label="${escapeHtml(name)}">${escapeHtml(initial)}</span>`;
     })
     .join("");
-  return `<div class="solo-presence">${head}<div class="solo-presence-grid ${terrainClass}" style="grid-template-columns:repeat(${width},1fr);grid-template-rows:repeat(${height},1fr);" role="img" aria-label="Presence map of ${escapeHtml(locationName)}">${ground.join("")}${terrainCells}${featureCells}${cells}</div>${legendBlock}</div>`;
+  return `<div class="solo-presence"><div class="solo-presence-grid ${terrainClass}" style="grid-template-columns:repeat(${width},1fr);grid-template-rows:repeat(${height},1fr);" role="img" aria-label="Presence map of ${escapeHtml(locationName)}">${ground.join("")}${terrainCells}${featureCells}${cells}</div>${legendBlock}</div>`;
 }
 
 // #40 — surface the committed world clock (#14). The server derives
@@ -3167,6 +3170,14 @@ export function renderSoloDialogueOverlay(state = {}) {
     ? `<div class="solo-vn-sprite" data-portrait-key="${escapeHtml(spriteUri)}"><img class="solo-vn-sprite-img solo-vn-sprite-breathe" data-solo-vn-sprite src="${escapeHtml(spriteUri)}" alt="${escapeHtml(speaker)}" aria-hidden="true" />${renderArtThumb(spriteUri, "fullbody", "br")}</div>`
     : "";
 
+  // NPC FACE THUMBNAIL (owner HUD arrangement 2026-07-22): the speaker's committed bust,
+  // element 2 of the top-right cluster — sits directly LEFT of the map, the VN body sprite
+  // to ITS left. Rendered only during a VN beat (this overlay is), the bust (portraitUri) is
+  // the same face the sprite is tailored from. Omitted when the speaker has no committed bust.
+  const faceThumbBlock = portraitUri
+    ? `<div class="solo-vn-face" aria-hidden="true"><img class="solo-vn-face-img" src="${escapeHtml(portraitUri)}" alt="${escapeHtml(speaker)}" /></div>`
+    : "";
+
   // The conversation scrollback now lives in the persistent narration log (each
   // beat is a logged turn with speaker attribution), so the in-stage textbox shows
   // only the CURRENT line — no duplicate history panel inside the VN box.
@@ -3180,6 +3191,7 @@ export function renderSoloDialogueOverlay(state = {}) {
   // the typewriter / reply / end bindings in bindSoloSceneShell keep working.
   return `
     ${spriteBlock}
+    ${faceThumbBlock}
     <div class="solo-vn-box" data-solo-dialogue-panel role="group" aria-label="Dialogue with ${escapeHtml(speaker)}">
       <div class="solo-vn-box-head">
         <span class="solo-vn-box-speaker" data-textfit>${escapeHtml(speaker)}</span>
