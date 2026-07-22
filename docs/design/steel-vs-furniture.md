@@ -217,7 +217,7 @@ until the loader is widened. **These migrations are therefore CLI-2-gated, not d
 | `progression.js:92,104-112` | `world.rankLadder` (array) + run `player.babelSkills`→`rankedSkills` | `run.world.rankLadder` + a run-field rename | loader (array) **and** a `run.player` schema rename across persistence | loader array-copy + `rankLadder` slot; the `rankedSkills` rename is its own schema+DB migration |
 | `imageWorker.js:725-741,800-836` | `world.playerOrigin.artFraming` (new field on the origin object) | `run.playerOrigin.artFraming` | the `playerOrigin` door (`scenarioLoader.js:251-263`) carries only ability-boost + named feat; a new field is dropped — **and this is the SEALED art choke-point (`art-path-wall`)** | widen the playerOrigin copy + a wall/drift-test-guarded art change (high-risk, own pass) |
 | `bestiary.js` `rapture_drifter`/`LIMPING_GREY` | `babel.json bestiary.statBlocks` (overlay door is OPEN) | already reachable via `registerStatBlock` (`scenarioLoader.js:146-149`) | **not the loader — the FROZEN-BLOCK test contract.** ~8 tests (`verdance-bestiary`, `missing-rungs`, `combat-narration`, `scene-hostile-injection`, `combat-battle-surface`, `combat-door`, `minted-block-pruning`, `combat-grey-depth`) call `resolveStatBlock("limping_grey"/"rapture_drifter")` directly with no scenario load; `minted-block-pruning` asserts frozen blocks are NEVER pruned | moving to the runtime overlay inverts the prune contract and breaks those tests — land only alongside a test-contract rework, not as a "moderate" |
-| `gmProvider.js:322` | prose → world data | — | **stale ledger reference: no file at `server/ai/gmProvider.js`** | re-locate the "Her kept-clear ground"/"the shimmer" strings before migrating |
+| `server/solo/gmProvider.js:322` | prose → `world.startArea.register` | `run`-derived `location.starterZone` (already flows) | **CORRECTED (CLI-2):** the file EXISTS — at `server/solo/gmProvider.js:322`, not `server/ai/`. The "Her kept-clear ground"/"the shimmer" strings are a starter-zone anti-lost directive **gated on `location.starterZone`** (the generic tag path). Not a phantom; a real deferred prose→furniture migration | keep the anti-lost LAW generic; move only the Verdance flavor prose to `world.startArea.register` (own pass — has an em-dash that trips the authored-content ban) |
 
 **Essence-vocabulary family (the 9-module span, JOB 2.3):** same wall. All vocabulary
 (`SIGHT_PHRASES`, `TRACE_BAND_META`/`TRACE_KIND_META` words, the "champion / essence /
@@ -232,6 +232,49 @@ Babel strings). Deferred as a coherent CLI-2-gated commit. **One in-family coher
 fixed in this pass without migration:** `buildEssenceTraceDirective` hardcoded the male pronoun
 "it is his sight alone" for every player of every world (misgenders non-male players even in
 Babel) → neutralized to "it is theirs alone" (register tests stay green; no world data needed).
+
+#### MODERATE — RE-AUDIT against the WIDENED loader (2026-07-21, CLI-2)
+
+The routability table above was written when `scenarioLoader.js:233` was string-only. Stage 3
+(`c0f2662`) then widened it to carry object/array world knobs — **the recorded blocker went
+stale.** Re-audited each held item against the shipped loader (carry set:
+`deathLaw, orientationMix, systemLore, playerSense, speechConventions, rankLadder, sheetSpec,
+nameBanks` [objects] · `suggestionExemplars` [array] · `sightAccent` [string]). Verdicts:
+
+| Item | Verdict | Precise mechanism |
+|---|---|---|
+| **systemLore** | ✅ **LANDED** (`cb59330`) | Carrier `run.world.systemLore` is in the widened set. Migrated: babel authors it, consumers read it, engine default neutral. Byte-identical bar one justified em-dash→comma diff. Live door: the narrator/opening/OOC prompt clause. |
+| **actionNarration beats** | **STILL BLOCKED (loader)** | Carrier `run.world.opening` / `run.startArea` is **not** in the widened set — probes confirm both are dropped at load. *Also:* babel uses `opening.authoredBeats`, so `buildOpeningGmMessage`'s Babel prose is DEAD for babel and leaks only into the **worldgen** opening builder — the fix is a worldgen de-Babel gating change (test surface: `solo-action-narration.test.js`, `server-clearout.test.js` item 2), not a byte-identical world-knob carry. Its own pass. |
+| **sheetSpec** | **STILL BLOCKED (client, not loader)** | The loader now **carries** `run.world.sheetSpec` (probe confirms). The live blocker moved to the CLIENT: the STATUS WINDOW render is hard-gated `world.variant === "babel"` at `soloSceneShell.js:1429` (**CLI-1 fenced**). A server-only generalize (`scene.js:862`) is byte-identical for babel and **dead furniture** for every other world (pre-mortem b). Needs the client gate generalized. |
+| **rankLadder** | **STILL BLOCKED (three ways)** | (a) `RANK_LADDER` is an ARRAY; `carryObject` skips arrays, so an array `world.rankLadder` is dropped (probe confirms). (b) `player.babelSkills`→`rankedSkills` is a separate schema+persistence rename. (c) the rank display door is variant-gated at `soloSceneShell.js:1429` (CLI-1 fenced). Display-only; no non-Babel consumer. |
+| **imageWorker art-framing** | **STILL BLOCKED (art pass)** | Carrier `run.playerOrigin.artFraming`: the playerOrigin door (`scenarioLoader.js:255-267`) copies only boost/name/feat — a new field is dropped (probe confirms). AND it is the SEALED art choke-point (`art-path-wall`). Not a loader widening; a drift-guarded art pass. |
+| **bestiary rapture_drifter / LIMPING_GREY** | **STILL BLOCKED (test contract) — report only** | Not the loader (overlay door open). Inversion required: moving to `babel.json bestiary.statBlocks` makes `resolveStatBlock` return null with no scenario load → breaks ~8 tests, and `minted-block-pruning`'s "frozen blocks are NEVER pruned" contract inverts. Safe only WITH a test-contract rework (load babel / seed the overlay in those tests; redefine the prune invariant to "never prune a block referenced by an active encounter"). Not a moderate fold-in. |
+
+**NET: 1 landed (systemLore), 5 correctly held.** The held five are blocked by NEW/OTHER fences
+(client variant-gate in a CLI-1 file · a DB-field rename · the art choke-point · a frozen-registry
+test contract) — not by the loader. Landing any server-only half would ship dead furniture.
+
+### JOB 3 — THE HELD-ITEM CONTRACT (the anti-stale-blocker law)
+
+Two robots passed each other and a blocker went stale **silently**: CLI-1 held four items on
+"loader is string-only"; Stage 3 widened the loader; nothing turned red; systemLore sat falsely
+"blocked". **A stale blocker is a process bug, not just a code bug.** The law, from here on:
+
+> **Every HELD item MUST record (a) its exact blocking mechanism as `file:line`, and (b) a
+> machine-checkable UNBLOCK CONDITION.** A held item without both is not "held" — it is
+> forgotten. The rows above comply: each names its mechanism and the observable that flips it.
+
+**Machine-checkable enforcement:** `tests/held-item-contract.test.js` encodes each still-held
+blocker as a runtime probe (inject the carrier into a babel load; read the client gate as text;
+resolve the frozen block with no scenario). **When a blocker stops describing reality — the loader
+widens, the client gate generalizes, the run field is renamed, the frozen registry is reworked —
+the matching assertion goes RED and names the item to re-audit.** Green = the HELD list is honest.
+This is the exact check that would have caught the systemLore staleness the moment Stage 3 shipped.
+
+*Honesty note:* this net is cheap and real for the loader/client/registry blockers (all are
+observable from a test). It does **not** attempt to prove a *negative-of-a-negative* (e.g. "no
+future consumer will read a carried-but-dead knob"); that is the route-inventory law's job, done
+per-migration in prose, not by a standing check.
 
 ### Deferred — RISKY / arguably generic law
 `essence.js` whole module (`SIGHT_PHRASES`, "the champion's sight", hardcoded male pronoun) —
