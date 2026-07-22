@@ -1402,10 +1402,12 @@ button:disabled {
 }
 
 /* ---------------------------------------------------------------------------
-   Shared image-fit system. Generated sources have fixed aspect ratios:
-   NPC portrait 512x768 (2:3), player/creator portrait 1024x1024 (1:1),
-   location 768x512 (3:2). Wrap an <img> in a .frame-* container (which fixes
-   the box aspect to match the source so object-fit:cover crops little/nothing)
+   Shared image-fit system. walk-fix — the REAL cook aspects (via the live comfyui
+   dimsFor path, scripts/art/generate.mjs) are: scene/world-card 1344x768 (7:4);
+   fullbody 832x1216 (2:3); portrait 896x1152 (recipe) — NOT the old "512x768 / 1024x1024
+   / 768x512" this comment claimed (those imageWorker constants are overridden by the
+   recipe). The pipeline's portrait dims are inconsistent across paths; wrap an <img> in a
+   .frame-* container and use object-fit:CONTAIN so nothing is ever cut whatever the source
    and give the <img> .img-fit (cover + a top-center anchor so a portrait crops
    toward the FACE, never stretches). Surfaces below use the equivalent CSS
    inline on their existing rules. (The main scene portrait and banner are
@@ -1965,11 +1967,10 @@ button:disabled {
 .solo-scene-art {
   position: relative;
   flex: none;
-  /* Match the 768x512 (3:2) landscape asset. At normal widths the banner is
-     true 3:2 and shows the whole image; max-height caps it on wide/ultrawide
-     center columns, where object-fit:cover then center-crops top/bottom (the
-     most important middle stays visible). The old fixed short height made the
-     3:2 image render as a thin letterbox band. */
+  /* walk-fix: the scene asset is 1344x768 (7:4, ~1.75), NOT 768x512 (3:2) — that comment
+     was stale for a long time. This BASE box (non-stage contexts) keeps a 3:2 frame; the
+     in-game stage box (.solo-stage .solo-scene-art) holds the true 7:4 cook aspect so
+     nothing is cut. The img is object-fit:contain, so even here nothing is ever cropped. */
   aspect-ratio: 3 / 2;
   min-height: 200px;
   max-height: clamp(240px, 34vh, 420px);
@@ -2012,10 +2013,11 @@ button:disabled {
   inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: cover;
-  /* The banner shows a wide strip of a taller (1344x768) source: anchor the crop
-     CENTER-BOTTOM so the GROUND survives and the sky is what's sacrificed (owner
-     ruling 2026-07-19 — scene art is the player's eye-level view). */
+  /* walk-fix: CONTAIN, never cover. The box now matches the 1344x768 cook aspect, so a
+     correct asset fills it with nothing cut. If an asset EVER cooks at the wrong aspect,
+     contain letterboxes it VISIBLY (a loud absence) instead of cover's SILENT crop — per
+     the owner's standing law that failures are loud, not quietly trimmed. */
+  object-fit: contain;
   object-position: center bottom;
   display: block;
 }
@@ -3360,10 +3362,20 @@ button:disabled {
    a small window still leaves the log readable room; object-fit:cover on the
    img (already set) means the image never distorts. */
 .solo-stage .solo-scene-art {
-  aspect-ratio: auto;
-  height: clamp(220px, 35vh, 560px);
+  /* walk-fix (owner ruling: the ground must ALWAYS be in frame AND nothing gets cut).
+     The old box was a variable full-bleed STRIP (aspect ~2.3-4.6 by viewport) and
+     object-fit:cover silently cropped up to ~62% off the top. Fix: the box now holds the
+     scene cook aspect (1344x768 = 7:4), so the image fills it EXACTLY — no crop, no
+     letterbox. On wide viewports it caps at ~560px tall and centers (max-width = 560*7/4);
+     on narrow ones it is full-width, height following the aspect. Cook 1344x768 IS the
+     correct dimension for this box — they are now aligned, so nothing is ever cut. */
+  aspect-ratio: 1344 / 768;
+  width: 100%;
+  max-width: calc(560px * 1344 / 768);
+  height: auto;
   min-height: 0;
   max-height: none;
+  margin-inline: auto;
 }
 /* #34 step 1: the log IS the scroller — flex:1 to take the remaining bounded
    height, min-height:0 so it can actually shrink-and-scroll, overflow-y:auto. */
@@ -4382,6 +4394,14 @@ button:disabled {
 .onb-world-card:hover { border-color: var(--border-strong, #34343b); transform: translateY(-2px); }
 .onb-world-card.active { border-color: var(--accent, #c2c6cf); box-shadow: 0 0 0 1px var(--accent, #c2c6cf); }
 .onb-world-card-art { display: block; width: 100%; height: 150px; object-fit: cover; filter: saturate(0.92); }
+/* VISIBLE pending/absent art (walk-fix): an unresolved world-card shows this muted hatch
+   — a loud "no art yet", never a plausible bundled default that reads as real key art. */
+.onb-world-card-art[data-art-pending] {
+  filter: none;
+  background:
+    repeating-linear-gradient(45deg, rgba(214, 217, 224, 0.035) 0 11px, rgba(214, 217, 224, 0.075) 11px 22px),
+    linear-gradient(180deg, #1a120b, #0d0907);
+}
 .onb-world-card.active .onb-world-card-art { filter: none; }
 .onb-world-card-body { display: block; padding: 12px 14px 14px; }
 .onb-world-card-title {
@@ -4655,7 +4675,13 @@ button:disabled {
 /* Fill the square container with object-fit:cover (never stretch). Ratios match
    the asset, so this shows the full composite; object-position favors the head
    if the sidebar width ever forces a minor crop. */
-.solo-portrait-img { width: 100%; height: 100%; object-fit: cover; object-position: top center; display: block; }
+/* walk-fix (portrait crop finding): CONTAIN, never cover. Portraits are FACES — a cover
+   crop cuts ears/hair/shoulders. The pipeline's portrait dims are inconsistent (imageWorker
+   512x768 bust / 1024x1024 player vs recipe dimsFor 896x1152 vs this 2:3 frame), so no single
+   cook aspect matches every path; contain guarantees the WHOLE face is always in frame,
+   nothing cut, whatever the source aspect. (Owner: rationalize portraits to one aspect — see
+   docs/design/walk-aspect-fixes.md — then a matched cook fills the frame with no letterbox.) */
+.solo-portrait-img { width: 100%; height: 100%; object-fit: contain; object-position: top center; display: block; }
 
 /* Portrait still generating: fill the same box (no layout shift) with a label. */
 .solo-portrait-pending {

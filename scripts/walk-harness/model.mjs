@@ -60,23 +60,34 @@ export const LAYERS = Object.freeze({
 // for a walk (the class-5 hole lived entirely below this line).
 export const DOOR_LAYER_RANK = LAYERS.HTTP_GUEST.rank;
 
-// ── COOK DIMENSIONS per kind (single source: scripts/art/generate.mjs + imageWorker) ──
+// ── COOK DIMENSIONS per kind ─────────────────────────────────────────────────
+// CORRECTED (walk-fix): the LIVE comfyui path uses `dimsFor(recipe, kind)`
+// (scripts/art/generate.mjs), which OVERRIDES the imageWorker.js caller constants.
+// The earlier harness used those constants (e.g. portrait 512x768) and UNDER-reported
+// the portrait crop. The real cook aspects are below.
 export const COOK = Object.freeze({
-  "world-card": { dims: [1344, 768], ref: "scripts/art/generate.mjs:122 KIND_DIMENSIONS['world-card']" },
-  scene: { dims: [1344, 768], ref: "scripts/art/generate.mjs:121 KIND_DIMENSIONS.scene; imageWorker.js:428 LANDSCAPE_DIMENSIONS" },
-  "portrait-bust": { dims: [512, 768], ref: "server/solo/imageWorker.js:424 PORTRAIT_DIMENSIONS" },
-  "portrait-player": { dims: [1024, 1024], ref: "server/solo/imageWorker.js:430 PLAYER_PORTRAIT_DIMENSIONS" },
-  fullbody: { dims: [832, 1216], ref: "server/solo/imageWorker.js:434 VN_BODY_DIMENSIONS" }
+  "world-card": { dims: [1344, 768], ref: "generate.mjs dimsFor 'world-card' → KIND_DIMENSIONS 1344x768" },
+  scene: { dims: [1344, 768], ref: "generate.mjs dimsFor 'scene' → KIND_DIMENSIONS 1344x768" },
+  // kind='portrait' → dimsFor returns 896x1152 for BOTH bust and player on the comfyui path
+  // (the imageWorker 512x768/1024x1024 constants are the pollinations-path caller dims and
+  // are overridden). The pipeline's portrait dims are inconsistent — reported as a finding.
+  "portrait-bust": { dims: [896, 1152], ref: "generate.mjs dimsFor 'portrait' → KIND_DIMENSIONS 896x1152 (recipe; overrides imageWorker 512x768)" },
+  "portrait-player": { dims: [896, 1152], ref: "generate.mjs dimsFor 'portrait' → 896x1152 (comfyui; imageWorker constant is 1024x1024 for pollinations only)" },
+  fullbody: { dims: [832, 1216], ref: "generate.mjs dimsFor 'fullbody' → 832x1216" }
 });
 
 // ── DISPLAY BOXES per surface (from src/styles.css) ──────────────────────────
 // aspect = width/height. A `null` aspect means viewport-dependent — then `evalAspect`
 // takes a reference viewport. `ref` is the CSS file:line.
+// objectFit determines the failure mode: "cover" CROPS a mismatch (content cut — a hard
+// finding); "contain" LETTERBOXES it (empty space — nothing cut, the owner's law holds).
 export const DISPLAY = Object.freeze({
-  "world-card-lobby": { fixedHeight: 150, widthHint: 260, ref: "src/styles.css:4337 .onb-world-card-art (100% x 150px, object-fit cover)" },
-  scene: { variable: true, heightClamp: [220, 560], ref: "src/styles.css:3315 .solo-stage .solo-scene-art (aspect auto; height clamp(220,35vh,560); full-bleed width)" },
-  "portrait-frame": { aspect: 512 / 768, ref: "src/styles.css:1368 .frame-portrait (aspect-ratio 512/768, object-fit cover)" },
-  "vn-sprite": { aspect: 832 / 1216, ref: "src/styles.css:3198 .solo-vn-sprite-img (2:3 source fills height)" }
+  "world-card-lobby": { fixedHeight: 150, widthHint: 260, objectFit: "cover", ref: "src/styles.css .onb-world-card-art (100% x 150px, object-fit cover)" },
+  // walk-fix: the stage scene box now holds the 1344x768 cook aspect (fixed 7:4) and the
+  // img is object-fit:contain — nothing is ever cut.
+  scene: { aspect: 1344 / 768, objectFit: "contain", ref: "src/styles.css .solo-stage .solo-scene-art (aspect 1344/768; img object-fit contain — walk-fix)" },
+  "portrait-frame": { aspect: 512 / 768, objectFit: "contain", ref: "src/styles.css .frame-portrait (2:3) + .solo-portrait-img object-fit contain — walk-fix" },
+  "vn-sprite": { aspect: 832 / 1216, objectFit: "cover", ref: "src/styles.css .solo-vn-sprite-img (2:3 source fills height)" }
 });
 
 // crop math: cookAspect vs displayAspect (both = width/height). Returns axis + %.
@@ -126,13 +137,13 @@ export const SURFACES = Object.freeze([
     clientResolution: {
       kind: "separate-fetch",
       request: { method: "GET", path: "/api/art/library?world=babel&kind=world-card" },
-      // CLI-1 fixed the original bare-fetch (bindWorldCardArt now uses apiClient.artLibrary,
-      // which attaches the Bearer token) — so a LOGGED-IN user's request now carries auth.
-      // BUT /api/art/library is STILL authed, so a GUEST (no token) still 401s → static.
-      // The harness therefore replays BOTH: authed (the logged-in door) + guest (first-user).
+      // CLI-1 fixed the bare-fetch (bindWorldCardArt → apiClient.artLibrary, token attached).
+      // walk-fix then made the endpoint PUBLIC for published world-cards, so a GUEST (no
+      // token) now gets the real card too. The harness still replays BOTH doors (authed +
+      // guest) and asserts served bytes; either serving the wrong asset is a defect.
       carriesAuth: true,
-      guestDegrades: true, // a not-logged-in visitor still falls back (endpoint requires auth)
-      ref: "src/components/onboardingFlow.js bindWorldCardArt → apiClient.artLibrary (auth-wrapped, CLI-1 fix); endpoint server/index.js:3520 requireAuth"
+      guestDegrades: false, // walk-fix: /api/art/library world-card reads are public for published worlds
+      ref: "src/components/onboardingFlow.js bindWorldCardArt → apiClient.artLibrary; endpoint server/index.js public for published world-cards (isPublishedWorldCard)"
     },
     deceptiveFallback: { asset: "/public/assets/art-illustrated.jpg", ref: "src/components/onboardingFlow.js:114 WORLD_SELECT_CARDS[0].art" },
     intendedResolver: { server: "resolveLibraryArt({world:'babel',kind:'world-card'})", ref: "server/solo/artLibrary.js:26 WORLD_CARD_PIN → w7_worldcard_obsidian_tower_anime" },
@@ -216,13 +227,13 @@ export const SURFACES = Object.freeze([
 // "honest" = a visible not-ready/absent state (a spinner/glyph/empty), fine as-is.
 export const SILENT_FALLBACKS = Object.freeze([
   {
-    id: "world-card-guest-401-static",
-    classification: "deceptive",
-    trigger: "GET /api/art/library (authed endpoint) with NO token (a guest / not-logged-in visitor) → 401 → keep static art. (CLI-1 fixed the LOGGED-IN path — apiClient now sends the token; the GUEST path remains.)",
-    userSees: "the bundled painted armored bust /public/assets/art-illustrated.jpg as if it were the world's key art",
-    ref: "src/components/onboardingFlow.js bindWorldCardArt; endpoint server/index.js:3520 requireAuth",
-    harnessDetects: true, // the served-bytes door check (guest replay) catches it
-    recommend: "make /api/art/library world-card reads PUBLIC (a lobby card is pre-login content), and on a non-ok response surface a visible 'art unavailable' state rather than silently keeping a subject-wrong default. A fallback firing must be loud. (CLI-1's tests/no-bare-api-fetch.test.js already bans the bare-fetch class at the code layer — complementary to this door check.)"
+    id: "world-card-pending-placeholder",
+    classification: "honest", // walk-fix RESOLVED the deceptive case:
+    trigger: "world-card art unresolved (null uri, or a rare error) → the card shows a VISIBLE data-art-pending hatch, and the ENDPOINT is now public for published worlds so a guest gets the real card",
+    userSees: "a muted 'no art yet' placeholder (data-art-pending) — a loud absence, never a plausible wrong image. The bundled bust (art-illustrated.jpg) is decoupled from card duty (style-sample only).",
+    ref: "src/components/onboardingFlow.js renderWorldCard (data-art-pending) + bindWorldCardArt; styles.css .onb-world-card-art[data-art-pending]",
+    harnessDetects: true, // the served-bytes door check (both replays) still guards it
+    recommend: "none — the deceptive fallback was removed (walk-fix): public endpoint for published world-cards + a visible pending placeholder + the bust decoupled from card duty. tests/world-select-cards.test.js no longer blesses the static default."
   },
   { id: "scene-pending", classification: "honest", trigger: "no locationImageUri yet", userSees: "'Painting the scene…' vignette", ref: "src/components/soloSceneShell.js:2126", harnessDetects: true, recommend: "none (honest pending)" },
   { id: "npc-portrait-pending", classification: "honest", trigger: "no portraitUri", userSees: "initial-letter glyph 'Cooking your portrait…'", ref: "src/components/soloSceneShell.js:2796", harnessDetects: true, recommend: "none" },

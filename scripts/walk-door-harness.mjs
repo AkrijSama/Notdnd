@@ -26,7 +26,7 @@ const BASE = (process.env.NOTDND_HARNESS_BASE_URL || "http://127.0.0.1:4173").re
 const LIB_ROOT = process.env.NOTDND_HARNESS_LIB_ROOT || "/home/akrij/Notdnd/data/assets/library";
 const JSON_OUT = process.argv.includes("--json");
 const REFERENCE_VIEWPORT = { width: 1440, height: 900, label: "1440x900 desktop (full-bleed stage)" };
-const CROP_THRESHOLD_PCT = 20; // Job 3.3: a crop above this is a finding, not a note.
+const CROP_THRESHOLD_PCT = 5; // Job 3.3: flag any CONTENT CUT above 5% (a finding, not a note).
 
 const sha = (buf) => crypto.createHash("sha256").update(buf).digest("hex");
 async function http(pathOrUrl, { token, method = "GET" } = {}) {
@@ -112,19 +112,26 @@ async function main() {
       r.why = `art URI rides the AUTHED payload (${s.clientResolution.payloadField}); no separate art request → no auth-divergence class. Byte-level UNVERIFIED (needs a committed/cooked asset; not run under the no-cook constraint).`;
     }
 
-    // aspect / crop (Job 3.3) — computed for every art surface
+    // aspect (Job 3.3) — computed for EVERY art surface. object-fit decides the failure
+    // mode: cover CUTS content (a hard finding >5%); contain LETTERBOXES (nothing cut).
     if (s.cookKey && s.displayKey) {
       const [cw, ch] = COOK[s.cookKey].dims;
       const cookAspect = cw / ch;
-      const dispAspect = evalDisplayAspect(DISPLAY[s.displayKey], REFERENCE_VIEWPORT);
-      const crop = cropInfo(cookAspect, dispAspect);
+      const disp = DISPLAY[s.displayKey];
+      const dispAspect = evalDisplayAspect(disp, REFERENCE_VIEWPORT);
+      const fit = disp.objectFit || "cover";
+      const mism = cropInfo(cookAspect, dispAspect); // the raw aspect delta
+      const cutPct = fit === "cover" ? mism.cropPct : 0;          // content actually CUT
+      const letterboxPct = fit === "contain" ? mism.cropPct : 0;   // empty space (nothing cut)
       r.detail.aspect = {
         cook: `${cw}x${ch} (${round2(cookAspect)})`, cookRef: COOK[s.cookKey].ref,
-        display: `${round2(dispAspect)} @ ${REFERENCE_VIEWPORT.label}`, displayRef: DISPLAY[s.displayKey].ref,
-        crop: `${crop.cropPct}% ${crop.axis}`, overThreshold: crop.cropPct != null && crop.cropPct > CROP_THRESHOLD_PCT
+        display: `${round2(dispAspect)} @ ${REFERENCE_VIEWPORT.label}`, objectFit: fit, displayRef: disp.ref,
+        contentCut: `${cutPct}%${cutPct > 0 ? " " + mism.axis : ""}`,
+        letterbox: `${letterboxPct}%${letterboxPct > 0 ? " " + mism.axis : ""}`,
+        overThreshold: cutPct != null && cutPct > CROP_THRESHOLD_PCT
       };
       if (r.detail.aspect.overThreshold) {
-        r.aspectFinding = `${s.id}: display crops ${crop.cropPct}% ${crop.axis} (cook ${round2(cookAspect)} vs display ${round2(dispAspect)}) — over ${CROP_THRESHOLD_PCT}% threshold`;
+        r.aspectFinding = `${s.id}: object-fit COVER CUTS ${cutPct}% ${mism.axis} of content (cook ${round2(cookAspect)} vs display ${round2(dispAspect)}) — over ${CROP_THRESHOLD_PCT}%`;
         if (r.status !== "FAIL") r.status = "FINDING";
       }
     }
@@ -205,7 +212,7 @@ function printHuman(r) {
   P("\nJOB 3 — served bytes + aspect:");
   for (const s of r.surfaces.filter((x) => x.detail?.loggedInDoor || x.detail?.aspect)) {
     if (s.detail.loggedInDoor) P(`  ${s.id}: logged-in [${s.detail.loggedInDoor.verdict}] · guest [${s.detail.guestDoor.verdict}]`);
-    if (s.detail.aspect) P(`  ${s.id} aspect: cook ${s.detail.aspect.cook} vs display ${s.detail.aspect.display} → crop ${s.detail.aspect.crop}${s.detail.aspect.overThreshold ? "  ⚠ OVER THRESHOLD" : ""}`);
+    if (s.detail.aspect) { const a = s.detail.aspect; P(`  ${s.id} aspect: cook ${a.cook} vs display ${a.display} [${a.objectFit}] → cut ${a.contentCut}, letterbox ${a.letterbox}${a.overThreshold ? "  ⚠ CUTS CONTENT" : ""}`); }
   }
   P("\nJOB 4 — silent fallbacks (deceptive = architectural defect):");
   for (const f of r.jobs.job4_fallbacks) P(`  [${f.classification}] ${f.id} — ${f.userSees}${f.classification === "deceptive" ? "\n      RECOMMEND: " + f.recommend : ""}`);

@@ -45,6 +45,7 @@ import { handleQuickstartBuildPayload, handleQuickstartParsePayload } from "./ap
 import { createLemonSqueezyWebhookHandler } from "./api/lemonsqueezy.js";
 import { tokenFromRequest } from "./auth/httpAuth.js";
 import { createOnboardingCampaign, createWorldOnboardingRun } from "./campaign/onboarding.js";
+import { loadScenarioFile } from "./campaign/scenarioLoader.js";
 import { serviceDraft, serviceTwist, serviceSaveWorld, listWorldsForSelect, serviceDeleteWorld } from "./campaign/worldCreationService.js";
 import { generateWorld, regenerateWorldField } from "./solo/worldGen.js";
 import { engineStyleForRun, hasCommittedArtStyle } from "./solo/artStyle.js";
@@ -3513,12 +3514,20 @@ async function handleApi(req, res) {
   // FIRST and keeps its static/generated fallback when the response uri is null.
   if (req.method === "GET" && url.pathname === "/api/art/library") {
     try {
-      requireAuth(req);
       const world = url.searchParams.get("world") || "";
       const kind = url.searchParams.get("kind") || "world-card";
       const style = url.searchParams.get("style") || "";
+      // PUBLIC FRONT DOOR (walk-fix, guest-door finding): the lobby world-card art for a
+      // PUBLISHED, built-in world (a scenario file exists on disk) is pre-login content —
+      // a first-time visitor must see the real card, not a silent bundled default. This is
+      // scoped NARROWLY: only kind==="world-card" AND a published world. Every other kind
+      // (scene/portrait/fullbody/item) and every non-published/user world stays AUTHED, so
+      // no private world art or metadata is exposed to a guest. betaThumb (an owner-feedback
+      // control) is offered only to a logged-in user.
+      const isPublishedWorldCard = kind === "world-card" && Boolean(loadScenarioFile(world));
+      const user = isPublishedWorldCard ? resolveAuthUser(req) : requireAuth(req);
       const uri = resolveLibraryArt({ world, kind, style: style || undefined });
-      writeJson(res, 200, { ok: true, uri, betaThumb: betaThumbEnabled() });
+      writeJson(res, 200, { ok: true, uri, betaThumb: betaThumbEnabled() && Boolean(user) });
     } catch (error) {
       routeError(res, error);
     }

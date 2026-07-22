@@ -28,8 +28,13 @@ test("world-select screen contains ZERO system jargon (banned strings absent)", 
 
 test("cards are image-led: key art + title + one hook line, per-world DATA (T5/T6)", () => {
   const html = renderOnboardingFlow(worldState());
-  assert.match(html, /onb-world-card-art/, "cards carry key art");
-  assert.match(html, /src="\/public\/assets\/art-illustrated\.jpg"/, "Babel placeholder art from committed assets");
+  assert.match(html, /onb-world-card-art/, "cards carry an art slot");
+  // walk-fix (guest-door finding): the card art slot starts as a VISIBLE pending
+  // placeholder resolved from the library — NOT the bundled dark-fantasy bust. The bust
+  // (art-illustrated.jpg) is decoupled from card duty; asserting it here is what blessed
+  // the wrong card for weeks.
+  assert.match(html, /class="onb-world-card-art" data-art-pending/, "the card art slot is a visible pending placeholder, not a bundled default");
+  assert.doesNotMatch(html, /onb-world-card-art"[^>]*src="\/public\/assets\/art-illustrated\.jpg"/, "the dark-fantasy bust must NOT be the world-card default");
   // T5: the Babel card reads "The Tower of Babel" + an isekai genre tag
   assert.match(html, /onb-world-card-title">The Tower of Babel</, "Babel titled 'The Tower of Babel'");
   assert.doesNotMatch(html, /Wrong Woods/);
@@ -40,7 +45,10 @@ test("cards are image-led: key art + title + one hook line, per-world DATA (T5/T
   assert.match(html, /data-world-create="1"/, "a distinct create-world tile");
   // data-driven: the card list is exported data (now just the authored world; create is a tile)
   assert.equal(WORLD_SELECT_CARDS.length, 1);
-  assert.ok(WORLD_SELECT_CARDS.every((c) => c.title && c.hook && c.art));
+  // walk-fix: a card carries title + hook DATA; it no longer carries a hardcoded static
+  // `art` (that double-duty default is decoupled — art resolves from the library).
+  assert.ok(WORLD_SELECT_CARDS.every((c) => c.title && c.hook));
+  assert.ok(WORLD_SELECT_CARDS.every((c) => !c.art), "no world card carries a hardcoded static art default");
 });
 
 test("selection state is visible and the ready-made continue wiring (data-world-scenario) is unchanged", () => {

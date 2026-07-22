@@ -16,11 +16,10 @@ test("registry: the world-card is a separate-fetch surface (the class-5 shape) t
   const wc = SURFACES.find((s) => s.id === "world-card");
   assert.ok(wc, "the world-card surface must be registered");
   assert.equal(wc.clientResolution.kind, "separate-fetch");
-  // CLI-1 fixed the logged-in path (apiClient carries the token) — but the endpoint is
-  // still authed, so a GUEST still degrades. The registry must record BOTH facts.
-  assert.equal(wc.clientResolution.carriesAuth, true, "logged-in requests now carry the token (CLI-1 fix)");
-  assert.equal(wc.clientResolution.guestDegrades, true, "a guest still falls back (endpoint requires auth)");
-  assert.ok(wc.deceptiveFallback, "the world-card has a deceptive static fallback");
+  // CLI-1 fixed the logged-in path (apiClient carries the token); walk-fix made the
+  // endpoint PUBLIC for published world-cards, so a guest no longer degrades.
+  assert.equal(wc.clientResolution.carriesAuth, true, "logged-in requests carry the token");
+  assert.equal(wc.clientResolution.guestDegrades, false, "walk-fix: the guest door is public for published world-cards");
   assert.equal(wc.byteCheckable, true, "the world-card door can be byte-checked without a cook");
 });
 
@@ -31,12 +30,11 @@ test("registry: every OTHER art surface rides the authed payload (no separate fe
   }
 });
 
-test("silent-fallback inventory: exactly ONE deceptive fallback (the world-card); it is harness-detectable", () => {
+test("silent-fallback inventory: ZERO deceptive fallbacks remain (walk-fix resolved the world-card); all are honest + detectable", () => {
   const deceptive = SILENT_FALLBACKS.filter((f) => f.classification === "deceptive");
-  assert.equal(deceptive.length, 1, "there must be exactly one deceptive silent fallback");
-  assert.equal(deceptive[0].id, "world-card-guest-401-static");
-  assert.equal(deceptive[0].harnessDetects, true);
-  assert.ok(SILENT_FALLBACKS.filter((f) => f.classification === "honest").length >= 4, "the honest pending states are catalogued");
+  assert.equal(deceptive.length, 0, "the world-card deceptive fallback was removed; none should remain");
+  assert.ok(SILENT_FALLBACKS.every((f) => f.harnessDetects), "every catalogued fallback is harness-detectable");
+  assert.ok(SILENT_FALLBACKS.filter((f) => f.classification === "honest").length >= 5, "the honest pending states are catalogued");
 });
 
 // ── crop math (Job 3.3) ──────────────────────────────────────────────────────
@@ -48,9 +46,11 @@ test("crop math: a wide source in a narrow box crops the sides; a wide box crops
   assert.ok(topbottom.axis.startsWith("vertical") && topbottom.cropPct > 60, `scene >60% top/bottom crop, got ${topbottom.cropPct}`);
 });
 
-test("crop math: the scene's variable full-bleed box is evaluated against a reference viewport", () => {
+test("crop math: the scene box now holds the 1344x768 cook aspect (walk-fix) + object-fit contain", () => {
   const a = evalDisplayAspect(DISPLAY.scene, { width: 1440, height: 900 });
-  assert.ok(a > 3 && a < 6, `full-bleed strip aspect at 1440x900 should be ~4.5, got ${a}`);
+  assert.ok(Math.abs(a - 1344 / 768) < 1e-6, `the scene box aspect must equal the cook aspect (1.75), got ${a}`);
+  assert.equal(DISPLAY.scene.objectFit, "contain", "the scene img must be contain so nothing is ever cut");
+  assert.equal(DISPLAY["portrait-frame"].objectFit, "contain", "portraits must be contain so a face is never cropped");
   assert.equal(evalDisplayAspect(DISPLAY["portrait-frame"], { width: 1440, height: 900 }), 512 / 768, "a fixed-aspect box ignores the viewport");
 });
 

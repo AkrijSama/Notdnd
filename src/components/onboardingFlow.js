@@ -106,12 +106,17 @@ function renderStartModePicker(def = {}) {
 // PLACEHOLDER key art from the committed static assets — nothing is generated.
 // T6: the "Custom World" fake card is GONE — creating a world is a distinct tile
 // (renderCreateWorldTile), not a world card. T5: worlds carry 1-2 genre tags.
+// NOTE (walk-fix): a world card has NO hardcoded static `art`. The bundled
+// /public/assets/art-illustrated.jpg is the "Illustrated Dark Fantasy" STYLE SAMPLE
+// only (see ART_STYLE_OPTIONS) — it lost its card-default role, which is exactly the
+// double duty that let the wrong card hide for weeks. The real card art is resolved
+// from the library (public for published worlds); until it resolves, the card shows a
+// VISIBLE pending placeholder (data-art-pending), never a plausible wrong image.
 export const WORLD_SELECT_CARDS = [
   {
     scenarioId: "babel",
     title: "The Tower of Babel",
     hook: "Wake in a strange land. Answer the call. Climb.",
-    art: "/public/assets/art-illustrated.jpg",
     genreTags: ["isekai"]
   }
 ];
@@ -127,9 +132,13 @@ function renderGenreTags(tags) {
 }
 
 function renderWorldCard(card, active) {
+  // The art slot starts EMPTY (data-art-pending → a visible "art loading" placeholder,
+  // NOT a bundled default). bindWorldCardArt swaps in the resolved library art; a failed
+  // resolve leaves the visible placeholder — a loud absence, never a wrong-looking image.
+  const artAttr = card.art ? ` src="${esc(card.art)}"` : " data-art-pending";
   return `
     <button type="button" class="onb-world-card ${active ? "active" : ""}" data-world-scenario="${esc(card.scenarioId)}" aria-pressed="${active ? "true" : "false"}">
-      <img class="onb-world-card-art" src="${esc(card.art)}" alt="" loading="lazy" />
+      <img class="onb-world-card-art"${artAttr} alt="" loading="lazy" />
       <span class="onb-world-card-body">
         <span class="onb-world-card-title">${esc(card.title)}</span>
         <span class="onb-world-card-hook">${esc(card.hook)}</span>
@@ -223,10 +232,12 @@ export function bindWorldCardArt(root, apiClient) {
       .then((data) => {
         if (data && typeof data.uri === "string" && data.uri) {
           img.src = data.uri;
+          img.removeAttribute("data-art-pending"); // real art resolved → clear the placeholder
           if (data.betaThumb) mountWorldCardThumb(button, data.uri, apiClient); // route-inventory: the world-card surface
         }
+        // a null uri (no keep) leaves the VISIBLE pending placeholder — a loud absence.
       })
-      .catch(() => { /* keep the static placeholder on any error (e.g. a guest 401) */ });
+      .catch(() => { /* leave the visible pending placeholder on any error — never a wrong-looking default */ });
   });
 }
 
