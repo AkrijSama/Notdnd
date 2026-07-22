@@ -32,6 +32,18 @@ const HUMAN_NOUN_RE = /\b(a|an|the|another|one|that)\s+(man|woman|guy|gentleman|
 const HUMAN_HANDS_RE = /\b(his|her|its|the|one|a)\s+(hand|hands|finger|fingers|fist|fists|palm|palms|thumb)\b/gi;
 const HUMAN_SPEAK_RE = /\b(he|she)\s+(speaks|spoke|says|said|whispers|whispered|mutters|muttered|asks|asked|replies|replied|calls out|called out)\b|\b(his|her)\s+voice\b/gi;
 const HUMAN_CLOTHES_RE = /\b(his|her|its|the|a)\s+(coat|cloak|shirt|clothes|clothing|jacket|hood|boots|trousers|robe|tunic|cap|hat|sleeve|sleeves|collar)\b/gi;
+// Finding #6 (3.4): an animal WIELDING a manufactured weapon ("swings a club", "raises
+// its club") is a nature leak the scrub did not cover — HUMAN_HANDS_RE catches "its
+// fist" but nothing caught the tool. A beast fights with NATURAL weapons. Two safe
+// forms only (never a scene-object weapon lying about): a POSSESSIVE attribution
+// (his/her/its <weapon>) or an explicit WIELD verb + <weapon>. The player's own weapon
+// is "your/my <weapon>" — never matched. Scrub the manufactured weapon to "its claws".
+const WEAPON_WORDS = "club|cudgel|bludgeon|sword|blade|knife|dagger|staff|spear|axe|mace|hammer|sabre|saber|cutlass|rapier|baton|truncheon|whip|cane|sling|bow|crossbow|shield|weapon|stick|bat|flail|halberd|pike|glaive|scythe|hatchet|cleaver";
+const BEAST_WEAPON_POSS_RE = new RegExp(`\\b(his|her|its)\\s+(?:${WEAPON_WORDS})\\b`, "gi");
+const BEAST_WEAPON_WIELD_RE = new RegExp(
+  `\\b(swings?|swung|raises?|raised|wields?|wielded|brandish\\w*|hefts?|hefted|grips?|gripped|grasps?|grasped|lifts?|lifted|hoists?|hoisted|draws?|drew|holds?|held|clutch\\w*|clenches?|clenched|swipes?|slashes?\\s+with)\\s+(?:his|her|its|a|an|the|one)\\s+(?:${WEAPON_WORDS})\\b`,
+  "gi"
+);
 
 const speciesNoun = (nat, npc) => nat?.species ? `the ${nat.species}` : (npc?.displayName ? `the ${npc.displayName.replace(/^the\s+/i, "")}` : "the creature");
 
@@ -77,6 +89,15 @@ export function scrubNatureContradiction(narrationText, run) {
   out = out.replace(HUMAN_SPEAK_RE, (m) => { scrubbed.push(m.trim()); return /voice/i.test(m) ? "its low growl" : "it watches"; });
   // Human clothing → its coat (an animal has fur, not garments).
   out = out.replace(HUMAN_CLOTHES_RE, (m) => { scrubbed.push(m.trim()); return "its matted coat"; });
+  // Finding #6 (3.4): an animal wielding a manufactured weapon → its natural weapon.
+  // Wield-verb form first (preserves the verb: "swings a club" → "swings its claws"),
+  // then bare possessive ("its club" → "its claws").
+  out = out.replace(BEAST_WEAPON_WIELD_RE, (m) => {
+    scrubbed.push(m.trim());
+    const verb = m.match(/^\s*([a-z]+(?:\s+with)?)/i)?.[1] || "";
+    return `${verb} its claws`.trim();
+  });
+  out = out.replace(BEAST_WEAPON_POSS_RE, (m) => { scrubbed.push(m.trim()); return "its claws"; });
   // De-human the beast's pronouns: in this gated animal-only scene (no human NPC),
   // a third-person he/she/his/her can only be the animal — an animal is "it", not "he".
   if (scrubbed.length) {
