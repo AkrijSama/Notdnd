@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Beta Thumb — down-pile sweep</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; background: #0c0c0e; color: #d7d9e0; font: 14px/1.4 system-ui, sans-serif; }
+  header { padding: 14px 18px; border-bottom: 1px solid #24242a; display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+  h1 { font-size: 16px; margin: 0; }
+  .muted { color: #8b8e96; font-size: 12px; }
+  .overdue-count { color: #e6a34a; font-weight: 700; }
+  main { padding: 14px 18px; display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
+  .card { border: 1px solid #24242a; border-radius: 10px; overflow: hidden; background: #131316; display: flex; flex-direction: column; }
+  .card.overdue { border-color: #6d4a1f; }
+  .card img { width: 100%; height: 200px; object-fit: contain; background: #000; }
+  .body { padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .tag { font-size: 11px; padding: 2px 7px; border-radius: 999px; border: 1px solid #33333a; color: #b0b3bb; }
+  .chip { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: #7a2f2f; color: #ffecec; }
+  .badge-overdue { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: #6d4a1f; color: #ffe6c2; }
+  .taster { font-size: 12px; color: #9aa0ab; border-left: 2px solid #33333a; padding-left: 8px; }
+  .taster b { color: #c7c9d2; }
+  .actions { display: flex; gap: 8px; margin-top: 4px; }
+  button { cursor: pointer; border-radius: 8px; padding: 7px 12px; font-size: 13px; border: 1px solid #33333a; background: #1b1b1f; color: #d7d9e0; }
+  .fridge { border-color: #3f8a4c; color: #eafce9; }
+  .trash { border-color: #a04444; color: #ffecec; }
+  button:disabled { opacity: 0.5; cursor: default; }
+  .empty { padding: 40px; text-align: center; color: #8b8e96; }
+  .id { font-size: 11px; color: #6f727a; word-break: break-all; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Beta Thumb — down-pile sweep</h1>
+  <span class="muted" id="summary">loading…</span>
+  <span class="muted">Fridge = keep serving, clear the flag. Trash = owner-stamped destroy (the only destruction path).</span>
+</header>
+<main id="list"><div class="empty">loading…</div></main>
+<script>
+  const TOKEN = (() => { try { return localStorage.getItem("notdnd_auth_token_v1"); } catch { return null; } })();
+  const H = { "Content-Type": "application/json", ...(TOKEN ? { Authorization: "Bearer " + TOKEN } : {}) };
+  const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+  async function load() {
+    let data;
+    try { data = await (await fetch("/api/art/thumb/sweep", { headers: H })).json(); }
+    catch (e) { document.getElementById("list").innerHTML = '<div class="empty">Failed to load. Open the game first so you are signed in, then reload this page.</div>'; return; }
+    if (!data || data.ok === false) { document.getElementById("list").innerHTML = '<div class="empty">Not authorized — sign into the game in this browser first.</div>'; return; }
+    const items = data.items || [];
+    document.getElementById("summary").innerHTML = items.length + " down · escalate at " + data.escalateDays + "d · "
+      + (data.overdue ? '<span class="overdue-count">' + data.overdue + " OVERDUE (needs your stamp)</span>" : "0 overdue")
+      + (data.enabled ? "" : " · CONTROL DISABLED (data preserved)");
+    const list = document.getElementById("list");
+    if (!items.length) { list.innerHTML = '<div class="empty">Nothing in the down-pile. 👍</div>'; return; }
+    list.innerHTML = items.map((it) => {
+      const t = it.taster;
+      return '<div class="card' + (it.overdue ? " overdue" : "") + '" data-id="' + esc(it.assetId) + '">'
+        + '<img src="' + esc(it.uri) + '" alt="" />'
+        + '<div class="body">'
+        + '<div class="row"><span class="tag">' + esc(it.kind || "?") + "</span><span class=\"tag\">" + esc(it.world || "?") + "</span>"
+        + (it.serving ? '<span class="tag">still serving ✓</span>' : "")
+        + (it.overdue ? '<span class="badge-overdue">OVERDUE — stamp me</span>' : "") + "</div>"
+        + '<div class="row">' + (it.reasons || []).map((r) => '<span class="chip">' + esc(r) + "</span>").join("") + "</div>"
+        + '<div class="taster">taster: ' + (t ? "<b>" + esc(t.recommend || t.verdict) + "</b> — " + esc(t.reason || "") : "<b>never tasted</b> — no taster verdict on file") + "</div>"
+        + '<div class="id">' + esc(it.assetId) + "</div>"
+        + '<div class="actions"><button class="fridge" data-stamp="fridge">Keep (fridge)</button><button class="trash" data-stamp="trash">Destroy (trash)</button></div>'
+        + "</div></div>";
+    }).join("");
+  }
+
+  document.addEventListener("click", async (ev) => {
+    const btn = ev.target.closest("[data-stamp]");
+    if (!btn) return;
+    const card = btn.closest(".card");
+    const assetId = card.getAttribute("data-id");
+    const outcome = btn.getAttribute("data-stamp");
+    if (outcome === "trash" && !confirm("Destroy this asset permanently? This is the owner stamp — it cannot be undone.")) return;
+    card.querySelectorAll("button").forEach((b) => (b.disabled = true));
+    try {
+      const r = await (await fetch("/api/art/thumb/stamp", { method: "POST", headers: H, body: JSON.stringify({ assetId, outcome }) })).json();
+      if (r && r.ok) card.remove(); else { alert("Stamp failed: " + (r && r.reason || "unknown")); card.querySelectorAll("button").forEach((b) => (b.disabled = false)); }
+    } catch (e) { alert("Stamp failed."); card.querySelectorAll("button").forEach((b) => (b.disabled = false)); }
+  });
+
+  load();
+</script>
+</body>
+</html>

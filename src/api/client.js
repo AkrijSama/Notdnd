@@ -150,6 +150,16 @@ export function createApiClient(baseUrl = "") {
     async getState() {
       return request("/api/state");
     },
+    // BETA THUMB (owner-feedback calibration). verdict: "up" | "down" | "clear".
+    async artThumb({ uri, kind, world, verdict, reasons } = {}) {
+      return request("/api/art/thumb", { method: "POST", body: JSON.stringify({ uri, kind, world, verdict, reasons: reasons || [] }) });
+    },
+    async artSweep() {
+      return request("/api/art/thumb/sweep");
+    },
+    async artStamp({ assetId, outcome } = {}) {
+      return request("/api/art/thumb/stamp", { method: "POST", body: JSON.stringify({ assetId, outcome }) });
+    },
     async roadmap() {
       // Public roadmap rows (owner-editable data file, no auth). Absent file →
       // { ok, items: [] } so the caller hides the panel cleanly.

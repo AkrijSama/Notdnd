@@ -4,6 +4,25 @@ import { renderConditionChip, renderConditionChipRow } from "./conditionChips.js
 import { renderBrand } from "./brand.js";
 import { HOME_NAV_CONFIRM } from "./homeNav.js";
 
+// ── BETA THUMB (owner-feedback calibration) ──────────────────────────────────
+// A small, low-opacity, ALWAYS-VISIBLE (not hover — mobile has no hover) thumbs
+// up/down overlaid on every generated-image surface. Gated by scene.betaThumb, which
+// the server sets from NOTDND_BETA_THUMB. Off ⇒ every widget renders empty, the whole
+// control gone in one move. Reason chips (down only) let the owner say WHY. The
+// widget is absolutely positioned inside a position:relative image wrapper so it never
+// shifts layout or covers the art. DEATH DATE + rationale: server/art/ownerFeedback.js.
+let _betaThumb = false;
+const ART_REASON_CHIPS = ["wrong subject", "bad crop", "wrong camera", "wrong style", "just ugly"];
+export function renderArtThumb(uri, kind, corner = "br") {
+  if (!_betaThumb || !uri || typeof uri !== "string" || !uri.trim()) return "";
+  return `<div class="art-thumb art-thumb--${corner}" data-art-thumb data-art-uri="${escapeHtml(uri)}" data-art-kind="${escapeHtml(kind || "")}">`
+    + `<button type="button" class="art-thumb-btn art-thumb-up" data-art-vote="up" aria-label="Good image" title="Good image">▲</button>`
+    + `<button type="button" class="art-thumb-btn art-thumb-down" data-art-vote="down" aria-label="Bad image" title="Bad image">▼</button>`
+    + `<div class="art-thumb-reasons" data-art-reasons hidden>`
+    + ART_REASON_CHIPS.map((r) => `<button type="button" class="art-thumb-chip" data-art-reason="${escapeHtml(r)}">${escapeHtml(r)}</button>`).join("")
+    + `</div></div>`;
+}
+
 function escapeHtml(value) {
   return String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -1130,7 +1149,7 @@ export function renderEntityDetailPanel(detail = null) {
       <div class="solo-detail-hero">
         <div class="solo-detail-portrait">${
           portraitUri
-            ? `<img class="solo-detail-portrait-img" src="${escapeHtml(portraitUri)}" alt="${escapeHtml(title)} portrait" />`
+            ? `<img class="solo-detail-portrait-img" src="${escapeHtml(portraitUri)}" alt="${escapeHtml(title)} portrait" />` + renderArtThumb(portraitUri, "portrait", "br")
             : escapeHtml(imageAssetId || "No image assigned.")
         }</div>
         <div>
@@ -1922,6 +1941,7 @@ function portraitDockHtml(character = {}, scene = {}) {
       ${img}
       <button type="button" class="solo-portrait-badge" data-solo-char-tab aria-haspopup="dialog" aria-label="Open character sheet" title="Character sheet">☰</button>
       <div class="solo-portrait-conds" data-solo-conditions>${renderSoloConditionsHud(scene, { compact: true })}</div>
+      ${character.portraitUri ? renderArtThumb(character.portraitUri, "portrait", "bl") : ""}
     </div>`;
 }
 
@@ -2097,6 +2117,7 @@ export function renderSoloSceneArt(locationImageUri = null, { locked = false } =
     return `
       <div class="solo-scene-art" data-scene-art>
         ${sceneArtInnerHtml(uri, { locked })}
+        ${renderArtThumb(uri, "scene", "bl")}
       </div>
     `;
   }
@@ -2918,7 +2939,7 @@ export function renderSoloBattleSurface(scene = {}) {
       : `<div class="solo-battle-enemy-pending" title="Reading its shape…"><span aria-hidden="true">${escapeHtml(initial)}</span></div>`;
     return `
       <div class="solo-battle-enemy-card" data-combatant-id="${escapeHtml(e.id || "")}">
-        <div class="solo-battle-enemy-art">${art}</div>
+        <div class="solo-battle-enemy-art">${art}${bodyUri ? renderArtThumb(bodyUri, "fullbody", "br") : ""}</div>
         <div class="solo-battle-enemy-meta">
           <div class="solo-battle-enemy-name" data-textfit>${escapeHtml(e.name || "Enemy")}</div>
           <div class="solo-battle-hpband solo-battle-hpband--${band}" role="img" aria-label="${escapeHtml(band)}"><span style="width:${bandPct}%"></span></div>
@@ -3089,7 +3110,7 @@ export function renderSoloDialogueOverlay(state = {}) {
   // data-solo-vn-sprite hook lets bindSoloSceneShell fade the sprite in on load and
   // fall back to the empty state on a failed load (never a broken-image icon).
   const spriteBlock = spriteUri
-    ? `<div class="solo-vn-sprite" data-portrait-key="${escapeHtml(spriteUri)}" aria-hidden="true"><img class="solo-vn-sprite-img solo-vn-sprite-breathe" data-solo-vn-sprite src="${escapeHtml(spriteUri)}" alt="${escapeHtml(speaker)}" /></div>`
+    ? `<div class="solo-vn-sprite" data-portrait-key="${escapeHtml(spriteUri)}"><img class="solo-vn-sprite-img solo-vn-sprite-breathe" data-solo-vn-sprite src="${escapeHtml(spriteUri)}" alt="${escapeHtml(speaker)}" aria-hidden="true" />${renderArtThumb(spriteUri, "fullbody", "br")}</div>`
     : "";
 
   // The conversation scrollback now lives in the persistent narration log (each
@@ -3262,6 +3283,7 @@ export function deathEpilogue(state = {}, summary = {}) {
 }
 
 export function renderSoloSceneShell(state = {}) {
+  _betaThumb = !!(state && state.scene && state.scene.betaThumb);
   if (state.loading) {
     return `
       <section class="solo-scene-shell solo-scene-shell-loading">
@@ -3492,6 +3514,18 @@ export function dispatchSoloClick(target, handlers = {}) {
   if ((el = closest("[data-solo-dialogue-close]"))) { handlers.onDialogueClose?.(); return true; }
   if ((el = closest("[data-scene-redo]"))) { handlers.onSceneRedo?.(); return true; }
   if ((el = closest("[data-scene-save]"))) { handlers.onSceneSave?.(); return true; }
+  // BETA THUMB: a reason chip (down-detail) is checked before the up/down button so a
+  // tap on a chip does not re-fire the vote. Both read the asset off the wrapper.
+  if ((el = closest("[data-art-reason]"))) {
+    const box = el.closest("[data-art-thumb]");
+    if (box) handlers.onArtReason?.({ uri: box.getAttribute("data-art-uri"), kind: box.getAttribute("data-art-kind"), reason: el.getAttribute("data-art-reason"), chipEl: el, boxEl: box });
+    return true;
+  }
+  if ((el = closest("[data-art-vote]"))) {
+    const box = el.closest("[data-art-thumb]");
+    if (box) handlers.onArtThumb?.({ uri: box.getAttribute("data-art-uri"), kind: box.getAttribute("data-art-kind"), vote: el.getAttribute("data-art-vote"), boxEl: box });
+    return true;
+  }
   if ((el = closest("[data-solo-npc-close]"))) { handlers.onNpcClose?.(); return true; }
   if ((el = closest("[data-solo-npc-submit]"))) { handlers.onNpcSubmit?.(); return true; }
   if ((el = closest("[data-solo-action='reload-scene']"))) { handlers.onReload?.(); return true; }
@@ -4275,6 +4309,7 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     applyPostRenderScroll(scrollSnapshot);
     // The in-place rail repaint recreates cast names / roll chips — re-fit them.
     applySoloTextFit(root);
+    applyArtVotes(root);
     return true;
   }
 
@@ -4341,6 +4376,8 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       onOpenNpcCreator: handleOpenNpcCreator,
       onSceneRedo: handleSceneRedo,
       onSceneSave: handleSceneSave,
+      onArtThumb: handleArtThumb,
+      onArtReason: handleArtReason,
       onNpcClose: handleNpcClose,
       onNpcMode: handleNpcMode,
       onNpcFile: handleNpcFile,
@@ -4359,6 +4396,7 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     // Shrink-to-fit the bounded UI text (VN speaker, cast names, status values,
     // roll chips, location label). Never applied to prose.
     applySoloTextFit(root);
+    applyArtVotes(root);
   }
 
   // Preserve/restore the scroll position of the in-scene scrolling container
@@ -5314,6 +5352,54 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
         render();
       }
     })();
+  }
+
+  // ── BETA THUMB handlers (owner-feedback calibration) ───────────────────────
+  // Optimistic + reversible. Session-scoped state.artVotes drives the toggle look
+  // across re-renders (server sidecar + data/owner-verdicts.jsonl are the durable
+  // record). A down reveals reason chips; tapping the same vote again clears it.
+  function handleArtThumb({ uri, kind, vote, boxEl }) {
+    if (!uri || !vote) return;
+    state.artVotes = state.artVotes || {};
+    const current = state.artVotes[uri] || null;
+    const next = current === vote ? null : vote; // tap-again toggles off (mis-taps reversible)
+    state.artVotes[uri] = next;
+    if (boxEl) {
+      boxEl.setAttribute("data-art-state", next || "");
+      const reasons = boxEl.querySelector("[data-art-reasons]");
+      if (reasons) {
+        reasons.hidden = next !== "down";
+        if (next !== "down") reasons.querySelectorAll(".is-on").forEach((c) => c.classList.remove("is-on"));
+      }
+    }
+    (async () => {
+      try { await apiClient.artThumb({ uri, kind, world: state.scene?.world, verdict: next || "clear", reasons: [] }); }
+      catch { /* beta tool: keep the optimistic state; the record is best-effort */ }
+    })();
+  }
+  function handleArtReason({ uri, kind, reason, chipEl, boxEl }) {
+    if (!uri || !reason || !chipEl || !boxEl) return;
+    chipEl.classList.toggle("is-on");
+    const reasons = Array.from(boxEl.querySelectorAll(".art-thumb-chip.is-on")).map((c) => c.getAttribute("data-art-reason"));
+    state.artVotes = state.artVotes || {};
+    state.artVotes[uri] = "down";
+    boxEl.setAttribute("data-art-state", "down");
+    (async () => {
+      try { await apiClient.artThumb({ uri, kind, world: state.scene?.world, verdict: "down", reasons }); }
+      catch { /* best-effort */ }
+    })();
+  }
+  // Restore the toggle look after any (full or stage-patch) re-render.
+  function applyArtVotes(rootEl) {
+    if (!rootEl || typeof rootEl.querySelectorAll !== "function") return;
+    const votes = state.artVotes || {};
+    rootEl.querySelectorAll("[data-art-thumb]").forEach((box) => {
+      const uri = box.getAttribute("data-art-uri");
+      const st = votes[uri] || "";
+      box.setAttribute("data-art-state", st);
+      const reasons = box.querySelector("[data-art-reasons]");
+      if (reasons) reasons.hidden = st !== "down";
+    });
   }
 
   let castPollTimer = null;

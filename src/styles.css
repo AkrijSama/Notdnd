@@ -6046,3 +6046,76 @@ textarea.hb-input { min-height: 76px; resize: vertical; }
   padding: 4px 8px;
   pointer-events: none;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   BETA THUMB — owner-feedback calibration control (NOTDND_BETA_THUMB).
+   Small, low-opacity, ALWAYS visible (never hover-reveal — mobile has no hover).
+   Absolutely positioned inside a position:relative image wrapper so it never
+   shifts layout or covers the art. Disposable UI; the dataset is the deliverable.
+   =========================================================================== */
+/* Positioning context for the surfaces the thumb mounts on (idempotent). */
+.solo-scene-art, .solo-portrait, .solo-detail-portrait, .solo-vn-sprite, .solo-battle-enemy-art { position: relative; }
+
+.art-thumb {
+  position: absolute;
+  z-index: 6; /* above the art, below drawers/HUD */
+  display: flex;
+  gap: 3px;
+  align-items: flex-end;
+  opacity: 0.5;                 /* low-opacity, always visible */
+  transition: opacity 0.15s ease;
+  pointer-events: none;         /* container is click-through; the buttons re-enable */
+}
+.art-thumb:hover, .art-thumb:focus-within, .art-thumb[data-art-state="up"], .art-thumb[data-art-state="down"] { opacity: 1; }
+.art-thumb--br { right: 6px; bottom: 6px; }
+.art-thumb--bl { left: 6px; bottom: 6px; flex-direction: row; }
+.art-thumb--tr { right: 6px; top: 6px; }
+.art-thumb--tl { left: 6px; top: 6px; }
+
+.art-thumb-btn {
+  pointer-events: auto;
+  width: 26px; height: 26px;
+  min-width: 26px;              /* real tap target on mobile */
+  padding: 0;
+  border: 1px solid rgba(0,0,0,0.35);
+  border-radius: 7px;
+  background: rgba(12,12,14,0.62);
+  color: #d7d9e0;
+  font-size: 13px; line-height: 1;
+  cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  backdrop-filter: blur(2px);
+}
+.art-thumb-btn:active { transform: scale(0.92); }
+/* Active states: the chosen vote lights up, the other dims. */
+.art-thumb[data-art-state="up"] .art-thumb-up { background: #2f6d3a; color: #eafce9; border-color: #3f8a4c; }
+.art-thumb[data-art-state="down"] .art-thumb-down { background: #7a2f2f; color: #ffecec; border-color: #a04444; }
+.art-thumb[data-art-state="up"] .art-thumb-down,
+.art-thumb[data-art-state="down"] .art-thumb-up { opacity: 0.4; }
+
+/* Reason chips — revealed only on thumbs-DOWN (JOB 1.2), single-tap, multi-select. */
+.art-thumb-reasons {
+  pointer-events: auto;
+  position: absolute;
+  bottom: 30px;                 /* float just above the buttons */
+  display: flex; flex-wrap: wrap; gap: 4px;
+  max-width: 210px;
+  padding: 5px;
+  border-radius: 8px;
+  background: rgba(12,12,14,0.9);
+  border: 1px solid rgba(255,255,255,0.12);
+}
+.art-thumb--bl .art-thumb-reasons { left: 0; }
+.art-thumb--br .art-thumb-reasons, .art-thumb--tr .art-thumb-reasons { right: 0; }
+.art-thumb-reasons[hidden] { display: none; }
+.art-thumb-chip {
+  pointer-events: auto;
+  padding: 3px 8px;
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 999px;
+  background: transparent;
+  color: #c7c9d2;
+  font-size: 11px; line-height: 1.2;
+  cursor: pointer; white-space: nowrap;
+}
+.art-thumb-chip.is-on { background: #7a2f2f; color: #ffecec; border-color: #a04444; }

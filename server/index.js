@@ -49,6 +49,7 @@ import { serviceDraft, serviceTwist, serviceSaveWorld, listWorldsForSelect, serv
 import { generateWorld, regenerateWorldField } from "./solo/worldGen.js";
 import { engineStyleForRun, hasCommittedArtStyle } from "./solo/artStyle.js";
 import { resolveLibraryArt } from "./solo/artLibrary.js";
+import { betaThumbEnabled, REASON_CHIPS, buildVerdictRecord, appendVerdict, setOwnerDown, setOwnerUp, clearOwnerFeedback, assetKeyForUri, listOwnerDown, stampOwnerDown, OWNER_DOWN_ESCALATE_DAYS } from "./art/ownerFeedback.js";
 import { sanitizePlayerText } from "./solo/safety.js";
 import {
   addCampaignMember,
@@ -3517,7 +3518,67 @@ async function handleApi(req, res) {
       const kind = url.searchParams.get("kind") || "world-card";
       const style = url.searchParams.get("style") || "";
       const uri = resolveLibraryArt({ world, kind, style: style || undefined });
-      writeJson(res, 200, { ok: true, uri });
+      writeJson(res, 200, { ok: true, uri, betaThumb: betaThumbEnabled() });
+    } catch (error) {
+      routeError(res, error);
+    }
+    return true;
+  }
+
+  // ── BETA THUMB (owner-feedback calibration; NOTDND_BETA_THUMB, default ON) ──
+  // POST a verdict on a generated image. Keyed on URI (the universal client handle).
+  // A thumbs-DOWN is a SIGNAL: it records + flags for eviction but KEEPS the asset
+  // serving (server/art/ownerFeedback.js). It NEVER auto-trashes. The dataset
+  // (data/owner-verdicts.jsonl) is append-only and outlives this control.
+  if (req.method === "POST" && url.pathname === "/api/art/thumb") {
+    try {
+      const user = requireAuth(req);
+      if (!betaThumbEnabled()) { writeJson(res, 200, { ok: false, disabled: true }); return true; }
+      const body = await readJsonBody(req);
+      const uri = String(body?.uri || "");
+      const verdict = String(body?.verdict || "");
+      const reasons = Array.isArray(body?.reasons) ? body.reasons : [];
+      if (!uri || !["up", "down", "clear"].includes(verdict)) {
+        throw Object.assign(new Error("thumb needs { uri, verdict: up|down|clear }"), { code: "BAD_REQUEST", statusCode: 400 });
+      }
+      const { assetId, library } = assetKeyForUri(uri);
+      if (verdict === "clear") {
+        if (library) clearOwnerFeedback(assetId);
+        appendVerdict({ ...buildVerdictRecord({ uri, kind: body?.kind, world: body?.world, verdict: "clear", reasons: [] }), at: Date.now(), who: user.id });
+        writeJson(res, 200, { ok: true, state: null });
+        return true;
+      }
+      // Append the immutable dataset record (with recipe version + taster verdict).
+      appendVerdict({ ...buildVerdictRecord({ uri, kind: body?.kind, world: body?.world, verdict, reasons }), at: Date.now(), who: user.id });
+      // Update the sidecar eviction flag (library assets only) — keeps rating "keep".
+      if (library) { verdict === "down" ? setOwnerDown(assetId, reasons, Date.now()) : setOwnerUp(assetId, Date.now()); }
+      writeJson(res, 200, { ok: true, state: verdict, serving: true });
+    } catch (error) {
+      routeError(res, error);
+    }
+    return true;
+  }
+
+  // The down-pile sweep (JOB 3.4): the owner's one place to stamp fridge/trash.
+  if (req.method === "GET" && url.pathname === "/api/art/thumb/sweep") {
+    try {
+      requireAuth(req);
+      const items = listOwnerDown({ now: Date.now() });
+      writeJson(res, 200, { ok: true, enabled: betaThumbEnabled(), escalateDays: OWNER_DOWN_ESCALATE_DAYS, reasonChips: REASON_CHIPS, overdue: items.filter((i) => i.overdue).length, items });
+    } catch (error) {
+      routeError(res, error);
+    }
+    return true;
+  }
+
+  // Owner stamp — the ONLY destruction path (fridge = clear flag, keeps serving; trash
+  // = owner-stamped destroy). A stray phone tap can never reach here.
+  if (req.method === "POST" && url.pathname === "/api/art/thumb/stamp") {
+    try {
+      requireAuth(req);
+      const body = await readJsonBody(req);
+      const result = stampOwnerDown(String(body?.assetId || ""), String(body?.outcome || ""));
+      writeJson(res, result.ok ? 200 : 400, result);
     } catch (error) {
       routeError(res, error);
     }

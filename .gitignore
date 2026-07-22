@@ -32,3 +32,6 @@ server/db/*.bak
 # path; loaded by generate.mjs at runtime, never committed). The committed per-style
 # recipes (anime.json, dark-fantasy.json, realistic.json) are NOT matched by this.
 scripts/art/workflows/*-realistic.json
+
+# Beta-thumb owner-feedback dataset (runtime, per-box; never commit)
+data/owner-verdicts.jsonl
