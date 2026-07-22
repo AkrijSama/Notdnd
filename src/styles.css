@@ -3335,6 +3335,10 @@ button:disabled {
   backdrop-filter: blur(2px);
 }
 .solo-vn-box-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 3px; }
+/* JOB 3: the VN box head's right-side controls — the dialogue sizer + End, grouped
+   so they sit together opposite the speaker name. */
+.solo-vn-box-head-actions { display: flex; align-items: center; gap: 6px; }
+.solo-vn-sizer { display: inline-flex; align-items: center; gap: 4px; }
 .solo-vn-box-speaker {
   font-family: var(--font-display, Georgia, serif);
   font-size: 15px;
@@ -3355,7 +3359,9 @@ button:disabled {
 .solo-vn-box-end:hover { color: var(--text, #e7e9ee); border-color: var(--accent, #c2c6cf); }
 .solo-vn-box-text {
   font-family: var(--font-body, Georgia, serif);
-  font-size: calc(1.05rem * var(--solo-log-scale, 1));
+  /* JOB 3: the VN dialogue box sizes on its OWN multiplier (--solo-vn-scale), fully
+     decoupled from the narration log's --solo-log-scale. The in-box A−/A+ drives this. */
+  font-size: calc(1.05rem * var(--solo-vn-scale, 1));
   line-height: 1.5;
   /* The VN textbox line IS NPC speech — light blue like all NPC dialogue. */
   color: #9ed6ff;

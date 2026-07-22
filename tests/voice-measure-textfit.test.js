@@ -9,7 +9,10 @@ import {
   renderSoloSceneInputBar,
   dispatchSoloClick,
   readHealedLogScale,
-  SOLO_LOG_SCALE_STORAGE_KEY
+  readHealedVnScale,
+  renderSoloCharacterSidebar,
+  SOLO_LOG_SCALE_STORAGE_KEY,
+  SOLO_VN_SCALE_STORAGE_KEY
 } from "../src/components/soloSceneShell.js";
 
 const css = fs.readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
@@ -49,6 +52,68 @@ test("styles.css defines the ONE measure rule: NO cap, left-anchored (owner over
   // the later .solo-measure longhands (left clamp / right auto) win the cascade
   const opening = css.match(/\.solo-scene-opening \{[^}]*\}/s)[0];
   assert.match(opening, /margin: 4px auto 14px/);
+});
+
+// ---- JOB 3: the VN dialogue box has its OWN sizer, decoupled from narration ----
+
+test("VN dialogue text sizes on --solo-vn-scale, NOT the narration --solo-log-scale", () => {
+  const vnRule = css.match(/\.solo-vn-box-text \{[^}]*\}/s)[0];
+  const fontSizeDecl = vnRule.match(/font-size:[^;]*;/)[0];
+  assert.match(fontSizeDecl, /var\(--solo-vn-scale, 1\)/, "VN text consumes --solo-vn-scale");
+  assert.doesNotMatch(fontSizeDecl, /--solo-log-scale/, "VN text size no longer follows the narration control");
+});
+
+test("the VN sizer buttons render IN the VN box (data-solo-vnfont), not in the top-right chrome", () => {
+  const shell = renderSoloSceneShell({
+    scene: { location: { name: "T" }, cast: [{ npcId: "m", displayName: "Mara", portraitUri: "/m.png" }] },
+    dialogueActive: true,
+    talkResult: { npcId: "m", speakerName: "Mara", line: "Hi.", expression: "neutral", expressionVariants: {} }
+  });
+  // both buttons present, inside the VN box head-actions
+  assert.match(shell, /solo-vn-box-head-actions/);
+  assert.match(shell, /data-solo-vnfont="down"/);
+  assert.match(shell, /data-solo-vnfont="up"/);
+  // and the shell stamps the independent multiplier var the CSS consumes
+  assert.match(shell, /--solo-vn-scale:/);
+});
+
+test("dispatch routes the VN sizer to onVnFontScale (independent of onLogFontScale)", () => {
+  const vn = [];
+  const log = [];
+  dispatchSoloClick(
+    { closest: (s) => (s === "[data-solo-vnfont]" ? { getAttribute: () => "up" } : null) },
+    { onVnFontScale: (a) => vn.push(a), onLogFontScale: (a) => log.push(a) }
+  );
+  assert.deepEqual(vn, [{ dir: "up" }]);
+  assert.deepEqual(log, [], "the VN control must not fire the narration handler");
+});
+
+test("readHealedVnScale self-heals like the narration sizer, on its OWN key", () => {
+  const writes = [];
+  const store = (val) => ({ getItem: () => val, setItem: (k, v) => writes.push([k, v]) });
+  assert.equal(readHealedVnScale(store("9")), 1.6);
+  assert.deepEqual(writes.pop(), [SOLO_VN_SCALE_STORAGE_KEY, "1.6"]);
+  assert.equal(readHealedVnScale(store("garbage")), 1);
+  assert.deepEqual(writes.pop(), [SOLO_VN_SCALE_STORAGE_KEY, "1"]);
+  assert.equal(readHealedVnScale(store("1.2")), 1.2);
+  assert.equal(writes.length, 0);
+  assert.notEqual(SOLO_VN_SCALE_STORAGE_KEY, SOLO_LOG_SCALE_STORAGE_KEY, "distinct persistence keys");
+});
+
+// ---- JOB 2: the identity block lives in the player tab, not the always-on dock ----
+
+test("Babel STATUS identity (name/level/tier) renders INSIDE the character tab, not the dock", () => {
+  const html = renderSoloCharacterSidebar(
+    { babel: { displayLevel: 1, milestoneTier: "Tier I — Local", rank: "UNASSESSED", origin: "The Beckoned" }, name: "Ash", hitPoints: { current: 5, max: 5 } },
+    { open: true, scene: {} }
+  );
+  const identityIdx = html.indexOf("solo-dock-identity");
+  const tabBodyIdx = html.indexOf("solo-char-tab-body");
+  assert.ok(tabBodyIdx > -1, "the character tab body exists");
+  assert.ok(identityIdx > tabBodyIdx, "the identity block is now inside the tab body, after it opens");
+  // the portrait dock aside no longer carries the identity block as a direct always-on sibling
+  const asideHead = html.slice(html.indexOf("solo-portrait-dock-aside"), tabBodyIdx);
+  assert.doesNotMatch(asideHead, /solo-dock-identity/, "identity is not between the portrait and the tab anymore");
 });
 
 // ---- sizer: every prose surface consumes the multiplier ----

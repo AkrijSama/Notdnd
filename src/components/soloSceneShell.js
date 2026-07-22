@@ -1674,12 +1674,14 @@ export function renderBabelStatusWindow(character = SOLO_SAMPLE_CHARACTER, { ope
   return `
     <aside class="solo-game-sidebar solo-babel-window solo-portrait-dock-aside" data-window="babel">
       ${portraitDockHtml(character, scene)}
-      <div class="solo-sidebar-identity solo-dock-identity">
-        <div class="solo-stat-kicker">◄ STATUS ►</div>
-        <div class="solo-char-name" data-textfit>${escapeHtml(character.name)}</div>
-        <div class="solo-char-sub">Level ${escapeHtml(b.displayLevel)} · ${escapeHtml(b.milestoneTier || "")}</div>
-      </div>
+      ${/* JOB 2: the ◄ STATUS ► / name / Level·Tier block moved OUT of the always-on
+           dock (where it overlaid the reading column) and INTO the player tab. */""}
       ${characterTabHtml(open, `
+        <div class="solo-sidebar-identity solo-dock-identity">
+          <div class="solo-stat-kicker">◄ STATUS ►</div>
+          <div class="solo-char-name" data-textfit>${escapeHtml(character.name)}</div>
+          <div class="solo-char-sub">Level ${escapeHtml(b.displayLevel)} · ${escapeHtml(b.milestoneTier || "")}</div>
+        </div>
         <div class="solo-sidebar-block">
           <div class="solo-passive-row"><span>RANK</span><span data-textfit>${escapeHtml(b.rank || "UNASSESSED")}</span></div>
           <div class="solo-passive-row"><span>ORIGIN</span><span data-textfit>${escapeHtml(b.origin || "The Beckoned")}</span></div>
@@ -1783,11 +1785,12 @@ export function renderSoloCharacterSidebar(character = SOLO_SAMPLE_CHARACTER, { 
   return `
     <aside class="solo-game-sidebar solo-portrait-dock-aside">
       ${portraitDockHtml(character, scene)}
-      <div class="solo-sidebar-identity solo-dock-identity">
-        <div class="solo-char-name" data-textfit>${escapeHtml(character.name)}</div>
-        <div class="solo-char-sub">${escapeHtml(character.className)} · Level ${escapeHtml(character.level)}</div>
-      </div>
+      ${/* JOB 2: identity block relocated from the always-on dock into the player tab. */""}
       ${characterTabHtml(open, `
+        <div class="solo-sidebar-identity solo-dock-identity">
+          <div class="solo-char-name" data-textfit>${escapeHtml(character.name)}</div>
+          <div class="solo-char-sub">${escapeHtml(character.className)} · Level ${escapeHtml(character.level)}</div>
+        </div>
         <div class="solo-sidebar-block">
           <div class="solo-xp-row"><span class="solo-stat-kicker">XP</span><span class="solo-xp-value">${escapeHtml(xp)}</span></div>
         </div>
@@ -3180,7 +3183,15 @@ export function renderSoloDialogueOverlay(state = {}) {
     <div class="solo-vn-box" data-solo-dialogue-panel role="group" aria-label="Dialogue with ${escapeHtml(speaker)}">
       <div class="solo-vn-box-head">
         <span class="solo-vn-box-speaker" data-textfit>${escapeHtml(speaker)}</span>
-        <button type="button" class="solo-vn-box-end" data-solo-dialogue-end aria-label="End conversation" title="End conversation">End ✕</button>
+        <div class="solo-vn-box-head-actions">
+          ${/* JOB 3: VN dialogue sizer — lives IN the VN box (only present during a beat),
+               NOT in the top-right chrome. Independent of the narration A−/A+. */""}
+          <span class="solo-vn-sizer" role="group" aria-label="Dialogue text size">
+            <button type="button" class="solo-fontsize-btn" data-solo-vnfont="down" title="Smaller dialogue text" aria-label="Smaller dialogue text">A−</button>
+            <button type="button" class="solo-fontsize-btn" data-solo-vnfont="up" title="Larger dialogue text" aria-label="Larger dialogue text">A+</button>
+          </span>
+          <button type="button" class="solo-vn-box-end" data-solo-dialogue-end aria-label="End conversation" title="End conversation">End ✕</button>
+        </div>
       </div>
       <div
         class="solo-vn-box-text ${typed ? "is-complete" : ""}"
@@ -3432,6 +3443,9 @@ export function renderSoloSceneShell(state = {}) {
   const skin = normalizeSkin(state.skin);
   const fontSet = normalizeFontSet(state.fontSet);
   const logScale = normalizeLogScale(state.logScale);
+  // JOB 3: VN dialogue multiplier, stamped alongside --solo-log-scale so the VN box
+  // sizes independently of the narration log.
+  const vnScale = normalizeLogScale(state.vnScale);
 
   return `
     <section
@@ -3440,7 +3454,7 @@ export function renderSoloSceneShell(state = {}) {
       data-solo-busy="${state.busy ? "true" : ""}"
       data-solo-skin="${skin}"
       data-solo-font="${fontSet}"
-      style="${soloThemeVarString(skin, fontSet)};--solo-log-scale:${logScale};"
+      style="${soloThemeVarString(skin, fontSet)};--solo-log-scale:${logScale};--solo-vn-scale:${vnScale};"
     >
       ${/* settings gear moved INTO the stage-HUD overlay row (owner 2026-07-19 append):
            it is now that row's rightmost chip, not a separate box floating above. */""}
@@ -3564,6 +3578,7 @@ export function dispatchSoloClick(target, handlers = {}) {
   if ((el = closest("button[data-solo-skin]"))) { handlers.onSkin?.({ skin: el.getAttribute("data-solo-skin") }); return true; }
   if ((el = closest("button[data-solo-font]"))) { handlers.onFont?.({ fontSet: el.getAttribute("data-solo-font") }); return true; }
   if ((el = closest("[data-solo-logfont]"))) { handlers.onLogFontScale?.({ dir: el.getAttribute("data-solo-logfont") }); return true; }
+  if ((el = closest("[data-solo-vnfont]"))) { handlers.onVnFontScale?.({ dir: el.getAttribute("data-solo-vnfont") }); return true; }
   if ((el = closest("[data-solo-textspeed]"))) { handlers.onTextSpeed?.(); return true; }
   if ((el = closest("[data-solo-dialogue-end]"))) { handlers.onDialogueEnd?.(); return true; }
   if ((el = closest("[data-solo-dialogue-reply-submit]"))) { handlers.onDialogueReply?.(); return true; }
@@ -3882,6 +3897,10 @@ export function bindSoloSceneShell(root, handlers = {}) {
 export const SOLO_SKIN_STORAGE_KEY = "notdnd.solo.skin";
 export const SOLO_FONT_STORAGE_KEY = "notdnd.solo.fontSet";
 export const SOLO_LOG_SCALE_STORAGE_KEY = "notdnd.solo.logScale";
+// JOB 3: the VN dialogue box carries its OWN size multiplier, independent of the
+// narration log's --solo-log-scale. Same range/step/heal as the narration sizer
+// (normalizeLogScale is reused), persisted the same way (writeSoloThemePref).
+export const SOLO_VN_SCALE_STORAGE_KEY = "notdnd.solo.vnScale";
 export const SOLO_TEXT_SPEED_STORAGE_KEY = "notdnd.solo.textSpeed";
 // DRAFT SURVIVAL (input integrity): the composer draft is persisted per-run so a
 // page refresh / disconnect never eats typed-but-unsent text. Namespaced like the
@@ -3976,6 +3995,28 @@ export function readHealedLogScale(storage) {
   if (raw != null && String(value) !== String(raw).trim()) {
     try {
       store?.setItem(SOLO_LOG_SCALE_STORAGE_KEY, String(value));
+    } catch {
+      // best-effort heal; the in-memory value is already sane
+    }
+  }
+  return value;
+}
+
+// JOB 3: the VN dialogue sizer's self-healing read — mirrors readHealedLogScale
+// exactly (same clamp/heal), keyed to the independent VN multiplier so a stale
+// value can never wedge the VN sizer across reloads.
+export function readHealedVnScale(storage) {
+  const store = storage !== undefined ? storage : (typeof localStorage !== "undefined" ? localStorage : null);
+  let raw = null;
+  try {
+    raw = store ? store.getItem(SOLO_VN_SCALE_STORAGE_KEY) : null;
+  } catch {
+    raw = null;
+  }
+  const value = normalizeLogScale(raw == null ? 1 : raw);
+  if (raw != null && String(value) !== String(raw).trim()) {
+    try {
+      store?.setItem(SOLO_VN_SCALE_STORAGE_KEY, String(value));
     } catch {
       // best-effort heal; the in-memory value is already sane
     }
@@ -4126,6 +4167,8 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     // #48: self-healing read — a stale/invalid persisted multiplier is clamped
     // AND written back, so a bad value can never wedge the sizer across reloads.
     logScale: readHealedLogScale(),
+    // JOB 3: persisted VN dialogue text-size multiplier — INDEPENDENT of logScale.
+    vnScale: readHealedVnScale(),
     // VN text speed (table stakes): persisted reveal rate for the typewriter.
     textSpeed: normalizeTextSpeed(readSoloThemePref(SOLO_TEXT_SPEED_STORAGE_KEY, "normal")),
     // VISIBLE CONSEQUENCE (law 3): { npcId, text } derived from THIS turn's
@@ -4418,6 +4461,7 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       onSkin: handleSkin,
       onFont: handleFont,
       onLogFontScale: handleLogFontScale,
+      onVnFontScale: handleVnFontScale,
       onTextSpeed: handleTextSpeed,
       onAttempt: handleAttempt,
       onAttemptDraft: handleAttemptDraft,
@@ -5142,6 +5186,18 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     const shell = typeof root.querySelector === "function" ? root.querySelector(".solo-scene-shell") : null;
     const target = shell && shell.style ? shell : root;
     target.style?.setProperty?.("--solo-log-scale", String(state.logScale));
+  }
+
+  // JOB 3: step the VN dialogue text size — the exact narration-sizer pattern, but
+  // scoped to --solo-vn-scale so it NEVER touches the narration log (and A−/A+ never
+  // touches the VN box). Instant resize via a direct var set on the shell, persisted.
+  function handleVnFontScale({ dir } = {}) {
+    const step = dir === "down" ? -SOLO_LOG_SCALE_STEP : SOLO_LOG_SCALE_STEP;
+    state.vnScale = normalizeLogScale((state.vnScale || 1) + step);
+    writeSoloThemePref(SOLO_VN_SCALE_STORAGE_KEY, String(state.vnScale));
+    const shell = typeof root.querySelector === "function" ? root.querySelector(".solo-scene-shell") : null;
+    const target = shell && shell.style ? shell : root;
+    target.style?.setProperty?.("--solo-vn-scale", String(state.vnScale));
   }
 
   // VN text speed (table stakes): cycle slow → normal → fast → instant, persist
