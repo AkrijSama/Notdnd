@@ -14,11 +14,29 @@ function escapeText(value) {
 // universe (characters never cross between worlds); a MODULE is authored,
 // world-scoped content (premises / one-shots / adventures) WITHIN a world.
 // Player-facing copy never says "story templates" / "template".
-export function renderModulesZone() {
+//
+// HIDE-WHEN-EMPTY (landing makeover 2026-07-21): the shelf no longer renders a
+// standing "Coming soon" placeholder — an empty section HIDES (same law the roadmap
+// zone already follows). It renders only when real modules exist for the world.
+// @param {Array<{title?:string,description?:string}>} modules
+// @returns {string} HTML ("" when there is nothing to show)
+export function renderModulesZone(modules) {
+  const rows = Array.isArray(modules) ? modules.filter((m) => m && m.title) : [];
+  if (rows.length === 0) return "";
+  const list = rows
+    .map(
+      (m) => `
+        <span class="solo-home-module">
+          <span class="solo-home-module-title">${escapeText(m.title)}</span>
+          ${m.description ? `<span class="solo-home-module-desc">${escapeText(m.description)}</span>` : ""}
+        </span>`
+    )
+    .join("");
   return `
-    <div class="solo-home-zone solo-home-zone-shelf" aria-hidden="true">
+    <div class="solo-home-zone solo-home-zone-shelf" aria-label="Modules">
       <span class="solo-home-zone-kicker">Modules</span>
-      <span class="solo-home-zone-note">Ready-made adventures within this world. Coming soon.</span>
+      <span class="solo-home-zone-note">Ready-made adventures within this world.</span>
+      ${list}
     </div>
   `;
 }

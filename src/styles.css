@@ -4812,17 +4812,21 @@ button:disabled {
    black. On true ultrawide the page's leather backdrop frames the whole cluster.
    :root tokens only, with literal fallbacks (no phantom vars). */
 @media (min-width: 1400px) {
+  /* LANDING MAKEOVER: the featured-worlds LEFT rail is gone (worlds are now the door
+     in the primary column), so the dashboard is primary + an optional right rail that
+     COLLAPSES (auto track → 0) when the roadmap is absent, keeping the play column
+     centered rather than left-shifted. The shelf spans beneath when modules exist. */
   .solo-home-dashboard {
     display: grid;
-    grid-template-columns: minmax(220px, 1fr) minmax(0, 760px) minmax(220px, 1fr);
+    grid-template-columns: minmax(0, 760px) auto;
     grid-template-areas:
-      "rail-left primary rail-right"
-      "shelf     shelf   shelf";
+      "primary rail-right"
+      "shelf   shelf";
     gap: clamp(18px, 1.8vw, 32px);
     align-items: stretch;
+    justify-content: center;
   }
   .solo-home-dashboard > .solo-home { grid-area: primary; }
-  .solo-home-zone-left { grid-area: rail-left; }
   .solo-home-zone-right { grid-area: rail-right; }
   .solo-home-zone-shelf { grid-area: shelf; }
 
@@ -4987,22 +4991,27 @@ button:disabled {
   font-style: italic;
   letter-spacing: 0.01em;
 }
-.solo-home-start {
+/* WORLDS ARE THE DOOR (landing makeover 2026-07-21): the old lone "Start" button is
+   gone; the world cards themselves are the entry. On a returning player's home the
+   doors sit below the saved adventures ("Begin another adventure"); on a fresh home
+   they lead. Reuses the .onb-world-card visual from the catalogue. */
+.solo-home-worlds {
+  margin-top: 6px;
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  gap: 6px;
 }
-.solo-home-start button {
-  font-size: 1.05rem;
+.solo-home-worlds-title {
   font-family: var(--font-display, 'Cinzel', Georgia, serif);
   letter-spacing: 0.02em;
-  padding: 13px 30px;
-  border: 1px solid var(--accent-bright, #e7e9ee);
-  background: linear-gradient(135deg, var(--accent-bright, #e7e9ee), var(--accent, #c2c6cf));
-  color: var(--on-accent, #0a0a0b);
-  box-shadow: 0 6px 18px rgba(200, 204, 214, 0.3);
-  transition: transform 0.12s ease, box-shadow 0.15s ease, filter 0.15s ease;
+  margin: 0;
 }
-.solo-home-start button:hover { transform: translateY(-1px); filter: brightness(1.06); box-shadow: 0 10px 26px rgba(200, 204, 214, 0.4); }
+.solo-home-worlds-note {
+  color: var(--text-2, #b6a589);
+  font-style: italic;
+  margin: 0 0 4px;
+}
+.solo-home-dashboard.fresh .solo-home-worlds { margin-top: 12px; }
 .solo-home-run-list {
   display: flex;
   flex-direction: column;
@@ -5201,10 +5210,21 @@ button:disabled {
   border-color: #3c5a45;
   background: rgba(60, 90, 69, 0.16);
 }
+/* ABANDONED CLEANUP (landing makeover 2026-07-21): an abandoned run has NO ending —
+   it was voluntarily set aside, not defeated or resolved. So it must not read like a
+   dead/completed run: a calm, neutral "set aside" chip (not the alarming red-brown),
+   NO title strike-through, and lighter dimming than a truly finished run. */
 .solo-home-run-status--abandoned {
-  color: #c79a8e;
-  border-color: #6e4034;
-  background: rgba(110, 64, 52, 0.16);
+  color: var(--text-2, #b6a589);
+  border-color: rgba(182, 165, 137, 0.35);
+  background: rgba(182, 165, 137, 0.1);
+}
+.solo-home-run-card.abandoned {
+  opacity: 0.78;
+  filter: grayscale(0.28);
+}
+.solo-home-run-card.abandoned strong {
+  text-decoration: none;
 }
 .solo-home-run-where { color: var(--text-muted, #94856f); }
 .solo-home-run-quest {

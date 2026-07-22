@@ -5,7 +5,7 @@ import { createApiClient } from "./api/client.js";
 // their render/bind dispatchers (renderActiveTab + the activeTab bind switch) were
 // never reached. Only homebrewManager survives — it IS used on the live solo path.
 import { renderHomebrewManager, bindHomebrewManager, homebrewDraftToItem, itemToDraft } from "./components/homebrewManager.js";
-import { renderOnboardingFlow, bindOnboardingFlow, validatePortraitUpload, stepRequirements } from "./components/onboardingFlow.js";
+import { renderOnboardingFlow, bindOnboardingFlow, validatePortraitUpload, stepRequirements, renderWorldDoors, bindWorldCardArt } from "./components/onboardingFlow.js";
 import {
   defaultWorldCreatorState, creatorStartInterview, creatorAnswer, creatorSkip, creatorJustBuild,
   creatorCreateReview, creatorKeep, creatorKill, creatorReplace
@@ -285,7 +285,7 @@ function renderSoloRunCard(run, { primary = false } = {}) {
   }
 
   return `
-    <article class="solo-home-run-card${primary ? " primary" : ""}${finished ? " finished" : ""}">
+    <article class="solo-home-run-card${primary ? " primary" : ""}${finished ? " finished" : ""}${isAbandoned ? " abandoned" : ""}">
       <div class="solo-home-run-meta">
         <div class="solo-home-run-titlerow">
           <strong class="solo-home-run-title">${escapeHtml(title)}</strong>
@@ -318,56 +318,64 @@ function renderSoloRunCard(run, { primary = false } = {}) {
 }
 
 // The solo home screen: the post-login / post-exit destination for solo players.
-// Replaces the 7-tab legacy shell. Shows a Continue card for the most recent
-// active run, a Start a New Adventure button, and any past runs.
+// LANDING MAKEOVER (2026-07-21): worlds ARE the door — the old "Start a New
+// Adventure" button is gone; the world cards themselves start a new run. For a
+// RETURNING player (has runs) the saved adventures LEAD and the world doors sit below
+// as "begin another"; for a NEW player the world doors are the hero. Empty framing
+// (the Featured-Worlds placeholder rail) is gone — the doors it teased are now real.
 function renderSoloHome(state) {
   const runs = Array.isArray(uiState.soloRuns) ? uiState.soloRuns : [];
   const activeRuns = runs.filter((run) => run?.status === "active");
   const continueRun =
     activeRuns.find((run) => run.runId === uiState.resumeRunId) || activeRuns[0] || null;
   const pastRuns = runs.filter((run) => run !== continueRun);
+  const returning = Boolean(continueRun || pastRuns.length > 0);
 
-  // The home is a ZONE/GRID dashboard, not a lone column. The primary play column
-  // (.solo-home) keeps its current readable width; on wide/ultrawide viewports the
-  // reserved zones below FRAME the otherwise-empty leather so the space reads as
-  // "a dashboard with room to grow" rather than a narrow column floating in black.
-  // Reserved dashboard zones that FRAME the play column on wide viewports. The
-  // left rail (featured worlds) is still a placeholder; the right rail is the
-  // data-driven ROADMAP (hides when the data file is absent); the shelf is MODULES
-  // (world-scoped adventures — never "story templates", per world-module-law).
+  // The world DOORS — same cards as the onboarding catalogue (single-sourced), so a
+  // click starts a run in that world. Any worlds the player already loaded ride along.
+  const worldDoors = renderWorldDoors({
+    worldDef: uiState.onboarding?.worldDef || {},
+    userWorlds: uiState.onboarding?.userWorlds || []
+  });
+  const doorsSection = `
+    <section class="solo-home-worlds">
+      <h3 class="solo-home-worlds-title">${returning ? "Begin another adventure" : "Choose your world"}</h3>
+      <p class="small solo-home-worlds-note">Pick a world to step into, or imagine one of your own.</p>
+      ${worldDoors}
+    </section>`;
+
+  // Adventures LEAD for returning players; the world doors lead for new ones. The
+  // right rail is the data-driven ROADMAP (hides when absent); MODULES hide when
+  // empty — no standing "Coming soon" placeholders.
+  const adventures = returning
+    ? `${
+        continueRun
+          ? `<div class="solo-home-continue">${renderSoloRunCard(continueRun, { primary: true })}</div>`
+          : ""
+      }${
+        pastRuns.length > 0
+          ? `<section class="solo-home-past">
+               <h3>Saved campaigns</h3>
+               <div class="solo-home-run-list">
+                 ${pastRuns.map((run) => renderSoloRunCard(run)).join("")}
+               </div>
+             </section>`
+          : ""
+      }`
+    : "";
+
   return `
     <main class="panel main solo-home-main">
-      <div class="solo-home-dashboard">
-        <aside class="solo-home-zone solo-home-zone-rail solo-home-zone-left" aria-hidden="true">
-          <span class="solo-home-zone-kicker">Featured Worlds</span>
-          <span class="solo-home-zone-note">Curated worlds to drop straight into. Coming soon.</span>
-        </aside>
+      <div class="solo-home-dashboard${returning ? " returning" : " fresh"}">
         <section class="solo-home">
           <div class="solo-home-hero">
-            <h2>Your adventures</h2>
-            <p class="small">Step back into a world, or begin a new one.</p>
+            <h2>${returning ? "Your adventures" : "Inkborne"}</h2>
+            <p class="small">${returning ? "Step back into a world, or begin a new one." : "Step into a world and begin."}</p>
           </div>
-          ${
-            continueRun
-              ? `<div class="solo-home-continue">${renderSoloRunCard(continueRun, { primary: true })}</div>`
-              : ""
-          }
-          <div class="solo-home-start">
-            <button data-action="start-new-adventure">Start a New Adventure</button>
-          </div>
-          ${
-            pastRuns.length > 0
-              ? `<section class="solo-home-past">
-                   <h3>Saved campaigns</h3>
-                   <div class="solo-home-run-list">
-                     ${pastRuns.map((run) => renderSoloRunCard(run)).join("")}
-                   </div>
-                 </section>`
-              : ""
-          }
+          ${returning ? `${adventures}${doorsSection}` : doorsSection}
         </section>
         ${renderRoadmapZone(uiState.roadmap)}
-        ${renderModulesZone()}
+        ${renderModulesZone(uiState.modules)}
       </div>
     </main>
   `;
@@ -1746,20 +1754,41 @@ function bindAppEvents() {
     });
   });
 
-  const startAdventureBtn = appRoot.querySelector("[data-action='start-new-adventure']");
-  if (startAdventureBtn) {
-    startAdventureBtn.addEventListener("click", () => {
-      uiState.onboarding = {
-        ...uiState.onboarding,
-        step: "world",
-        worldDef: {},
-        worldPreview: null,
-        loading: false,
-        error: ""
-      };
-      scheduleRender();
+  // LANDING MAKEOVER: worlds are the door. The home renders the same world cards as
+  // the onboarding catalogue; a click enters the flow and (for a ready-made world)
+  // goes STRAIGHT to character creation via the shared onWorldFieldSelect path. A
+  // clean onboarding world state is seated first so confirmWorld has sane state.
+  const enterFreshOnboarding = () => {
+    uiState.onboarding = {
+      ...uiState.onboarding,
+      step: "world",
+      worldDef: {},
+      worldPreview: null,
+      loading: false,
+      error: ""
+    };
+  };
+  appRoot.querySelectorAll(".solo-home-worlds [data-world-scenario]").forEach((button) => {
+    button.addEventListener("click", () => {
+      enterFreshOnboarding();
+      onWorldFieldSelect("scenarioId", button.getAttribute("data-world-scenario"));
     });
-  }
+  });
+  appRoot.querySelectorAll(".solo-home-worlds [data-world-userworld]").forEach((button) => {
+    button.addEventListener("click", () => {
+      enterFreshOnboarding();
+      onSelectUserWorld(button.getAttribute("data-world-userworld"));
+    });
+  });
+  appRoot.querySelectorAll(".solo-home-worlds [data-world-create]").forEach((button) => {
+    button.addEventListener("click", () => {
+      enterFreshOnboarding();
+      onCreateWorld();
+    });
+  });
+  // Library-first world-card art for the home doors (same path as the catalogue).
+  const homeWorlds = appRoot.querySelector(".solo-home-worlds");
+  if (homeWorlds) bindWorldCardArt(homeWorlds);
 
   appRoot.querySelectorAll("[data-action='open-run']").forEach((button) => {
     button.addEventListener("click", () => {

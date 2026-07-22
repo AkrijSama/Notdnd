@@ -189,8 +189,40 @@ function renderUserWorldCard(card, active) {
     </button>`;
 }
 
-function renderWorldStep(state) {
+// The WORLD DOORS: the built-in worlds + any of the player's own worlds + the
+// "+ Create a world" tile. Single-sourced here so the onboarding catalogue AND the
+// home landing render the SAME doors (worlds are the entry, not a button). Selection
+// carries a scenarioId / userWorldId; the create tile carries data-world-create.
+export function renderWorldDoors(state = {}) {
   const def = state.worldDef || {};
+  return `
+    <div class="onb-world-cards">
+      ${WORLD_SELECT_CARDS.map((card) => renderWorldCard(card, (def.scenarioId || "") === card.scenarioId)).join("")}
+      ${(Array.isArray(state.userWorlds) ? state.userWorlds : []).map((w) => renderUserWorldCard(w, def.userWorldId === w.userWorldId)).join("")}
+      ${renderCreateWorldTile()}
+    </div>`;
+}
+
+// Library-first world-card art: for each rendered world door, consult the curated
+// library for a rated "keep" world-card and swap the static placeholder in when one
+// exists. Zero keeps (or any error) → the committed static art stays. Single-sourced
+// so the catalogue and the home landing share one art-plumbing path.
+export function bindWorldCardArt(root) {
+  if (!root || typeof root.querySelectorAll !== "function" || typeof fetch !== "function") return;
+  root.querySelectorAll("[data-world-scenario]").forEach((button) => {
+    const world = button.getAttribute("data-world-scenario");
+    const img = button.querySelector(".onb-world-card-art");
+    if (!world || !img) return;
+    fetch(`/api/art/library?world=${encodeURIComponent(world)}&kind=world-card`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && typeof data.uri === "string" && data.uri) img.src = data.uri;
+      })
+      .catch(() => { /* keep the static placeholder on any error */ });
+  });
+}
+
+function renderWorldStep(state) {
   // CARD-LED LANDING (onboarding-rework, now due since worlds are multiple): the
   // first screen IS the world cards. Picking a ready-made world goes STRAIGHT to
   // character creation; the "Custom World" card opens the creation wizard. There is
@@ -205,11 +237,7 @@ function renderWorldStep(state) {
       </header>
 
       <div class="onb-field onb-featured-world">
-        <div class="onb-world-cards">
-          ${WORLD_SELECT_CARDS.map((card) => renderWorldCard(card, (def.scenarioId || "") === card.scenarioId)).join("")}
-          ${(Array.isArray(state.userWorlds) ? state.userWorlds : []).map((w) => renderUserWorldCard(w, def.userWorldId === w.userWorldId)).join("")}
-          ${renderCreateWorldTile()}
-        </div>
+        ${renderWorldDoors(state)}
       </div>
       ${state.error ? `<div class="onboarding-error">${esc(state.error)}</div>` : ""}
     </section>
@@ -1080,26 +1108,9 @@ export function bindOnboardingFlow(root, handlers = {}) {
   root.querySelectorAll("[data-world-create]").forEach((button) => {
     button.addEventListener("click", () => handlers.onCreateWorld?.());
   });
-  // Library-first world-card art (art-plumbing item 3): consult the curated
-  // library for a rated "keep" for this world and swap the static placeholder in
-  // when one exists. Zero keeps (or any error) -> the committed static art stays
-  // (zero behavior change until the owner rates a keep). Custom worlds (empty
-  // scenarioId) have no library world to look up, so they are skipped.
-  root.querySelectorAll("[data-world-scenario]").forEach((button) => {
-    const world = button.getAttribute("data-world-scenario");
-    const img = button.querySelector(".onb-world-card-art");
-    if (!world || !img || typeof fetch !== "function") {
-      return;
-    }
-    fetch(`/api/art/library?world=${encodeURIComponent(world)}&kind=world-card`)
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (data && typeof data.uri === "string" && data.uri) {
-          img.src = data.uri;
-        }
-      })
-      .catch(() => { /* keep the static placeholder on any error */ });
-  });
+  // Library-first world-card art (art-plumbing item 3) — single-sourced in
+  // bindWorldCardArt so the catalogue and the home landing share one path.
+  bindWorldCardArt(root);
   root.querySelectorAll("[data-world-field]").forEach((field) => {
     if (typeof field.addEventListener === "function") {
       field.addEventListener("input", () => handlers.onWorldFieldInput?.(field.getAttribute("data-world-field"), field.value));
