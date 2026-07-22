@@ -1366,38 +1366,55 @@ export function updateNpcIdentity(runId, npcId, identity = {}) {
     return false;
   }
 
+  // AUTHORED-CONTENT LAW (coherence walk finding #1): a procedural identity pass may
+  // FILL a missing identity field but must NEVER OVERWRITE an authored/committed one.
+  // The name is the acute case: authored copy references cast BY NAME ("Ask Grace what
+  // a license buys"), so silently renaming Marshal Odile Grace → "Renn" on lazy-commit
+  // broke every by-name reference. A procedural NPC starts with displayName === role
+  // (buildStartingNpc) or the npcId fallback (scenarioLoader) — those are placeholders
+  // to fill; a real authored name is canon and is left untouched (name AND generatedName,
+  // so the affordance layer — generatedName || displayName — never surfaces the ghost).
   if (typeof identity.generatedName === "string" && identity.generatedName.trim()) {
-    let name = identity.generatedName.trim();
-    // Final per-run first-name uniqueness guard (the two-Maras bug): if another
-    // committed NPC already holds this first name, suffix rather than collide.
-    // (Mint-time uniqueness lives in npcIdentity — this backstops stale queue
-    // jobs that were generated before the roster changed.) Inline, no import:
-    // npcIdentity imports this module, so the helper can't be reused here.
-    const firstLc = name.split(/\s+/)[0].toLowerCase();
-    const clash = Object.values(run.npcs || {}).some(
-      (other) =>
-        other && other.npcId !== npcId &&
-        [other.generatedName, other.displayName].some(
-          (n) => typeof n === "string" && n.trim().split(/\s+/)[0].toLowerCase() === firstLc && firstLc.length >= 3
-        )
-    );
-    if (clash) {
-      const renamed = `${name} the Younger`;
-      if (typeof identity.portraitPrompt === "string") {
-        identity.portraitPrompt = identity.portraitPrompt.replace(name, renamed);
+    const dn = typeof npc.displayName === "string" ? npc.displayName.trim() : "";
+    const roleLc = String(npc.role || "").trim().toLowerCase();
+    const namePlaceholder = !dn || dn.toLowerCase() === roleLc || dn === npc.npcId;
+    if (namePlaceholder) {
+      let name = identity.generatedName.trim();
+      // Final per-run first-name uniqueness guard (the two-Maras bug): if another
+      // committed NPC already holds this first name, suffix rather than collide.
+      // (Mint-time uniqueness lives in npcIdentity — this backstops stale queue
+      // jobs that were generated before the roster changed.) Inline, no import:
+      // npcIdentity imports this module, so the helper can't be reused here.
+      const firstLc = name.split(/\s+/)[0].toLowerCase();
+      const clash = Object.values(run.npcs || {}).some(
+        (other) =>
+          other && other.npcId !== npcId &&
+          [other.generatedName, other.displayName].some(
+            (n) => typeof n === "string" && n.trim().split(/\s+/)[0].toLowerCase() === firstLc && firstLc.length >= 3
+          )
+      );
+      if (clash) {
+        const renamed = `${name} the Younger`;
+        if (typeof identity.portraitPrompt === "string") {
+          identity.portraitPrompt = identity.portraitPrompt.replace(name, renamed);
+        }
+        name = renamed;
       }
-      name = renamed;
+      npc.generatedName = name;
+      npc.displayName = name;
     }
-    npc.generatedName = name;
-    npc.displayName = name;
   }
-  if (typeof identity.appearance === "string") {
+  // FILL-IF-MISSING (never overwrite authored): an authored cast member may commit its
+  // own appearance / portrait (scenarioLoader W1 — e.g. the VOICE is "a ball of warm
+  // green-gold light"). Preserve those; only generate what the author left blank. This
+  // now mirrors the set-once rule already used below for mannerism/voice/gender/pronouns.
+  if (typeof identity.appearance === "string" && !(typeof npc.appearance === "string" && npc.appearance.trim())) {
     npc.appearance = identity.appearance;
   }
-  if (typeof identity.personality === "string") {
+  if (typeof identity.personality === "string" && !(typeof npc.personality === "string" && npc.personality.trim())) {
     npc.personality = identity.personality;
   }
-  if (typeof identity.portraitPrompt === "string") {
+  if (typeof identity.portraitPrompt === "string" && !(typeof npc.portraitPrompt === "string" && npc.portraitPrompt.trim())) {
     npc.portraitPrompt = identity.portraitPrompt;
   }
   // Committed mannerism (spit-ban vacuum fill): set once, never overwritten so the
