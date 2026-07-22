@@ -1220,24 +1220,25 @@ export const SOLO_SKINS = {
   // Default skin — "Black grimoire": black leather + SILVER (#21). Mirrors the
   // :root black-leather token map so the scene shell matches home/onboarding
   // surfaces. All accents are silver/steel — no gold, brown, or cobalt.
-  // OBSIDIAN default skin (owner correction). The scene shell applies THIS skin's tokens
-  // as inline style on .app-shell, overriding :root — so the RUN's obsidian must be set
-  // HERE too, not only in :root (a run verified gray while the lobby was obsidian). Cool
-  // blue-black volcanic glass (B>R), silver accents; a specular sheen is added into the
-  // texture so run panels catch light like the lobby's. Grain retained. Mirrors :root
-  // Variant 1 "Obsidian"; the :root[data-leather="polished"] variant previews on the
-  // lobby — swap these values to the polished set to carry it into runs.
+  // POLISHED default skin (owner pick 2026-07-22 — Obsidian was seen live and rejected).
+  // The scene shell applies THIS skin's tokens as inline style on .app-shell, overriding
+  // :root — so the RUN's polished surface must be set HERE too, not only in :root (a run
+  // once rendered the old variant while the lobby was updated). Cool blue-black volcanic
+  // glass (B>R), silver accents, a DEEPER base + a STRONGER specular sheen baked into the
+  // texture so run panels catch light like the lobby's Polished. Grain retained. Mirrors
+  // :root (Polished default). The rejected softer Obsidian is :root[data-leather="obsidian"]
+  // in styles.css — swap these values back to carry it into runs.
   // DRIFT-LOCK: tests/obsidian-surface-unified.test.js asserts every color token below
-  // equals the styles.css :root Obsidian value (the --accent-2 overload aside), so the
-  // RUN surface can never silently drift off the lobby's Obsidian again.
+  // equals the styles.css :root Polished value (the --accent-2 overload aside), so the
+  // RUN surface can never silently drift off the lobby's Polished again.
   ashen: {
-    "--bg": "#06070a", "--panel": "#0c0e13", "--card": "#0e1016", "--inset": "#060709",
-    "--card-dim": "#0a0b10", "--tabbar": "#07080d", "--border": "#1d1f28", "--border-faint": "#161821",
+    "--bg": "#05060b", "--panel": "#0a0c12", "--card": "#0c0e15", "--inset": "#050609",
+    "--card-dim": "#08090f", "--tabbar": "#06070c", "--border": "#1b1d27", "--border-faint": "#141620",
     "--border-strong": "#31343f", "--text": "#d9dbe0", "--text-bright": "#f1f2f5", "--text-2": "#b0b3bb",
     "--text-muted": "#8b8e96", "--text-label": "#83868e", "--text-faint": "#5f626a", "--accent": "#c2c6cf",
     "--accent-2": "#e7e9ee", "--accent-bright": "#e7e9ee", "--accent-grad-a": "#cfd3db", "--accent-grad-b": "#9498a1",
-    "--accent-border": "#464a57", "--on-accent": "#0a0a0b",
-    "--texture": "linear-gradient(133deg,rgba(226,232,240,.06) 0%,rgba(226,232,240,.02) 15%,transparent 42%),repeating-linear-gradient(34deg,rgba(214,217,224,.02) 0 1px,transparent 1px 3px),repeating-linear-gradient(-22deg,rgba(0,0,0,.22) 0 1px,transparent 1px 4px)",
+    "--accent-border": "#474b59", "--on-accent": "#0a0a0b",
+    "--texture": "linear-gradient(133deg,rgba(226,232,240,.09) 0%,rgba(226,232,240,.03) 15%,transparent 46%),repeating-linear-gradient(34deg,rgba(214,217,224,.02) 0 1px,transparent 1px 3px),repeating-linear-gradient(-22deg,rgba(0,0,0,.22) 0 1px,transparent 1px 4px)",
     "--texture-size": "auto"
   },
   dragon: {
