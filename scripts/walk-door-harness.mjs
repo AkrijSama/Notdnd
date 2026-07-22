@@ -161,7 +161,7 @@ async function main() {
   const cov = coverageVerdict(report.surfaces);
   const coherenceFail = report.jobs.job5_coherence.some((c) => !c.ok);
   const anyFail = report.surfaces.some((s) => s.status === "FAIL") || coherenceFail;
-  const findings = report.surfaces.filter((s) => s.status === "FINDING").map((s) => s.aspectFinding);
+  const findings = report.surfaces.filter((s) => s.aspectFinding).map((s) => s.aspectFinding);
   report.jobs.job6_unverified = report.surfaces
     .filter((s) => s.playerFacing && !s.noArt && s.reachedLayerRank < LAYERS.SERVED_BYTES.rank)
     .map((s) => ({ surface: s.id, stoppedAtLayer: s.reachedLayer, why: s.why }));
