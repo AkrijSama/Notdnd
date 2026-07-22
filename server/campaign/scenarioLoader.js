@@ -127,6 +127,11 @@ function instantiateThread(front, run) {
     // turns; the ≤1-driver rule already spaces distinct threads. Slice default: 1.
     clock: { minTurnsBetweenBeats: front.clock?.minTurnsBetweenBeats ?? 1, lastFiredTurn: null, dormantUntilTurn: null },
     revealState: front.revealState || "hidden",
+    // LEDGERED BUG FIX (audit §3): the scenario front→thread path dropped
+    // `reputationEffects`, so an authored front's standing effects never fired on
+    // resolution (fireThreadReputation reads thread.reputationEffects). The worldgen
+    // seeding path (threads.js) already copies it; this reconciles the two closers.
+    reputationEffects: Array.isArray(front.reputationEffects) ? front.reputationEffects : [],
     resolution: (front.resolution || []).map((r) => ({ ...r, questId: r.questRef || r.questId })),
     callbackQuery: { entityIds: front.callbackQuery?.entityRefs || [], keywords: front.callbackQuery?.keywords || [] },
     flags: {}
@@ -229,9 +234,29 @@ export function loadScenarioIntoRun(run, scenario, options = {}) {
     // 2026-07-21). It used to be a hardcoded Verdance line appended to EVERY world's
     // scene prompt — a cyberpunk alley rendered with "over-still water". Babel now
     // carries its own register as data; a world that declares none gets no clause.
-    for (const k of ["name", "tone", "flavor", "artStyle", "variant", "era", "sceneRegister"]) {
+    for (const k of ["name", "tone", "flavor", "artStyle", "variant", "era", "sceneRegister", "sightAccent"]) {
       if (isString(scenario.world[k])) run.world[k] = scenario.world[k];
     }
+    // STEEL/FURNITURE WIDENING (2026-07-21). The string loop above carries only
+    // scalars; the audit's GOVERNING FINDING was that every OBJECT/ARRAY world knob
+    // authored on `scenario.world` was silently dropped here — that one omission, not
+    // the schema, is what stranded orientationMix/deathLaw/etc. as "dead despite
+    // authored". `validateWorldState` treats run.world as an open bag, so a structured
+    // tuning block may legitimately ride through. Carried when authored with the right
+    // shape; a world that declares none rides bare (byte-identical). Several of these
+    // have no engine consumer YET (planned slots) — carrying them is the reachability
+    // half, so a future consumer reads run.world.<slot> directly rather than forcing
+    // this whitelist to be re-widened per feature. `deathLaw` is consumed today (the
+    // death-screen epilogue payload); the rest are reachable-and-tested planned gates.
+    const carryObject = (k) => {
+      const v = scenario.world[k];
+      if (v && typeof v === "object" && !Array.isArray(v)) run.world[k] = v;
+    };
+    const carryArray = (k) => {
+      if (Array.isArray(scenario.world[k])) run.world[k] = scenario.world[k];
+    };
+    for (const k of ["deathLaw", "orientationMix", "systemLore", "playerSense", "speechConventions", "rankLadder", "sheetSpec", "nameBanks"]) carryObject(k);
+    for (const k of ["suggestionExemplars"]) carryArray(k);
     // Carry the scenario's engine art style into BOTH the new primary
     // (artStyleOptions.default) and the legacy string + flags mirror. A scenario
     // may author either the new artStyleOptions object or the legacy artStyle
@@ -242,6 +267,15 @@ export function loadScenarioIntoRun(run, scenario, options = {}) {
         typeof scenario.world.artStyleOptions === "object" &&
         isString(scenario.world.artStyleOptions.default));
     if (scenarioDeclaresStyle) {
+      // LEDGERED BUG FIX (audit §3): a scenario's NARROWED `artStyleOptions.allowed`
+      // was silently discarded — stampArtStyle preserves `run.world`'s pre-existing
+      // allowed (the full STYLES list from worldgen), so babel's ["anime","dark-fantasy"]
+      // never bound and any style could be stamped. Seat the scenario's allowed list
+      // onto run.world BEFORE stamping so stampArtStyle's preserve-branch honors it.
+      const scenAllowed = scenario.world.artStyleOptions?.allowed;
+      if (Array.isArray(scenAllowed) && scenAllowed.length) {
+        run.world.artStyleOptions = { ...(run.world.artStyleOptions || {}), allowed: scenAllowed };
+      }
       stampArtStyle(run.world, resolveWorldArtStyle(scenario.world));
       run.flags = { ...(run.flags || {}), artStyle: run.world.artStyle };
     }

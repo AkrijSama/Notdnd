@@ -3248,6 +3248,12 @@ export const DEATH_LAW_EPILOGUE = Object.freeze({
   babel: "The Green Static releases its hold. An ocean away, a coma that was never death stirs, and the Tower keeps its hundred floors. It will call another."
 });
 export function deathEpilogue(state = {}, summary = {}) {
+  // Prefer the AUTHORED per-world epilogue served on the scene payload
+  // (world.deathLaw.epilogue — steel/furniture: the slot is now data, not a hardcoded
+  // dict). The dict below stays a resume-safety fallback for a payload that predates
+  // the slot; the generic close is the final floor.
+  const authored = state.scene?.world?.deathLaw?.epilogue;
+  if (typeof authored === "string" && authored.trim()) return authored;
   const world = String(
     summary.scenarioId || state.scene?.world?.variant || state.scene?.scenarioId || state.worldDef?.scenarioId || ""
   ).toLowerCase();

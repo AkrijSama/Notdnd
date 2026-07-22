@@ -22,13 +22,17 @@ const GOAL_DEADLINE_MINUTES = Object.freeze({ project: 4320, ambition: 10080 });
 // The faction most RELEVANT to a goal (token overlap with name/wants), else a
 // discovered faction, else the first. Null when the run carries no factions — so a
 // factionless run simply skips the reputation effect rather than targeting nothing.
-function relevantFactionId(run, tokens) {
+export function relevantFactionId(run, tokens) {
   const factions = isPlainObject(run?.factions) ? Object.values(run.factions) : [];
   if (!factions.length) return null;
   const toks = (Array.isArray(tokens) ? tokens : []).map((t) => String(t).toLowerCase()).filter(Boolean);
   let best = null; let bestScore = 0;
   for (const f of factions) {
-    const hay = `${f.name || ""} ${f.wants || ""}`.toLowerCase();
+    // LEDGERED BUG FIX (audit §3): the loader writes a faction's narrative agenda to
+    // `flags.wants` (it has no top-level engine field — scenarioLoader comment), so the
+    // old `f.wants` read was always undefined and goal↔faction relevance silently
+    // degraded to name-only. Read the committed location.
+    const hay = `${f.name || ""} ${f.wants || f.flags?.wants || ""}`.toLowerCase();
     const score = toks.reduce((s, t) => s + (hay.includes(t) ? 1 : 0), 0);
     if (score > bestScore) { bestScore = score; best = f; }
   }

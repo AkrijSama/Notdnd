@@ -9,8 +9,13 @@
 // The kept-clear starter zone, by committed location id, plus the tag that marks it.
 // Detection is id-OR-tag so a run that predates the tag (its location record was
 // copied before the tag was authored) is still caught by id.
+// STEEL/FURNITURE de-Babel (2026-07-21): `loc_waking_mile` — a Babel/Verdance POI —
+// was hardcoded into this engine protection. Removed: babel.json's waking mile carries
+// the `poi:start-area` tag (as does every authored start area), so the tag path now
+// generalizes it. Only the generic positional id `start_location` stays as the
+// pre-tag backward-compat fallback; no world-specific POI id belongs in engine steel.
 export const STARTER_ZONE_TAG = "poi:start-area";
-export const STARTER_ZONE_LOCATION_IDS = new Set(["start_location", "loc_waking_mile"]);
+export const STARTER_ZONE_LOCATION_IDS = new Set(["start_location"]);
 
 export function isStarterZoneLocation(location = {}) {
   if (!location || typeof location !== "object") return false;

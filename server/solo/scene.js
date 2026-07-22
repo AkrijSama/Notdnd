@@ -1428,7 +1428,12 @@ export function buildSoloScenePayload(run, options = {}) {
       // World-family discriminator (e.g. "babel"). The client keys its STATUS
       // WINDOW off this — Babel renders the six-stat / rank / milestone panel
       // instead of the default D&D AC/Speed/Mana sheet. Empty for default worlds.
-      variant: isString(run.world?.variant) ? run.world.variant : ""
+      variant: isString(run.world?.variant) ? run.world.variant : "",
+      // Per-world DEATH-LAW epilogue (steel/furniture 2026-07-21). The slot already
+      // existed as a hardcoded client dict keyed on scenarioId; this widens the payload
+      // so the death screen reads AUTHORED data (world.deathLaw.epilogue) instead. Only
+      // present when the world authors it; the client keeps the dict as resume-safety.
+      ...(run.world?.deathLaw && typeof run.world.deathLaw === "object" ? { deathLaw: run.world.deathLaw } : {})
     },
     vnMode: vnState.active,
     speakerId: vnState.speakerId,

@@ -84,7 +84,10 @@
       "frog",
       "wild boar"
     ],
-    "sceneRegister": "beautiful yet subtly wrong, uneasy stillness, faint shimmer in the air, over-still water, off light"
+    "sceneRegister": "beautiful yet subtly wrong, uneasy stillness, faint shimmer in the air, over-still water, off light",
+    "deathLaw": {
+      "epilogue": "The Green Static releases its hold. An ocean away, a coma that was never death stirs, and the Tower keeps its hundred floors. It will call another."
+    }
   },
   "locations": {
     "start_location": {
@@ -1049,7 +1052,6 @@
           "kind": "trail",
           "fromRef": "start",
           "towardRef": "loc_waking_mile",
-          "band": "fresh",
           "source": "limping_grey"
         }
       },
@@ -1074,7 +1076,6 @@
           "kind": "trail",
           "fromRef": "loc_stillborn_field",
           "towardRef": "loc_stillborn_field",
-          "band": "fresh",
           "source": "rapture_drifter",
           "palette": "violet"
         }
