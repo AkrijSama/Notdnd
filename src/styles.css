@@ -1413,7 +1413,7 @@ button:disabled {
    inline on their existing rules. (The main scene portrait and banner are
    already handled separately.)
 --------------------------------------------------------------------------- */
-.img-fit { width: 100%; height: 100%; object-fit: cover; object-position: center top; display: block; }
+.img-fit { width: 100%; height: 100%; object-fit: contain; object-position: center top; display: block; } /* walk-fix: contain — framed faces/scenes are never cut */
 .frame-portrait  { aspect-ratio: 512 / 768; overflow: hidden; }
 .frame-square    { aspect-ratio: 1 / 1; overflow: hidden; }
 .frame-landscape { aspect-ratio: 768 / 512; overflow: hidden; }
@@ -4204,7 +4204,7 @@ button:disabled {
   color: var(--ink-soft, #d8c7a6);
   font-weight: 600;
 }
-.solo-npc-thumb img { width: 100%; height: 100%; object-fit: cover; object-position: center top; }
+.solo-npc-thumb img { width: 100%; height: 100%; object-fit: contain; object-position: center top; } /* walk-fix: contain */
 .solo-npc-portrait-controls { display: flex; flex-direction: column; gap: 6px; }
 .solo-npc-upload {
   display: inline-flex;
@@ -4508,7 +4508,7 @@ button:disabled {
   gap: 10px; color: var(--muted, #8b8e96); text-align: center;
 }
 .onb-portrait-preview.onb-portrait-review { width: 320px; height: 320px; margin: 0 auto; }
-.onb-portrait-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+.onb-portrait-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block; } /* walk-fix: contain — the player face is never cropped */
 .onb-portrait-spinner {
   width: 28px; height: 28px; flex: none;
   border: 3px solid var(--line-strong, #34343b); border-top-color: var(--accent, #c2c6cf);
@@ -4604,7 +4604,7 @@ button:disabled {
   cursor: pointer;
   transition: border-color 0.12s ease, transform 0.12s ease;
 }
-.onb-portrait-version img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.onb-portrait-version img { width: 100%; height: 100%; object-fit: contain; display: block; } /* walk-fix: contain */
 .onb-portrait-version:hover { transform: translateY(-1px); border-color: var(--accent, #c2c6cf); }
 .onb-portrait-version.is-current {
   border-color: var(--accent-bright, #e7e9ee);
@@ -5465,7 +5465,7 @@ button:disabled {
 .solo-guest-save-card { border-color: var(--accent, #c2c6cf); }
 
 /* Entity Sheet portrait image (player portrait surfaced via portraitUri) */
-.solo-detail-portrait-img { width: 100%; height: 100%; object-fit: cover; object-position: center top; border-radius: 8px; display: block; }
+.solo-detail-portrait-img { width: 100%; height: 100%; object-fit: contain; object-position: center top; border-radius: 8px; display: block; } /* walk-fix: contain — entity-sheet face never cut */
 
 /* =========================================================================
    Homebrew: "Homebrew" tag on custom creator cards + the Manage Homebrew UI.

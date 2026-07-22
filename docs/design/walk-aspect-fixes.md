@@ -68,9 +68,13 @@ which OVERRIDES the imageWorker caller constants. The real portrait cook is **89
 used by comfyui) vs the display frame (512/768 = 2:3). No single cook aspect matches every
 path.
 
-**Fix:** `.solo-portrait-img` `object-fit: cover → contain`. A face is never cropped —
-the WHOLE face is always in frame whatever the source aspect (nothing cut). A matched cook
-fills the frame; a mismatch letterboxes (visible, nothing cut). **Recommendation for the
+**Fix:** `object-fit: cover → contain` on EVERY face/portrait img class — a face is never
+cropped, the WHOLE face is always in frame whatever the source aspect (nothing cut). The
+first pass fixed only `.solo-portrait-img` (the scene dock); the audit (Job 3.3) then found
+FIVE more still cropping and fixed them too: `.img-fit` (shared framed fit), `.solo-npc-thumb
+img`, `.onb-portrait-img` (creation preview), `.onb-portrait-version img`,
+`.solo-detail-portrait-img` (entity sheet). No face img class uses cover anymore. A matched
+cook fills the frame; a mismatch letterboxes (visible, nothing cut). **Recommendation for the
 owner (not done here — a pipeline change):** rationalize portraits to ONE aspect (frame,
 recipe `KIND_DIMENSIONS.portrait`, and the imageWorker constants) so a matched cook fills
 the frame with no letterbox.
