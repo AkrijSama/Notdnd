@@ -42,10 +42,25 @@ test("entering COMBAT with an unrowed creature produces a lawful minted block (n
   run.currentLocationId = "loc_here";
   run.npcs = { npc_boar: { npcId: "npc_boar", displayName: "a wild boar", kind: "wildlife", species: "boar", currentLocationId: "loc_here", status: "present" } };
   const entered = enterCombatFromAttackIntent(run, { targetNpcId: "npc_boar", intent: "attack the boar" });
+  // The law under test: an unrowed PLAUSIBLE creature is NOT refused, and a LAWFUL block is
+  // minted + stamped on the npc. NOTE (was flaky ~13%, now deterministic): the same call
+  // resolves the player's opening strike (resolveCombatTurn, turn 1), so the one-turn fight
+  // can already be OVER by the time this returns — the low-hp player can LOSE the opening
+  // exchange to the boar (hp 12-16), which clears run.combat with outcome "lost". That is a
+  // legitimate combat outcome, not a phantom refusal; the old test assumed combat always
+  // persisted and null-deref'd run.combat.combatants. This test asserts the pantry law (mint,
+  // no refusal), NOT who won the opening exchange — the combat-outcome axis is combat.js's.
   assert.equal(entered.ok, true, "combat with an unrowed plausible creature is NOT refused");
-  const combatant = Object.values(entered.run.combat.combatants).find((c) => c.kind === "enemy");
-  assert.ok(combatant && combatant.hp.max > 0, "a lawful enemy combatant was built from the mint");
-  assert.ok(resolveStatBlock(combatant.statBlockId), "its minted block resolves");
+  const boar = entered.run.npcs.npc_boar;
+  assert.ok(typeof boar.statBlockId === "string" && boar.statBlockId, "the mint stamped a statBlockId on the creature");
+  const block = resolveStatBlock(boar.statBlockId);
+  assert.ok(block && block.maxHp > 0, "the minted block resolves and is lawful (hp > 0) — no phantom refusal");
+  if (entered.run.combat) {
+    // Fight still live: the enemy combatant was built from the minted block.
+    const combatant = Object.values(entered.run.combat.combatants).find((c) => c.kind === "enemy");
+    assert.ok(combatant && combatant.hp.max > 0, "a lawful enemy combatant was built from the mint");
+    assert.equal(combatant.statBlockId, boar.statBlockId, "the combatant carries the minted block");
+  }
 });
 
 test("a PERSON with no block still falls to the civilian default (not a beast mint)", () => {
