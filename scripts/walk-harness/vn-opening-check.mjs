@@ -34,9 +34,14 @@ async function mintBabelRun() {
   return { runId, tok };
 }
 
+// A representative laptop viewport. JOB 3's off-screen overflow is a VERTICAL bug, so the
+// stage must be measured at a bounded height, not the headless default.
+const VIEW_W = Number(process.env.NOTDND_HARNESS_VIEW_W || 1440);
+const VIEW_H = Number(process.env.NOTDND_HARNESS_VIEW_H || 820);
+
 async function inspectDom(tok) {
   const port = 9400 + Math.floor(Math.random() * 500);
-  const chrome = spawn(CHROME, ["--headless=new", `--remote-debugging-port=${port}`, "--no-sandbox", "--disable-gpu", "--no-first-run", `--user-data-dir=/tmp/vnguard-${crypto.randomBytes(4).toString("hex")}`, "about:blank"], { stdio: "ignore" });
+  const chrome = spawn(CHROME, ["--headless=new", `--remote-debugging-port=${port}`, "--no-sandbox", "--disable-gpu", "--no-first-run", `--window-size=${VIEW_W},${VIEW_H}`, `--user-data-dir=/tmp/vnguard-${crypto.randomBytes(4).toString("hex")}`, "about:blank"], { stdio: "ignore" });
   try {
     let wsUrl;
     for (let i = 0; i < 40 && !wsUrl; i++) { await sleep(250); try { const l = await (await fetch(`http://127.0.0.1:${port}/json`)).json(); wsUrl = l.find((t) => t.type === "page")?.webSocketDebuggerUrl; } catch { /* not up */ } }
@@ -46,23 +51,51 @@ async function inspectDom(tok) {
     const cmd = (method, params = {}) => new Promise((r) => { const i = ++id; pend.set(i, r); ws.send(JSON.stringify({ id: i, method, params })); });
     const ev = async (x) => (await cmd("Runtime.evaluate", { expression: x, returnByValue: true, awaitPromise: true })).result?.result?.value;
     await cmd("Page.enable"); await cmd("Runtime.enable");
+    await cmd("Emulation.setDeviceMetricsOverride", { width: VIEW_W, height: VIEW_H, deviceScaleFactor: 1, mobile: false });
     await cmd("Page.addScriptToEvaluateOnNewDocument", { source: `try{localStorage.setItem('notdnd_auth_token_v1',${JSON.stringify(tok)})}catch(e){}` });
     await cmd("Page.navigate", { url: BASE + "/" }); await sleep(3500);
     await ev(`(()=>{const b=[...document.querySelectorAll('button,a')].find(x=>/continue|resume|open|enter|play/i.test(x.textContent||''));if(b)b.click();})()`);
     await sleep(4500);
+    // Wait (bounded) for the VN sprite (vnBody) to cook + load: the JOB 3 overflow only
+    // manifests once the ~600px full-body sprite is present. Without it the layout check is
+    // trivially green. If it never loads, spritePresent stays false (reported, not a fake pass).
+    for (let i = 0; i < 24; i++) {
+      const loaded = await ev(`!!document.querySelector('.solo-vn-sprite-img.is-loaded') || (()=>{const s=document.querySelector('.solo-vn-sprite-img');return !!(s&&s.naturalWidth>0);})()`);
+      if (loaded) break;
+      await sleep(3000);
+    }
     return await ev(`(()=>{
+      const VH = window.innerHeight, VWp = window.innerWidth;
       const vn = document.querySelector('.solo-vn-box');
       const vnText = vn ? (vn.querySelector('.solo-vn-box-text')?.innerText || '') : '';
       const vnSpeaker = vn ? (vn.querySelector('.solo-vn-box-speaker')?.innerText || '') : '';
       const log = document.querySelector('.solo-narration-log');
       const logText = log ? log.innerText : '';
+      const bottom = (el) => el ? Math.round(el.getBoundingClientRect().bottom) : null;
+      const vnTextEl = vn ? vn.querySelector('.solo-vn-box-text') : null;
+      const sprite = document.querySelector('.solo-vn-sprite-img');
+      // JOB 4.2b — the scene image's PAINTED width (object-fit aware) vs its container width.
+      const img = document.querySelector('.solo-scene-art-img');
+      const strip = document.querySelector('.solo-stage .solo-scene-art') || document.querySelector('.solo-scene-art');
+      let scenePaintedW = null, sceneContainerW = null;
+      if (img && strip) {
+        const b = img.getBoundingClientRect(); sceneContainerW = Math.round(strip.getBoundingClientRect().width);
+        const nW = img.naturalWidth, nH = img.naturalHeight;
+        scenePaintedW = (nW && nH) ? Math.round(Math.min(b.width, b.height * nW / nH)) : 0;
+      }
       return {
+        viewportH: VH, viewportW: VWp,
         hasVnBox: !!vn,
         vnSpeaker,
         vnHasVoiceWords: /YOU ARE HEARD|CLIMB|HEAR ME|CHAOS/.test(vnText),
         logHasVoiceWords: /YOU ARE HEARD|CLIMB|HEAR ME/.test(logText),
         yellowVoiceSpansInLog: log ? log.querySelectorAll('.solo-voice-dialogue').length : -1,
-        lookalikeFramesInLog: log ? log.querySelectorAll('.solo-opening-vn').length : -1
+        lookalikeFramesInLog: log ? log.querySelectorAll('.solo-opening-vn').length : -1,
+        spritePresent: !!(sprite && sprite.naturalWidth > 0),
+        vnTextBottom: bottom(vnTextEl),
+        logBottom: bottom(log),
+        scenePaintedW, sceneContainerW,
+        sceneSpanRatio: (scenePaintedW && sceneContainerW) ? Math.round(100 * scenePaintedW / sceneContainerW) : null
       };
     })()`);
   } finally { try { chrome.kill("SIGKILL"); } catch { /* gone */ } }
@@ -82,12 +115,23 @@ async function inspectDom(tok) {
     ["VOICE's words render IN the VN box", dom.vnHasVoiceWords === true],
     ["VOICE's words are NOT in the narration log", dom.logHasVoiceWords === false],
     ["no yellow .solo-voice-dialogue prose in the log", dom.yellowVoiceSpansInLog === 0],
-    ["no VN look-alike frame in the log", dom.lookalikeFramesInLog === 0]
+    ["no VN look-alike frame in the log", dom.lookalikeFramesInLog === 0],
+    // JOB 4.2a — LAYOUT: the VN dialogue text and the narration must both stay ON screen. The
+    // ~600px VN sprite once pushed them off the bottom (JOB 3). Only meaningful with the sprite
+    // present (the overflow condition) — reported below so a spriteless run isn't a silent pass.
+    [`VN dialogue text is within the viewport (bottom ${dom.vnTextBottom} <= ${dom.viewportH})`, dom.vnTextBottom == null || dom.vnTextBottom <= dom.viewportH],
+    [`narration log is within the viewport (bottom ${dom.logBottom} <= ${dom.viewportH})`, dom.logBottom == null || dom.logBottom <= dom.viewportH],
+    // JOB 4.2b — the scene image, when rendered, PAINTS non-zero width in its container. (Full-
+    // bleed vs letterbox is an unresolved owner conflict — see JOB 2 — so this checks that it
+    // renders and REPORTS the span ratio; it deliberately does NOT enforce edge-to-edge.)
+    ["scene image (when present) paints non-zero width in its container", dom.scenePaintedW == null || dom.scenePaintedW > 0]
   ];
-  console.log("=== VN OPENING GUARD (DOM-level, real browser) ===");
+  console.log(`=== VN OPENING GUARD (DOM-level, real browser @ ${dom.viewportW}x${dom.viewportH}) ===`);
   for (const [label, ok] of checks) console.log(`  ${ok ? "PASS" : "FAIL"}  ${label}`);
+  console.log(`  NOTE  VN sprite present this run: ${dom.spritePresent} (layout checks are only a real guard when true)`);
+  console.log(`  NOTE  scene image span: ${dom.sceneSpanRatio == null ? "image not cooked yet this run" : dom.sceneSpanRatio + "% of container width (" + dom.scenePaintedW + "/" + dom.sceneContainerW + "px) — JOB 2 conflict, reported not enforced"}`);
   const failed = checks.filter(([, ok]) => !ok);
-  if (failed.length) { console.log(`\nFAIL — the VOICE's opening speech is NOT rendering through the VN component (${failed.length} check(s) failed). DOM: ${JSON.stringify(dom)}`); process.exit(1); }
-  console.log("\nPASS — the VOICE speaks through the real VN box; her words never appear as narration-log prose.");
+  if (failed.length) { console.log(`\nFAIL — ${failed.length} check(s) failed. DOM: ${JSON.stringify(dom)}`); process.exit(1); }
+  console.log("\nPASS — the VOICE speaks through the real VN box (not narration prose), and the VN dialogue + narration stay on screen.");
   process.exit(0);
 })();

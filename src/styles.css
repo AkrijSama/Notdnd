@@ -6175,8 +6175,13 @@ textarea.hb-input { min-height: 76px; resize: vertical; }
    Absolutely positioned inside a position:relative image wrapper so it never
    shifts layout or covers the art. Disposable UI; the dataset is the deliverable.
    =========================================================================== */
-/* Positioning context for the surfaces the thumb mounts on (idempotent). */
-.solo-scene-art, .solo-portrait, .solo-detail-portrait, .solo-vn-sprite, .solo-battle-enemy-art { position: relative; }
+/* Positioning context for the surfaces the thumb mounts on (idempotent). NOTE: .solo-vn-sprite
+   is intentionally EXCLUDED — it is a stage OVERLAY with its own `position: absolute` (see the
+   .solo-vn-sprite rule above), and this later, equal-specificity rule was overriding that to
+   `relative`, dropping the sprite into normal flow. In flow, the ~614px full-body sprite stacked
+   below the scene strip and pushed the VN dialogue + narration log off the bottom of the viewport
+   (JOB 3). Its own `position: absolute` still provides the positioning context its art-thumb needs. */
+.solo-scene-art, .solo-portrait, .solo-detail-portrait, .solo-battle-enemy-art { position: relative; }
 
 .art-thumb {
   position: absolute;
