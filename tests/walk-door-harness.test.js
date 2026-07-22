@@ -12,11 +12,14 @@ import { createDefaultSoloRun } from "../server/solo/schema.js";
 import { loadScenarioIntoRun, loadScenarioFile } from "../server/campaign/scenarioLoader.js";
 
 // ── registry: the route-inventory must be complete + honest ──────────────────
-test("registry: the world-card is a separate-fetch surface that carries NO auth and HAS a deceptive fallback (the class-5 shape)", () => {
+test("registry: the world-card is a separate-fetch surface (the class-5 shape) that degrades for a guest and HAS a deceptive fallback", () => {
   const wc = SURFACES.find((s) => s.id === "world-card");
   assert.ok(wc, "the world-card surface must be registered");
   assert.equal(wc.clientResolution.kind, "separate-fetch");
-  assert.equal(wc.clientResolution.carriesAuth, false, "the bug: the client's world-card fetch omits the token");
+  // CLI-1 fixed the logged-in path (apiClient carries the token) — but the endpoint is
+  // still authed, so a GUEST still degrades. The registry must record BOTH facts.
+  assert.equal(wc.clientResolution.carriesAuth, true, "logged-in requests now carry the token (CLI-1 fix)");
+  assert.equal(wc.clientResolution.guestDegrades, true, "a guest still falls back (endpoint requires auth)");
   assert.ok(wc.deceptiveFallback, "the world-card has a deceptive static fallback");
   assert.equal(wc.byteCheckable, true, "the world-card door can be byte-checked without a cook");
 });
@@ -31,7 +34,7 @@ test("registry: every OTHER art surface rides the authed payload (no separate fe
 test("silent-fallback inventory: exactly ONE deceptive fallback (the world-card); it is harness-detectable", () => {
   const deceptive = SILENT_FALLBACKS.filter((f) => f.classification === "deceptive");
   assert.equal(deceptive.length, 1, "there must be exactly one deceptive silent fallback");
-  assert.equal(deceptive[0].id, "world-card-401-static");
+  assert.equal(deceptive[0].id, "world-card-guest-401-static");
   assert.equal(deceptive[0].harnessDetects, true);
   assert.ok(SILENT_FALLBACKS.filter((f) => f.classification === "honest").length >= 4, "the honest pending states are catalogued");
 });

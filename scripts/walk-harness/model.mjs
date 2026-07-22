@@ -126,8 +126,13 @@ export const SURFACES = Object.freeze([
     clientResolution: {
       kind: "separate-fetch",
       request: { method: "GET", path: "/api/art/library?world=babel&kind=world-card" },
-      carriesAuth: false, // RAW fetch — bindWorldCardArt bypasses src/api/client.js
-      ref: "src/components/onboardingFlow.js:216 bindWorldCardArt (raw fetch, no Authorization)"
+      // CLI-1 fixed the original bare-fetch (bindWorldCardArt now uses apiClient.artLibrary,
+      // which attaches the Bearer token) — so a LOGGED-IN user's request now carries auth.
+      // BUT /api/art/library is STILL authed, so a GUEST (no token) still 401s → static.
+      // The harness therefore replays BOTH: authed (the logged-in door) + guest (first-user).
+      carriesAuth: true,
+      guestDegrades: true, // a not-logged-in visitor still falls back (endpoint requires auth)
+      ref: "src/components/onboardingFlow.js bindWorldCardArt → apiClient.artLibrary (auth-wrapped, CLI-1 fix); endpoint server/index.js:3520 requireAuth"
     },
     deceptiveFallback: { asset: "/public/assets/art-illustrated.jpg", ref: "src/components/onboardingFlow.js:114 WORLD_SELECT_CARDS[0].art" },
     intendedResolver: { server: "resolveLibraryArt({world:'babel',kind:'world-card'})", ref: "server/solo/artLibrary.js:26 WORLD_CARD_PIN → w7_worldcard_obsidian_tower_anime" },
@@ -211,13 +216,13 @@ export const SURFACES = Object.freeze([
 // "honest" = a visible not-ready/absent state (a spinner/glyph/empty), fine as-is.
 export const SILENT_FALLBACKS = Object.freeze([
   {
-    id: "world-card-401-static",
+    id: "world-card-guest-401-static",
     classification: "deceptive",
-    trigger: "GET /api/art/library (raw fetch, no Authorization) → 401 → res.ok false → keep static art",
+    trigger: "GET /api/art/library (authed endpoint) with NO token (a guest / not-logged-in visitor) → 401 → keep static art. (CLI-1 fixed the LOGGED-IN path — apiClient now sends the token; the GUEST path remains.)",
     userSees: "the bundled painted armored bust /public/assets/art-illustrated.jpg as if it were the world's key art",
-    ref: "src/components/onboardingFlow.js:216-224",
-    harnessDetects: true, // the served-bytes door check (world-card) catches it
-    recommend: "make bindWorldCardArt use the auth-wrapped client OR make /api/art/library world-card reads PUBLIC; and on a non-ok response, surface a visible 'art unavailable' state rather than silently keeping a subject-wrong default. A fallback firing must be loud."
+    ref: "src/components/onboardingFlow.js bindWorldCardArt; endpoint server/index.js:3520 requireAuth",
+    harnessDetects: true, // the served-bytes door check (guest replay) catches it
+    recommend: "make /api/art/library world-card reads PUBLIC (a lobby card is pre-login content), and on a non-ok response surface a visible 'art unavailable' state rather than silently keeping a subject-wrong default. A fallback firing must be loud. (CLI-1's tests/no-bare-api-fetch.test.js already bans the bare-fetch class at the code layer — complementary to this door check.)"
   },
   { id: "scene-pending", classification: "honest", trigger: "no locationImageUri yet", userSees: "'Painting the scene…' vignette", ref: "src/components/soloSceneShell.js:2126", harnessDetects: true, recommend: "none (honest pending)" },
   { id: "npc-portrait-pending", classification: "honest", trigger: "no portraitUri", userSees: "initial-letter glyph 'Cooking your portrait…'", ref: "src/components/soloSceneShell.js:2796", harnessDetects: true, recommend: "none" },

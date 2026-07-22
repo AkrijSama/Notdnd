@@ -65,36 +65,44 @@ async function main() {
     if (s.noArt) { r.reachedLayer = "n/a"; r.reachedLayerRank = LAYERS.PIXELS.rank; r.why = "no image surface (text only)"; report.surfaces.push(r); continue; }
 
     if (s.clientResolution.kind === "separate-fetch") {
-      // THE CLASS-5 SHAPE. Replay the client's EXACT request (raw, no auth), then
-      // resolve what it actually shows, and compare served bytes to intended.
-      const clientReq = await http(s.clientResolution.request.path, { token: s.clientResolution.carriesAuth ? token : null });
-      const authedResolve = await http(s.clientResolution.request.path, { token }); // what the SERVER resolves if asked properly
-      const authedJson = authedResolve.status === 200 ? await authedResolve.json() : null;
-      const intendedUri = authedJson?.uri || null;
+      // THE CLASS-5 SHAPE. Replay BOTH doors and compare SERVED BYTES to intended:
+      //   authed (a logged-in user's request, token attached — the primary requirement)
+      //   guest  (a first-time visitor, no token — Job 2.2)
+      const path = s.clientResolution.request.path;
+      const doorServed = async (tok) => {
+        const req = await http(path, { token: tok });
+        if (req.status === 200) {
+          const j = await req.json();
+          const from = j?.uri || null;
+          return { status: 200, from, sha: from ? diskSha(from.replace("/data/assets/library/", "")) : null };
+        }
+        // non-ok → the client keeps its static default → THAT is what the door shows.
+        const from = s.deceptiveFallback?.asset || null;
+        const b = from ? await httpBytes(from) : null;
+        return { status: req.status, from, sha: b ? sha(b.buf) : null };
+      };
+      // what the SERVER resolves when asked properly (with a token):
+      const resolveReq = await http(path, { token });
+      const intendedUri = resolveReq.status === 200 ? (await resolveReq.json())?.uri : null;
       const intendedSha = intendedUri ? diskSha(intendedUri.replace("/data/assets/library/", "")) : null;
 
-      // what the door actually serves: if the client's request wasn't ok, the client
-      // keeps its static default → THAT is the served asset.
-      const clientOk = clientReq.status === 200;
-      let servedFrom, servedSha;
-      if (clientOk) {
-        const j = await clientReq.json();
-        servedFrom = j?.uri || null;
-        servedSha = servedFrom ? diskSha(servedFrom.replace("/data/assets/library/", "")) : null;
-      } else {
-        servedFrom = s.deceptiveFallback?.asset || null;
-        const b = servedFrom ? await httpBytes(servedFrom) : null;
-        servedSha = b ? sha(b.buf) : null;
-      }
-      const verdict = servedBytesVerdict({ surfaceId: s.id, servedSha, intendedSha, servedFrom, fallbackAsset: s.deceptiveFallback?.asset });
+      const authed = await doorServed(token);   // the logged-in door
+      const guest = await doorServed(null);      // the first-user door
+      const authedV = servedBytesVerdict({ surfaceId: s.id, servedSha: authed.sha, intendedSha, servedFrom: authed.from, fallbackAsset: s.deceptiveFallback?.asset });
+      const guestV = servedBytesVerdict({ surfaceId: s.id, servedSha: guest.sha, intendedSha, servedFrom: guest.from, fallbackAsset: s.deceptiveFallback?.asset });
+
       r.reachedLayer = LAYERS.SERVED_BYTES.id; r.reachedLayerRank = LAYERS.SERVED_BYTES.rank;
       r.detail = {
-        clientRequest: s.clientResolution.request, clientCarriesAuth: s.clientResolution.carriesAuth,
-        clientRequestStatus: clientReq.status, serverResolvesTo: intendedUri, serverResolveStatus: authedResolve.status,
-        doorServes: servedFrom, servedSha: short(servedSha), intendedSha: short(intendedSha), verdict: verdict.reason
+        clientRequest: s.clientResolution.request, serverResolvesTo: intendedUri, serverResolveStatus: resolveReq.status,
+        loggedInDoor: { status: authed.status, serves: authed.from, verdict: authedV.reason },
+        guestDoor: { status: guest.status, serves: guest.from, verdict: guestV.reason },
+        servedSha: short(authed.sha), intendedSha: short(intendedSha)
       };
-      if (verdict.failure) { r.status = "FAIL"; r.why = verdict.reason; }
-      else r.why = "door served the intended asset (served bytes == resolved)";
+      // The logged-in door serving the wrong asset is a hard FAIL (a paying player must
+      // see the right card). If only the GUEST degrades, that is a first-user FINDING.
+      if (authedV.failure) { r.status = "FAIL"; r.why = `LOGGED-IN DOOR: ${authedV.reason}`; }
+      else if (guestV.failure) { r.status = "FINDING"; r.why = `GUEST/first-user degrade: ${guestV.reason}`; r.guestFinding = r.why; }
+      else r.why = "both the logged-in and guest doors served the intended asset";
     } else {
       // authed-payload surface: the art URI rides INSIDE the authed payload the browser
       // already receives, and the byte serve (/data/assets/library) is public. So a
@@ -123,17 +131,23 @@ async function main() {
     report.surfaces.push(r);
   }
 
-  // ── JOB 2: guest vs authed diff ───────────────────────────────────────────
+  // ── JOB 2: guest vs authed diff (Job 2.3) ─────────────────────────────────
   const wc = report.surfaces.find((x) => x.id === "world-card");
+  const gDoor = wc?.detail?.guestDoor || {};
+  const lDoor = wc?.detail?.loggedInDoor || {};
   report.jobs.job2_guest = {
     guestSessionToken: Boolean(token),
-    worldCardGuestRequestStatus: wc?.detail?.clientRequestStatus,
-    worldCardServerResolvesTo: wc?.detail?.serverResolvesTo,
-    worldCardDoorServes: wc?.detail?.doorServes,
-    silentDegrade: wc?.status === "FAIL",
+    serverResolvesTo: wc?.detail?.serverResolvesTo,
+    loggedInDoor: lDoor, // what a logged-in user's browser receives
+    guestDoor: gDoor, // what a not-logged-in first-user receives
+    differsFromAuthed: gDoor.serves !== lDoor.serves,
+    silentGuestDegrade: wc?.status === "FINDING" && Boolean(wc?.guestFinding),
+    hardFail: wc?.status === "FAIL",
     note: wc?.status === "FAIL"
-      ? "A guest (and every logged-in user, since the client's world-card fetch omits the token) sees a bundled default, not the resolved asset. FIRST-USER EXPERIENCE NEVER TESTED before this harness."
-      : "no silent art degrade detected for a guest on the world-card"
+      ? "The LOGGED-IN door serves the wrong asset — a paying player sees a bundled default, not the resolved card. (This build predates CLI-1's client fix.)"
+      : wc?.status === "FINDING"
+        ? "The logged-in door is correct, but a GUEST/first-user still silently degrades to the static default because /api/art/library requires auth. First-user experience — assuming the lobby is reachable pre-login, unverified."
+        : "no silent art degrade on the world-card for either door"
   };
 
   // ── JOB 4: silent-fallback inventory ──────────────────────────────────────
@@ -153,10 +167,12 @@ async function main() {
     .map((s) => ({ surface: s.id, stoppedAtLayer: s.reachedLayer, why: s.why }));
   report.jobs.job6_cannot_catch = CANNOT_CATCH;
 
+  const guestFindings = report.surfaces.filter((s) => s.guestFinding).map((s) => s.guestFinding);
   report.verdict = {
     walkReady: cov.walkReady && !anyFail,
     hardFails: [...cov.fails, ...(coherenceFail ? ["coherence"] : [])],
     aspectFindings: findings,
+    guestFindings,
     surfacesBelowHttpLayer: cov.belowHttpCount,
     surfacesBelowDoorLayer: cov.unverifiedBelowDoor.length,
     unverifiedBelowDoor: cov.unverifiedBelowDoor,
@@ -170,7 +186,7 @@ async function main() {
   else printHuman(report);
   // Green ONLY when fully clean: walk-ready (no broken door) AND no open findings
   // (an over-threshold crop is a finding, not a note — it must keep the run non-green).
-  const clean = report.verdict.walkReady && report.verdict.aspectFindings.length === 0;
+  const clean = report.verdict.walkReady && report.verdict.aspectFindings.length === 0 && report.verdict.guestFindings.length === 0;
   process.exit(clean ? 0 : 1);
 }
 
@@ -182,12 +198,13 @@ function printHuman(r) {
   P("\nPER-SURFACE (the route-inventory, made explicit):");
   P("  surface           kind             reached-layer   status");
   for (const s of r.surfaces) P(`  ${s.id.padEnd(17)} ${s.clientKind.padEnd(16)} ${String(s.reachedLayer).padEnd(15)} ${s.status}`);
-  P("\nJOB 2 — guest / first-user:");
-  P(`  world-card guest request: HTTP ${r.jobs.job2_guest.worldCardGuestRequestStatus} · server resolves: ${r.jobs.job2_guest.worldCardServerResolvesTo || "—"} · door serves: ${r.jobs.job2_guest.worldCardDoorServes}`);
-  P(`  ${r.jobs.job2_guest.silentDegrade ? "✗ SILENT DEGRADE" : "✓ no silent degrade"} — ${r.jobs.job2_guest.note}`);
+  P("\nJOB 2 — guest / first-user (server resolves: " + (r.jobs.job2_guest.serverResolvesTo || "—") + "):");
+  P(`  logged-in door: HTTP ${r.jobs.job2_guest.loggedInDoor.status} serves ${r.jobs.job2_guest.loggedInDoor.serves}`);
+  P(`  guest door:     HTTP ${r.jobs.job2_guest.guestDoor.status} serves ${r.jobs.job2_guest.guestDoor.serves}`);
+  P(`  ${r.jobs.job2_guest.hardFail ? "✗ HARD FAIL" : r.jobs.job2_guest.silentGuestDegrade ? "⚠ GUEST DEGRADE" : "✓ no silent degrade"} — ${r.jobs.job2_guest.note}`);
   P("\nJOB 3 — served bytes + aspect:");
-  for (const s of r.surfaces.filter((x) => x.detail?.verdict || x.detail?.aspect)) {
-    if (s.detail.verdict) P(`  ${s.id}: ${s.detail.verdict}`);
+  for (const s of r.surfaces.filter((x) => x.detail?.loggedInDoor || x.detail?.aspect)) {
+    if (s.detail.loggedInDoor) P(`  ${s.id}: logged-in [${s.detail.loggedInDoor.verdict}] · guest [${s.detail.guestDoor.verdict}]`);
     if (s.detail.aspect) P(`  ${s.id} aspect: cook ${s.detail.aspect.cook} vs display ${s.detail.aspect.display} → crop ${s.detail.aspect.crop}${s.detail.aspect.overThreshold ? "  ⚠ OVER THRESHOLD" : ""}`);
   }
   P("\nJOB 4 — silent fallbacks (deceptive = architectural defect):");
@@ -204,6 +221,7 @@ function printHuman(r) {
   P(`  ${r.verdict.reason}`);
   if (r.verdict.hardFails.length) P(`  HARD FAILS: ${r.verdict.hardFails.join(", ")}`);
   if (r.verdict.aspectFindings.length) for (const f of r.verdict.aspectFindings) P(`  ASPECT FINDING: ${f}`);
+  if (r.verdict.guestFindings?.length) for (const f of r.verdict.guestFindings) P(`  GUEST FINDING: ${f}`);
   P(`  surfaces verified only below HTTP: ${r.verdict.surfacesBelowHttpLayer} · below door: ${r.verdict.surfacesBelowDoorLayer}`);
   P("");
 }
