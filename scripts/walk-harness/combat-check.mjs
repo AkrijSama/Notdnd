@@ -15,6 +15,7 @@
 // Exit: 0 = PASS, 1 = FAIL, 2 = harness error (could not reach combat).
 import { spawn } from "node:child_process";
 import crypto from "node:crypto";
+import { guardBrowser } from "./browser-cleanup.mjs";
 
 const BASE = process.env.NOTDND_HARNESS_BASE_URL || "http://127.0.0.1:4173";
 const CHROME = process.env.NOTDND_HARNESS_CHROME || "google-chrome";
@@ -56,7 +57,11 @@ async function run() {
   const { runId, tok } = ctx;
 
   const port = 9500 + Math.floor(Math.random() * 400);
-  const chrome = spawn(CHROME, ["--headless=new", `--remote-debugging-port=${port}`, "--no-sandbox", "--disable-gpu", "--no-first-run", `--window-size=${VIEW_W},${VIEW_H}`, `--user-data-dir=/tmp/combatguard-${crypto.randomBytes(4).toString("hex")}`, "about:blank"], { stdio: "ignore" });
+  const userDataDir = `/tmp/combatguard-${crypto.randomBytes(4).toString("hex")}`;
+  const chrome = spawn(CHROME, ["--headless=new", `--remote-debugging-port=${port}`, "--no-sandbox", "--disable-gpu", "--no-first-run", `--window-size=${VIEW_W},${VIEW_H}`, `--user-data-dir=${userDataDir}`, "about:blank"], { stdio: "ignore" });
+  // JOB 0.2: cleanup that SURVIVES a timeout-wrapper SIGTERM (the exact zombie leak) + reaps any
+  // prior hard-SIGKILLed orphan on start. Without this the finally below never runs on a signal.
+  const cleanupBrowser = guardBrowser(chrome, userDataDir);
   const checks = [];
   const record = (label, ok) => checks.push([label, !!ok]);
   try {
@@ -150,6 +155,6 @@ async function run() {
     process.exit(0);
   } catch (e) {
     console.error("COMBAT GUARD HARNESS ERROR:", e.message); process.exit(2);
-  } finally { try { chrome.kill("SIGKILL"); } catch { /* gone */ } }
+  } finally { cleanupBrowser(); }
 }
 run();

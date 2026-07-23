@@ -19,6 +19,7 @@
 // ---------------------------------------------------------------------------
 import { spawn } from "node:child_process";
 import crypto from "node:crypto";
+import { guardBrowser } from "./browser-cleanup.mjs";
 
 const BASE = process.env.NOTDND_HARNESS_BASE_URL || "http://127.0.0.1:4173";
 const CHROME = process.env.NOTDND_HARNESS_CHROME || "google-chrome";
@@ -46,7 +47,10 @@ const VIEW_H = Number(process.env.NOTDND_HARNESS_VIEW_H || 820);
 
 async function inspectDom(tok) {
   const port = 9400 + Math.floor(Math.random() * 500);
-  const chrome = spawn(CHROME, ["--headless=new", `--remote-debugging-port=${port}`, "--no-sandbox", "--disable-gpu", "--no-first-run", `--window-size=${VIEW_W},${VIEW_H}`, `--user-data-dir=/tmp/vnguard-${crypto.randomBytes(4).toString("hex")}`, "about:blank"], { stdio: "ignore" });
+  const userDataDir = `/tmp/vnguard-${crypto.randomBytes(4).toString("hex")}`;
+  const chrome = spawn(CHROME, ["--headless=new", `--remote-debugging-port=${port}`, "--no-sandbox", "--disable-gpu", "--no-first-run", `--window-size=${VIEW_W},${VIEW_H}`, `--user-data-dir=${userDataDir}`, "about:blank"], { stdio: "ignore" });
+  // JOB 0.2: cleanup that survives a timeout-wrapper SIGTERM + reaps prior SIGKILLed orphans.
+  const cleanupBrowser = guardBrowser(chrome, userDataDir);
   try {
     let wsUrl;
     for (let i = 0; i < 40 && !wsUrl; i++) { await sleep(250); try { const l = await (await fetch(`http://127.0.0.1:${port}/json`)).json(); wsUrl = l.find((t) => t.type === "page")?.webSocketDebuggerUrl; } catch { /* not up */ } }
@@ -161,7 +165,7 @@ async function inspectDom(tok) {
         sceneSpanRatio: (scenePaintedW && sceneContainerW) ? Math.round(100 * scenePaintedW / sceneContainerW) : null
       };
     })()`);
-  } finally { try { chrome.kill("SIGKILL"); } catch { /* gone */ } }
+  } finally { cleanupBrowser(); }
 }
 
 (async () => {
