@@ -5,7 +5,7 @@
 // the player can then attack (detectAttackIntent → combat). Guarded so it fires once per
 // location. Reusable — this serves every future authored encounter, not only the Warm
 // House. The "ledgered item, now built."
-import { spawnChaosling, registerStatBlock } from "../campaign/bestiary.js";
+import { spawnChaosling, registerStatBlock, resolveCorruptionIdentity } from "../campaign/bestiary.js";
 import { createEmptyExpressionVariants } from "./schema.js";
 
 export function spawnChaoslingOnEnter(run, locationId) {
@@ -13,9 +13,13 @@ export function spawnChaoslingOnEnter(run, locationId) {
   const spec = loc?.spawnOnEnter;
   if (!spec || !spec.baseAnimalId || loc.flags?.chaoslingSpawned) return null;
   const seed = `${run.worldSeed || run.runId}|spawn|${spec.seed || locationId}`;
+  // The spawned foe's corruption identity is the WORLD's (world.corruption): babel → chaosling/
+  // violet (byte-identical); a world declaring none → NEUTRAL (plain beast, no chaosling role/tags,
+  // essence-sight silent). Threaded so a spawnOnEnter foe is never Babel-corrupted by default.
+  const corruption = resolveCorruptionIdentity(run?.world?.corruption);
   const block = spawnChaosling({
     baseAnimalId: spec.baseAnimalId, tier: spec.tier || 2, seed,
-    forceSkill: spec.forceSkill || null, name: spec.name || null
+    forceSkill: spec.forceSkill || null, name: spec.name || null, corruption
   });
   if (!block) return null;
   // Persist for restart-safety (re-registered at combat entry), then place the foe.
@@ -26,16 +30,17 @@ export function spawnChaoslingOnEnter(run, locationId) {
   run.npcs[npcId] = {
     npcId,
     displayName: spec.name || block.name,
-    role: "chaosling",
+    // role + tags follow the world's corruption identity, not a hardcoded "chaosling".
+    role: corruption.kind,
     currentLocationId: locationId,
     known: true,
     status: "present",
     memoryFactIds: [],
     expressionVariants: createEmptyExpressionVariants(),
-    tags: ["chaosling", "corrupted"],
+    tags: [...corruption.extraTags],
     flags: { hostile: true, statBlockId: block.statBlockId },
     ageClass: "adult",
-    romanceable: false, // a chaosling is never a romance target
+    romanceable: false, // a hostile spawn is never a romance target
     edition: "mainline",
     policyProfileId: "mainline_default",
     contentTags: [],

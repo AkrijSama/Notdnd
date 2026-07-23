@@ -30,7 +30,7 @@ const SCENARIO_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "sc
 // which is not wired (a created world silently loses a field babel has). Add a knob HERE once.
 export const CARRIED_WORLD_KEYS = Object.freeze({
   string: ["name", "tone", "flavor", "artStyle", "variant", "era", "sceneRegister", "sightAccent"],
-  object: ["deathLaw", "orientationMix", "systemLore", "playerSense", "speechConventions", "rankLadder", "sheetSpec", "nameBanks"],
+  object: ["deathLaw", "orientationMix", "systemLore", "playerSense", "speechConventions", "rankLadder", "sheetSpec", "nameBanks", "corruption"],
   array: ["suggestionExemplars", "plausibleFauna"]
 });
 

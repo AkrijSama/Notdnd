@@ -85,6 +85,19 @@
       "wild boar"
     ],
     "sceneRegister": "beautiful yet subtly wrong, uneasy stillness, faint shimmer in the air, over-still water, off light",
+    "corruption": {
+      "kind": "chaosling",
+      "namePrefix": "Chaos-",
+      "palette": "violet",
+      "extraTags": ["chaosling", "corrupted"],
+      "chaosSkills": true,
+      "markers": {
+        "1": "faint violet corruption in the eyes",
+        "2": "violet-glowing eyes, thin violet corruption markings",
+        "3": "glowing violet eyes, creeping violet corruption veins and markings, a faint violet glow",
+        "4": "burning violet eyes, violet corruption markings across the body, a roiling violet corruption aura"
+      }
+    },
     "deathLaw": {
       "epilogue": "The Green Static releases its hold. An ocean away, a coma that was never death stirs, and the Tower keeps its hundred floors. It will call another."
     },

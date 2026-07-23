@@ -254,6 +254,43 @@ export const CHAOS_VIOLET_MARKERS = Object.freeze({
 export function corruptionMarkers(tier) {
   return CHAOS_VIOLET_MARKERS[clampTier(tier)];
 }
+
+// THE TIER-1 THREAT CORRUPTION IDENTITY — the world-book slot (world.corruption). Babel welded
+// "chaosling / violet" onto EVERY world's minted threat; that is Babel canon, not engine law. A
+// world now DECLARES its threat identity; a world declaring NOTHING gets NEUTRAL_CORRUPTION — a
+// plain boosted beast with no chaosling kind, no violet palette, no corruption tags, and NO
+// sight-readable chaos skills (so essence-sight is SILENT for it). CHAOSLING_CORRUPTION is the
+// byte-identical default so mintChaosling's direct callers/tests are unchanged; babel authors the
+// SAME values in babel.json world.corruption, so the mint routes through the world-book source.
+//   kind        — the minted block's `kind` (drives entityNature corrupted-gate; babel: "chaosling")
+//   namePrefix  — prepended to the base-animal name (babel: "Chaos-")
+//   palette     — the corruption art palette; null → no `corruption` field, no violet art
+//   markers     — per-tier art fragments (defaults to CHAOS_VIOLET_MARKERS when absent)
+//   extraTags   — appended to the base tags (babel: ["chaosling","corrupted"])
+//   chaosSkills — attach the CHAOS_SKILLS tree + sightReadable:true (babel: true). false → no
+//                 carried chaos skills → sightReadableSkills() returns [] → essence-sight silent.
+export const CHAOSLING_CORRUPTION = Object.freeze({
+  kind: "chaosling", namePrefix: "Chaos-", palette: "violet", markers: CHAOS_VIOLET_MARKERS,
+  extraTags: Object.freeze(["chaosling", "corrupted"]), chaosSkills: true
+});
+export const NEUTRAL_CORRUPTION = Object.freeze({
+  kind: "beast", namePrefix: "", palette: null, markers: null, extraTags: Object.freeze([]), chaosSkills: false
+});
+
+/** Resolve a world's corruption declaration to a complete identity (fills any missing field from
+ * the neutral floor). A world that authored nothing → NEUTRAL_CORRUPTION. Pure. */
+export function resolveCorruptionIdentity(declared) {
+  if (declared === CHAOSLING_CORRUPTION || declared === NEUTRAL_CORRUPTION) return declared;
+  if (!declared || typeof declared !== "object") return NEUTRAL_CORRUPTION;
+  return Object.freeze({
+    kind: typeof declared.kind === "string" && declared.kind ? declared.kind : "beast",
+    namePrefix: typeof declared.namePrefix === "string" ? declared.namePrefix : "",
+    palette: typeof declared.palette === "string" && declared.palette ? declared.palette : null,
+    markers: declared.markers && typeof declared.markers === "object" ? declared.markers : null,
+    extraTags: Array.isArray(declared.extraTags) ? declared.extraTags : [],
+    chaosSkills: declared.chaosSkills === true
+  });
+}
 // Deterministic djb2 hash (matches the seed util used across the solo engine).
 function hashSeed(value) { let h = 0; const s = String(value == null ? "" : value); for (let i = 0; i < s.length; i += 1) { h = (h * 31 + s.charCodeAt(i)) | 0; } return Math.abs(h); }
 
@@ -279,15 +316,21 @@ export function rollChaosSkills(threatTier, seed) {
  * carried skills are essence-sight-readable (sightReadable flag). Returns a frozen
  * block, or null if the base is not a known wildlife chassis. Pure.
  */
-export function mintChaosling(baseAnimalId, threatTier, seed) {
+export function mintChaosling(baseAnimalId, threatTier, seed, corruption = CHAOSLING_CORRUPTION) {
   const base = BASE_ANIMALS[baseAnimalId];
   if (!base) return null;
   const tier = clampTier(threatTier);
   const budget = TIER_BUDGET[tier];
+  // The seed/id keep the "chaosling" literal — it is an ENGINE-INTERNAL block id (a compositional-
+  // mint fingerprint), never player-facing, and keeping it holds the deterministic id byte-identical.
   const h = hashSeed(`chaosling|${baseAnimalId}|${tier}|${seed}`);
   const hpBoost = h % (budget.hpBoost + 1);
   const acBoost = Math.trunc(h / 7) % (budget.acBoost + 1);
-  const skillIds = rollChaosSkills(tier, `${seed}|${baseAnimalId}`);
+  // The threat's CORRUPTION IDENTITY is world-book data (world.corruption). Babel declares
+  // chaosling/violet (the default here, byte-identical); a world declaring nothing → NEUTRAL:
+  // no chaos skills → no sight-readable skills → essence-sight SILENT (bestiary.sightReadableSkills).
+  const corr = resolveCorruptionIdentity(corruption);
+  const skillIds = corr.chaosSkills ? rollChaosSkills(tier, `${seed}|${baseAnimalId}`) : [];
   const carriedSkills = Object.freeze(skillIds.map((id) => {
     const skill = CHAOS_SKILLS[id];
     if (skill.family === "element") {
@@ -296,10 +339,11 @@ export function mintChaosling(baseAnimalId, threatTier, seed) {
     }
     return Object.freeze({ skillId: id, name: skill.name, tier: skill.tier });
   }));
+  const markers = corr.markers && typeof corr.markers === "object" ? corr.markers : CHAOS_VIOLET_MARKERS;
   return Object.freeze({
     statBlockId: `chaosling_${baseAnimalId}_${seed}`,
-    name: `Chaos-${base.name.toLowerCase()}`,
-    kind: "chaosling",
+    name: `${corr.namePrefix}${base.name.toLowerCase()}`,
+    kind: corr.kind,
     tier,
     baseAnimalId,
     maxHp: base.maxHp + hpBoost,
@@ -313,10 +357,12 @@ export function mintChaosling(baseAnimalId, threatTier, seed) {
     behaviors: Object.freeze({ ...base.behaviors, vicious: true }),
     loot: base.loot,
     carriedSkills,
-    sightReadable: true, // essence-sight integration point (see doc §sight-ledger)
-    // CHAOS-IS-PURPLE: per-tier violet corruption-marker art fragment (creatures only).
-    corruption: Object.freeze({ palette: "violet", tier, artFragment: corruptionMarkers(tier) }),
-    tags: Object.freeze([...base.tags, "chaosling", "corrupted"])
+    // essence-sight integration: sight-readable ONLY when the world's threat carries chaos skills.
+    sightReadable: corr.chaosSkills === true,
+    // CORRUPTION art — per-tier marker in the world's palette. Absent entirely when the world
+    // declares no palette (NEUTRAL): no violet, no corruption art fragment.
+    ...(corr.palette ? { corruption: Object.freeze({ palette: corr.palette, tier, artFragment: markers[clampTier(tier)] }) } : {}),
+    tags: Object.freeze([...base.tags, ...corr.extraTags])
   });
 }
 
@@ -507,8 +553,8 @@ function withForcedSkill(block, skillId, seed) {
  * rapture-born Warm House chaosling carries a high-tier skill even below its roll) and/or
  * a display name. Deterministic.
  */
-export function spawnChaosling({ baseAnimalId, tier = 2, seed, forceSkill = null, name = null } = {}) {
-  let block = mintChaosling(baseAnimalId, tier, seed);
+export function spawnChaosling({ baseAnimalId, tier = 2, seed, forceSkill = null, name = null, corruption = CHAOSLING_CORRUPTION } = {}) {
+  let block = mintChaosling(baseAnimalId, tier, seed, corruption);
   if (!block) return null;
   if (forceSkill) block = withForcedSkill(block, forceSkill, seed);
   if (name) block = Object.freeze({ ...block, name });

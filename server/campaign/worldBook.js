@@ -28,7 +28,7 @@
 // compilation is deterministic and testable.
 
 import { validateScenario, SCENARIO_SUBSTRATE_VERSION } from "./scenarioSchema.js";
-import { mintChaosling, listBaseAnimals } from "./bestiary.js";
+import { mintChaosling, listBaseAnimals, resolveCorruptionIdentity } from "./bestiary.js";
 import { CARRIED_WORLD_KEYS } from "./scenarioLoader.js";
 
 export const WORLD_BOOK_SCHEMA_VERSION = 1;
@@ -307,13 +307,20 @@ function mintStarterEncounter(book, start, poiIds) {
   if (!chassisList.length) return null;
   const chassis = chassisList[seedIndex(`${book.name}|chassis`, chassisList.length)];
   const seed = slugify(book.name, "world");
-  const block = mintChaosling(chassis, 1, seed);
+  // THE TIER-1 THREAT CORRUPTION IDENTITY is world-book data: a world declares world.corruption
+  // (kind/palette/markers/vocabulary); a world declaring NOTHING mints a NEUTRAL threat — no
+  // chaosling, no violet, essence-sight silent. Babel welded chaosling/violet onto every world;
+  // cyberpunk would have inherited violet-corrupted wildlife. Now it opts in or gets neutral.
+  const corruption = resolveCorruptionIdentity(book.corruption);
+  const block = mintChaosling(chassis, 1, seed, corruption);
   if (!block) return null;
   const baseDisplay = String(chassis).replace(/_/g, " ");
   // A place-flavored epithet from the wilds bank, minus any leading article so we don't
-  // double it ("The The Long Grass elk" → "The Long-Grass elk").
+  // double it ("The The Long Grass elk" → "The Long-Grass elk"). The no-epithet fallback is
+  // "The Corrupted X" ONLY when the world declares corruption; a neutral world gets "A wild X".
   const wildRaw = isNonEmptyString(book.nameBanks?.wilds?.[0]) ? book.nameBanks.wilds[0].replace(/^the\s+/i, "").trim() : "";
-  const creatureName = wildRaw ? `The ${wildRaw} ${baseDisplay}` : `The Corrupted ${baseDisplay}`;
+  const bareName = corruption.palette || corruption.kind !== "beast" ? `The Corrupted ${baseDisplay}` : `A wild ${baseDisplay}`;
+  const creatureName = wildRaw ? `The ${wildRaw} ${baseDisplay}` : bareName;
   const statBlockId = `uw_${seed}_threat`;
   const statBlock = { ...block, statBlockId, name: creatureName };
   const encounterLoc = poiIds[0] || start.id;
