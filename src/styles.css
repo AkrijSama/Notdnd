@@ -3408,6 +3408,40 @@ button:disabled {
   border-top: 1px solid var(--border-strong, #34343b);
   backdrop-filter: blur(2px);
 }
+/* UI-8 (OWNER LAW, supersedes the two-boxes law): during a VN beat the dialogue
+   OVERLAYS THE WHOLE SCREEN — scene, HUD cluster, minimap, face, portrait dock, and
+   the narration log are all covered for the duration. The ONLY thing permitted on top
+   of the dialogue is the VN full-body sprite. Fixed to the viewport (escapes the stage
+   clip) at a z above every chrome layer; the sprite sits one z-band higher and keeps
+   pointer-events:none so taps fall through to the reply box. Removing .vn-active at the
+   beat's end reverts every property to the normal in-stage layout above. */
+.solo-stage.vn-active .solo-vn-box {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  /* Near-opaque so nothing beneath reads through — the beat owns the screen. */
+  background: rgba(4, 5, 8, 0.975);
+  border-top: none;
+  backdrop-filter: none;
+  padding: 0 clamp(16px, 6vw, 140px) clamp(16px, 4vh, 40px);
+}
+.solo-stage.vn-active .solo-vn-sprite {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  /* stand ON the dialogue band so the speech stays readable below the feet */
+  bottom: var(--vn-box-h, 150px);
+  z-index: 201;
+  justify-content: center;
+}
+.solo-stage.vn-active .solo-vn-sprite-img {
+  height: 100%;
+  max-width: min(52vw, 500px);
+}
 .solo-vn-box-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 3px; }
 /* JOB 3: the VN box head's right-side controls — the dialogue sizer + End, grouped
    so they sit together opposite the speaker name. */
