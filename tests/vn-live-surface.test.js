@@ -86,7 +86,7 @@ test("law3: the overlay renders the cue as a one-line italic element for the act
 
 test("law4a: speed table + normalize + storage key follow the sizer pattern", () => {
   assert.deepEqual(VN_TEXT_SPEED_ORDER, ["slow", "normal", "fast", "instant"]);
-  assert.equal(VN_TEXT_SPEEDS.normal, 30);
+  assert.equal(VN_TEXT_SPEEDS.normal, 10); // UI-10: was 30 (a crawl); much faster
   assert.equal(VN_TEXT_SPEEDS.instant, 0);
   assert.equal(normalizeTextSpeed("fast"), "fast");
   assert.equal(normalizeTextSpeed("warp"), "normal");

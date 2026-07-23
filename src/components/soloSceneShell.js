@@ -1330,7 +1330,10 @@ export function normalizeFontSet(fontSet) {
 // rate of the VN typewriter, player-tunable like the narration text size (#48
 // pattern: normalize + localStorage persist + one delegated control). "instant"
 // skips the reveal entirely.
-export const VN_TEXT_SPEEDS = Object.freeze({ slow: 45, normal: 30, fast: 15, instant: 0 });
+// UI-10: the reveal crawled (normal 30ms/char → ~3.6s for a 120-char line). Much
+// faster now (normal 10ms → ~1.2s). Click-to-complete + the wall-clock (throttle-
+// immune) timer already exist in bindTypewriter; instant stays 0.
+export const VN_TEXT_SPEEDS = Object.freeze({ slow: 20, normal: 10, fast: 5, instant: 0 });
 export const VN_TEXT_SPEED_ORDER = Object.freeze(["slow", "normal", "fast", "instant"]);
 export function normalizeTextSpeed(value) {
   return Object.prototype.hasOwnProperty.call(VN_TEXT_SPEEDS, value) ? value : "normal";
