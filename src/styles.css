@@ -1730,11 +1730,13 @@ button:disabled {
   flex-direction: column;
 }
 .solo-portrait {
-  /* Square to match the 1024x1024 full-body composite asset. A fixed short
-     height + image height:auto used to clip the portrait to a top slice (and
-     made object-fit a no-op). Square container + object-fit:cover shows the
-     whole composite with no distortion. Bounded by the sidebar width clamp. */
-  aspect-ratio: 1 / 1;
+  /* UI-1 (owner stamp: RESHAPE, never crop): the player portrait cooks at 896x1152
+     (7:9) on the current recipe (verified 6/6 recent cooks). The frame now MATCHES
+     that aspect, so object-fit:contain (below) fills edge-to-edge with NO bars AND NO
+     crop. A non-7:9 source (an uploaded square, a legacy 1024x1024, a 512x768 bust)
+     still contains — bars, never a face crop — until the cook is rationalized to one
+     aspect (proposed, not shipped). Bounded by the sidebar width clamp. */
+  aspect-ratio: 896 / 1152;
   flex: none;
   border-bottom: 1px solid var(--border, #202024);
   background:
