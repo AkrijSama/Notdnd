@@ -2053,7 +2053,12 @@ button:disabled {
 .solo-minimap {
   position: absolute;
   right: 8px;
-  bottom: 8px;
+  /* UI-13 (owner stamp): the map is anchored hard to the TOP-RIGHT corner in EVERY mode
+     (was bottom-right in exploration, top-right only in VN). The HUD row shifts left of it
+     (see .solo-stage-hud) so the two never collide; the VN cluster override still applies
+     during a beat. */
+  top: 8px;
+  bottom: auto;
   z-index: 28;
   width: 168px;
   max-width: 40%;
@@ -2073,7 +2078,9 @@ button:disabled {
      the settings gear docked in as the rightmost chip. */
   position: absolute;
   top: 8px;
-  right: 8px;
+  /* UI-13: sit LEFT of the top-right map (map width + gaps) so the HUD row and the map
+     never overlap now that the map owns the corner in every mode. */
+  right: calc(16px + var(--vn-map-w, 168px));
   z-index: 30;
   display: flex;
   flex-direction: row;
