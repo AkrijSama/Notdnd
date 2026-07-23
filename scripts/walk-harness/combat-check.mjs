@@ -56,7 +56,7 @@ async function mintInCombat() {
     const foe = (s.combat?.enemies || [])[0];
     const foeHp = foe?.hp?.current ?? 99;
     const pHp = s.player?.hitPoints?.current ?? 0;
-    if (!s.combat || s.combat.status !== "active" || foeHp <= 3 || pHp <= 1) break;
+    if (!s.combat || s.combat.status !== "active" || foeHp <= 2 || pHp <= 1) break;
     await (await fetch(`${BASE}/api/solo/runs/${runId}/actions`, { method: "POST", headers: H, body: JSON.stringify({ action: { type: "attempt", actorId: "player", intent: `attack the ${grey.displayName}`, testHook: { fixedRolls: [16, 2, 1, 2, 16, 2, 1, 2] } } }) })).json();
     sc = await (await fetch(`${BASE}/api/solo/runs/${runId}/scene`, { headers: H })).json();
     s = sc.scene || sc;
@@ -133,12 +133,15 @@ async function run() {
       if (!clicked) { await sleep(1000); return { ...(await snap()), dispatched: false }; }
       await sleep(600);
       let sawBusy = false;
-      for (let i = 0; i < 30; i++) { // up to ~18s for the round + GM narration + re-render
+      // PATIENT: a GM-narrated turn can take 25-35s. Wait for it to FULLY settle (button re-enabled
+      // or the fight ended) so the NEXT click always lands — a premature return leaves the button
+      // busy and the next click is silently skipped, stalling the fight.
+      for (let i = 0; i < 70; i++) { // up to ~42s
         const s = await snap();
         if (isDone(s)) return { ...s, dispatched: true };
         const busy = await ev(`!!document.querySelector('[data-solo-combat="attack"][disabled]')`);
         if (busy) sawBusy = true;
-        else if (sawBusy || i >= 4) return { ...s, dispatched: sawBusy }; // busy→clear = a full turn; never-busy after a beat = a dead click
+        else if (sawBusy || i >= 5) return { ...s, dispatched: sawBusy }; // busy→clear = a full turn landed
         await sleep(600);
       }
       return { ...(await snap()), dispatched: sawBusy };
@@ -157,7 +160,7 @@ async function run() {
     // GM-narrated turn is slow (~12s), so this is patient, not loosened: a dead button never
     // resolves at all (the "turn was taken" check above already caught that).
     let clicks = 1;
-    while (!isDone(after) && clicks < 18) {
+    while (!isDone(after) && clicks < 8) { // foe pre-damaged to ~2 HP → a few LANDED clicks finish it
       clicks++;
       after = await takeTurn();
     }
