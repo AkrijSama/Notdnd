@@ -2128,6 +2128,63 @@ button:disabled {
 }
 
 /* ── VN BATTLE SURFACE (D.4 item 8) — overlays the pinned stage during a fight ── */
+/* ── COMBAT PANEL (bottom-region mode swap during a fight; JOB 1) ─────────────────
+   Replaces the narration log's inner content while combat is active; the .solo-narration-log
+   wrapper stays (it's the scroll container of record). The panel fills the bottom region and
+   never scrolls the page — the beat line is the only internal scroller. */
+.solo-narration-log.is-combat { overflow: hidden; padding: 0; }
+.solo-combat-panel {
+  display: flex; flex-direction: column; gap: 8px;
+  height: 100%; box-sizing: border-box; padding: 10px 12px;
+  background: var(--panel, #0a0c12);
+}
+/* JOB 3 — initiative forecast as portrait chips (order-only, server-committed). */
+.solo-init-forecast { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; min-height: 40px; }
+.solo-init-chip { display: inline-flex; align-items: center; }
+.solo-init-face {
+  width: 40px; height: 40px; border-radius: 50%; overflow: hidden;
+  border: 2px solid var(--border-strong, #34343b); background: var(--inset, #070708);
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.solo-init-chip.is-next .solo-init-face { border-color: var(--accent, #c9a15b); box-shadow: 0 0 0 2px rgba(201, 161, 91, 0.35); }
+.solo-init-chip.is-you .solo-init-face { border-color: var(--accent-bright, #e7e9ee); }
+.solo-init-face-img { width: 100%; height: 100%; object-fit: cover; object-position: top center; }
+.solo-init-face-fallback { font-family: var(--font-display, Georgia, serif); font-weight: 700; color: var(--text-2, #b0b3bb); font-size: 15px; }
+.solo-init-arrow { color: var(--text-muted, #7a7d86); font-size: 13px; }
+/* HP bars — player + each revealed foe. */
+.solo-combat-hpbars { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+.solo-combat-you, .solo-combat-foe { display: flex; align-items: center; gap: 6px; }
+.solo-combat-foes { display: flex; gap: 16px; flex: 1 1 auto; flex-wrap: wrap; }
+.solo-combat-hp-name, .solo-combat-foe-name { font-size: 12px; font-weight: 700; color: var(--text, #e6e8ee); white-space: nowrap; }
+.solo-combat-hp { width: clamp(90px, 12vw, 130px); height: 8px; border-radius: 999px; background: rgba(255, 255, 255, 0.08); overflow: hidden; flex: none; }
+.solo-combat-hp > span { display: block; height: 100%; border-radius: 999px; transition: width 0.3s ease; }
+.solo-combat-hp--player > span { background: linear-gradient(90deg, #3ea36b, #6fe0a0); }
+.solo-combat-hp--foe > span { background: linear-gradient(90deg, #a33e3e, #e06f6f); }
+.solo-combat-hp--bloodied > span { background: linear-gradient(90deg, #a3763e, #e0b06f); }
+.solo-combat-hp--down > span { background: #555; width: 0 !important; }
+.solo-combat-hp-num { font-size: 11px; color: var(--text-2, #b0b3bb); font-variant-numeric: tabular-nums; }
+/* Beat line — the combat NARRATION home (the narration box is replaced). */
+.solo-combat-beat {
+  flex: 1 1 auto; min-height: 1.4em; overflow-y: auto;
+  font-family: var(--font-body, Georgia, serif); font-size: calc(0.95rem * var(--solo-log-scale, 1)); line-height: 1.4;
+  color: var(--text, #e6e8ee); padding: 2px 0;
+}
+.solo-combat-items { display: flex; gap: 6px; flex-wrap: wrap; }
+.solo-combat-item-btn { font-size: 12px; padding: 5px 10px; border-radius: 6px; border: 1px solid var(--border-strong, #34343b); background: var(--inset, #070708); color: var(--text, #e6e8ee); cursor: pointer; }
+/* JOB 2 — the genre-standard five, always present, enabled by state. */
+.solo-combat-menu { display: flex; gap: 8px; flex-wrap: wrap; }
+.solo-combat-btn {
+  flex: 1 1 0; min-width: 84px; padding: 10px 8px; border-radius: 8px;
+  border: 1px solid var(--accent-border, #474b59); background: var(--card, #0c0e15);
+  color: var(--text, #e6e8ee); font-family: var(--font-display, Georgia, serif);
+  font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap;
+}
+.solo-combat-btn:hover:not(:disabled) { border-color: var(--accent, #c9a15b); background: var(--card-dim, #08090f); }
+.solo-combat-btn:disabled, .solo-combat-btn.is-disabled { opacity: 0.4; cursor: not-allowed; }
+.solo-combat-btn--attack { border-color: #7a3e3e; }
+.solo-combat-btn--escape { border-color: #3e5a7a; }
+@media (max-height: 760px) { .solo-init-face { width: 34px; height: 34px; } .solo-init-forecast { min-height: 34px; } .solo-combat-btn { padding: 8px 6px; font-size: 13px; } .solo-combat-panel { gap: 6px; padding: 8px 10px; } }
+
 .solo-battle {
   position: absolute;
   inset: 0;

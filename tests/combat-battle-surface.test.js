@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { renderSoloBattleSurface } from "../src/components/soloSceneShell.js";
+import { renderSoloBattleSurface, renderSoloCombatPanel, renderSoloInitiativeForecast } from "../src/components/soloSceneShell.js";
 import { buildEnemyBodyPrompt } from "../server/solo/imageWorker.js";
 import { resolveStatBlock } from "../server/campaign/bestiary.js";
 
@@ -18,29 +18,59 @@ const pxOf = (body, prop) => { const m = new RegExp(prop + ":\\s*(\\d+)px").exec
 const numOf = (body, prop) => { const m = new RegExp(prop + ":\\s*(\\d+)").exec(body); return m ? parseInt(m[1], 10) : null; };
 
 const battleScene = () => ({
+  player: { hitPoints: { current: 5, max: 8 }, portraitUri: "/player.png", inventory: [] },
   combat: {
     status: "active", turn: 3,
-    forecast: [{ isPlayer: true, displayName: "You" }, { isPlayer: false, displayName: "The Limping Grey" }, { isPlayer: true, displayName: "You" }],
+    forecast: [
+      { actorId: "player", isPlayer: true, displayName: "You", speed: 8 },
+      { actorId: "enm_grey", isPlayer: false, displayName: "The Limping Grey", speed: 11 },
+      { actorId: "player", isPlayer: true, displayName: "You", speed: 8 }
+    ],
     enemies: [{
-      id: "enm_grey", npcId: "npc_limping_grey", name: "The Limping Grey", hpBand: "bloodied",
+      id: "enm_grey", npcId: "npc_limping_grey", name: "The Limping Grey", hp: { current: 4, max: 7 }, hpBand: "bloodied",
       intent: { telegraph: "snarls; frost rimes its bared teeth" }, reads: ["a bite that chills"],
       conditions: [{ id: "slow", name: "Chill", kind: "debuff", effect: "Slowed · 2 turns left", remainingMinutes: null }], bodyUri: null
     }]
   }
 });
 
-test("battle surface renders the forecast rail, enemy card, intent, wound-band, and sight-read", () => {
+test("battle surface renders the enemy stage (card, intent, wound-band, sight-read); the forecast moved to the panel", () => {
   const html = renderSoloBattleSurface(battleScene());
   assert.match(html, /solo-battle\b/);
-  assert.match(html, /solo-battle-forecast/);
-  assert.equal((html.match(/solo-battle-slot/g) || []).length, 3, "3 forecast slots");
-  assert.match(html, /solo-battle-slot is-next is-you/, "the next actor (you) is highlighted");
+  // The order-only forecast is no longer a text rail on the stage — it's portrait chips in the
+  // combat PANEL (see the next test). The battle surface is the enemy stage art alone.
+  assert.doesNotMatch(html, /solo-battle-forecast|solo-battle-slot/, "the text rail moved off the stage");
   assert.match(html, /solo-battle-enemy-card/);
   assert.match(html, /solo-battle-hpband--bloodied/, "wound band, never a raw HP number");
-  assert.doesNotMatch(html, /\bHP\b|\d+\s*damage/, "no raw HP/damage numbers on the surface");
   assert.match(html, /snarls; frost rimes/, "the telegraphed intent");
   assert.match(html, /You read: a bite that chills/, "the essence-sight read on the card");
   assert.match(html, /Chill/, "the chill status chip");
+});
+
+test("combat PANEL surfaces the engine: the five-action menu, the portrait forecast, and player HP", () => {
+  const html = renderSoloCombatPanel(battleScene(), {});
+  // JOB 2 — the genre-standard five, always present, enabled by state.
+  for (const kind of ["attack", "guard", "skills", "items", "escape"]) {
+    assert.match(html, new RegExp(`data-solo-combat="${kind}"`), `the ${kind} button is present`);
+  }
+  // The standalone `disabled>` attribute (not the aria-disabled="…" flag which contains the substring).
+  assert.match(html, /data-solo-combat="skills"[^>]*\sdisabled>/, "Skills is DISABLED (canon: no skills yet), not hidden");
+  assert.match(html, /data-solo-combat="items"[^>]*\sdisabled>/, "Items is disabled when the bag is empty");
+  assert.doesNotMatch(html, /data-solo-combat="attack"[^>]*\sdisabled>/, "Attack is always enabled");
+  // JOB 1.2 — player HP in the panel, and JOB 3 — portrait chips.
+  assert.match(html, /solo-combat-hp-num[^>]*>5\/8</, "the player's HP is shown");
+  assert.match(html, /solo-init-forecast/, "the initiative forecast is in the panel");
+  assert.equal((html.match(/solo-init-chip/g) || []).length, 3, "3 forecast portrait chips");
+  assert.match(html, /solo-init-chip is-next is-you/, "the next actor (you) is highlighted");
+  // JOB 3.2 — hover shows name + speed (order-only; speed is a stat, not a raw tick).
+  assert.match(html, /Speed 8/, "the player's speed on hover");
+  assert.match(html, /The Limping Grey · Speed 11/, "the foe's name + speed on hover");
+});
+
+test("initiative forecast joins each slot to a committed face; a missing portrait falls back to an initial (never blocks)", () => {
+  const withFaces = renderSoloInitiativeForecast(battleScene());
+  assert.match(withFaces, /solo-init-face-img[^>]*src="\/player\.png"/, "the player's committed portrait");
+  assert.match(withFaces, /solo-init-face-fallback/, "the foe has no cooked body yet → an initial glyph, not a broken image");
 });
 
 test("battle surface: empty-state silhouette while the enemy art cooks; empty out of combat", () => {
@@ -63,7 +93,7 @@ test("enemy-art prompt is minted deterministically from the bestiary row (base a
   assert.equal(buildEnemyBodyPrompt(null), null, "no block → no prompt (never mints a phantom)");
 });
 
-test("bounding-box: the battle overlay is full-bleed, below the HUD/drawers, and the forecast rail clears the HUD row", () => {
+test("bounding-box: the battle overlay is full-bleed, below the HUD/drawers", () => {
   const battle = rule(".solo-battle {");
   assert.match(battle, /position:\s*absolute/);
   assert.match(battle, /inset:\s*0/);
@@ -72,9 +102,4 @@ test("bounding-box: the battle overlay is full-bleed, below the HUD/drawers, and
   const drawerZ = numOf(rule(".solo-scene-drawer {"), "z-index");
   assert.ok(battleZ < hudZ, `battle z(${battleZ}) below the HUD row z(${hudZ})`);
   assert.ok(battleZ < drawerZ, `battle z(${battleZ}) below drawers z(${drawerZ})`);
-  // the forecast rail sits BELOW the top-right HUD row (top:8 + ~28px tall ⇒ bottom 36)
-  const railTop = pxOf(rule(".solo-battle-forecast {"), "margin-top");
-  const hudTop = pxOf(rule(".solo-stage-hud {"), "top");
-  const hudChip = pxOf(rule(".solo-stage-hud > * {"), "height");
-  assert.ok(railTop >= hudTop + hudChip, `forecast rail top(${railTop}) clears the HUD row bottom(${hudTop + hudChip})`);
 });

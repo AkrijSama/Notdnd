@@ -178,7 +178,11 @@ export function buildForecast(combat, { slots = CTB_FORECAST_SLOTS, isRevealed =
       return hashSeed(`${combat.queueSeed}|${a.combatantId}`) - hashSeed(`${combat.queueSeed}|${b.combatantId}`);
     });
     const actor = sim[0];
-    out.push({ actorId: actor.combatantId, displayName: actor.displayName, isPlayer: actor.isPlayer, slotIndex: i });
+    // speed is a derived STAT (8-16), NOT a raw tick — surfacing it for the forecast
+    // hover (name + speed, per the premium-forecast spec) does not leak the order-only
+    // rule (raw combat.now/nextTick still never leave). actorId lets the client join a
+    // slot to its committed portrait (player -> player.portraitUri, enemy -> bodyUri).
+    out.push({ actorId: actor.combatantId, displayName: actor.displayName, isPlayer: actor.isPlayer, speed: actor.speed, slotIndex: i });
     actor.nextTick += delayFor(actor.speed, ACTION_WEIGHT.standard);
   }
   return out;

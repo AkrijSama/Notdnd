@@ -66,6 +66,13 @@
       "detail": "A far-horizon goal: hand the game a rulebook and let it learn the system well enough to run it, so a favorite tabletop ruleset can drive the same living world. Ambitious, and worth the wait."
     },
     {
+      "id": "pixel-combat-art",
+      "title": "Animated pixel-character combat",
+      "status": "long-term",
+      "summary": "Fighters shown as animated pixel characters acting out the battle.",
+      "detail": "A visual horizon for combat: each fighter drawn as an animated pixel character that steps, strikes, and reacts as the turn plays out, so a battle reads at a glance instead of as a row of bars. The turn order and outcomes stay exactly as they are today, and this is the art layer on top of the fight you already play."
+    },
+    {
       "id": "ads-promise",
       "title": "Ads stay off until 20,000 players",
       "status": "planned",

@@ -2975,15 +2975,10 @@ export function renderSoloStageHud(scene = {}, state = {}) {
 export function renderSoloBattleSurface(scene = {}) {
   const combat = scene.combat;
   if (!combat || combat.status !== "active") return "";
-  const forecast = Array.isArray(combat.forecast) ? combat.forecast : [];
   const enemies = Array.isArray(combat.enemies) ? combat.enemies : [];
 
-  const rail = forecast.length
-    ? `<div class="solo-battle-forecast" role="list" aria-label="Turn order">
-        ${forecast.map((s, i) => `<span class="solo-battle-slot${i === 0 ? " is-next" : ""}${s.isPlayer ? " is-you" : ""}" role="listitem" title="${escapeHtml(s.displayName || (s.isPlayer ? "You" : "Enemy"))}">${escapeHtml(s.isPlayer ? "You" : (s.displayName || "?").split(/\s+/).slice(-1)[0])}</span>`).join('<span class="solo-battle-arrow" aria-hidden="true">›</span>')}
-      </div>`
-    : "";
-
+  // The order-only forecast moved to the combat PANEL as portrait chips (JOB 3); the
+  // battle surface is now the enemy stage art alone (the "scene sprites" of the fight).
   const cards = enemies.map((e) => {
     const band = e.hpBand || "steady";
     const bandPct = band === "down" ? 0 : band === "bloodied" ? 33 : 100;
@@ -3009,8 +3004,146 @@ export function renderSoloBattleSurface(scene = {}) {
 
   return `
     <div class="solo-battle" data-solo-battle>
-      ${rail}
       <div class="solo-battle-enemies">${cards}</div>
+    </div>`;
+}
+
+// ── COMBAT PANEL (surfaces the existing CTB engine — no client-side combat logic) ──
+// During a fight the bottom NARRATION region is swapped for this panel (JOB 1.1); the
+// scene art + enemy stage above are untouched. Every button dispatches to the EXISTING
+// engine via POST /api/solo/runs/:id/actions (the server owns the outcome — the moat):
+//   Attack -> {type:"attempt", intent:"Attack the <foe>"}  (classifier ATTACK_RE + sole/
+//             named target); Guard -> intent "Guard" (DEFEND_RE, route "defend"); Escape ->
+//   intent "Flee" (FLEE_RE, route "flee"); Items -> {type:"use_item", combatAction:"use_item",
+//   itemId} (consumed structurally). Skills is DISABLED — canon "you hold no skills yet"
+//   (the engine has no first-class player skill verb; FOCUS/STUNT are separate).
+
+// JOB 3 — the initiative forecast as portraits (replaces the plain-text rail). Reads the
+// server's committed order-only forecast (never a client guess); hidden foes are already
+// filtered server-side (ambush integrity). Each chip joins its slot to a committed face:
+// player -> player.portraitUri, enemy -> its combat bodyUri; missing art falls back to an
+// initial glyph (3.4 — never blocks the fight). Hover shows name + speed (3.2).
+export function renderSoloInitiativeForecast(scene = {}) {
+  const combat = scene.combat;
+  const forecast = combat && Array.isArray(combat.forecast) ? combat.forecast : [];
+  if (!forecast.length) return "";
+  const player = scene.player || {};
+  const enemies = Array.isArray(combat.enemies) ? combat.enemies : [];
+  const faceFor = (slot) => {
+    if (slot.isPlayer) return typeof player.portraitUri === "string" && player.portraitUri.trim() ? player.portraitUri.trim() : null;
+    const e = enemies.find((x) => x.id === slot.actorId);
+    return e && typeof e.bodyUri === "string" && e.bodyUri.trim() ? e.bodyUri.trim() : null;
+  };
+  const chips = forecast
+    .map((s, i) => {
+      const uri = faceFor(s);
+      const name = s.isPlayer ? "You" : String(s.displayName || "?");
+      const speed = Number.isFinite(s.speed) ? s.speed : null;
+      const title = speed != null ? `${name} · Speed ${speed}` : name;
+      const initial = name.trim().slice(0, 1).toUpperCase() || "?";
+      const face = uri
+        ? `<img class="solo-init-face-img" src="${escapeHtml(uri)}" alt="" />`
+        : `<span class="solo-init-face-fallback" aria-hidden="true">${escapeHtml(initial)}</span>`;
+      return `<span class="solo-init-chip${i === 0 ? " is-next" : ""}${s.isPlayer ? " is-you" : ""}" role="listitem" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}"><span class="solo-init-face">${face}</span></span>`;
+    })
+    .join('<span class="solo-init-arrow" aria-hidden="true">›</span>');
+  return `<div class="solo-init-forecast" role="list" aria-label="Turn order forecast">${chips}</div>`;
+}
+
+// A deterministic, server-truth beat of the just-resolved round (the combat NARRATION home:
+// the narration box is replaced, so "what just happened" lives here). Formats the committed
+// combatRound events — works even when the GM is quiet; the panel prefers GM prose when the
+// payload carries it.
+export function formatCombatBeat(round) {
+  if (!round || !Array.isArray(round.actions)) return "";
+  const nameOf = (actorId) => {
+    if (actorId === "player") return "You";
+    const e = Array.isArray(round.enemies) ? round.enemies.find((x) => x.id === actorId) : null;
+    return (e && e.name) || "The enemy";
+  };
+  const isYou = (a) => a.actor === "player";
+  const v = (a, you, other) => (isYou(a) ? you : other);
+  const lines = [];
+  for (const a of round.actions) {
+    const who = nameOf(a.actor);
+    if (a.kind === "attack") {
+      if (a.note === "no_target") continue;
+      if (a.roll && a.roll.hit === false) lines.push(`${who} ${v(a, "miss", "misses")}.`);
+      else lines.push(`${who} ${v(a, "strike", "strikes")}${a.damage != null ? ` for ${a.damage}` : ""}.`);
+    } else if (a.kind === "defend") {
+      lines.push(`${who} ${v(a, "brace", "braces")} behind a guard.`);
+    } else if (a.kind === "flee") {
+      lines.push(a.roll && a.roll.hit ? `${who} ${v(a, "break", "breaks")} away.` : `${who} ${v(a, "fail", "fails")} to slip away.`);
+    } else if (a.kind === "use_item") {
+      lines.push(a.healed ? `${who} ${v(a, "recover", "recovers")} ${a.healed}.` : `${who} ${v(a, "use", "uses")} an item.`);
+    } else if (a.kind === "focus") {
+      lines.push(`${who} ${v(a, "read", "reads")} the foe.`);
+    } else if (a.kind === "stunt") {
+      lines.push(`${who} ${v(a, "try", "tries")} something clever.`);
+    } else if (a.damage != null && a.damage > 0) {
+      lines.push(`${who} ${v(a, "land a blow", "lands a blow")} for ${a.damage}.`);
+    }
+  }
+  return lines.join(" ");
+}
+
+export function renderSoloCombatPanel(scene = {}, state = {}) {
+  const combat = scene.combat;
+  if (!combat || combat.status !== "active") return "";
+  const player = scene.player || {};
+  const hp = player.hitPoints || {};
+  const hpCur = Number.isFinite(hp.current) ? hp.current : 0;
+  const hpMax = Number.isFinite(hp.max) && hp.max > 0 ? hp.max : 1;
+  const hpPct = Math.max(0, Math.min(100, Math.round((hpCur / hpMax) * 100)));
+  const enemies = Array.isArray(combat.enemies) ? combat.enemies : [];
+  const inv = Array.isArray(player.inventory) ? player.inventory : [];
+  const usableItems = inv.filter((it) => it && (it.itemId || it.name));
+  const hasItems = usableItems.length > 0;
+  // Canon (2.1): "you hold no skills yet." The engine exposes no first-class player skill
+  // verb (only FOCUS/STUNT), so Skills is shown DISABLED, not hidden — growth stays legible.
+  const hasSkills = false;
+  const busy = Boolean(state.busy);
+  const beat =
+    typeof state.lastCombatBeat === "string" && state.lastCombatBeat.trim()
+      ? state.lastCombatBeat.trim()
+      : typeof scene.gmNarration?.narration?.body === "string" && scene.gmNarration.narration.body.trim()
+        ? scene.gmNarration.narration.body.trim()
+        : "";
+  const enemyRow = enemies
+    .map((e) => {
+      const band = e.hpBand || "steady";
+      const pct = band === "down" ? 0 : band === "bloodied" ? 50 : 100;
+      return `<div class="solo-combat-foe"><span class="solo-combat-foe-name" data-textfit>${escapeHtml(e.name || "Enemy")}</span><div class="solo-combat-hp solo-combat-hp--foe solo-combat-hp--${band}" role="img" aria-label="${escapeHtml(band)}"><span style="width:${pct}%"></span></div></div>`;
+    })
+    .join("");
+  const btn = (kind, label, enabled, title) =>
+    `<button type="button" class="solo-combat-btn solo-combat-btn--${kind}${enabled ? "" : " is-disabled"}" data-solo-combat="${kind}"${title ? ` title="${escapeHtml(title)}"` : ""} aria-disabled="${enabled ? "false" : "true"}"${enabled && !busy ? "" : " disabled"}>${label}</button>`;
+  const itemsSubmenu =
+    state.combatItemsOpen && hasItems
+      ? `<div class="solo-combat-items" role="group" aria-label="Use an item">${usableItems
+          .map((it) => `<button type="button" class="solo-combat-item-btn" data-solo-combat-item data-item-id="${escapeHtml(String(it.itemId || it.name))}"${busy ? " disabled" : ""}>${escapeHtml(it.name || it.itemId)}</button>`)
+          .join("")}</div>`
+      : "";
+  return `
+    <div class="solo-combat-panel" data-solo-combat-panel role="group" aria-label="Combat">
+      <div class="solo-combat-forecast-wrap">${renderSoloInitiativeForecast(scene)}</div>
+      <div class="solo-combat-hpbars">
+        <div class="solo-combat-you">
+          <span class="solo-combat-hp-name">You</span>
+          <div class="solo-combat-hp solo-combat-hp--player" role="img" aria-label="Your health"><span style="width:${hpPct}%"></span></div>
+          <span class="solo-combat-hp-num">${hpCur}/${hpMax}</span>
+        </div>
+        <div class="solo-combat-foes">${enemyRow}</div>
+      </div>
+      <div class="solo-combat-beat" data-solo-combat-beat role="status">${beat ? escapeHtml(beat) : "The fight is joined — choose your action."}</div>
+      ${itemsSubmenu}
+      <div class="solo-combat-menu" role="group" aria-label="Combat actions">
+        ${btn("attack", "⚔ Attack", true)}
+        ${btn("guard", "🛡 Guard", true)}
+        ${btn("skills", "✦ Skills", hasSkills, "You hold no skills yet.")}
+        ${btn("items", "🎒 Items", hasItems, hasItems ? "Use an item" : "Your bag is empty.")}
+        ${btn("escape", "🏃 Escape", true)}
+      </div>
     </div>`;
 }
 
@@ -3511,19 +3644,24 @@ export function renderSoloSceneShell(state = {}) {
                   <div data-solo-outcome>${renderSoloActionOutcome(state)}</div>
                   ${renderSoloDialogueOverlay(state)}
                 </div>
-                <!-- ZONE 2 — SCROLLABLE NARRATION LOG -->
-                <div class="solo-narration-log" data-solo-log>
+                <!-- ZONE 2 — SCROLLABLE NARRATION LOG (swapped for the COMBAT PANEL during a fight) -->
+                <div class="solo-narration-log${scene.combat && scene.combat.status === "active" ? " is-combat" : ""}" data-solo-log>
                   ${
-                    (typeof scene.openingNarration === "string" && scene.openingNarration.trim()) || (Array.isArray(scene.openingBeats) && scene.openingBeats.length)
-                      // WALK-3 V4: when the opening commits a VN speaker (the VOICE), her SPOKEN
-                      // beats render in the real VN box (loadScene routes them), so this log gets
-                      // ONLY the narration beats with speaker=null — never her words as prose.
-                      ? (scene.vnMode === true && scene.openingSpeaker
-                          ? renderSoloSceneOpening(scene.openingNarration, splitOpeningBeats(scene.openingBeats, scene.openingBeatsSpeakerFrom).narration, null)
-                          : renderSoloSceneOpening(scene.openingNarration, scene.openingBeats, scene.openingSpeaker))
-                      : Array.isArray(state.narrationLog) && state.narrationLog.length
-                        ? renderNarrationLog(state.narrationLog)
-                        : renderLocationPanel(location, scene.gmNarration, scene.gmStatus, selectedGmMode, debug, {})
+                    // JOB 1.1: while a fight is live the bottom narration region IS the combat
+                    // panel; when combat ends the narration box returns (this is a mode swap of the
+                    // bottom region only — the scene art + enemy stage above are untouched).
+                    scene.combat && scene.combat.status === "active"
+                      ? renderSoloCombatPanel(scene, state)
+                      : (typeof scene.openingNarration === "string" && scene.openingNarration.trim()) || (Array.isArray(scene.openingBeats) && scene.openingBeats.length)
+                        // WALK-3 V4: when the opening commits a VN speaker (the VOICE), her SPOKEN
+                        // beats render in the real VN box (loadScene routes them), so this log gets
+                        // ONLY the narration beats with speaker=null — never her words as prose.
+                        ? (scene.vnMode === true && scene.openingSpeaker
+                            ? renderSoloSceneOpening(scene.openingNarration, splitOpeningBeats(scene.openingBeats, scene.openingBeatsSpeakerFrom).narration, null)
+                            : renderSoloSceneOpening(scene.openingNarration, scene.openingBeats, scene.openingSpeaker))
+                        : Array.isArray(state.narrationLog) && state.narrationLog.length
+                          ? renderNarrationLog(state.narrationLog)
+                          : renderLocationPanel(location, scene.gmNarration, scene.gmStatus, selectedGmMode, debug, {})
                   }
                 </div>
                 <!-- ZONE 3 — INPUT DOCK -->
@@ -3569,6 +3707,17 @@ export function renderSoloSceneShell(state = {}) {
 export function dispatchSoloClick(target, handlers = {}) {
   const closest = (sel) => (target && typeof target.closest === "function" ? target.closest(sel) : null);
   let el;
+  // COMBAT MENU: item sub-buttons first (more specific), then the five main actions. A
+  // disabled button dispatches nothing (dead controls never spend a turn — the engine also
+  // no-ops, but the client must not even try).
+  if ((el = closest("[data-solo-combat-item]"))) {
+    if (!el.hasAttribute("disabled")) handlers.onCombatAction?.({ kind: "item", itemId: el.getAttribute("data-item-id") });
+    return true;
+  }
+  if ((el = closest("[data-solo-combat]"))) {
+    if (!el.hasAttribute("disabled")) handlers.onCombatAction?.({ kind: el.getAttribute("data-solo-combat") });
+    return true;
+  }
   if ((el = closest("[data-solo-action='move']"))) {
     handlers.onMove?.({ locationId: el.getAttribute("data-location-id"), direction: el.getAttribute("data-direction") || null });
     return true;
@@ -4288,6 +4437,14 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     if (state.loading || state.error || state.deathScreen || state.victoryScreen || state.runConcluded) {
       return false;
     }
+    // COMBAT: during a fight the bottom region (ZONE 2 / [data-solo-log]) IS the live combat
+    // PANEL, not the narration log — and its HP / beat / forecast change every turn. The fast
+    // path only patches the narration-log content, so it would leave the panel frozen (a turn
+    // taken with no visible effect). Force a FULL render for the whole fight; one render per
+    // click is not a performance concern.
+    if (state.scene && state.scene.combat && state.scene.combat.status === "active") {
+      return false;
+    }
     const logEl = root.querySelector("[data-solo-log]");
     const outcomeEl = root.querySelector("[data-solo-outcome]");
     const thinkingEl = root.querySelector("[data-solo-dock-status]");
@@ -4469,6 +4626,7 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
       onInspect: handleInspect,
       onTalk: handleTalk,
       onUseItem: handleUseItem,
+      onCombatAction: handleCombatAction,
       onGmMode: handleGmMode,
       onSkin: handleSkin,
       onFont: handleFont,
@@ -5941,6 +6099,55 @@ export function mountSoloSceneShell(root, { apiClient, runId }) {
     }
     return runAction("move", async () => {
       await postAction(createMoveAction(state.scene, move));
+      await loadScene();
+    });
+  }
+
+  // COMBAT DISPATCH — surfaces the existing engine; NO client-side combat logic (the server
+  // owns the outcome). Each button becomes the free-text/structured action the frozen combat
+  // classifier already resolves. "Items" toggles an inline picker; "item" plays the chosen
+  // one; a disabled/skills button never reaches here (dispatch guards on [disabled]).
+  function handleCombatAction(payload) {
+    const combat = state.scene && state.scene.combat;
+    if (!combat || combat.status !== "active") {
+      return;
+    }
+    const kind = payload && payload.kind;
+    if (kind === "items") {
+      state.combatItemsOpen = !state.combatItemsOpen;
+      render();
+      return;
+    }
+    if (kind === "skills") {
+      return; // canon: no skills yet — disabled, dispatches nothing
+    }
+    let action = null;
+    if (kind === "attack") {
+      const living = (Array.isArray(combat.enemies) ? combat.enemies : []).filter((e) => (e.hp?.current ?? 1) > 0 && e.hpBand !== "down");
+      const target = living[0];
+      // Name the target so a multi-foe fight is unambiguous; the classifier also defaults a
+      // lone enemy, but naming it is robust either way (ATTACK_RE + resolveAttackTarget).
+      action = { type: "attempt", actorId: "player", intent: target && target.name ? `Attack the ${target.name}` : "Attack", mode: "combat" };
+    } else if (kind === "guard") {
+      action = { type: "attempt", actorId: "player", intent: "Guard", mode: "combat" };
+    } else if (kind === "escape") {
+      action = { type: "attempt", actorId: "player", intent: "Flee", mode: "combat" };
+    } else if (kind === "item") {
+      const itemId = payload && payload.itemId;
+      if (!itemId) return;
+      action = { type: "use_item", actorId: "player", combatAction: "use_item", itemId };
+    } else {
+      return;
+    }
+    return runAction(`combat:${kind}`, async () => {
+      const resp = await postAction(action);
+      // The narration box is replaced by the panel, so capture the committed round as the
+      // panel's beat line (server-truth; survives the loadScene refresh below).
+      if (resp && resp.combatRound) {
+        const beat = formatCombatBeat(resp.combatRound);
+        if (beat) state.lastCombatBeat = beat;
+      }
+      state.combatItemsOpen = false;
       await loadScene();
     });
   }

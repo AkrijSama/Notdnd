@@ -97,9 +97,12 @@ test("forecast is ORDER-ONLY, deterministic, and excludes hidden combatants", ()
   const f2 = buildForecast(combat, { slots: 6 });
   assert.deepEqual(f1, f2, "same state → same order (determinism)");
   assert.equal(f1.length, 6);
-  // order-only: no tick field leaks to the player-facing slot
+  // order-only: no RAW TICK field leaks to the player-facing slot. `speed` is a derived stat
+  // (clamp 8-16), surfaced for the forecast hover (name + speed) — it is NOT a tick, so it does
+  // not break the order-only rule; the raw combat.now/nextTick still never leave.
   for (const slot of f1) {
-    assert.deepEqual(Object.keys(slot).sort(), ["actorId", "displayName", "isPlayer", "slotIndex"]);
+    assert.deepEqual(Object.keys(slot).sort(), ["actorId", "displayName", "isPlayer", "slotIndex", "speed"]);
+    assert.ok(!("nextTick" in slot) && !("now" in slot) && !("tick" in slot), "no raw CTB tick leaks to the player");
   }
   assert.equal(f1[0].actorId, "player"); // player (100) acts before grey (109)
   assert.equal(f1[0].slotIndex, 0);
