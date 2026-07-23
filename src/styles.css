@@ -2084,7 +2084,24 @@ button:disabled {
    of the two options (the time chip shrinks to it rather than the rest growing to ~40).
    box-sizing keeps padded buttons at 28; flex-center vertically aligns the content. */
 .solo-stage-hud > * { pointer-events: auto; height: 28px; box-sizing: border-box; display: inline-flex; align-items: center; }
-.solo-stage-hud .solo-settings-btn { width: 28px; height: 28px; }
+/* UI-6: the settings cog stands on its own — no box (transparent, borderless),
+   a larger glyph, and a distinct accent color so it reads cleanly in the HUD row. */
+.solo-stage-hud .solo-settings-btn {
+  width: 32px;
+  height: 32px;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  font-size: 23px;
+  color: var(--accent-bright, #e7e9ee);
+}
+.solo-stage-hud .solo-settings[open] .solo-settings-btn,
+.solo-stage-hud .solo-settings-btn:hover,
+.solo-stage-hud .solo-settings-btn:focus-visible {
+  background: transparent;
+  border: none;
+  color: var(--accent-2, #d9b25a);
+}
 .solo-stage-hud .solo-map-toggle { margin-bottom: 0; align-items: stretch; }
 .solo-stage-hud .solo-hud-time { padding: 0 9px; }
 .solo-stage-hud .solo-hud-time .solo-clock-icon { width: 18px; height: 18px; }
@@ -3054,7 +3071,10 @@ button:disabled {
   top: 0;
   left: 0;
   width: min(340px, 84vw);
-  max-height: 100%;
+  /* UI-2: the tab is nested in the compact portrait-dock aside, so max-height:100%
+     clamped the full sheet to the PORTRAIT's height (a tiny window). Size it to the
+     viewport instead so the whole sheet opens readably on the left. */
+  max-height: min(88vh, 660px);
   overflow-y: auto;
   z-index: 40;
   background: var(--panel, #171009);
