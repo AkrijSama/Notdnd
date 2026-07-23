@@ -720,7 +720,17 @@
           "label": "Rarely",
           "text": "[ I SAID I WOULD NOT SPEAK OFTEN. HEAR ME WHILE I DO. ]"
         }
-      ]
+      ],
+      "forms": {
+        "default": "ball_of_light",
+        "byBand": { "hostile": "dragon", "wary": "dragon", "neutral": "elk", "warm": "elk", "trusted": "woman", "devoted": "woman" },
+        "forms": {
+          "ball_of_light": { "humanoid": false, "appearance": "a single hovering orb of warm green and gold light, a luminous glowing sphere of living radiance, soft golden-green halo, gentle rays, ethereal, floating in dark empty space" },
+          "elk": { "humanoid": false, "appearance": "a great elk wreathed in a soft green and gold aura, calm and watchful, towering antlers haloed in gentle golden light, standing tall, ethereal luminous glow, dim forest" },
+          "dragon": { "humanoid": false, "appearance": "an immense dragon wreathed in green and gold fire, scales rimmed with golden light, wings spread wide, looming and menacing, an ethereal wrong-light aura about it" },
+          "woman": { "humanoid": true, "appearance": "a radiant woman haloed in soft green and gold light, warm and luminous, a gentle golden-green glow about her, ethereal, standing" }
+        }
+      }
     }
   ],
   "questOffers": {

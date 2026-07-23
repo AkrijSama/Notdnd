@@ -11,10 +11,14 @@
 // in. A form change re-cooks into a per-form asset slot so forms never collide.
 //
 // GENERAL, not a VOICE special-case (pre-mortem a): ANY entity may declare `forms`. The
-// mechanism reads an entity's forms map from the RUN NPC first (`npc.forms`, the authored
-// path — a WORLD-BOOK SCHEMA change, proposed for a stamp, NOT shipped here), then falls
-// back to this server-side registry (DATA, keyed by npcId). Seeding the VOICE here proves
-// the path today; an authored `forms` map later drops in with zero mechanism change.
+// mechanism reads an entity's forms map from the RUN NPC first (`npc.forms`, the AUTHORED
+// world-book path — SHIPPED (JOB 1.3): babel authors npc_voice.forms in babel.json, the loader
+// carries it (scenarioLoader cast copy), so the VOICE's forms live in the WORLD-BOOK, not the
+// engine), then falls back to this server-side registry. The registry is now only a RESUME-SAFETY
+// fallback for legacy runs persisted before the authoring shipped + a worked example for other
+// worlds — it is NOT the source of truth for babel. entity-forms-authoring.test.js proves babel's
+// authored forms are byte-identical to this registry and that a world declaring its own forms
+// works with zero engine change.
 //
 // NON-HUMANOID APPEARANCE LAW: a non-humanoid form's `appearance` is authored WITHOUT
 // human-negation words ("no person/no face/no body"). Such negations backfire twice — they

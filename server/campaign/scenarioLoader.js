@@ -468,6 +468,10 @@ export function loadScenarioIntoRun(run, scenario, options = {}) {
       ...(isString(c.portraitPrompt) ? { portraitPrompt: c.portraitPrompt } : {}),
       ...(isString(c.revealForm) ? { revealForm: c.revealForm } : {}),
       ...(isString(c.revealEvent) ? { revealEvent: c.revealEvent } : {}),
+      // JOB 1.3: form-shifting entity forms are now AUTHORED in the world-book (babel authors
+      // npc_voice.forms), not welded into the engine. entityForms.entityFormsSpec reads npc.forms
+      // FIRST, then the engine registry (resume-safety fallback). Carry the authored map through.
+      ...(c.forms && typeof c.forms === "object" ? { forms: c.forms } : {}),
       edition: "mainline",
       policyProfileId: "mainline_default",
       contentTags: [],
