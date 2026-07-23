@@ -424,12 +424,19 @@ function renderPortraitPreview(portrait = {}, options = {}) {
     const acceptControl = accepted
       ? `<span class="onb-portrait-accepted" aria-live="polite" style="${acceptCorner}background:rgba(127,175,96,0.22);border:1px solid #5f7f3f;color:var(--ink,#ece1c7);">✓ Using this portrait</span>`
       : `<button type="button" class="onb-portrait-accept" data-cw-portrait-accept ${regenerating ? "disabled" : ""} style="${acceptCorner}">Use this portrait</button>`;
+    // UI-7: make the silent default explicit — until the player locks a choice, state
+    // plainly that THIS image is the one that will be used if they simply continue, so
+    // "moving on accepts it" is never a surprise. Clears once locked.
+    const commitNote = accepted
+      ? ""
+      : `<p class="onb-portrait-commitnote" aria-live="polite" style="margin:6px 0 0;font-size:12px;color:var(--text-muted,#b8a98f);text-align:center;">This portrait will be used if you continue — press <strong>Use this portrait</strong> to lock it, or <strong>Redo</strong> for another.</p>`;
     return `<div class="onb-portrait-preview${variant}${regenerating ? " onb-portrait-regenerating" : ""}${accepted ? " onb-portrait-locked" : ""}">
         <img class="onb-portrait-img" src="${esc(uri)}" alt="${alt}" />
         ${regenerating ? `<div class="onb-portrait-overlay"><span class="onb-portrait-spinner" aria-hidden="true"></span>${cookLabel("Regenerating", portrait.startedAt)}</div>` : ""}
         ${acceptControl}
         ${redoBtn}
         ${redoHint}
+        ${commitNote}
       </div>`;
   }
   if (status === "generating") {
