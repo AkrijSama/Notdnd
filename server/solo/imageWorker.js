@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import crypto from "node:crypto";
 import { editImage, generateImage } from "../ai/providers.js";
 import { engineStyleForRun, styleForRun, hasCommittedArtStyle, ART_RECIPE_VERSION } from "./artStyle.js";
 import { deriveWeather, deriveClock } from "./worldClock.js";
@@ -343,6 +344,18 @@ function diskPathFor(runId, npcId, slot, ext = "png") {
 // Public URI served by the existing static handler (serveStatic, repo root).
 function servedUriFor(runId, npcId, slot, ext = "png") {
   return `/data/assets/${encodeURIComponent(runId)}/${encodeURIComponent(npcId)}/${slot}.${ext}`;
+}
+
+// JOB 2 (content-hashed asset URLs): the cache-buster is a hash of the ACTUAL bytes.
+// A re-cook writes the SAME on-disk path but different bytes → a different ?v= → a NEW
+// URL, so serveStatic can cache the versioned URL forever (immutable) and the old URL is
+// simply never requested again (the persisted .uri carries the new hash). This is the
+// anti-fossil guarantee: destroyed/re-cooked bytes can never be served from cache, because
+// their URL changed. Identical bytes → identical hash → same URL serving the same bytes
+// (correct, not a fossil). serveStatic strips the query before disk mapping, so ?v= never
+// affects which file is served. Short 16-hex prefix: 64 bits, collision-safe for this use.
+function versionQuery(bytes) {
+  return `?v=${crypto.createHash("sha256").update(bytes).digest("hex").slice(0, 16)}`;
 }
 
 /**
@@ -978,7 +991,7 @@ async function generateSlot({ runId, npcId, slot, assetId, prompt, style, kind, 
     const target = diskPathFor(runId, npcId, slot, ext);
     fs.mkdirSync(path.dirname(target), { recursive: true });
     fs.writeFileSync(target, bytes);
-    const uri = servedUriFor(runId, npcId, slot, ext);
+    const uri = servedUriFor(runId, npcId, slot, ext) + versionQuery(bytes);
     updateImageAssetStatus(runId, assetId, "generated", uri);
     countGeneratedImageForRun(runId);
     // Return bytes + the serving workflow AND the serve-attribution (provider) so
@@ -1299,7 +1312,7 @@ export async function runPlayerImageJob(job = {}) {
     const target = diskPathFor(runId, "player", "base", ext);
     fs.mkdirSync(path.dirname(target), { recursive: true });
     fs.writeFileSync(target, bytes);
-    const uri = servedUriFor(runId, "player", "base", ext);
+    const uri = servedUriFor(runId, "player", "base", ext) + versionQuery(bytes);
     updatePlayerPortrait(runId, uri);
     countGeneratedImageForRun(runId);
     // GAP 2: land the player portrait in the library (kind portrait).
@@ -1719,12 +1732,11 @@ export async function runLocationImageJob(job = {}) {
     const target = diskPathFor(runId, folder, "base", ext);
     fs.mkdirSync(path.dirname(target), { recursive: true });
     fs.writeFileSync(target, bytes);
-    const uri = servedUriFor(runId, folder, "base", ext);
-    // Redo reuses the same on-disk path, so without a unique query the browser
-    // would re-show the cached old image. The fresh per-redo seed is a stable,
-    // unique cache-buster (serveStatic strips the query). First/auto generation
-    // passes no seed -> clean URL.
-    const finalUri = seed != null ? `${uri}?v=${seed}` : uri;
+    // JOB 2: the cache-buster is now the CONTENT HASH (was the redo seed). A re-cook
+    // writes the same path with different bytes -> different ?v= -> new URL; the browser
+    // never re-shows the stale cached image, and serveStatic can cache the versioned URL
+    // forever. (serveStatic strips the query before disk mapping.)
+    const finalUri = uri + versionQuery(bytes);
     updateImageAssetStatus(runId, linked.assetId, "generated", finalUri);
     countGeneratedImageForRun(runId);
     // GAP 2: land the scene backdrop in the library (kind scene, loc:<slug> tag).

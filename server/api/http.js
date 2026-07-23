@@ -206,9 +206,19 @@ export function serveStatic(req, res, rootDir) {
   const ext = path.extname(absolutePath);
   const mime = MIME_TYPES[ext] || "application/octet-stream";
 
+  // JOB 2 (content-hashed asset URLs): a /data/assets image requested WITH a ?v= content
+  // hash is immutable — a changed asset gets a new hash → a new URL, so caching it forever
+  // is anti-fossil safe (the old URL is never requested again). Everything else — plain
+  // (unversioned) asset paths from old saves, HTML/JS, any dynamic file — keeps no-store,
+  // so a re-cook under an unversioned URL (or a purge) can never be served stale. This
+  // REPLACES the blanket no-store with something STRONGER, never weaker: only a
+  // content-addressed URL is cacheable, and its content can't change under it by definition.
+  const hasVersion = /[?&]v=/.test(req.url || "");
+  const isVersionedAsset =
+    hasVersion && pathname.startsWith("/data/assets/") && /\.(png|jpe?g|webp|gif)$/i.test(ext);
   res.writeHead(200, {
     "Content-Type": mime,
-    "Cache-Control": "no-store"
+    "Cache-Control": isVersionedAsset ? "public, max-age=31536000, immutable" : "no-store"
   });
   fs.createReadStream(absolutePath).pipe(res);
 }
