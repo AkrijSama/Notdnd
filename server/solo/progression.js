@@ -91,24 +91,39 @@ export function tierForMilestone(milestone) {
 // no server logic gates on it (gates read the milestone — see meetsTier).
 export const RANK_LADDER = Object.freeze(["E", "D", "C", "B", "A", "S", "SS", "SSS", "DG"]);
 
-/** RMS of skill rank indices (1..9) → a ladder rank; "UNASSESSED" when empty. */
-export function rankFromSkillIndices(indices) {
-  const arr = (Array.isArray(indices) ? indices : []).filter((n) => Number.isFinite(n) && n >= 1 && n <= 9);
+// The rank ladder is FURNITURE, not engine law (steel/furniture, JOB 2.1). A world declares
+// its own `world.rankLadder` (an array of rung labels, weakest→strongest); Babel authors the
+// E→DG ladder byte-identical; a world declaring none falls to RANK_LADDER. Carried on BOTH
+// doors via CARRIED_WORLD_KEYS.array. This resolver is the ONE place the ladder is read.
+export function resolveRankLadder(world) {
+  const declared = world && typeof world === "object" ? world.rankLadder : null;
+  if (Array.isArray(declared)) {
+    const rungs = declared.filter((r) => typeof r === "string" && r.trim().length > 0);
+    if (rungs.length >= 2) return rungs;
+  }
+  return RANK_LADDER;
+}
+
+/** RMS of skill rank indices (1..N) → a ladder rank; "UNASSESSED" when empty. Ladder-driven. */
+export function rankFromSkillIndices(indices, ladder = RANK_LADDER) {
+  const rungs = Array.isArray(ladder) && ladder.length >= 2 ? ladder : RANK_LADDER;
+  const arr = (Array.isArray(indices) ? indices : []).filter((n) => Number.isFinite(n) && n >= 1 && n <= rungs.length);
   if (arr.length === 0) return "UNASSESSED";
   const rms = Math.sqrt(arr.reduce((sum, n) => sum + n * n, 0) / arr.length);
-  const idx = Math.min(RANK_LADDER.length, Math.max(1, Math.round(rms)));
-  return RANK_LADDER[idx - 1];
+  const idx = Math.min(rungs.length, Math.max(1, Math.round(rms)));
+  return rungs[idx - 1];
 }
 
 /**
  * A player's displayed hunter rank. Reads ranked skills off player.babelSkills
  * (array of rank indices, or objects carrying { rankIndex }). No ranked skills
- * (the Book One starter state) → "UNASSESSED". Pure; never throws.
+ * (the Book One starter state) → "UNASSESSED". The ladder is the world's
+ * (world.rankLadder) else the E→DG default. Pure; never throws.
  */
-export function rankForPlayer(player) {
+export function rankForPlayer(player, world = null) {
   const skills = Array.isArray(player?.babelSkills) ? player.babelSkills : [];
   const indices = skills.map((s) => (typeof s === "number" ? s : (isNumber(s?.rankIndex) ? s.rankIndex : NaN)));
-  return rankFromSkillIndices(indices);
+  return rankFromSkillIndices(indices, resolveRankLadder(world));
 }
 
 // ── Phase 2: the world-book display-mapping contract (delta §3c) ─────────────

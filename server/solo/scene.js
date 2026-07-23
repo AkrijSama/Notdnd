@@ -1,7 +1,7 @@
 import { providerSupportsReference, resolveImageProvider } from "../ai/providers.js";
 import { resolveSceneArtForRun, resolveNpcFaceFromLibrary } from "./artLibrary.js";
 import { getAvailableSoloActions } from "./actions.js";
-import { MILESTONE_MAX, RANK_LADDER, tierForMilestone, displayLevelFor, rankForPlayer } from "./progression.js";
+import { MILESTONE_MAX, RANK_LADDER, tierForMilestone, displayLevelFor, rankForPlayer, resolveRankLadder } from "./progression.js";
 import { babelStatBlock } from "./babelStats.js";
 import { deriveClock, deriveWeather } from "./worldClock.js";
 import { conditionStatusPayload } from "./conditions.js";
@@ -744,15 +744,16 @@ function playerInventoryArray(run) {
 // fields when the acquisition system writes them; absent fields render null and
 // the client shows the provenance it does have. Server owns this projection so
 // the WINDOW stays a dumb, honest display.
-function babelSkillDetails(skills) {
+function babelSkillDetails(skills, ladder = RANK_LADDER) {
   if (!Array.isArray(skills)) {
     return [];
   }
+  const rungs = Array.isArray(ladder) && ladder.length >= 2 ? ladder : RANK_LADDER;
   return skills.map((s, i) => {
     const rankIndex = typeof s === "number" ? s : (typeof s?.rankIndex === "number" ? s.rankIndex : NaN);
     const rank =
-      Number.isFinite(rankIndex) && rankIndex >= 1 && rankIndex <= RANK_LADDER.length
-        ? RANK_LADDER[Math.round(rankIndex) - 1]
+      Number.isFinite(rankIndex) && rankIndex >= 1 && rankIndex <= rungs.length
+        ? rungs[Math.round(rankIndex) - 1]
         : null;
     const record = isPlainObject(s) ? s : {};
     const rawId = isString(record.skillId) ? record.skillId : "";
@@ -788,6 +789,19 @@ export function buildPlayerPayload(run) {
   );
   const mpSource = player.resources?.mp ?? player.resources?.mana ?? player.resources?.stamina ?? null;
   const mpGauge = gaugePayload(isPlainObject(mpSource) ? mpSource : null, 0, 0);
+  // STATUS WINDOW gate (JOB 2.2): the diegetic status fields (rank, ranked-skill count, the
+  // relabeled stat spine, the ranked-skill records) emit when the WORLD DECLARES a status sheet
+  // (world.sheetSpec) — no longer welded to variant==="babel". Babel authors a sheetSpec
+  // byte-identical (family "babel" → the six-stat babelStats spine + babelSkills). A non-Babel
+  // world declaring a sheetSpec gets rank + count from ITS rank ladder (world.rankLadder); the
+  // babel-family stat/skill computations stay null unless it declares family "babel". No sheetSpec
+  // → all null (the default D&D sheet), exactly as a non-Babel run behaved before.
+  const world = isPlainObject(run?.world) ? run.world : {};
+  const sheetSpec = isPlainObject(world.sheetSpec) ? world.sheetSpec : null;
+  const hasSheet = Boolean(sheetSpec);
+  const showRank = hasSheet && sheetSpec.showRank !== false;
+  const babelFamily = hasSheet && sheetSpec.family === "babel";
+  const rankLadder = resolveRankLadder(world);
   return {
     displayName: isString(player.displayName) ? player.displayName : "Adventurer",
     className: isString(player.className) ? player.className : "Adventurer",
@@ -820,13 +834,13 @@ export function buildPlayerPayload(run) {
     // family, exactly like babelStats/babelSkills below (JOB 1 / F2): rank + the rank ladder
     // are Babel canon (a Solo-Leveling E->DG ladder), not engine law — a non-Babel run must
     // emit no rank. (The variant weld is the same one JOB 5 migrates to world.sheetSpec.)
-    rank: run?.world?.variant === "babel" ? rankForPlayer(player) : null,
+    rank: showRank ? rankForPlayer(player, world) : null,
     // Ranked-skill count — the SAME source rank is computed from (player.babelSkills),
     // so the STATUS WINDOW's skill count and RANK can never contradict each other. Also
     // Babel-gated (F3): player.babelSkills is a Babel-only surface; a non-Babel run emits
     // none. (Defect 4.)
     rankedSkillCount:
-      run?.world?.variant === "babel"
+      showRank
         ? (Array.isArray(player.babelSkills)
             ? player.babelSkills.filter((s) => Number.isFinite(typeof s === "number" ? s : s?.rankIndex)).length
             : 0)
@@ -875,10 +889,10 @@ export function buildPlayerPayload(run) {
     // read by no resolver or display path, and its `spirit`/`luck` keys would
     // name-collide with the Babel canon while holding dead values (a lie surface).
     // It remains a persisted schema field (unread) pending a dedicated migration.
-    babelStats: run?.world?.variant === "babel" ? babelStatBlock(player.abilities) : null,
+    babelStats: babelFamily ? babelStatBlock(player.abilities) : null,
     // Babel WINDOW skills, display-normalized (name/rank/stat/effect/provenance)
     // from the same records rankForPlayer reads. Null outside the Babel family.
-    babelSkills: run?.world?.variant === "babel" ? babelSkillDetails(player.babelSkills) : null,
+    babelSkills: babelFamily ? babelSkillDetails(player.babelSkills, rankLadder) : null,
     skills: isPlainObject(player.skills) ? { ...player.skills } : {},
     portraitUri: isString(player.portraitUri) ? player.portraitUri : null,
     // Lifecycle status: alive | dying | stable | dead (legacy: active | downed).

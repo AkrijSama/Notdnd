@@ -30,38 +30,41 @@ function loadBabel(mutate) {
   return run;
 }
 
-// ── 1. WIDENING — object/array world knobs survive load (planned-gate reachability) ──
-test("WIDENING: authored object/array world slots reach run.world (were silently dropped)", () => {
-  const orientationMix = { straight: 0.7, gay: 0.15, bi: 0.15 };
-  const systemLore = { cosmology: "the Tower keeps a hundred floors" };
-  const playerSense = { grantsCombatFocus: true };
-  const suggestionExemplars = ["Ask Grace what a license buys"];
+// ── 1. NO-THIRD-STATE (JOB 2.4, supersedes the stage-3 "widening") — a knob is carried ONLY
+//      when a live run.world reader consumes it. The dead carries added "for a future consumer"
+//      are REMOVED: orientationMix / playerSense / suggestionExemplars (no run.world reader) and
+//      nameBanks (its reader is the COMPILE-time name mint, not a run.world read). Slots that DO
+//      have a live run.world reader (systemLore, deathLaw, the scalar sightAccent) still survive.
+test("NO-THIRD-STATE: dead carries (orientationMix/playerSense/suggestionExemplars) are NOT carried to run.world", () => {
   const run = loadBabel((s) => {
-    s.world.orientationMix = orientationMix;
-    s.world.systemLore = systemLore;
-    s.world.playerSense = playerSense;
-    s.world.suggestionExemplars = suggestionExemplars;
-    s.world.sightAccent = "#123456";
+    s.world.orientationMix = { straight: 0.7, gay: 0.15, bi: 0.15 };
+    s.world.playerSense = { grantsCombatFocus: true };
+    s.world.suggestionExemplars = ["Ask Grace what a license buys"];
   });
-  assert.deepEqual(run.world.orientationMix, orientationMix, "orientationMix must survive the loader whitelist");
-  assert.deepEqual(run.world.systemLore, systemLore, "systemLore must survive");
-  assert.deepEqual(run.world.playerSense, playerSense, "playerSense must survive");
-  assert.deepEqual(run.world.suggestionExemplars, suggestionExemplars, "array slots must survive");
-  assert.equal(run.world.sightAccent, "#123456", "scalar sightAccent must survive");
+  assert.equal(run.world.orientationMix, undefined, "orientationMix has no run.world reader → not carried (still an honest manifest DEAD SLOT)");
+  assert.equal(run.world.playerSense, undefined, "playerSense is a phantom carry (no author, reader, or solicitation) → removed");
+  assert.equal(run.world.suggestionExemplars, undefined, "suggestionExemplars is a phantom carry → removed");
 });
 
-test("WIDENING: nameBanks (compile-time-only dead slot) is now reachable at runtime on run.world", () => {
+test("LIVE carries still survive: systemLore + the scalar sightAccent reach run.world", () => {
+  const systemLore = { cosmology: "the Tower keeps a hundred floors" };
+  const run = loadBabel((s) => {
+    s.world.systemLore = systemLore;
+    s.world.sightAccent = "#123456";
+  });
+  assert.deepEqual(run.world.systemLore, systemLore, "systemLore is a live carry");
+  assert.equal(run.world.sightAccent, "#123456", "scalar sightAccent is a live carry");
+});
+
+test("nameBanks is a COMPILE-time slot (name mint), not a run.world carry — the redundant carry is gone", () => {
   const run = loadBabel();
-  assert.ok(run.world.nameBanks && Array.isArray(run.world.nameBanks.people), "babel's nameBanks must reach run.world");
-  assert.ok(run.world.nameBanks.people.includes("Odile"), "the authored people bank must be readable at runtime");
+  assert.equal(run.world.nameBanks, undefined, "nameBanks is read at COMPILE (cast/POI name mint reads book.nameBanks); the run.world carry had no runtime reader → removed");
 });
 
 test("WIDENING: a bare world (no object slots authored) rides through unchanged", () => {
   const run = loadBabel((s) => {
-    delete s.world.nameBanks;
     delete s.world.deathLaw;
   });
-  assert.equal(run.world.nameBanks, undefined, "an unauthored slot must not be invented");
   assert.equal(run.world.deathLaw, undefined, "an unauthored slot must not be invented");
 });
 

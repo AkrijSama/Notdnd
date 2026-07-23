@@ -614,10 +614,17 @@ const CHASSIS_KEYWORDS = Object.freeze([
   [/\b(raven|crow|bird|hawk|eagle|owl|falcon|jay)\b/i, "raven"],
   [/\b(otter|beaver|mink|marten)\b/i, "river_otter"]
 ]);
-function nearestChassis(descriptor) {
+// The chassis a species descriptor keyword-matches, or null when NOTHING matches (a generic
+// label like "wildlife"/"anomaly"). The null signal lets a caller distinguish "the descriptor
+// named a real creature" from "fell back to the default" — used by the threatLadder→encounter
+// wiring (JOB 2.3) so a ladder that names no species leaves the deterministic pick untouched.
+export function matchChassisKeyword(descriptor) {
   const d = String(descriptor || "");
   for (const [re, id] of CHASSIS_KEYWORDS) if (re.test(d)) return id;
-  return "grey_wolf"; // a mid, common temperate chassis as the honest default
+  return null;
+}
+function nearestChassis(descriptor) {
+  return matchChassisKeyword(descriptor) || "grey_wolf"; // a mid, common temperate chassis as the honest default
 }
 
 /**

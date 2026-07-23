@@ -85,6 +85,22 @@
       "wild boar"
     ],
     "sceneRegister": "beautiful yet subtly wrong, uneasy stillness, faint shimmer in the air, over-still water, off light",
+    "rankLadder": ["E", "D", "C", "B", "A", "S", "SS", "SSS", "DG"],
+    "sheetSpec": {
+      "family": "babel",
+      "windowTitle": "STATUS",
+      "showRank": true,
+      "showRankedSkills": true,
+      "originLabel": "Awakening Origin",
+      "statLabels": [
+        { "label": "STR", "ability": "strength" },
+        { "label": "DEX", "ability": "dexterity" },
+        { "label": "VIT", "ability": "constitution" },
+        { "label": "Spirit", "ability": "wisdom" },
+        { "label": "INT", "ability": "intelligence" },
+        { "label": "Luck", "ability": "charisma" }
+      ]
+    },
     "corruption": {
       "kind": "chaosling",
       "namePrefix": "Chaos-",

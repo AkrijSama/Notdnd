@@ -20,7 +20,7 @@ import path from "node:path";
 import { createDefaultSoloRun } from "../server/solo/schema.js";
 import { loadScenarioIntoRun, loadScenarioFile } from "../server/campaign/scenarioLoader.js";
 import { resolveStatBlock } from "../server/campaign/bestiary.js";
-import { RANK_LADDER } from "../server/solo/progression.js";
+import { RANK_LADDER, rankForPlayer } from "../server/solo/progression.js";
 
 // Load babel with an arbitrary set of probe world/origin knobs injected, and return the
 // resulting run — the single instrument every loader-carrier blocker check reads.
@@ -46,30 +46,35 @@ test("HELD actionNarration: loader still DROPS world.opening / world.startArea",
   assert.equal(run.startArea, undefined, "run.startArea now exists — RE-AUDIT actionNarration");
 });
 
-// ── sheetSpec ────────────────────────────────────────────────────────────────
-// The LOADER blocker is GONE (Stage 3 carries world.sheetSpec). The live blocker is now
-// the CLIENT: the STATUS WINDOW render is hard-gated on `variant === "babel"`
-// (soloSceneShell.js). A server-only migration would be dead furniture for other worlds.
-// UNBLOCK CONDITION: the client render stops keying on variant === "babel".
-test("HELD sheetSpec: loader carries world.sheetSpec, but the client STATUS WINDOW still gates on variant", () => {
+// ── sheetSpec — RESOLVED (JOB 2.2) ─────────────────────────────────────────────
+// The blocker is CLEARED: the STATUS WINDOW render no longer keys on variant==="babel"; it
+// gates on the world DECLARING a diegetic sheet (world.sheetSpec). This now LOCKS the resolved
+// state — if someone re-welds the window to the variant, this goes RED.
+test("RESOLVED sheetSpec: the client STATUS WINDOW gates on world.sheetSpec, not variant==='babel'", () => {
   const run = runWithProbes((s) => { s.world.sheetSpec = { stats: [{ label: "X", ability: "strength" }] }; });
-  assert.notEqual(run.world.sheetSpec, undefined, "the loader is expected to carry world.sheetSpec (Stage 3) — if this drops, the recorded blocker moved");
+  assert.notEqual(run.world.sheetSpec, undefined, "the loader carries world.sheetSpec through both doors");
   const client = read("src/components/soloSceneShell.js");
   assert.ok(
-    client.includes('variant === "babel"'),
-    "the client STATUS WINDOW no longer gates on variant === \"babel\" — sheetSpec's player door may be open; RE-AUDIT sheetSpec (client half is CLI-1 fenced)"
+    !client.includes('world.variant === "babel"'),
+    "the STATUS WINDOW must NOT be re-welded to variant==='babel' — it gates on world.sheetSpec (JOB 2.2)"
+  );
+  assert.ok(
+    /sheetSpec/.test(client),
+    "the client must read world.sheetSpec to open the diegetic window"
   );
 });
 
-// ── rankLadder ───────────────────────────────────────────────────────────────
-// RECORDED BLOCKER (loader half): RANK_LADDER is an ARRAY and carryObject skips arrays,
-// so an array-shaped world.rankLadder is dropped. (The other two halves — the
-// babelSkills→rankedSkills DB rename, and the variant-gated client display — are not
-// runtime-probed here; see the ledger.) UNBLOCK: an array world.rankLadder reaches run.
-test("HELD rankLadder: RANK_LADDER is a fixed array and the loader DROPS an array world.rankLadder", () => {
-  assert.ok(Array.isArray(RANK_LADDER), "RANK_LADDER stopped being a fixed array — RE-AUDIT rankLadder");
-  const run = runWithProbes((s) => { s.world.rankLadder = ["E", "D", "C"]; });
-  assert.equal(run.world.rankLadder, undefined, "an ARRAY world.rankLadder now reaches run.world — RE-AUDIT rankLadder's loader half");
+// ── rankLadder — RESOLVED (JOB 2.1) ────────────────────────────────────────────
+// The blocker is CLEARED: rankLadder now rides CARRIED_WORLD_KEYS.array, and rankForPlayer
+// reads world.rankLadder (resolveRankLadder) else the E→DG default. This LOCKS the resolved
+// state — a dropped array carry, or a rank computed off a fixed ladder, goes RED.
+test("RESOLVED rankLadder: an ARRAY world.rankLadder reaches run.world and drives rankForPlayer", () => {
+  assert.ok(Array.isArray(RANK_LADDER), "the default ladder stays a fixed array");
+  const run = runWithProbes((s) => { s.world.rankLadder = ["Novice", "Adept", "Master", "Grandmaster"]; });
+  assert.deepEqual(run.world.rankLadder, ["Novice", "Adept", "Master", "Grandmaster"], "an ARRAY world.rankLadder now reaches run.world (carried as an array slot)");
+  // a ranked skill resolves against the WORLD's ladder, not E→DG.
+  const rank = rankForPlayer({ babelSkills: [4] }, run.world); // index 4 → 4th rung
+  assert.equal(rank, "Grandmaster", "rankForPlayer reads world.rankLadder, not the hardcoded E→DG");
 });
 
 // ── imageWorker art-framing ──────────────────────────────────────────────────

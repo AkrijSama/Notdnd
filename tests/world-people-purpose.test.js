@@ -22,11 +22,14 @@ test("a {name, vibe} world compiles with cast + quest spine + encounter (validat
   assert.deepEqual(Object.keys(scenario.questOffers).sort(), ["offer_main", "offer_side_landmark", "offer_side_threat"]);
   assert.equal(scenario.opening.questObjectiveFrom, "offer_main", "main quest arrives diegetically");
   assert.ok(scenario.cast.some((c) => c.questOffer === "offer_main"), "a cast member offers the main");
-  // ENCOUNTER: a minted tier-1 chaosling with world-flavored naming + a placement
+  // ENCOUNTER: a minted tier-1 threat with world-flavored naming + a placement. Ashfall declares
+  // NO world.corruption, so its threat is a NEUTRAL beast — NOT a violet chaosling (JOB 1: the
+  // chaosling/violet identity is Babel furniture, not an engine default welded onto every world).
   const blocks = Object.values(scenario.bestiary.statBlocks || {});
   assert.equal(blocks.length, 1);
   assert.equal(blocks[0].tier, 1, "tier-1 threat");
-  assert.equal(blocks[0].kind, "chaosling", "minted through the chaosling rule");
+  assert.equal(blocks[0].kind, "beast", "a corruption-less world mints a NEUTRAL beast, not a chaosling");
+  assert.equal(blocks[0].corruption, undefined, "no violet corruption leaks into a world that declared none");
   assert.match(blocks[0].name, /roosevelt elk|wolf|bear|boar|lion|deer|coyote|snake|raven|otter/i, "base-animal chassis, world-flavored name");
   assert.equal(scenario.bestiary.placements.length, 1, "the encounter is placed");
 });

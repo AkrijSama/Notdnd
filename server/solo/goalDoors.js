@@ -176,8 +176,11 @@ export function detectDemonstratedGoal(run, { minCount = 3, window = 8 } = {}) {
   const exemplar = perIntent.find((it) => it.tokens.has(best))?.intent || best;
   const summary = exemplar.replace(/^\s*i\s+(?:want to|will|keep|try to|am trying to|need to|'?m going to|'?m gonna|intend to|plan to)\s+/i, "").trim() || best;
   const scale = inferGoalScale(exemplar);
-  const babel = String(run?.world?.variant || "").toLowerCase() === "babel";
-  const ask = babel
+  // A world with a diegetic STATUS WINDOW (world.sheetSpec) speaks in its SYSTEM voice — the
+  // bracketed all-caps frame — not welded to variant==="babel". Babel authors a sheetSpec, so this
+  // stays byte-identical; a world with no sheet uses the plain narrator prose.
+  const diegeticWindow = isPlainObject(run?.world) && isPlainObject(run.world.sheetSpec);
+  const ask = diegeticWindow
     ? `[ YOU RETURN TO THIS, AGAIN AND AGAIN. IS THIS YOUR PURPOSE HERE — TO ${best.toUpperCase()}? ]`
     : `You keep coming back to this. Is it becoming your purpose — to ${best}?`;
   return { token: best, count: bestCount, summary, scale, exemplar, ask };

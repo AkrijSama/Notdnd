@@ -118,7 +118,9 @@ test("thread-fire: a registered Project's beat fires when its keywords hit the c
 
 test("DEMONSTRATED door: 3+ same-pattern actions → one diegetic ask (VOICE-flavored in Babel) → confirm commits + registers", () => {
   const run = run0();
-  run.world = { ...(run.world || {}), variant: "babel" };
+  // The bracketed SYSTEM-voice ask fires because the world declares a diegetic STATUS WINDOW
+  // (world.sheetSpec), not because it is named "babel" (JOB 2.2).
+  run.world = { ...(run.world || {}), variant: "babel", sheetSpec: { family: "babel" } };
   run.timeline = ["I search the ruins for the relic", "I dig through the ruins again", "I comb the ruins for anything left"]
     .map((intent, i) => ({ eventId: `e${i}`, type: "attempt", payload: { intent }, createdAt: T(i) }));
   const proposal = detectDemonstratedGoal(run);

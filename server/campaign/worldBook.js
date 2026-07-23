@@ -28,7 +28,7 @@
 // compilation is deterministic and testable.
 
 import { validateScenario, SCENARIO_SUBSTRATE_VERSION } from "./scenarioSchema.js";
-import { mintChaosling, listBaseAnimals, resolveCorruptionIdentity } from "./bestiary.js";
+import { mintChaosling, listBaseAnimals, resolveCorruptionIdentity, matchChassisKeyword } from "./bestiary.js";
 import { CARRIED_WORLD_KEYS } from "./scenarioLoader.js";
 
 export const WORLD_BOOK_SCHEMA_VERSION = 1;
@@ -305,7 +305,18 @@ function seedIndex(str, mod) {
 function mintStarterEncounter(book, start, poiIds) {
   const chassisList = listBaseAnimals();
   if (!chassisList.length) return null;
-  const chassis = chassisList[seedIndex(`${book.name}|chassis`, chassisList.length)];
+  // THREAT LADDER → ENCOUNTER (JOB 2.3): the world's tier-1 threat is its OWN. The first
+  // COMMON-rarity rung of world.threatLadder names it; that label keyword-maps to the nearest
+  // combat chassis (matchChassisKeyword). A world declaring a common threat that names a creature
+  // ("wolf-drones", "feral bears") mints THAT chassis; a ladder that names no species (the default
+  // "wildlife"/"scavenger"), or no ladder at all, falls to the deterministic base-animal pick —
+  // so babel (authored placements, never minted) and thin {name,vibe} worlds are unchanged.
+  const ladder = isPlainObject(book.threatLadder) ? book.threatLadder : null;
+  const commonKind = ladder
+    ? (Object.entries(ladder).find(([, rarity]) => /\bcommon\b/i.test(String(rarity)))?.[0] || null)
+    : null;
+  const ladderedChassis = commonKind ? matchChassisKeyword(commonKind) : null;
+  const chassis = ladderedChassis || chassisList[seedIndex(`${book.name}|chassis`, chassisList.length)];
   const seed = slugify(book.name, "world");
   // THE TIER-1 THREAT CORRUPTION IDENTITY is world-book data: a world declares world.corruption
   // (kind/palette/markers/vocabulary); a world declaring NOTHING mints a NEUTRAL threat — no
@@ -643,7 +654,7 @@ export const WORLD_BOOK_SLOTS = Object.freeze([
   { path: "factions", label: "Factions", defaultKind: "empty", default: [],
     consumer: "reputation engine (server/solo/reputation.js); cast factionId" },
   { path: "threatLadder", label: "Threat ladder", defaultKind: "table", default: DEFAULT_THREAT_LADDER,
-    consumer: "NONE: carried into scenario.bestiary.threatLadder and never read; encounter/spawn selection never consults it (DEAD SLOT, verified 2026-07-21)" },
+    consumer: "LIVE (JOB 2.3): mintStarterEncounter reads the first COMMON-rarity rung and keyword-maps it to the starter threat's combat chassis (matchChassisKeyword). A world naming a different common threat mints a different creature. Player door: the tier-1 encounter you meet at the edge of the kept ground." },
   { path: "bestiary", label: "Bestiary", defaultKind: "mint", mintedBy: "compileBestiary() + mintStarterEncounter()",
     consumer: "combat stat blocks + placements (scenarioLoader.placeBestiaryEncounters)" },
   { path: "nameBanks", label: "Name banks", defaultKind: "table", default: DEFAULT_NAME_BANKS,

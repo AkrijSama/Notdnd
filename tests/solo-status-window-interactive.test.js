@@ -11,6 +11,12 @@ import {
 // what they are (they define RANK), inventory items expand to their description
 // and expose Use where the server marks them usable.
 
+// The STATUS WINDOW renders because the WORLD declares a diegetic sheet (world.sheetSpec),
+// not because it is named "babel" (JOB 2.2). A minimal Babel-family sheet is enough to open it.
+function babelWorld() {
+  return { variant: "babel", sheetSpec: { family: "babel", showRank: true, showRankedSkills: true } };
+}
+
 function babelPlayer(extra = {}) {
   return {
     displayName: "Rell",
@@ -39,7 +45,7 @@ function babelPlayer(extra = {}) {
 }
 
 test("WINDOW skills are a named, inspectable list (not a bare count)", () => {
-  const character = characterFromScenePlayer(babelPlayer(), { variant: "babel" });
+  const character = characterFromScenePlayer(babelPlayer(), babelWorld());
   const html = renderBabelStatusWindow(character);
   assert.match(html, /Read the Static/, "the held skill is NAMED in the WINDOW");
   assert.match(html, /<details class="solo-skill-detail">/, "skill row expands");
@@ -49,7 +55,7 @@ test("WINDOW skills are a named, inspectable list (not a bare count)", () => {
 });
 
 test("WINDOW inventory items are interactable: expandable description + Use when usable", () => {
-  const character = characterFromScenePlayer(babelPlayer(), { variant: "babel" });
+  const character = characterFromScenePlayer(babelPlayer(), babelWorld());
   const html = renderBabelStatusWindow(character);
   assert.match(html, /<details class="solo-inv-detail">/, "inventory rows expand");
   assert.match(html, /Bitter herbs in oil/, "item description readable in place");
@@ -61,13 +67,13 @@ test("WINDOW empty skills state teaches the loop instead of a bare 'none'", () =
   const player = babelPlayer({});
   player.babelSkills = [];
   player.rankedSkillCount = 0;
-  const character = characterFromScenePlayer(player, { variant: "babel" });
+  const character = characterFromScenePlayer(player, babelWorld());
   const html = renderBabelStatusWindow(character);
   assert.match(html, /skills are earned in play, and they define your RANK/i);
 });
 
 test("rankedSkillCount actually flows into the WINDOW count (was read but never wired)", () => {
-  const character = characterFromScenePlayer(babelPlayer(), { variant: "babel" });
+  const character = characterFromScenePlayer(babelPlayer(), babelWorld());
   assert.equal(character.babel.rankedSkillCount, 1, "count carried onto the view model");
   const html = renderBabelStatusWindow(character);
   assert.match(html, /<span>Skills<\/span><span>1<\/span>/, "the count renders (not 'none')");

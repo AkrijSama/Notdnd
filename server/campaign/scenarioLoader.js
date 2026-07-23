@@ -28,10 +28,19 @@ const SCENARIO_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "sc
 // them, and world-key-carry-parity / two-doors-parity tests fail if a door drifts from it. A knob
 // carried for the JSON door but not emittable through the creator door is "wired for one door" —
 // which is not wired (a created world silently loses a field babel has). Add a knob HERE once.
+// NO-THIRD-STATE LAW (JOB 2.4, owner 2026-07-22, supersedes the stage-3 "widening"): a knob is
+// carried ONLY if a live run.world reader consumes it. "Carry it for a FUTURE consumer" is the
+// third state the owner now forbids. Removed as carried-but-dead (no run.world reader): the
+// phantoms `playerSense`, `speechConventions`, `suggestionExemplars` (no author, reader, or
+// solicitation); `orientationMix` (validated/normalized/compiled but its declared consumer — the
+// romance path in reputation.js — never reads it: still an honest manifest-flagged DEAD SLOT, just
+// no longer double-plumbed into run.world); and `nameBanks` (a LIVE slot, but its reader is the
+// COMPILE-time cast/POI-name mint reading `book.nameBanks` — the run.world carry had no runtime
+// reader). See docs/design/steel-vs-furniture.md §2.4.
 export const CARRIED_WORLD_KEYS = Object.freeze({
   string: ["name", "tone", "flavor", "artStyle", "variant", "era", "sceneRegister", "sightAccent"],
-  object: ["deathLaw", "orientationMix", "systemLore", "playerSense", "speechConventions", "rankLadder", "sheetSpec", "nameBanks", "corruption"],
-  array: ["suggestionExemplars", "plausibleFauna"]
+  object: ["deathLaw", "systemLore", "sheetSpec", "corruption"],
+  array: ["plausibleFauna", "rankLadder"]
 });
 
 function isString(value) {

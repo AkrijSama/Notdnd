@@ -12,9 +12,12 @@ import { detectAbsentTargetRefusal } from "../server/solo/absentTarget.js";
 // Keys authored on a world AND read from run.world.<key> by a live consumer (derived from a
 // grep of `run.world.*` reads across server/, intersected with babel's authored world block).
 // If a NEW run.world reader is added, add its key here — the enumeration is the guard.
+// NOTE (JOB 2.4): `nameBanks` was REMOVED from this list — it has no run.world reader. Its live
+// reader is the COMPILE-time cast/POI name mint reading `book.nameBanks`; the run.world carry was
+// redundant dead weight and is no longer carried. This guard is only for run.world readers.
 const AUTHORED_AND_READ = [
   "name", "tone", "variant", "flavor", "artStyle", "era", "sceneRegister",
-  "deathLaw", "systemLore", "nameBanks", "artStyleOptions", "plausibleFauna",
+  "deathLaw", "systemLore", "artStyleOptions", "plausibleFauna",
   "startingLocationName", "startingLocationType"
 ];
 

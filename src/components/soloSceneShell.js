@@ -1481,12 +1481,18 @@ export function characterFromScenePlayer(player, world = null) {
     name: full.charAt(0).toUpperCase() + full.slice(1),
     mod: formatMod(abilityModifier(Number(ab[full]) || 10))
   }));
-  // BABEL STATUS WINDOW (world-book §2.3): when the run is the Babel world-family
-  // (scene.world.variant === "babel"), the sheet is the VOICE's diegetic WINDOW —
-  // six relabeled stats (STR/DEX/VIT/Spirit/INT/Luck), a displayed Level + tier, a
-  // hunter Rank (or UNASSESSED), the Awakening Origin, and HP. No AC/Speed/Mana/
-  // D&D layout. The server owns the truth; this only relabels + reorders it.
-  const isBabel = Boolean(world && typeof world === "object" && world.variant === "babel");
+  // DIEGETIC STATUS WINDOW (world-book §2.3, JOB 2.2): when the world DECLARES a status sheet
+  // (scene.world.sheetSpec present), the sheet is the world's diegetic WINDOW — relabeled stats
+  // (Babel: STR/DEX/VIT/Spirit/INT/Luck), a displayed Level + tier, a hunter Rank (or
+  // UNASSESSED), the origin, and HP. No AC/Speed/Mana/D&D layout. The server owns the truth;
+  // this only relabels + reorders it. A world with no sheetSpec falls to the default D&D sheet.
+  // STATUS WINDOW gate (JOB 2.2): a world renders its own diegetic sheet by DECLARING
+  // world.sheetSpec — NOT by being named "babel". Babel authors a sheetSpec byte-identical, so
+  // this stays identical for the Babel family; a non-Babel world (e.g. cyberpunk) that declares a
+  // sheetSpec gets the diegetic WINDOW (not the D&D fallback), its stats relabeled by its own
+  // sheetSpec.statLabels. No sheetSpec → null → the default D&D sheet.
+  const sheetSpec = world && typeof world === "object" && world.sheetSpec && typeof world.sheetSpec === "object" ? world.sheetSpec : null;
+  const hasSheet = Boolean(sheetSpec);
   // The Babel stat spine is single-sourced by the SERVER (player.babelStats,
   // built from run.player.abilities via the same lookup the resolver uses — see
   // server/solo/babelStats.js), so the WINDOW displays exactly what the check
@@ -1496,10 +1502,15 @@ export function characterFromScenePlayer(player, world = null) {
     ["STR", "strength"], ["DEX", "dexterity"], ["VIT", "constitution"],
     ["Spirit", "wisdom"], ["INT", "intelligence"], ["Luck", "charisma"]
   ];
+  // The WINDOW's stat labels: the world's own (sheetSpec.statLabels) else Babel's six. Only
+  // consulted when the server didn't send a computed stat spine (a non-Babel-family sheet).
+  const sheetStatOrder = Array.isArray(sheetSpec?.statLabels) && sheetSpec.statLabels.length
+    ? sheetSpec.statLabels.filter((s) => s && typeof s.label === "string" && typeof s.ability === "string").map((s) => [s.label, s.ability])
+    : BABEL_STAT_ORDER;
   const babelStatSource = Array.isArray(player.babelStats) && player.babelStats.length
     ? player.babelStats.map((s) => [s.label, s.ability, s.score])
-    : BABEL_STAT_ORDER.map(([key, full]) => [key, full, Number.isFinite(Number(ab[full])) ? Number(ab[full]) : 10]);
-  const babel = isBabel
+    : (sheetStatOrder.length ? sheetStatOrder : BABEL_STAT_ORDER).map(([key, full]) => [key, full, Number.isFinite(Number(ab[full])) ? Number(ab[full]) : 10]);
+  const babel = hasSheet
     ? {
         origin: typeof player.origin === "string" ? player.origin : "The Beckoned",
         originFeat: typeof player.originFeat === "string" ? player.originFeat : "",
