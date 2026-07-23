@@ -3501,6 +3501,25 @@ button:disabled {
   height: 100%;
   max-width: min(52vw, 500px);
 }
+/* UI-16 (OWNER STAMP, supersedes UI-8's CENTERED sprite): during a VN beat the sprite stays in
+   the TOP-RIGHT CLUSTER — MAP at the corner, FACE to its left, SPRITE to the left of the face —
+   NOT centered (the a49ccbd arrangement). UI-8's full-screen dialogue overlay (z-200) still covers
+   the scene, narration, and all other chrome; ONLY the map, face, and sprite are lifted ABOVE it
+   (fixed, z above 200) and stay visible for the beat. The sprite remains LARGE (fills the viewport
+   height beside the dialogue; it does not shrink to fit). Restores the cluster geometry so the
+   vn-guard order (MAP > FACE > SPRITE) + no-overlap assertions pass again. Last block wins. */
+.solo-stage.vn-active .solo-minimap { position: fixed; top: 8px; right: 8px; bottom: auto; left: auto; z-index: 201; }
+.solo-stage.vn-active .solo-vn-face { position: fixed; top: 8px; left: auto; right: calc(8px + var(--vn-map-w) + var(--vn-cluster-gap)); z-index: 202; }
+.solo-stage.vn-active .solo-vn-sprite {
+  position: fixed;
+  top: 8px;
+  bottom: var(--vn-box-h, 150px);
+  left: auto;
+  right: calc(8px + var(--vn-map-w) + var(--vn-cluster-gap) + var(--vn-face-w) + 12px);
+  z-index: 202;
+  justify-content: flex-end;
+}
+.solo-stage.vn-active .solo-vn-sprite-img { height: 100%; width: auto; max-width: min(46vw, 460px); }
 .solo-vn-box-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 3px; }
 /* JOB 3: the VN box head's right-side controls — the dialogue sizer + End, grouped
    so they sit together opposite the speaker name. */
