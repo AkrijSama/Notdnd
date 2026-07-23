@@ -49,6 +49,28 @@ function resolveByName(name, customList, srdGetter) {
   return custom || srdGetter(name);
 }
 
+// UI-15: title-case a character name at CREATION so the STORED value (run.player.name,
+// read by narration/prompts everywhere) is capitalized, not just the display. Every word's
+// first letter is uppercased; the rest of the word is left as typed (so "McCoy"/"O'Ryan"
+// survive). Connecting words (of/the/and/a/an/to/in/on/at/by/for + the nobiliary particles
+// von/van/de/la/del/di) stay LOWERCASE unless they lead — standard English title case, so
+// "aldric of the waking mile" → "Aldric of the Waking Mile", not "...Of The...".
+const NAME_CONNECTORS = new Set([
+  "of", "the", "and", "a", "an", "to", "in", "on", "at", "by", "for",
+  "von", "van", "de", "la", "del", "di", "der", "den"
+]);
+export function titleCaseName(raw) {
+  const s = String(raw || "").replace(/\s+/g, " ").trim();
+  if (!s) return s;
+  return s
+    .split(" ")
+    .map((w, i) => {
+      if (i > 0 && NAME_CONNECTORS.has(w.toLowerCase())) return w.toLowerCase();
+      return w.charAt(0).toUpperCase() + w.slice(1);
+    })
+    .join(" ");
+}
+
 /**
  * @param {{ name?: string, pronouns?: string, race?: string, characterClass?: string,
  *   background?: string, baseAbilityScores?: Record<string, number>, chosenSkills?: string[],
@@ -109,7 +131,7 @@ export function buildCharacter(choices = {}, options = {}) {
   ];
 
   return {
-    name: choices.name ? String(choices.name) : null,
+    name: choices.name ? titleCaseName(String(choices.name)) : null,
     pronouns: choices.pronouns ? String(choices.pronouns) : null,
     bodyType: choices.bodyType ? String(choices.bodyType) : null,
     race: raceData?.name || (choices.race ? String(choices.race) : null),
