@@ -367,3 +367,32 @@ Not landed this pass (regression-risk / multi-system / test-contract inversion);
 plus the corrected manifest self-check mean the next authored-but-dropped key, the next
 one-door-only field, and the next stale manifest claim each turn a test RED and name themselves —
 the exact silent-drift that made this a third pass.
+
+---
+
+## 9. FOURTH-PASS STATUS (2026-07-22, CLI-2) — completed + the held terminal states
+
+Per the completion mandate: finished, or BLOCKED with a mechanism at file:line + a machine-checkable
+unblock. **Completed + pushed this pass:** JOB 0 (harness zombie leak — root-caused, see
+scripts/walk-harness/browser-cleanup.mjs), UI-14 (combat strip = one scene), and **JOB 1.3 forms
+half** (npc.forms AUTHORED path shipped — babel authors npc_voice.forms, byte-identical; a world's
+own forms work with zero engine change; entity-forms-authoring.test.js).
+
+**HELD (blocker file:line → machine-checkable unblock):**
+
+| Job | Blocker (file:line) | Unblock condition (the test that goes green when done) |
+|---|---|---|
+| **1.1 chaosling/violet → world.corruption** | `bestiary.js:299-320` mintChaosling hardcodes `kind:"chaosling"` / `name:"Chaos-"` / `corruption:{palette:"violet"}` / `tags`, called by `worldBook.js:310` (creator door) + `bestiary.js:510` (runtime). Coupled to the ledger's **9-module chaos-vocabulary span**: `essence.js` SIGHT_PHRASES + `chaoslingSpawn.js` + `CHAOS_SKILLS`, and the parity/nature-coherence tests asserting exact Babel strings. | A golden test: babel's tier-1 mint is byte-identical AND a neutral world's mint has `kind!=="chaosling"`, no violet, no `"corrupted"` tag, and essence-sight fires NO chaos vocab; add `"corruption"` to `CARRIED_WORLD_KEYS.object`; both doors green. |
+| **1.2 rankLadder → progression** | `progression.js:92` `RANK_LADDER` is a hardcoded ARRAY; the loader's `carryObject` skips arrays (`held-item-contract.test.js` rankLadder probe locks this). | Add `rankLadder` to `CARRIED_WORLD_KEYS.array`; `rankForPlayer` reads `world.rankLadder` else the default; a golden for babel's E→DG ladder + a world with a different ladder; update the held-item rankLadder probe. |
+| **1.2 sheetSpec → status window** | The STATUS WINDOW render is client-gated `variant==="babel"` (`soloSceneShell.js` ~1429; `held-item-contract.test.js` sheetSpec probe); `scene.js:872,875` server weld. | Generalize the client gate to `world.sheetSpec` presence; a non-babel world declaring a sheetSpec renders it; babel byte-identical. |
+| **1.2 threatLadder → encounters** | `bestiary.js:217` frozen `THREAT_LADDER`; encounter/spawn selection never reads `world.threatLadder`. | Encounter selection reads `world.threatLadder`; a world declaring a different ladder shifts its encounters; babel byte-identical. |
+| **1.2 remaining dead slots** (orientationMix, nameBanks, speechConventions, playerSense, suggestionExemplars) | carried by the loader, zero live readers. | Each: a live reader OR removed from `CARRIED_WORLD_KEYS` AND the creator stops soliciting it (no third state). `sightAccent` is `styles.css` — **CLI-1 fenced this pass, untouched.** |
+| **1.3 Limping Grey → babel** | `bestiary.js:328-359` FROZEN registry splice; `minted-block-pruning.test.js` asserts "frozen blocks are NEVER pruned"; ~8 tests call `resolveStatBlock("limping_grey")` with no scenario load (`held-item-contract.test.js` bestiary probe). | Rework the prune invariant to "never prune a block referenced by an ACTIVE encounter"; seed the babel overlay in those ~8 tests; then move the Grey to `babel.json bestiary.statBlocks`. |
+| **3.1 skills + hunter rank** | No combat SKILL verb — `combatContract.js` classifier has attack/defend/flee/focus/stunt/use_item only (why the button greys); `progression.js` `rankForPlayer` ladder hardcoded. | Add a `skill` route + `resolvePlayerSkill` (server resolves + commits); `rankForPlayer` = weighted amalgamation with outliers-pulling-up (a test proving 2E+1A≈C); ladder from `world.rankLadder` (proven with a different vocabulary). |
+| **3.2 combat intent** | Combatants carry no committed intent; `closeCombat` (`combat.js:870`) resolves death/flee only. | An authorable `intent` field (kill/rob/capture/drive-off/humiliate/test) determining the OUTCOME; non-death resolutions commit durable state (robbed/captured/spared) a later turn can discover; a test. |
+| **3.3 escape as a situation** | `resolvePlayerFlee` (`combat.js:656`) is a flat DEX contest. | Graded outcomes (clean / at-a-cost / failed / cannot) from CTB speed + enemy intent + blocked-exit + AoO, fed into the existing three-band resolver (no parallel system). |
+| **3.6 combat-guard non-death** | `combat-check.mjs` asserts death/flight/return-to-play only. | Extend it: a NON-DEATH resolution (robbed/spared/captured) is reachable + asserted; a build whose only endings are death/flight goes RED. |
+
+These rows comply with the held-item law (§3): each names its mechanism and the observable that
+flips it, and each is covered by an existing `held-item-contract.test.js` probe or names the new
+acceptance test. The next pass reads this table, not archaeology.
