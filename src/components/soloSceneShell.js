@@ -3255,6 +3255,15 @@ export function renderSoloDialogueOverlay(state = {}) {
       ? bareNpcId(scene.speakerId)
       : null;
   const spriteNpcId = committedSpeakerId || talk.npcId;
+  // UI-4 (locked canon): the VOICE is a GOD — her dialogue is GATED, no exit until she
+  // allows it. Suppress the End (✕) control when the committed speaker is the VOICE's
+  // opening set-piece (the server marks it via scene.openingSpeaker while vnMode is on).
+  // A normal, leavable NPC has no openingSpeaker match, so it keeps End unchanged.
+  const godGated =
+    scene.vnMode === true &&
+    scene.openingSpeaker &&
+    typeof scene.openingSpeaker.npcId === "string" &&
+    bareNpcId(scene.openingSpeaker.npcId) === committedSpeakerId;
   // Fallback chain: requested expression variant -> the NPC's base portrait
   // (from the cast roster) -> atmospheric placeholder. Never a broken image.
   const castMember = (Array.isArray(scene.cast) ? scene.cast : []).find(
@@ -3338,7 +3347,7 @@ export function renderSoloDialogueOverlay(state = {}) {
             <button type="button" class="solo-fontsize-btn" data-solo-vnfont="down" title="Smaller dialogue text" aria-label="Smaller dialogue text">A−</button>
             <button type="button" class="solo-fontsize-btn" data-solo-vnfont="up" title="Larger dialogue text" aria-label="Larger dialogue text">A+</button>
           </span>
-          <button type="button" class="solo-vn-box-end" data-solo-dialogue-end aria-label="End conversation" title="End conversation">End ✕</button>
+          ${godGated ? "" : `<button type="button" class="solo-vn-box-end" data-solo-dialogue-end aria-label="End conversation" title="End conversation">End ✕</button>`}
         </div>
       </div>
       <div
