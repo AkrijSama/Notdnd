@@ -134,13 +134,17 @@ test("the gear is DOCKED INTO the row (relative, in-flow), not a floating corner
   assert.doesNotMatch(s, /position:\s*absolute/);
 });
 
-test("uniform chip height: every overlay row item is 28px — the tighter look (gear shrank 38→28)", () => {
+test("overlay row chips are 28px; the settings cog stands out at 32px, boxless (UI-6)", () => {
   const item = rule(".solo-stage-hud > * {");
   assert.match(item, /height:\s*28px/);
   assert.match(item, /box-sizing:\s*border-box/);
+  // UI-6 (owner): the cog is no longer a uniform chip — it lost its box and grew to 32px
+  // in a distinct color so it reads on its own. The other HUD chips remain 28px.
   const gearBtn = rule(".solo-stage-hud .solo-settings-btn {");
-  assert.match(gearBtn, /width:\s*28px/);
-  assert.match(gearBtn, /height:\s*28px/);
+  assert.match(gearBtn, /width:\s*32px/);
+  assert.match(gearBtn, /height:\s*32px/);
+  assert.match(gearBtn, /background:\s*transparent/);
+  assert.match(gearBtn, /border:\s*none/);
 });
 
 // ── DRAWER-OPEN NO-OVERLAP (main task, item 2) ────────────────────────────────
