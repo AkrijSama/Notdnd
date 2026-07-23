@@ -118,7 +118,11 @@ export function loadRecipe(style, kind) {
 export const KIND_DIMENSIONS = Object.freeze({
   portrait: [896, 1152],
   fullbody: [832, 1216],
-  scene: [1344, 768],
+  // JOB 1 (owner STAMP): scenes cook at the strip's fixed 4.8 aspect so they fill it
+  // edge-to-edge with zero crop/zero bars. This is the authoritative source — dimsFor()
+  // uses KIND_DIMENSIONS for API workflows (scene-anime.json) and OVERRIDES the workflow's
+  // own latent. (world-card unchanged — scenes only, per "do not change other kinds".)
+  scene: [1536, 320],
   "world-card": [1344, 768],
   item: [1024, 1024],
   default: [1024, 1024]

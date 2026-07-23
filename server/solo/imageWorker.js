@@ -266,12 +266,17 @@ const PLAYER_PORTRAIT_ART_DIRECTION =
 // environment — the location collapsed to blank texture and a second animal appeared.
 // Exactly ONE weighted clause carries the framing, and it weights the LOCATION (the
 // thing that was losing), not the subject (already weighted at 1.4).
+// JOB 1.3: retuned for the 4.8:1 ULTRA-WIDE strip (was tuned for 1.75:1). At 4.8:1 the
+// frame is a thin horizontal band, so the composition must spread the location ACROSS the
+// width with a low horizon and only a sliver of sky — "horizon near the middle / sky upper
+// third" (the old 1.75 guidance) would crush the scene. Still exactly ONE weighted clause
+// carries the framing (the balance note above), and it weights the LOCATION.
 const LOCATION_COMPOSITION =
-  "(a wide establishing shot of the whole location:1.25), " +
-  "the subject seen in full at a natural distance in the midground, " +
-  "eye-level camera at standing height, horizon near the middle, " +
-  "the ground receding into distance, sky only in the upper third, " +
-  "landscape orientation, environmental scene, natural depth, a path leading into the scene";
+  "(an ultra-wide panoramic establishing shot of the whole location, spanning the full frame edge to edge:1.25), " +
+  "cinemascope banner framing, the location's features spread out horizontally across the width, " +
+  "eye-level camera at standing height, a low horizon with only a thin sliver of sky along the very top edge, " +
+  "the ground filling the lower band and receding into distance, " +
+  "extreme wide panoramic orientation, environmental scene, natural horizontal depth, a path leading across the scene";
 
 // Per-art-style base direction. generateImage() appends ", <style> style" as the
 // medium cue (providers.js); this base must AGREE with that cue instead of always
@@ -426,7 +431,10 @@ const PORTRAIT_DIMENSIONS = { width: 512, height: 768 };
 // Landscape lane at the display band's native ratio (owner ruling 2026-07-19): the
 // banner shows a wide strip, so generate at 1344x768 (7:4) rather than 768x512 and
 // let the UI crop anchor CENTER-BOTTOM (keep the ground, sacrifice sky).
-const LANDSCAPE_DIMENSIONS = { width: 1344, height: 768 };
+// JOB 1 (owner STAMP): scenes cook at the strip's fixed 4.8 aspect (1536x320, both /64 for
+// SDXL) so the image fills the strip edge-to-edge with zero crop and zero bars. Per-kind:
+// scenes only — portrait/fullbody/item dimensions are unchanged.
+const LANDSCAPE_DIMENSIONS = { width: 1536, height: 320 };
 // Square for the character-sheet composite (player + draft portraits only).
 const PLAYER_PORTRAIT_DIMENSIONS = { width: 1024, height: 1024 };
 // Tall VN-sprite aspect for the full-body NPC overlay (NOT the square composite):

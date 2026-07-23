@@ -8,7 +8,7 @@
   "negative": "lowres, worst quality, bad anatomy, bad hands, extra fingers, deformed, blurry, jpeg artifacts, watermark, signature, text, cartoon, anime, illustration, painting, 3d render",
   "dimensions": {
     "world-card": [1344, 768],
-    "scene": [1344, 768],
+    "scene": [1536, 320],
     "fullbody": [832, 1216],
     "portrait": [1024, 1024],
     "item": [1024, 1024],

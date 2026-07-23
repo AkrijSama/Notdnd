@@ -3611,11 +3611,17 @@ button:disabled {
      aspect is viewport-dependent (height clamps 220-560px over a full-width box), so no
      single cooked aspect fills it with BOTH zero crop AND zero letterbox at every viewport;
      a fixed-aspect strip that would is a design change — proposed, not shipped. */
-  aspect-ratio: auto;
+  /* JOB 1 (owner STAMP): the strip is fixed at aspect 4.8 (height = width / 4.8). It no
+     longer varies with viewport, so a scene cooked at 4.8 (1536x320) fills it edge-to-edge
+     with zero crop and zero bars. 4.8 is a THIN strip (~265-300px at laptop widths), so it
+     does not crush the narration the way the old tall 7:4 box did. */
+  aspect-ratio: 4.8;
   width: 100%;
-  height: clamp(220px, 35vh, 560px);
-  min-height: 220px;
-  max-height: 560px;
+  height: auto;
+  /* override the BASE .solo-scene-art clamp (max-height 34vh) so the 4.8 aspect controls
+     the height instead of being capped short (which reintroduced a ~5.2 strip). */
+  min-height: 0;
+  max-height: none;
   margin-inline: 0;
 }
 /* #34 step 1: the log IS the scroller — flex:1 to take the remaining bounded
