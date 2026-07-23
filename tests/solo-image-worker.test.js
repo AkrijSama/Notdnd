@@ -59,7 +59,8 @@ test("runImageJob generates ONLY the base; expression variants are DISABLED (reu
   // Base generated, with served uri...
   const baseAsset = run.imageAssets.img_tavern_keeper_base;
   assert.equal(baseAsset.status, "generated");
-  assert.equal(baseAsset.uri, "/data/assets/run_img_a/tavern_keeper/base.png");
+  // JOB 2: the persisted uri now carries a ?v=<content-hash> cache-buster.
+  assert.match(baseAsset.uri, /^\/data\/assets\/run_img_a\/tavern_keeper\/base\.png\?v=[0-9a-f]{16}$/);
   assert.ok(fs.existsSync(path.join(process.env.NOTDND_ASSETS_ROOT, "run_img_a", "tavern_keeper", "base.png")));
 
   // ...and NO expression variants are generated at all — every variant slot
@@ -140,12 +141,12 @@ test("runVnBodyImageJob generates the full-body sprite into a slot distinct from
   run = getSoloRun("run_vn_a");
   const vnAsset = run.imageAssets.img_tavern_keeper_vnBody;
   assert.equal(vnAsset.status, "generated");
-  assert.match(vnAsset.uri, /\/tavern_keeper\/vnBody\.(png|jpe?g|webp)$/);
+  assert.match(vnAsset.uri, /\/tavern_keeper\/vnBody\.(png|jpe?g|webp)(\?v=[0-9a-f]{16})?$/); // JOB 2: optional ?v=
   // Distinct slot: vnBody uri != bust uri; the bust is untouched (additive).
   assert.notEqual(vnAsset.uri, bustUri);
   assert.equal(run.imageAssets.img_tavern_keeper_base.uri, bustUri);
   // The on-disk file exists at the vnBody path.
-  const onDisk = path.join(process.env.NOTDND_ASSETS_ROOT, "run_vn_a", "tavern_keeper", path.basename(vnAsset.uri));
+  const onDisk = path.join(process.env.NOTDND_ASSETS_ROOT, "run_vn_a", "tavern_keeper", path.basename(vnAsset.uri.split("?")[0]));
   assert.ok(fs.existsSync(onDisk));
 });
 

@@ -275,7 +275,8 @@ const PLAYER_PORTRAIT_ART_DIRECTION =
 const LOCATION_COMPOSITION =
   "(an ultra-wide panoramic establishing shot of the whole location, spanning the full frame edge to edge:1.25), " +
   "cinemascope banner framing, the location's features spread out horizontally across the width, " +
-  "eye-level camera at standing height, a low horizon with only a thin sliver of sky along the very top edge, " +
+  "the subject seen in full at a natural distance in the midground, " +
+  "eye-level camera at standing height, sky only in the upper third, " +
   "the ground filling the lower band and receding into distance, " +
   "extreme wide panoramic orientation, environmental scene, natural horizontal depth, a path leading across the scene";
 
@@ -355,7 +356,8 @@ function servedUriFor(runId, npcId, slot, ext = "png") {
 // (correct, not a fossil). serveStatic strips the query before disk mapping, so ?v= never
 // affects which file is served. Short 16-hex prefix: 64 bits, collision-safe for this use.
 function versionQuery(bytes) {
-  return `?v=${crypto.createHash("sha256").update(bytes).digest("hex").slice(0, 16)}`;
+  const buf = Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes);
+  return `?v=${crypto.createHash("sha256").update(buf).digest("hex").slice(0, 16)}`;
 }
 
 /**
@@ -1732,6 +1734,7 @@ export async function runLocationImageJob(job = {}) {
     const target = diskPathFor(runId, folder, "base", ext);
     fs.mkdirSync(path.dirname(target), { recursive: true });
     fs.writeFileSync(target, bytes);
+    const uri = servedUriFor(runId, folder, "base", ext);
     // JOB 2: the cache-buster is now the CONTENT HASH (was the redo seed). A re-cook
     // writes the same path with different bytes -> different ?v= -> new URL; the browser
     // never re-shows the stale cached image, and serveStatic can cache the versioned URL

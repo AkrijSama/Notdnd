@@ -65,13 +65,13 @@ test("HONEST to known-map state: an unmapped scene docks nothing (empty-state la
 // ── BOUNDING-BOX / PAIRWISE-OVERLAP NET (pre-mortem c) ────────────────────────
 // RE-ANCHORED BOTTOM-RIGHT (walk-3 verdict): the widget left the left column so it is no
 // longer under the top-left portrait dock. New contract: right:8/bottom:8, no left, no top.
-test("docked BOTTOM-RIGHT: cornered at right:8/bottom:8, with NO top and NO left (a distinct corner, off the portrait column)", () => {
+test("docked TOP-RIGHT: cornered at right:8/top:8, with NO bottom and NO left (UI-13: map owns the corner in every mode)", () => {
   const mini = rule(".solo-minimap {");
   assert.match(mini, /position:\s*absolute/);
-  assert.equal(pxProp(mini, "right"), 8, "right-anchored at 8px (mirrors the HUD/dock 8px inset) — re-anchored to the RIGHT of the stage");
-  assert.equal(pxProp(mini, "bottom"), 8, "bottom-anchored at 8px");
-  assert.equal(pxProp(mini, "top"), null, "NOT top-anchored (can't share the top-right HUD corner)");
-  assert.equal(pxProp(mini, "left"), null, "NOT left-anchored (off the top-left portrait dock's column — the re-anchor point)");
+  assert.equal(pxProp(mini, "right"), 8, "right-anchored at 8px");
+  assert.equal(pxProp(mini, "top"), 8, "top-anchored at 8px (UI-13: hard to the top-right corner in every mode; the HUD row shifts left of it)");
+  assert.equal(pxProp(mini, "bottom"), null, "NOT bottom-anchored anymore (UI-13 moved it to the top-right corner)");
+  assert.equal(pxProp(mini, "left"), null, "NOT left-anchored (off the top-left portrait dock's column)");
 });
 
 test("pairwise: the mini-map (bottom-right) is vertically clear of the HUD row (top-right) for any real frame", () => {

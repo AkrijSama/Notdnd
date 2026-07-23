@@ -103,14 +103,16 @@ test("numeric: uncapped prose right edge = viewport − 32px (within 40px) at 12
 });
 
 // ── ITEM 3: OVERLAY ROW — one nowrap row, gear docked in, uniform height ───────
-test("overlay row is ONE nowrap flex row with 8px gaps, flush top-right (8/8)", () => {
+test("overlay row is ONE nowrap flex row with 8px gaps, top row LEFT of the top-right map (UI-13)", () => {
   const hud = rule(".solo-stage-hud {");
   assert.match(hud, /display:\s*flex/);
   assert.match(hud, /flex-direction:\s*row/);
   assert.match(hud, /flex-wrap:\s*nowrap/);
   assert.match(hud, /gap:\s*8px/);
   assert.match(hud, /top:\s*8px/);   // flush to the banner top (mirrors the dock's 8px)
-  assert.match(hud, /right:\s*8px/);
+  // UI-13: the map now owns the top-right corner, so the HUD row sits LEFT of it
+  // (right = map width + gaps), not flush at right:8.
+  assert.match(hud, /right:\s*calc\(16px \+ var\(--vn-map-w/);
   // the portrait dock's top-left corner aligns at the same 8px offset
   assert.match(rule(".solo-game-sidebar {"), /top:\s*8px/);
   assert.match(rule(".solo-game-sidebar {"), /left:\s*8px/);
