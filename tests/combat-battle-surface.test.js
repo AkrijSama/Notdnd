@@ -34,17 +34,35 @@ const battleScene = () => ({
   }
 });
 
-test("battle surface renders the enemy stage (card, intent, wound-band, sight-read); the forecast moved to the panel", () => {
-  const html = renderSoloBattleSurface(battleScene());
+test("UI-14: battle surface is ONE scene — the primary foe fills the strip, nameplate + reads overlay; the forecast is in the panel", () => {
+  const scene = battleScene();
+  scene.combat.enemies[0].bodyUri = "/grey.png"; // a cooked foe fills the strip (battleScene's default is null → silhouette, covered by the next test)
+  const html = renderSoloBattleSurface(scene);
   assert.match(html, /solo-battle\b/);
-  // The order-only forecast is no longer a text rail on the stage — it's portrait chips in the
-  // combat PANEL (see the next test). The battle surface is the enemy stage art alone.
+  // The order-only forecast is portrait chips in the combat PANEL, not a rail here.
   assert.doesNotMatch(html, /solo-battle-forecast|solo-battle-slot/, "the text rail moved off the stage");
-  assert.match(html, /solo-battle-enemy-card/);
+  // UI-14: NO tiled per-enemy image cards — the primary foe fills the stage.
+  assert.doesNotMatch(html, /solo-battle-enemy-card/, "no framed per-enemy cards tiled in a row (UI-14)");
+  assert.match(html, /solo-battle-stage/, "one full-bleed stage");
+  assert.match(html, /solo-battle-enemy-img[^>]*object-fit:\s*cover/, "the primary foe fills the strip (no empty band)");
   assert.match(html, /solo-battle-hpband--bloodied/, "wound band, never a raw HP number");
-  assert.match(html, /snarls; frost rimes/, "the telegraphed intent");
-  assert.match(html, /You read: a bite that chills/, "the essence-sight read on the card");
+  assert.match(html, /snarls; frost rimes/, "the telegraphed intent, overlaid");
+  assert.match(html, /You read: a bite that chills/, "the essence-sight read, overlaid");
   assert.match(html, /Chill/, "the chill status chip");
+});
+
+test("UI-14: MULTIPLE foes read as one scene — primary fills, others are compact tokens (not tiled full cards)", () => {
+  const scene = battleScene();
+  scene.combat.enemies = [
+    { id: "w1", name: "Grey Wolf", hp: { current: 5, max: 7 }, hpBand: "steady", bodyUri: "/w1.png", intent: { telegraph: "circles" }, reads: [], conditions: [] },
+    { id: "w2", name: "Wolf Two", hp: { current: 3, max: 7 }, hpBand: "bloodied", bodyUri: "/w2.png", intent: { telegraph: "snarls" }, reads: [], conditions: [] }
+  ];
+  const html = renderSoloBattleSurface(scene);
+  assert.doesNotMatch(html, /solo-battle-enemy-card/, "no tiled cards even with multiple foes — the exact UI-14 bug");
+  // exactly ONE full-bleed primary image (inset:0), plus compact round tokens for the rest.
+  assert.equal((html.match(/solo-battle-enemy-img/g) || []).length, 1, "exactly one filling primary image, not N");
+  assert.match(html, /border-radius:\s*50%/, "additional foes are round corner tokens");
+  assert.match(html, /Grey Wolf/, "the primary foe is named");
 });
 
 test("combat PANEL surfaces the engine: the five-action menu, the portrait forecast, and player HP", () => {

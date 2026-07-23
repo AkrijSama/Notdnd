@@ -2980,34 +2980,63 @@ export function renderSoloBattleSurface(scene = {}) {
   if (!combat || combat.status !== "active") return "";
   const enemies = Array.isArray(combat.enemies) ? combat.enemies : [];
 
-  // The order-only forecast moved to the combat PANEL as portrait chips (JOB 3); the
-  // battle surface is now the enemy stage art alone (the "scene sprites" of the fight).
-  const cards = enemies.map((e) => {
-    const band = e.hpBand || "steady";
-    const bandPct = band === "down" ? 0 : band === "bloodied" ? 33 : 100;
-    const intent = e.intent && e.intent.telegraph ? e.intent.telegraph : (e.intent && e.intent.hidden ? "coils, unreadable" : null);
-    const reads = Array.isArray(e.reads) ? e.reads : [];
-    const bodyUri = typeof e.bodyUri === "string" && e.bodyUri.trim() ? e.bodyUri.trim() : null;
-    const initial = String(e.name || "?").trim().slice(0, 1).toUpperCase() || "?";
-    const art = bodyUri
-      ? `<img class="solo-battle-enemy-img" data-portrait-key="${escapeHtml(bodyUri)}" src="${escapeHtml(bodyUri)}" alt="${escapeHtml(e.name || "Enemy")}" />`
-      : `<div class="solo-battle-enemy-pending" title="Reading its shape…"><span aria-hidden="true">${escapeHtml(initial)}</span></div>`;
-    return `
-      <div class="solo-battle-enemy-card" data-combatant-id="${escapeHtml(e.id || "")}">
-        <div class="solo-battle-enemy-art">${art}${bodyUri ? renderArtThumb(bodyUri, "fullbody", "br") : ""}</div>
-        <div class="solo-battle-enemy-meta">
-          <div class="solo-battle-enemy-name" data-textfit>${escapeHtml(e.name || "Enemy")}</div>
-          <div class="solo-battle-hpband solo-battle-hpband--${band}" role="img" aria-label="${escapeHtml(band)}"><span style="width:${bandPct}%"></span></div>
-          ${intent ? `<div class="solo-battle-intent" title="${escapeHtml(intent)}">${escapeHtml(intent)}</div>` : ""}
-          ${reads.length ? `<div class="solo-battle-read">You read: ${escapeHtml(reads.join("; "))}</div>` : ""}
-          <div class="solo-battle-enemy-conds">${renderSoloConditionsHud({ conditions: Array.isArray(e.conditions) ? e.conditions : [] }, { compact: true })}</div>
-        </div>
-      </div>`;
-  }).join("");
+  if (!enemies.length) return `<div class="solo-battle" data-solo-battle></div>`;
 
+  // UI-14 — ONE SCENE, not N tiled images. Before, each enemy became a framed image CARD laid
+  // out in a centered row; with >1 enemy (the owner's two wolves) plus the location backdrop
+  // showing through, the strip read as three separate images with the label clipped and ~40%
+  // empty black on the left. Now the strip IS one scene: the PRIMARY (nearest living) foe fills
+  // the strip (object-fit cover — no empty band, no tiling), its nameplate OVERLAYS the bottom
+  // (never a clipped card label), and any OTHER foes are compact corner tokens, not full cards.
+  // All layout is INLINE this pass — the combat CSS in styles.css is CLI-1-fenced; the existing
+  // .solo-battle-hpband/.solo-battle-intent classes are reused (not edited) for their styling.
+  const alive = enemies.filter((e) => (e.hp?.current ?? 1) > 0 && e.hpBand !== "down");
+  const primary = alive[0] || enemies[0];
+  const others = enemies.filter((e) => e !== primary);
+  const bandOf = (e) => e.hpBand || "steady";
+  const pctOf = (e) => (bandOf(e) === "down" ? 0 : bandOf(e) === "bloodied" ? 33 : 100);
+  const initialOf = (e) => String(e.name || "?").trim().slice(0, 1).toUpperCase() || "?";
+
+  const pUri = typeof primary.bodyUri === "string" && primary.bodyUri.trim() ? primary.bodyUri.trim() : null;
+  const pIntent = primary.intent && primary.intent.telegraph ? primary.intent.telegraph : (primary.intent && primary.intent.hidden ? "coils, unreadable" : null);
+  const pReads = Array.isArray(primary.reads) ? primary.reads : [];
+  // The primary foe as the single filling image (or a silhouette while its art cooks).
+  const primaryArt = pUri
+    ? `<img class="solo-battle-enemy-img" data-portrait-key="${escapeHtml(pUri)}" src="${escapeHtml(pUri)}" alt="${escapeHtml(primary.name || "Enemy")}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center top;" />`
+    : `<div class="solo-battle-enemy-pending" title="Reading its shape…" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:44px;color:var(--text-2,#b0b3bb);"><span aria-hidden="true">${escapeHtml(initialOf(primary))}</span></div>`;
+
+  // Compact corner tokens for any additional foes (initial + wound band), so a multi-foe fight
+  // still reads its whole cast without tiling full images.
+  const tokens = others.length
+    ? `<div style="position:absolute;top:8px;left:10px;display:flex;gap:8px;z-index:2;">${others
+        .map((e) => {
+          const uri = typeof e.bodyUri === "string" && e.bodyUri.trim() ? e.bodyUri.trim() : null;
+          const face = uri
+            ? `<img src="${escapeHtml(uri)}" alt="" style="width:100%;height:100%;object-fit:cover;object-position:center top;" />`
+            : `<span aria-hidden="true" style="font-weight:700;color:var(--text-2,#b0b3bb);">${escapeHtml(initialOf(e))}</span>`;
+          return `<div data-combatant-id="${escapeHtml(e.id || "")}" title="${escapeHtml(e.name || "Enemy")} · ${escapeHtml(bandOf(e))}" style="width:44px;height:44px;border-radius:50%;overflow:hidden;display:inline-flex;align-items:center;justify-content:center;border:2px solid ${bandOf(e) === "bloodied" ? "#e0b06f" : bandOf(e) === "down" ? "#555" : "#a33e3e"};background:var(--inset,#070708);">${face}</div>`;
+        })
+        .join("")}</div>`
+    : "";
+
+  // The primary foe's nameplate OVERLAYS the bottom of the scene (readable, never clipped).
+  const nameplate = `
+    <div data-combatant-id="${escapeHtml(primary.id || "")}" style="position:absolute;left:0;right:0;bottom:0;z-index:2;padding:10px 14px;background:linear-gradient(180deg,rgba(6,7,8,0) 0%,rgba(6,7,8,0.82) 70%);">
+      <div class="solo-battle-enemy-name" data-textfit style="font-family:var(--font-display,Georgia,serif);font-weight:700;font-size:16px;color:var(--accent-bright,#e7e9ee);">${escapeHtml(primary.name || "Enemy")}</div>
+      <div class="solo-battle-hpband solo-battle-hpband--${bandOf(primary)}" role="img" aria-label="${escapeHtml(bandOf(primary))}" style="margin-top:4px;max-width:320px;"><span style="width:${pctOf(primary)}%"></span></div>
+      ${pIntent ? `<div class="solo-battle-intent" title="${escapeHtml(pIntent)}" style="margin-top:4px;">${escapeHtml(pIntent)}</div>` : ""}
+      ${pReads.length ? `<div class="solo-battle-read" style="margin-top:2px;">You read: ${escapeHtml(pReads.join("; "))}</div>` : ""}
+      <div class="solo-battle-enemy-conds" style="margin-top:4px;">${renderSoloConditionsHud({ conditions: Array.isArray(primary.conditions) ? primary.conditions : [] }, { compact: true })}</div>
+    </div>`;
+
+  // ONE full-bleed stage: the primary foe fills it, tokens + nameplate overlay. No tiled cards.
   return `
     <div class="solo-battle" data-solo-battle>
-      <div class="solo-battle-enemies">${cards}</div>
+      <div class="solo-battle-stage" style="position:absolute;inset:0;overflow:hidden;">
+        ${primaryArt}
+        ${tokens}
+        ${nameplate}
+      </div>
     </div>`;
 }
 
