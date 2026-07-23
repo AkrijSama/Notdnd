@@ -105,7 +105,7 @@ test("planFor resolves all four waiter lanes to a recipe + dims (dry-run routing
   // scene wide, item square. Portrait resolves the committed portrait-anime.json
   // export (KIND_DIMENSIONS spec), not the legacy anime.json 1024² fallback.
   assert.deepEqual(planFor("anime", "fullbody").dims, [832, 1216]);
-  assert.deepEqual(planFor("anime", "scene").dims, [1344, 768]);
+  assert.deepEqual(planFor("anime", "scene").dims, [1536, 320]);
   assert.deepEqual(planFor("anime", "item").dims, [1024, 1024]);
   assert.deepEqual(planFor("anime", "portrait").dims, [896, 1152]);
 });

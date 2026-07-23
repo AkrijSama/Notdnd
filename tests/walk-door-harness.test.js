@@ -46,9 +46,9 @@ test("crop math: a wide source in a narrow box crops the sides; a wide box crops
   assert.ok(topbottom.axis.startsWith("vertical") && topbottom.cropPct > 60, `scene >60% top/bottom crop, got ${topbottom.cropPct}`);
 });
 
-test("crop math: the scene box now holds the 1344x768 cook aspect (walk-fix) + object-fit contain", () => {
+test("crop math: the scene box holds the 1536x320 cook aspect (JOB 1: 4.8 full-bleed) + object-fit contain", () => {
   const a = evalDisplayAspect(DISPLAY.scene, { width: 1440, height: 900 });
-  assert.ok(Math.abs(a - 1344 / 768) < 1e-6, `the scene box aspect must equal the cook aspect (1.75), got ${a}`);
+  assert.ok(Math.abs(a - 1536 / 320) < 1e-6, `the scene box aspect must equal the cook aspect (4.8), got ${a}`);
   assert.equal(DISPLAY.scene.objectFit, "contain", "the scene img must be contain so nothing is ever cut");
   assert.equal(DISPLAY["portrait-frame"].objectFit, "contain", "portraits must be contain so a face is never cropped");
   assert.equal(evalDisplayAspect(DISPLAY["portrait-frame"], { width: 1440, height: 900 }), 512 / 768, "a fixed-aspect box ignores the viewport");

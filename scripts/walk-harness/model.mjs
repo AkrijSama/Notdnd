@@ -67,7 +67,7 @@ export const DOOR_LAYER_RANK = LAYERS.HTTP_GUEST.rank;
 // the portrait crop. The real cook aspects are below.
 export const COOK = Object.freeze({
   "world-card": { dims: [1344, 768], ref: "generate.mjs dimsFor 'world-card' → KIND_DIMENSIONS 1344x768" },
-  scene: { dims: [1344, 768], ref: "generate.mjs dimsFor 'scene' → KIND_DIMENSIONS 1344x768" },
+  scene: { dims: [1536, 320], ref: "generate.mjs dimsFor 'scene' → KIND_DIMENSIONS 1536x320 (JOB 1: 4.8 full-bleed strip)" },
   // kind='portrait' → dimsFor returns 896x1152 for BOTH bust and player on the comfyui path
   // (the imageWorker 512x768/1024x1024 constants are the pollinations-path caller dims and
   // are overridden). The pipeline's portrait dims are inconsistent — reported as a finding.
@@ -83,9 +83,9 @@ export const COOK = Object.freeze({
 // finding); "contain" LETTERBOXES it (empty space — nothing cut, the owner's law holds).
 export const DISPLAY = Object.freeze({
   "world-card-lobby": { fixedHeight: 150, widthHint: 260, objectFit: "cover", ref: "src/styles.css .onb-world-card-art (100% x 150px, object-fit cover)" },
-  // walk-fix: the stage scene box now holds the 1344x768 cook aspect (fixed 7:4) and the
-  // img is object-fit:contain — nothing is ever cut.
-  scene: { aspect: 1344 / 768, objectFit: "contain", ref: "src/styles.css .solo-stage .solo-scene-art (aspect 1344/768; img object-fit contain — walk-fix)" },
+  // JOB 1 (owner stamp): the stage scene box is fixed at aspect 4.8 (1536x320) and the cook
+  // matches it, so the img fills edge-to-edge with zero crop and zero bars (object-fit contain).
+  scene: { aspect: 1536 / 320, objectFit: "contain", ref: "src/styles.css .solo-stage .solo-scene-art (aspect-ratio 4.8; img object-fit contain — JOB 1)" },
   "portrait-frame": { aspect: 512 / 768, objectFit: "contain", ref: "src/styles.css .frame-portrait (2:3) + .solo-portrait-img object-fit contain — walk-fix" },
   "vn-sprite": { aspect: 832 / 1216, objectFit: "cover", ref: "src/styles.css .solo-vn-sprite-img (2:3 source fills height)" }
 });

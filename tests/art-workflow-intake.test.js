@@ -101,7 +101,7 @@ test("verifyDimsAgainstSpec warns when an export's latent differs from the lane 
 test("the lane dims spec matches the workflow-intake table", () => {
   assert.deepEqual(KIND_DIMENSIONS.portrait, [896, 1152]);
   assert.deepEqual(KIND_DIMENSIONS.fullbody, [832, 1216]);
-  assert.deepEqual(KIND_DIMENSIONS.scene, [1344, 768]);
+  assert.deepEqual(KIND_DIMENSIONS.scene, [1536, 320]);
   assert.deepEqual(KIND_DIMENSIONS.item, [1024, 1024]);
   assert.equal(isApiWorkflow(apiGraph()), true);
   assert.equal(isApiWorkflow({ checkpoint: "x", sampler: {} }), false);
