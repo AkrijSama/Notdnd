@@ -29,6 +29,7 @@
 
 import { validateScenario, SCENARIO_SUBSTRATE_VERSION } from "./scenarioSchema.js";
 import { mintChaosling, listBaseAnimals } from "./bestiary.js";
+import { CARRIED_WORLD_KEYS } from "./scenarioLoader.js";
 
 export const WORLD_BOOK_SCHEMA_VERSION = 1;
 
@@ -475,6 +476,17 @@ export function compileWorldBook(wb = {}, opts = {}) {
   world.orientationMix = book.orientationMix;
   world.deathLaw = book.deathLaw;
 
+  // TWO-DOORS PARITY (JOB 4): every world knob the scenarioLoader carries must ALSO be emittable
+  // through THIS creator door — a field wired for the JSON door and not the creator door is not
+  // wired (a created world, e.g. cyberpunk, silently loses a knob babel has). Pass through any
+  // CARRIED_WORLD_KEYS the world-book declares under wb.world.*, respecting the loader's type
+  // expectation, without clobbering what this compile already set. two-doors-parity.test.js fails
+  // if this set drifts from the loader's carry set.
+  const carrySrc = isPlainObject(wb.world) ? wb.world : {};
+  for (const k of CARRIED_WORLD_KEYS.string) if (world[k] === undefined && isNonEmptyString(carrySrc[k])) world[k] = carrySrc[k];
+  for (const k of CARRIED_WORLD_KEYS.object) if (world[k] === undefined && isPlainObject(carrySrc[k])) world[k] = carrySrc[k];
+  for (const k of CARRIED_WORLD_KEYS.array) if (world[k] === undefined && Array.isArray(carrySrc[k])) world[k] = carrySrc[k];
+
   const scenario = {
     substrate: SCENARIO_SUBSTRATE_VERSION,
     scenarioId,
@@ -632,7 +644,7 @@ export const WORLD_BOOK_SLOTS = Object.freeze([
   { path: "orientationMix", label: "Orientation mix", defaultKind: "table", default: DEFAULT_ORIENTATION_MIX,
     consumer: "NONE: written to world.orientationMix; the romance path in reputation.js never consults it (DEAD SLOT, verified 2026-07-21)" },
   { path: "deathLaw", label: "Death law", defaultKind: "table", default: DEFAULT_DEATH_LAW,
-    consumer: "NONE: the death epilogue is a hardcoded client table (soloSceneShell.js DEATH_LAW_EPILOGUE) keyed on scenarioId/variant, not this slot (DEAD SLOT, verified 2026-07-21)" },
+    consumer: "LIVE: the death-screen epilogue. scene.js:1477 emits world.deathLaw onto the scene payload; soloSceneShell.js:3496 reads world.deathLaw.epilogue (the hardcoded client dict is now only a resume-safety fallback). CORRECTED 2026-07-22 (JOB 6): this entry had gone stale after the slot was wired; manifest-honesty.test.js now locks it live." },
   { path: "services", label: "Services", defaultKind: "empty", default: DEFAULT_SERVICES,
     consumer: "NONE at world level: normalizeWorldBook emits it but compileWorldBook never lowers it; only PER-POI `locations[].services[]` reaches affordances.js (DEAD SLOT, verified 2026-07-21)" },
   { path: "fronts", label: "Fronts", defaultKind: "mint", mintedBy: "mintDefaultFront()",

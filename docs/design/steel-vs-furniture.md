@@ -334,3 +334,36 @@ the acceptance test: *Babel's gaps are key figures and handbook chapters*, not e
 - `scenarioLoader.js:295` "drives the regionMap hazard read" (of `dangerLevel`) — **false**; `regionMap.js` has no danger reference.
 - `world-book-schema.md:64` "locations mint their own services" — no such mint exists.
 - `world-book-schema.md:96-98` threat-ladder / name-bank re-skin — unimplemented.
+
+---
+
+## 8. THIRD-PASS RECONCILIATION (2026-07-22, CLI-2) — end the loop
+
+The audit re-surfaced this class a third time. Reconciled against §4's ledger + the held-item
+contract. **The contract's probes did NOT fire on the new findings** — it only probes the 5
+recorded held items through ONE door (`scenarioLoader`). Three blind spots let new instances
+through: (1) new leaks/drops (nothing probes "authored + read + not-carried"), (2) the second
+door (`compileWorldBook` never probed — a field wired for one door, dead for the other), (3) the
+hand-maintained manifest prose. This pass converts all three into red tests.
+
+### Landed (verified: Babel byte-identical + non-Babel neutral + a live door)
+| Job | Fix | Guard added |
+|---|---|---|
+| **JOB 1 (F2/F3)** | `scene.js` `rank`/`rankedSkillCount` were emitted UNGATED for every world; now `variant==="babel"`-gated exactly like `babelStats`. Door: the STATUS WINDOW readout. | `rank-gate-furniture.test.js` |
+| **JOB 3 (mirror bug)** | `world.plausibleFauna` (authored, read at `absentTarget.js:124`) was dropped; now carried. **Full enumeration**: of every authored Babel world key with a live `run.world` reader, plausibleFauna was the ONE drop (startingLocationName/Type are carried by a separate loader path :389-393). Door: the absent-target grounder. | `world-key-carry-parity.test.js` — fails if ANY authored+read key is dropped |
+| **JOB 4 (two doors)** | `scenarioLoader` and `compileWorldBook` carried different world-knob sets. Both now read ONE registry `CARRIED_WORLD_KEYS` (`scenarioLoader.js`); `compileWorldBook` passes through every carried knob the world-book declares. A creator-authored `sheetSpec`/`rankLadder` now reaches `run.world`. | `two-doors-parity.test.js` — fails on divergence |
+| **JOB 6 (manifest)** | `deathLaw` manifest entry falsely read "DEAD SLOT" after the slot was wired (scene.js:1477 emits it, the death screen reads it). Corrected. Self-check policy: a reader-derived `consumer` field is not cheap, so the machine-derivable BOM (defaults→filled/gap) stays self-checking and the drift point (deathLaw LIVE) is test-locked. | `manifest-honesty.test.js` |
+
+### HELD — recorded blocker + machine-checkable unblock (per the held-item law)
+Not landed this pass (regression-risk / multi-system / test-contract inversion); each keeps its
+`held-item-contract.test.js` probe so it goes RED the moment its blocker stops describing reality.
+| Job | Blocker (file:line) | Unblock condition |
+|---|---|---|
+| **JOB 2** chaosling/violet mint → world.corruption | `bestiary.js:241-319` mint is deterministic Babel canon; moving to data must reproduce the violet mint byte-identical (pre-mortem b) | a `world.corruption` slot + `mintChaosling` reads it + a golden byte-identical test for babel's tier-1 mint |
+| **JOB 5** rankLadder→progression / sheetSpec→status window / threatLadder→encounters | rankLadder is an ARRAY (loader `carryObject` skips it — `held-item-contract` rankLadder probe); sheetSpec's STATUS WINDOW render is `variant==="babel"`-gated in the client (`soloSceneShell.js:1429` — sheetSpec probe); threatLadder unread (`bestiary.js:217`) | carry the array + progression reads `world.rankLadder`; generalize the client gate to `world.sheetSpec`; encounter selection reads `world.threatLadder`. NOTE: `sightAccent` wiring is `styles.css` — **CLI-1 fenced this pass**, not touched |
+| **JOB 7** VOICE forms + Limping Grey → babel | forms authored path is `entityForms.js` runtime-only (ships, reads `npc.forms` first); the Grey is a FROZEN registry block — moving it to the babel overlay inverts `minted-block-pruning`'s "frozen blocks never pruned" contract + breaks ~8 tests (`held-item-contract` bestiary probe) | ship the world-book `forms` authoring schema; rework the frozen-block test contract (seed the overlay / redefine the prune invariant) THEN move the Grey |
+
+**What ends the loop:** the two new class-guards (`world-key-carry-parity`, `two-doors-parity`)
+plus the corrected manifest self-check mean the next authored-but-dropped key, the next
+one-door-only field, and the next stale manifest claim each turn a test RED and name themselves —
+the exact silent-drift that made this a third pass.

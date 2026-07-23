@@ -816,15 +816,21 @@ export function buildPlayerPayload(run) {
       run?.worldBook?.progressionMap
     ),
     // Babel hunter rank (spec §5 RMS); "UNASSESSED" until a ranked skill is held.
-    // A display readout only — gates read the milestone, never this.
-    rank: rankForPlayer(player),
+    // A display readout only — gates read the milestone, never this. GATED on the Babel
+    // family, exactly like babelStats/babelSkills below (JOB 1 / F2): rank + the rank ladder
+    // are Babel canon (a Solo-Leveling E->DG ladder), not engine law — a non-Babel run must
+    // emit no rank. (The variant weld is the same one JOB 5 migrates to world.sheetSpec.)
+    rank: run?.world?.variant === "babel" ? rankForPlayer(player) : null,
     // Ranked-skill count — the SAME source rank is computed from (player.babelSkills),
-    // so the STATUS WINDOW's skill count and RANK can never contradict each other.
-    // The 5e 18-row skill table (player.skills) is NOT the Babel skill surface;
-    // a Beckoned start has no ranked skills → count 0 + rank UNASSESSED. (Defect 4.)
-    rankedSkillCount: Array.isArray(player.babelSkills)
-      ? player.babelSkills.filter((s) => Number.isFinite(typeof s === "number" ? s : s?.rankIndex)).length
-      : 0,
+    // so the STATUS WINDOW's skill count and RANK can never contradict each other. Also
+    // Babel-gated (F3): player.babelSkills is a Babel-only surface; a non-Babel run emits
+    // none. (Defect 4.)
+    rankedSkillCount:
+      run?.world?.variant === "babel"
+        ? (Array.isArray(player.babelSkills)
+            ? player.babelSkills.filter((s) => Number.isFinite(typeof s === "number" ? s : s?.rankIndex)).length
+            : 0)
+        : null,
     // The player's Awakening Origin (Babel's race slot) + its feat, when set.
     origin: isString(player.origin) ? player.origin : null,
     originFeat: isString(player.originFeat) ? player.originFeat : null,

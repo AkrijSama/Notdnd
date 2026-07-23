@@ -23,6 +23,17 @@ import { resolveStatBlock, registerStatBlock } from "./bestiary.js";
 
 const SCENARIO_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "scenarios");
 
+// THE ONE REGISTRY of world knobs the loader carries from scenario.world into run.world (JOB 4).
+// BOTH doors read this: the loader (below) carries them, compileWorldBook (worldBook.js) emits
+// them, and world-key-carry-parity / two-doors-parity tests fail if a door drifts from it. A knob
+// carried for the JSON door but not emittable through the creator door is "wired for one door" —
+// which is not wired (a created world silently loses a field babel has). Add a knob HERE once.
+export const CARRIED_WORLD_KEYS = Object.freeze({
+  string: ["name", "tone", "flavor", "artStyle", "variant", "era", "sceneRegister", "sightAccent"],
+  object: ["deathLaw", "orientationMix", "systemLore", "playerSense", "speechConventions", "rankLadder", "sheetSpec", "nameBanks"],
+  array: ["suggestionExemplars", "plausibleFauna"]
+});
+
 function isString(value) {
   return typeof value === "string" && value.trim().length > 0;
 }
@@ -234,7 +245,7 @@ export function loadScenarioIntoRun(run, scenario, options = {}) {
     // 2026-07-21). It used to be a hardcoded Verdance line appended to EVERY world's
     // scene prompt — a cyberpunk alley rendered with "over-still water". Babel now
     // carries its own register as data; a world that declares none gets no clause.
-    for (const k of ["name", "tone", "flavor", "artStyle", "variant", "era", "sceneRegister", "sightAccent"]) {
+    for (const k of CARRIED_WORLD_KEYS.string) {
       if (isString(scenario.world[k])) run.world[k] = scenario.world[k];
     }
     // STEEL/FURNITURE WIDENING (2026-07-21). The string loop above carries only
@@ -255,8 +266,13 @@ export function loadScenarioIntoRun(run, scenario, options = {}) {
     const carryArray = (k) => {
       if (Array.isArray(scenario.world[k])) run.world[k] = scenario.world[k];
     };
-    for (const k of ["deathLaw", "orientationMix", "systemLore", "playerSense", "speechConventions", "rankLadder", "sheetSpec", "nameBanks"]) carryObject(k);
-    for (const k of ["suggestionExemplars"]) carryArray(k);
+    for (const k of CARRIED_WORLD_KEYS.object) carryObject(k);
+    // JOB 3 (the mirror bug): `plausibleFauna` (in CARRIED_WORLD_KEYS.array) is authored (babel.json,
+    // 18 animals) and has a LIVE reader (absentTarget.js:124 via actions.js — the absent-target
+    // grounder) but was silently dropped in transit, exactly like the prior whitelist drops. Now
+    // carried via the shared registry; world-key-carry-parity.test.js fails if any authored world
+    // key with a live run.world reader is dropped again.
+    for (const k of CARRIED_WORLD_KEYS.array) carryArray(k);
     // Carry the scenario's engine art style into BOTH the new primary
     // (artStyleOptions.default) and the legacy string + flags mirror. A scenario
     // may author either the new artStyleOptions object or the legacy artStyle
